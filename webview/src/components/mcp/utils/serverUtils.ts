@@ -61,17 +61,14 @@ export function getServerStatusInfo(
 /**
  * Check whether the server is enabled
  * @param server - Server object
- * @param isCodexMode - Whether in Codex mode
  * @returns Whether enabled
  */
-export function isServerEnabled(server: McpServer, isCodexMode: boolean): boolean {
+export function isServerEnabled(server: McpServer): boolean {
   if (server.enabled !== undefined) {
     return server.enabled;
   }
-  // Check provider-specific apps field
-  return isCodexMode
-    ? server.apps?.codex !== false
-    : server.apps?.claude !== false;
+  // Default to enabled if no explicit enabled field
+  return true;
 }
 
 // ============================================================================
@@ -82,16 +79,14 @@ export function isServerEnabled(server: McpServer, isCodexMode: boolean): boolea
  * Get the status icon
  * @param server - Server object
  * @param status - Server status
- * @param isCodexMode - Whether in Codex mode
  * @returns Icon class name
  */
 export function getStatusIcon(
   server: McpServer,
-  status: McpServerStatusInfo['status'] | undefined,
-  isCodexMode: boolean
+  status: McpServerStatusInfo['status'] | undefined
 ): string {
   // Show disabled icon if the server is disabled
-  if (!isServerEnabled(server, isCodexMode)) {
+  if (!isServerEnabled(server)) {
     return 'codicon-circle-slash';
   }
 
@@ -113,16 +108,14 @@ export function getStatusIcon(
  * Get the status color
  * @param server - Server object
  * @param status - Server status
- * @param isCodexMode - Whether in Codex mode
  * @returns Color value
  */
 export function getStatusColor(
   server: McpServer,
-  status: McpServerStatusInfo['status'] | undefined,
-  isCodexMode: boolean
+  status: McpServerStatusInfo['status'] | undefined
 ): string {
   // Show gray if the server is disabled
-  if (!isServerEnabled(server, isCodexMode)) {
+  if (!isServerEnabled(server)) {
     return '#9CA3AF';
   }
 
@@ -144,18 +137,16 @@ export function getStatusColor(
  * Get the status text
  * @param server - Server object
  * @param status - Server status
- * @param isCodexMode - Whether in Codex mode
  * @param t - Translation function
  * @returns Status text
  */
 export function getStatusText(
   server: McpServer,
   status: McpServerStatusInfo['status'] | undefined,
-  isCodexMode: boolean,
   t: (key: string) => string
 ): string {
   // Show "Disabled" if the server is disabled
-  if (!isServerEnabled(server, isCodexMode)) {
+  if (!isServerEnabled(server)) {
     return t('mcp.disabled');
   }
 

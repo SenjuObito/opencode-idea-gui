@@ -119,10 +119,6 @@ const getToolDisplayName = (t: any, name?: string, input?: ToolInput) => {
     'write': 'tools.writeFile',
     'write_to_file': 'tools.writeFile',
     'replace_string': 'tools.replaceString',
-    'search_replace': 'tools.replaceString',
-    'searchreplace': 'tools.replaceString',
-    'str_replace': 'tools.replaceString',
-    'strreplace': 'tools.replaceString',
     'bash': 'tools.runCommand',
     'run_terminal_cmd': 'tools.runCommand',
     'execute_command': 'tools.executeCommand',
@@ -256,7 +252,7 @@ const GenericToolBlock = memo(function GenericToolBlock({ name, input, result, t
   const isCompleted = (result !== undefined && result !== null) || isDenied;
   // AskUserQuestion tool should never show as error - it's a user interaction tool
   // The is_error field may be set by SDK but it doesn't indicate a real error
-  const isAskUserQuestion = lowerName === 'askuserquestion';
+  const isAskUserQuestion = lowerName === 'askuserquestion' || lowerName === 'question';
   // If denied, show as error state
   const isError = isDenied || (isCompleted && result?.is_error === true && !isAskUserQuestion);
 

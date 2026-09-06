@@ -67,7 +67,7 @@ describe('useChatInputCompletionsCoordinator', () => {
     );
 
     result.current.closeAllCompletions();
-    expect(completionMocks).toHaveLength(5);
+    expect(completionMocks).toHaveLength(3);
     completionMocks.forEach((mock) => {
       expect(mock.close).toHaveBeenCalled();
     });

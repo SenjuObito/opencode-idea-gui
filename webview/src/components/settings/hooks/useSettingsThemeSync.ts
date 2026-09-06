@@ -1,11 +1,16 @@
 // hooks/useSettingsThemeSync.ts
-import { useState, useEffect } from 'react';
-import { applyDiffTheme, getStoredDiffTheme, type DiffThemeMode } from '../../../utils/diffTheme';
+import { useState, useEffect, useCallback } from 'react';
+import { sendBridgeEvent } from '../../../utils/bridge';
+import { applyDiffTheme, type DiffThemeMode } from '../../../utils/diffTheme';
+import { applyChatBarThemeColor } from '../../../utils/chatBarTheme';
+import { applyFontScale } from '../../../utils/fontScale';
 import {
-  applyChatBarThemeColor,
-  CHAT_BAR_COLOR_STORAGE_KEY,
-  isValidHexColor,
-} from '../../../utils/chatBarTheme';
+  getUiPreferences,
+  updateUiPreferences,
+  UI_PREFERENCES_CHANGED_EVENT,
+  type UiPreferences,
+  type UiPreferencesChangedDetail,
+} from '../../../utils/uiPreferences';
 
 // Extend window type for IDE theme injection
 declare global {
@@ -32,14 +37,11 @@ export interface UseSettingsThemeSyncReturn {
 }
 
 export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
-  const [themePreference, setThemePreference] = useState<'light' | 'dark' | 'system'>(() => {
-    // Read theme preference from localStorage
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
-      return savedTheme;
-    }
-    return 'system'; // Default: follow IDE
-  });
+  // 初值来自共享偏好仓库（宿主注入的权威值 + localStorage 镜像），
+  // 不是裸读 localStorage —— 否则 webview 重建后设置会回到默认值。
+  const [themePreference, setThemePreference] = useState<'light' | 'dark' | 'system'>(
+    () => getUiPreferences().theme,
+  );
 
   // IDE theme state (prefer Java-injected initial theme, used to handle dynamic changes)
   const [ideTheme, setIdeTheme] = useState<'light' | 'dark' | null>(() => {
@@ -52,38 +54,50 @@ export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
   });
 
   // Font size level state (1-6, default is 2, i.e. 90%)
-  const [fontSizeLevel, setFontSizeLevel] = useState<number>(() => {
-    const savedLevel = localStorage.getItem('fontSizeLevel');
-    const level = savedLevel ? parseInt(savedLevel, 10) : 2;
-    return level >= 1 && level <= 6 ? level : 2;
-  });
+  const [fontSizeLevel, setFontSizeLevel] = useState<number>(() => getUiPreferences().fontSizeLevel);
 
   // Chat background color configuration
-  const [chatBgColor, setChatBgColor] = useState<string>(() => {
-    const saved = localStorage.getItem('chatBgColor');
-    if (saved && /^#[0-9a-fA-F]{6}$/.test(saved)) {
-      return saved;
-    }
-    return '';
-  });
+  const [chatBgColor, setChatBgColor] = useState<string>(() => getUiPreferences().chatBgColor);
 
   // User message bubble color configuration
-  const [userMsgColor, setUserMsgColor] = useState<string>(() => {
-    const saved = localStorage.getItem('userMsgColor');
-    if (saved && /^#[0-9a-fA-F]{6}$/.test(saved)) {
-      return saved;
-    }
-    return '';
-  });
+  const [userMsgColor, setUserMsgColor] = useState<string>(() => getUiPreferences().userMsgColor);
 
   // Shared chat header and status bar color configuration
-  const [chatBarColor, setChatBarColor] = useState<string>(() => {
-    const saved = localStorage.getItem(CHAT_BAR_COLOR_STORAGE_KEY);
-    return saved && isValidHexColor(saved) ? saved : '';
-  });
+  const [chatBarColor, setChatBarColor] = useState<string>(() => getUiPreferences().chatBarColor);
 
   // Diff theme configuration
-  const [diffTheme, setDiffTheme] = useState<DiffThemeMode>(() => getStoredDiffTheme());
+  const [diffTheme, setDiffTheme] = useState<DiffThemeMode>(() => getUiPreferences().diffTheme);
+
+  // 宿主推送权威偏好（get_ui_preferences / set_ui_preferences 回包）时同步本地状态。
+  // 只认 source==='host'，避免自己刚发出的改动被回弹。
+  useEffect(() => {
+    const onChanged = (event: Event) => {
+      const detail = (event as CustomEvent<UiPreferencesChangedDetail>).detail;
+      if (detail?.source !== 'host' || !detail.preferences) return;
+      const next: UiPreferences = detail.preferences;
+      setThemePreference(next.theme);
+      setFontSizeLevel(next.fontSizeLevel);
+      setChatBgColor(next.chatBgColor);
+      setUserMsgColor(next.userMsgColor);
+      setChatBarColor(next.chatBarColor);
+      setDiffTheme(next.diffTheme);
+    };
+    window.addEventListener(UI_PREFERENCES_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(UI_PREFERENCES_CHANGED_EVENT, onChanged);
+  }, []);
+
+  /**
+   * 选择「跟随 VS Code」时主动向宿主要一次当前主题：
+   * VS Code 宿主不注入 __INITIAL_IDE_THEME__，本 hook 的 ideTheme 初始为 null，
+   * 不拉取的话 applyTheme('system') 会因 ideTheme===null 早退（表现为点击无反应）。
+   * 宿主回推 onIdeThemeReceived → 设置页回调包装器链式更新 ideTheme → 下方 effect 应用主题。
+   */
+  const handleSetThemePreference = useCallback((theme: 'light' | 'dark' | 'system') => {
+    setThemePreference(theme);
+    if (theme === 'system') {
+      sendBridgeEvent('get_ide_theme');
+    }
+  }, []);
 
   // Theme switching handler (supports following IDE theme)
   useEffect(() => {
@@ -101,8 +115,8 @@ export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
     };
 
     applyTheme(themePreference);
-    // Save to localStorage
-    localStorage.setItem('theme', themePreference);
+    // 写入共享偏好仓库 → localStorage 镜像 + 宿主 globalState
+    updateUiPreferences({ theme: themePreference });
   }, [themePreference, ideTheme]);
 
   // Font size scaling handler
@@ -118,53 +132,47 @@ export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
     };
     const scale = fontSizeMap[fontSizeLevel] || 1.0;
 
-    // Apply to root element
-    document.documentElement.style.setProperty('--font-scale', scale.toString());
+    // Apply to root element (also clears any stale inline zoom on #app)
+    applyFontScale(scale.toString());
 
-    // Save to localStorage
-    localStorage.setItem('fontSizeLevel', fontSizeLevel.toString());
+    updateUiPreferences({ fontSizeLevel });
   }, [fontSizeLevel]);
 
   // Chat background color handler
   useEffect(() => {
     if (chatBgColor) {
       document.documentElement.style.setProperty('--bg-chat', chatBgColor);
-      localStorage.setItem('chatBgColor', chatBgColor);
     } else {
       document.documentElement.style.removeProperty('--bg-chat');
-      localStorage.removeItem('chatBgColor');
     }
+    updateUiPreferences({ chatBgColor });
   }, [chatBgColor]);
 
   // User message bubble color handler
   useEffect(() => {
     if (userMsgColor) {
       document.documentElement.style.setProperty('--color-message-user-bg', userMsgColor);
-      localStorage.setItem('userMsgColor', userMsgColor);
     } else {
       document.documentElement.style.removeProperty('--color-message-user-bg');
-      localStorage.removeItem('userMsgColor');
     }
+    updateUiPreferences({ userMsgColor });
   }, [userMsgColor]);
 
   // Shared chat header and status bar color handler
   useEffect(() => {
     applyChatBarThemeColor(chatBarColor);
-    if (isValidHexColor(chatBarColor)) {
-      localStorage.setItem(CHAT_BAR_COLOR_STORAGE_KEY, chatBarColor);
-    } else {
-      localStorage.removeItem(CHAT_BAR_COLOR_STORAGE_KEY);
-    }
+    updateUiPreferences({ chatBarColor });
   }, [chatBarColor]);
 
-  // Diff theme handler
+  // Diff theme handler（applyDiffTheme 内部会写 localStorage 镜像）
   useEffect(() => {
     applyDiffTheme(diffTheme, ideTheme);
+    updateUiPreferences({ diffTheme });
   }, [diffTheme, ideTheme, themePreference]);
 
   return {
     themePreference,
-    setThemePreference,
+    setThemePreference: handleSetThemePreference,
     ideTheme,
     setIdeTheme,
     fontSizeLevel,

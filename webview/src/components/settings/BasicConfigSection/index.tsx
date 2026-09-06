@@ -20,12 +20,6 @@ interface BasicConfigSectionProps {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
   fontSizeLevel: number;
   onFontSizeLevelChange: (level: number) => void;
-  nodePath: string;
-  onNodePathChange: (path: string) => void;
-  onSaveNodePath: () => void;
-  savingNodePath: boolean;
-  nodeVersion?: string | null;
-  minNodeVersion?: number;
   opencodeCliPath?: string;
   onOpencodeCliPathChange?: (path: string) => void;
   onSaveOpencodeCliPath?: () => void;
@@ -39,6 +33,14 @@ interface BasicConfigSectionProps {
     fontSize: number;
     lineSpacing: number;
   };
+  /** Named fonts parsed from the VS Code `editor.fontFamily` setting. */
+  vscodeFontList?: string[];
+  /** All installed font families, enumerated host-side (OS font directories). */
+  systemFontList?: string[];
+  /** Non-empty when host-side font enumeration failed. */
+  systemFontError?: string | null;
+  /** Re-request the system font list from the host (retry button). */
+  onRequestSystemFontList?: () => void;
   uiFontConfig?: UiFontConfig;
   codeFontConfig?: CodeFontConfig;
   onUiFontSelectionChange?: (selection: string) => void;
@@ -47,9 +49,6 @@ interface BasicConfigSectionProps {
   onCodeFontSelectionChange?: (selection: string) => void;
   onSaveCodeFontCustomPath?: (path: string) => void;
   onBrowseCodeFontFile?: () => void;
-  // Streaming configuration
-  streamingEnabled?: boolean;
-  onStreamingEnabledChange?: (enabled: boolean) => void;
   // Auto open file configuration
   autoOpenFileEnabled?: boolean;
   onAutoOpenFileEnabledChange?: (enabled: boolean) => void;
@@ -71,15 +70,6 @@ interface BasicConfigSectionProps {
   // Diff expanded by default configuration
   diffExpandedByDefault?: boolean;
   onDiffExpandedByDefaultChange?: (enabled: boolean) => void;
-  // AI commit generation configuration
-  commitGenerationEnabled?: boolean;
-  onCommitGenerationEnabledChange?: (enabled: boolean) => void;
-  // Status bar widget configuration
-  statusBarWidgetEnabled?: boolean;
-  onStatusBarWidgetEnabledChange?: (enabled: boolean) => void;
-  // AI title generation configuration
-  aiTitleGenerationEnabled?: boolean;
-  onAiTitleGenerationEnabledChange?: (enabled: boolean) => void;
   // New-session confirm dialog (positive semantics: true = shown)
   newSessionConfirmEnabled?: boolean;
   onNewSessionConfirmEnabledChange?: (enabled: boolean) => void;
@@ -144,6 +134,10 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           fontSizeLevel={props.fontSizeLevel}
           onFontSizeLevelChange={props.onFontSizeLevelChange}
           editorFontConfig={props.editorFontConfig}
+          vscodeFontList={props.vscodeFontList}
+          systemFontList={props.systemFontList}
+          systemFontError={props.systemFontError}
+          onRequestSystemFontList={props.onRequestSystemFontList}
           uiFontConfig={props.uiFontConfig}
           codeFontConfig={props.codeFontConfig}
           onUiFontSelectionChange={props.onUiFontSelectionChange}
@@ -167,18 +161,10 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
         <BehaviorTab
           sendShortcut={props.sendShortcut}
           onSendShortcutChange={props.onSendShortcutChange}
-          streamingEnabled={props.streamingEnabled}
-          onStreamingEnabledChange={props.onStreamingEnabledChange}
           autoOpenFileEnabled={props.autoOpenFileEnabled}
           onAutoOpenFileEnabledChange={props.onAutoOpenFileEnabledChange}
           diffExpandedByDefault={props.diffExpandedByDefault}
           onDiffExpandedByDefaultChange={props.onDiffExpandedByDefaultChange}
-          commitGenerationEnabled={props.commitGenerationEnabled}
-          onCommitGenerationEnabledChange={props.onCommitGenerationEnabledChange}
-          statusBarWidgetEnabled={props.statusBarWidgetEnabled}
-          onStatusBarWidgetEnabledChange={props.onStatusBarWidgetEnabledChange}
-          aiTitleGenerationEnabled={props.aiTitleGenerationEnabled}
-          onAiTitleGenerationEnabledChange={props.onAiTitleGenerationEnabledChange}
           newSessionConfirmEnabled={props.newSessionConfirmEnabled}
           onNewSessionConfirmEnabledChange={props.onNewSessionConfirmEnabledChange}
           soundNotificationEnabled={props.soundNotificationEnabled}
@@ -209,12 +195,6 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
 
       {activeTab === 'environment' && (
         <EnvironmentTab
-          nodePath={props.nodePath}
-          onNodePathChange={props.onNodePathChange}
-          onSaveNodePath={props.onSaveNodePath}
-          savingNodePath={props.savingNodePath}
-          nodeVersion={props.nodeVersion}
-          minNodeVersion={props.minNodeVersion}
           opencodeCliPath={props.opencodeCliPath}
           onOpencodeCliPathChange={props.onOpencodeCliPathChange}
           onSaveOpencodeCliPath={props.onSaveOpencodeCliPath}

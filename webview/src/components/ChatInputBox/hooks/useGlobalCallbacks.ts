@@ -1,10 +1,6 @@
 import { useEffect } from 'react';
 import { createTextFragment } from '../utils/selectionUtils.js';
 import { makeQuoteToken, registerQuote } from '../utils/quoteRegistry.js';
-import {
-  registerAbsoluteFileReference,
-  registerLineFileReference,
-} from '../utils/fileReferences.js';
 
 interface UseGlobalCallbacksOptions {
   editableRef: React.RefObject<HTMLDivElement | null>;
@@ -41,11 +37,23 @@ export function useGlobalCallbacks({
   // Register global function to receive file path from Java
   useEffect(() => {
     /**
-     * Insert text at the caret, or append at the end when the caret is not a
-     * valid insertion point inside the input box.
+     * Insert a single file path into the input box
      */
-    const insertTextAtCaretOrEnd = (textToInsert: string) => {
+    const insertSingleFilePath = (filePath: string) => {
       if (!editableRef.current) return;
+
+      const absolutePath = filePath.trim();
+      if (!absolutePath) return;
+
+      // Add path to path mapping
+      const fileName = absolutePath.split(/[/\\]/).pop() || absolutePath;
+
+      // Add path to pathMappingRef to make it a "valid reference"
+      pathMappingRef.current.set(fileName, absolutePath);
+      pathMappingRef.current.set(absolutePath, absolutePath);
+
+      // Insert file path into input box (auto-add @ prefix), add space to trigger rendering
+      const pathToInsert = (filePath.startsWith('@') ? filePath : `@${filePath}`) + ' ';
 
       const selection = window.getSelection();
       if (
@@ -55,33 +63,19 @@ export function useGlobalCallbacks({
       ) {
         // Cursor inside input box, insert at cursor position
         const range = selection.getRangeAt(0);
-        // File paths arrive from IDE actions (project tree / right-click), not
-        // from typing. A stale non-collapsed selection must not be replaced by
-        // deleteContents() - that wiped the existing content (#1700). Only a
-        // collapsed caret is a real insertion point; otherwise append at end.
-        if (!range.collapsed) {
-          const textNode = document.createTextNode(textToInsert);
-          editableRef.current.appendChild(textNode);
-          const appendRange = document.createRange();
-          appendRange.setStartAfter(textNode);
-          appendRange.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(appendRange);
-        } else {
-          range.deleteContents();
-          const textNode = document.createTextNode(textToInsert);
-          range.insertNode(textNode);
+        range.deleteContents();
+        const textNode = document.createTextNode(pathToInsert);
+        range.insertNode(textNode);
 
-          // Move cursor after inserted text
-          range.setStartAfter(textNode);
-          range.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
+        // Move cursor after inserted text
+        range.setStartAfter(textNode);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
       } else {
         // Cursor not inside input box, append to end
         // Use appendChild instead of innerText to avoid breaking existing file tags
-        const textNode = document.createTextNode(textToInsert);
+        const textNode = document.createTextNode(pathToInsert);
         editableRef.current.appendChild(textNode);
 
         // Move cursor to end
@@ -93,71 +87,35 @@ export function useGlobalCallbacks({
       }
     };
 
-    /**
-     * Insert a single file path into the input box
-     */
-    const insertSingleFilePath = (filePath: string): boolean => {
-      if (!editableRef.current) return false;
-
-      const absolutePath = registerAbsoluteFileReference(pathMappingRef.current, filePath);
-      if (!absolutePath) return false;
-
-      // File identity comes from exact registration, not inferred separators.
-      insertTextAtCaretOrEnd(`@${absolutePath} `);
-      return true;
-    };
-
-    const normalizeFilePathInput = (
-      filePathInput: string | string[],
-      allowJsonArrayString: boolean,
-    ): string[] => {
-      if (Array.isArray(filePathInput)) {
-        return filePathInput.filter((filePath): filePath is string => typeof filePath === 'string');
-      }
-      if (typeof filePathInput !== 'string') return [];
-
-      if (allowJsonArrayString) {
-        try {
-          const parsed: unknown = JSON.parse(filePathInput);
-          if (Array.isArray(parsed)) {
-            return parsed.filter((filePath): filePath is string => typeof filePath === 'string');
-          }
-        } catch {
-          // Treat the legacy string as one path below.
-        }
-      }
-      return [filePathInput];
-    };
-
-    const insertFileReferences = (
-      filePathInput: string | string[],
-      allowJsonArrayString = false,
-    ) => {
+    window.handleFilePathFromJava = (filePathInput: string | string[]) => {
       try {
         if (!editableRef.current) return;
 
-        const filePaths = normalizeFilePathInput(filePathInput, allowJsonArrayString);
-        let handledCount = 0;
-        for (const filePath of filePaths) {
-          if (insertSingleFilePath(filePath)) {
-            handledCount++;
-            continue;
+        // Normalize input to string array.
+        // Java side (v0.1.9+) passes a JS array directly via executeJavaScript,
+        // so Array.isArray branch is the primary path.
+        // The string branch is kept for backward compatibility with older Java
+        // versions that passed a single string. It can be removed once v0.1.8
+        // support is no longer needed.
+        let filePaths: string[];
+        if (Array.isArray(filePathInput)) {
+          filePaths = filePathInput;
+        } else if (typeof filePathInput === 'string') {
+          try {
+            const parsed: unknown = JSON.parse(filePathInput);
+            filePaths = Array.isArray(parsed) ? parsed : [filePathInput];
+          } catch {
+            filePaths = [filePathInput];
           }
-          // Never silently drop content from a Java bridge: a payload that
-          // fails strict registration (e.g. a legacy relative path) is kept
-          // as ordinary text instead of becoming an unrenderable file tag.
-          const plainText = filePath?.trim();
-          if (plainText) {
-            console.warn(
-              '[useGlobalCallbacks] Not an absolute file reference, inserting as plain text:',
-              plainText,
-            );
-            insertTextAtCaretOrEnd(`${plainText} `);
-            handledCount++;
-          }
-        }
-        if (handledCount === 0) {
+        } else {
           return;
+        }
+
+        // Insert all file paths
+        for (const filePath of filePaths) {
+          if (filePath && filePath.trim()) {
+            insertSingleFilePath(filePath.trim());
+          }
         }
 
         // Close all completion menus
@@ -174,20 +132,8 @@ export function useGlobalCallbacks({
           renderFileTags();
         });
       } catch (error) {
-        console.error('[useGlobalCallbacks] insertFileReferencesAtCursor failed:', error);
+        console.error('[useGlobalCallbacks] handleFilePathFromJava failed:', error);
       }
-    };
-
-    // Dedicated structured bridge used by the project-tree action. The Java
-    // side passes an actual array literal, while the string form supports one
-    // legacy path without guessing where spaces should split.
-    window.insertFileReferencesAtCursor = (filePathInput: string | string[]) => {
-      insertFileReferences(filePathInput);
-    };
-
-    // Keep the older callback for compatibility with existing integrations.
-    window.handleFilePathFromJava = (filePathInput: string | string[]) => {
-      insertFileReferences(filePathInput, true);
     };
 
     // Initial focus — but only if no other input/editable element is focused (B-013)
@@ -200,7 +146,6 @@ export function useGlobalCallbacks({
 
     // Cleanup function
     return () => {
-      delete window.insertFileReferencesAtCursor;
       delete window.handleFilePathFromJava;
     };
   }, [
@@ -258,15 +203,6 @@ export function useGlobalCallbacks({
       }
 
       const range = selection.getRangeAt(0);
-      // External snippets come from IDE actions (editor selection), never from
-      // typing inside the input. A stale NON-collapsed selection (user last
-      // selected text in the box, then went back to the editor) must not be
-      // replaced by deleteContents() - that wiped the existing content (#1700).
-      // Only a collapsed caret is a real insertion point; otherwise fall back
-      // to appending at the end.
-      if (!range.collapsed) {
-        return false;
-      }
       range.deleteContents();
       const fragment = createTextFragment(`${selectionInfo} `);
       const lastChild = fragment.lastChild;
@@ -285,23 +221,15 @@ export function useGlobalCallbacks({
       try {
         if (!editableRef.current) return;
 
-        // The generic bridge remains for selected code. Only the strict
-        // single line-number form is registered as a file reference; ordinary
-        // code and arbitrary @ text are inserted byte-for-byte as snippets.
-        const lineReference = registerLineFileReference(pathMappingRef.current, selectionInfo);
-        const normalizedSelectionInfo = lineReference
-          ? `@${lineReference}`
-          : selectionInfo;
-
         // Read caret BEFORE focus() to avoid focus side-effects on selection.
         // If caret is inside the editable, insert at caret. Otherwise (e.g. window
         // just regained focus from an external IDE action with no prior caret),
         // fall back to appending at the end with a leading newline separator.
-        const insertedAtCaret = tryInsertExternalSnippetAtCaret(normalizedSelectionInfo);
+        const insertedAtCaret = tryInsertExternalSnippetAtCaret(selectionInfo);
 
         if (!insertedAtCaret) {
           editableRef.current.focus();
-          appendExternalSnippetToEnd(normalizedSelectionInfo);
+          appendExternalSnippetToEnd(selectionInfo);
         }
 
         // Trigger state update
@@ -351,27 +279,13 @@ export function useGlobalCallbacks({
 
         if (insertAtCaret) {
           const range = selection.getRangeAt(0);
-          // Quote chips arrive from external actions, not from typing. A stale
-          // non-collapsed selection must not be replaced by deleteContents() -
-          // that wiped the existing content (#1700). Fall back to appending.
-          if (!range.collapsed) {
-            editableRef.current.focus();
-            const tokenNode = document.createTextNode(token);
-            editableRef.current.appendChild(tokenNode);
-            const appendRange = document.createRange();
-            appendRange.setStartAfter(tokenNode);
-            appendRange.collapse(true);
-            selection?.removeAllRanges();
-            selection?.addRange(appendRange);
-          } else {
-            range.deleteContents();
-            const tokenNode = document.createTextNode(token);
-            range.insertNode(tokenNode);
-            range.setStartAfter(tokenNode);
-            range.collapse(true);
-            selection.removeAllRanges();
-            selection.addRange(range);
-          }
+          range.deleteContents();
+          const tokenNode = document.createTextNode(token);
+          range.insertNode(tokenNode);
+          range.setStartAfter(tokenNode);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
         } else {
           editableRef.current.focus();
           const tokenNode = document.createTextNode(token);
@@ -405,5 +319,5 @@ export function useGlobalCallbacks({
       delete window.focusChatInput;
       delete window.addQuotedSnippet;
     };
-  }, [editableRef, pathMappingRef, getTextContent, renderFileTags, renderQuoteTags, adjustHeight, onInput, setHasContent, focusInput]);
+  }, [editableRef, getTextContent, renderFileTags, renderQuoteTags, adjustHeight, onInput, setHasContent, focusInput]);
 }

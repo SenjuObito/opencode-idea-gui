@@ -133,7 +133,7 @@ const AiFeatureProviderModelPanel = ({
   config,
   settingsKeyPrefix,
   providerKeyPrefix,
-  fallbackProvider = 'codex',
+  fallbackProvider = 'opencode',
   onProviderChange = () => {},
   onModelChange = () => {},
   onResetToDefault = () => {},

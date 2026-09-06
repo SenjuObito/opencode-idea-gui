@@ -9,7 +9,6 @@ export interface ChatHeaderProps {
   t: TFunction;
   onBack: () => void;
   onNewSession: () => void;
-  onNewTab: () => void;
   onHistory: () => void;
   onSettings: () => void;
   /**
@@ -19,6 +18,20 @@ export interface ChatHeaderProps {
   onOpenSearch?: () => void;
   onTitleChange?: (newTitle: string) => void;
   titleEditable?: boolean;
+  /** Whether the session is currently shared */
+  isShared?: boolean;
+  /** Whether a share request is in flight (spinner state) */
+  sharePending?: boolean;
+  /** Hide the share controls entirely (e.g. "share": "disabled" in opencode.json) */
+  shareHidden?: boolean;
+  /** Copy the existing share link to the clipboard */
+  onCopyShareLink?: () => void;
+  /** Callback to share the session */
+  onShare?: () => void;
+  /** Callback to unshare the session */
+  onUnshare?: () => void;
+  /** Fork the entire conversation into a new session */
+  onForkAll?: () => void;
 }
 
 export function ChatHeader({
@@ -27,12 +40,18 @@ export function ChatHeader({
   t,
   onBack,
   onNewSession,
-  onNewTab,
   onHistory,
   onSettings,
   onOpenSearch,
   onTitleChange,
   titleEditable = false,
+  isShared = false,
+  sharePending = false,
+  shareHidden = false,
+  onCopyShareLink,
+  onShare,
+  onUnshare,
+  onForkAll,
 }: ChatHeaderProps): React.ReactElement | null {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -130,6 +149,56 @@ export function ChatHeader({
                 <span className="codicon codicon-edit" />
               </button>
             )}
+            {currentView === 'chat' && onForkAll && (
+              <button
+                className="session-title-share-btn"
+                onClick={onForkAll}
+                title={t('chat.forkAllTooltip')}
+                aria-label={t('chat.forkAllTooltip')}
+              >
+                <span className="codicon codicon-git-branch" />
+              </button>
+            )}
+            {currentView === 'chat' && onShare && onUnshare && !shareHidden && (
+              sharePending ? (
+                <button
+                  className="session-title-share-btn pending"
+                  disabled
+                  title={t('chat.sharePendingTooltip')}
+                  aria-label={t('chat.sharePendingTooltip')}
+                >
+                  <span className="codicon codicon-loading codicon-modifier-spin" />
+                </button>
+              ) : isShared ? (
+                <>
+                  <button
+                    className="session-title-share-btn shared"
+                    onClick={onCopyShareLink}
+                    title={t('chat.copyShareLinkTooltip')}
+                    aria-label={t('chat.copyShareLinkTooltip')}
+                  >
+                    <span className="codicon codicon-copy" />
+                  </button>
+                  <button
+                    className="session-title-share-btn shared"
+                    onClick={onUnshare}
+                    title={t('chat.unshareTooltip')}
+                    aria-label={t('chat.unshareTooltip')}
+                  >
+                    <span className="codicon codicon-close" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="session-title-share-btn"
+                  onClick={onShare}
+                  title={t('chat.shareTooltip')}
+                  aria-label={t('chat.shareTooltip')}
+                >
+                  <span className="codicon codicon-share" />
+                </button>
+              )
+            )}
           </div>
         )}
       </div>
@@ -138,13 +207,6 @@ export function ChatHeader({
           <>
             <button className="icon-button" onClick={onNewSession} data-tooltip={t('common.newSession')}>
               <span className="codicon codicon-plus" />
-            </button>
-            <button
-              className="icon-button"
-              onClick={onNewTab}
-              data-tooltip={t('common.newTab')}
-            >
-              <span className="codicon codicon-split-horizontal" />
             </button>
             {onOpenSearch && (
               <button

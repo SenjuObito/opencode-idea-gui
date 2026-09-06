@@ -2,15 +2,17 @@
  * usageModeCallbacks.ts
  *
  * Registers window bridge callbacks for usage statistics, permission modes, and
- * model updates: onUsageUpdate, onModeReceived, onModelConfirmed,
- * onProviderConfirmed, applyBackendTabState, updateStreamingEnabled,
+ * model/provider updates: onUsageUpdate, onModeChanged, onModeReceived,
+ * onModelChanged, onModelConfirmed, updateActiveProvider, updateThinkingEnabled,
  * updateSendShortcut, updateAutoOpenFileEnabled.
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
-import type { PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
+import type { CodexFastMode, PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
 import {
-  isValidPermissionMode,
+  has1MContextSuffix,
+  normalizeClaudeModelId,
+  strip1MContextSuffix,
 } from '../../../components/ChatInputBox/types';
 import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBootstrap';
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
@@ -22,14 +24,23 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     setUsageMaxTokens,
     setPermissionMode,
     setCurrentProvider,
+    setClaudePermissionMode,
+    setCodexPermissionMode,
     setOpenCodePermissionMode,
+    setSelectedClaudeModel,
+    setSelectedCodexModel,
     setSelectedOpenCodeModel,
+    setLongContextEnabled,
     setReasoningEffort,
-    setStreamingEnabledSetting,
+    setCodexFastMode,
+    setProviderConfigVersion,
+    setActiveProviderConfig,
+    setClaudeSettingsAlwaysThinkingEnabled,
     setSendShortcut,
     setAutoOpenFileEnabled,
     setPermissionDialogTimeoutSeconds,
     currentProviderRef,
+    syncActiveProviderModelMapping,
   } = options;
 
   window.onUsageUpdate = (json) => {
@@ -71,32 +82,80 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     window.onUsageUpdate(pending);
   }
 
-  const updateMode = (mode?: PermissionMode) => {
-    if (isValidPermissionMode(mode)) {
-      setPermissionMode((prev) => (prev === mode ? prev : mode));
-      setOpenCodePermissionMode((prev) => (prev === mode ? prev : mode));
+  const updateMode = (mode?: PermissionMode, providerOverride?: string) => {
+    const activeProvider = providerOverride || currentProviderRef.current;
+    if (typeof mode === 'string' && mode.length > 0) {
+      const nextMode: PermissionMode =
+        activeProvider === 'codex' && mode === 'plan' ? 'default' : mode;
+      setPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
+      if (activeProvider === 'codex') {
+        setCodexPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
+      } else if (activeProvider === 'opencode') {
+        setOpenCodePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
+      } else {
+        setClaudePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
+      }
     }
   };
 
+  window.onModeChanged = (mode) => updateMode(mode as PermissionMode);
   window.onModeReceived = (mode) => updateMode(mode as PermissionMode);
 
-  window.onModelConfirmed = (modelId, provider) => {
-    void provider;
-    setSelectedOpenCodeModel(modelId);
+  window.onModelChanged = (modelId) => {
+    const provider = currentProviderRef.current;
+    if (provider === 'claude') {
+      setSelectedClaudeModel(normalizeClaudeModelId(modelId));
+    } else if (provider === 'codex') {
+      setSelectedCodexModel(modelId);
+    } else if (provider === 'opencode') {
+      setSelectedOpenCodeModel(modelId);
+    }
   };
 
-  window.onProviderConfirmed = (provider) => {
-    // OpenCode-only build: the provider is fixed. Keep the ref in sync so
-    // window callbacks registered with stable identity read the right value.
-    currentProviderRef.current = provider || 'opencode';
-    setCurrentProvider('opencode');
+  window.onModelConfirmed = (modelId, provider) => {
+    if (provider === 'claude') {
+      setSelectedClaudeModel(normalizeClaudeModelId(modelId));
+    } else if (provider === 'codex') {
+      setSelectedCodexModel(modelId);
+    } else if (provider === 'opencode') {
+      setSelectedOpenCodeModel(modelId);
+    }
+  };
+
+  window.onSessionStateRestored = (json: string) => {
+    try {
+      const state = JSON.parse(json) as {
+        model?: string;
+        permissionMode?: PermissionMode;
+        reasoningEffort?: ReasoningEffort;
+      };
+      // opencode-only：恢复的是 daemon session.get 的权威会话状态（跨会话
+      // 加载时推送）。仅更新本地 UI 状态，绝不回发 set_model / set_mode，
+      // 否则宿主 SessionState 与 daemon 值会互相覆盖。
+      const model = typeof state.model === 'string' ? state.model.trim() : '';
+      if (model) {
+        setSelectedOpenCodeModel(model);
+      }
+      const mode = state.permissionMode;
+      if (typeof mode === 'string' && mode.length > 0) {
+        const nextMode = mode as PermissionMode;
+        setOpenCodePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
+        setPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
+      }
+      const reasoningValues: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+      if (reasoningValues.includes(state.reasoningEffort as ReasoningEffort)) {
+        setReasoningEffort(state.reasoningEffort as ReasoningEffort);
+      }
+    } catch (error) {
+      console.error('[Frontend] Failed to apply restored session state:', error);
+    }
   };
 
   window.applyBackendTabState = (json: string) => {
     try {
       const state = JSON.parse(json) as Record<string, unknown>;
       const provider = state.provider;
-      if (provider !== 'opencode') {
+      if (provider !== 'claude' && provider !== 'codex' && provider !== 'opencode') {
         throw new Error('invalid provider');
       }
 
@@ -106,14 +165,24 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
       setCurrentProvider(provider);
 
       if (typeof state.model === 'string' && state.model.length > 0) {
-        setSelectedOpenCodeModel(state.model);
+        if (provider === 'claude') {
+          setSelectedClaudeModel(normalizeClaudeModelId(strip1MContextSuffix(state.model)));
+          setLongContextEnabled(has1MContextSuffix(state.model));
+        } else if (provider === 'opencode') {
+          setSelectedOpenCodeModel(state.model);
+        } else {
+          setSelectedCodexModel(state.model);
+        }
       }
 
-      updateMode(state.permissionMode as PermissionMode | undefined);
+      updateMode(state.permissionMode as PermissionMode | undefined, provider);
 
       const reasoningValues: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
       if (reasoningValues.includes(state.reasoningEffort as ReasoningEffort)) {
         setReasoningEffort(state.reasoningEffort as ReasoningEffort);
+      }
+      if (state.codexFastMode === 'normal' || state.codexFastMode === 'fast') {
+        setCodexFastMode(state.codexFastMode as CodexFastMode);
       }
       window.__CCGUI_RECOVERY_STATE_APPLIED__ = true;
     } catch (error) {
@@ -127,12 +196,33 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     window.applyBackendTabState(pending);
   }
 
-  window.updateStreamingEnabled = (jsonStr: string) => {
+  window.updateActiveProvider = (jsonStr: string) => {
     try {
-      const data = JSON.parse(jsonStr);
-      setStreamingEnabledSetting(data.streamingEnabled ?? true);
+      const provider = JSON.parse(jsonStr);
+      syncActiveProviderModelMapping(provider);
+      setProviderConfigVersion((prev) => prev + 1);
+      setActiveProviderConfig(provider);
     } catch (error) {
-      console.error('[Frontend] Failed to parse streaming enabled:', error);
+      console.error('[Frontend] Failed to parse active provider in App:', error);
+    }
+  };
+
+  window.updateThinkingEnabled = (jsonStr: string) => {
+    const trimmed = (jsonStr || '').trim();
+    try {
+      const data = JSON.parse(trimmed);
+      if (typeof data === 'boolean') {
+        setClaudeSettingsAlwaysThinkingEnabled(data);
+        return;
+      }
+      if (data && typeof data.enabled === 'boolean') {
+        setClaudeSettingsAlwaysThinkingEnabled(data.enabled);
+        return;
+      }
+    } catch {
+      if (trimmed === 'true' || trimmed === 'false') {
+        setClaudeSettingsAlwaysThinkingEnabled(trimmed === 'true');
+      }
     }
   };
 

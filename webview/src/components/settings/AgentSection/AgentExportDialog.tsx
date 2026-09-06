@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { AgentConfig } from '../../../types/agent';
-import styles from './style.module.less';
+import styles from '../styles/sharedCard.module.less';
 
 interface AgentExportDialogProps {
   agents: AgentConfig[];

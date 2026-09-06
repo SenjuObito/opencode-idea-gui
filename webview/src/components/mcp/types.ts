@@ -9,7 +9,7 @@ import type { McpServer, McpServerStatusInfo } from '../../types/mcp';
 // ============================================================================
 
 export interface McpSettingsSectionProps {
-  currentProvider?: 'claude' | 'codex' | string;
+  currentProvider?: string;
 }
 
 // ============================================================================

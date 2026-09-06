@@ -7,7 +7,7 @@
  */
 
 import type { MutableRefObject } from 'react';
-import { forceWebviewRepaint } from '../../utils/forceWebviewRepaint';
+import { cardDebugLog } from '../../utils/bridge';
 
 export interface ResetTransientUiStateOptions {
   clearToasts: () => void;
@@ -16,6 +16,7 @@ export interface ResetTransientUiStateOptions {
   setLoadingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
   setIsThinking: React.Dispatch<React.SetStateAction<boolean>>;
   setStreamingActive: React.Dispatch<React.SetStateAction<boolean>>;
+  setSessionLoading: React.Dispatch<React.SetStateAction<boolean>>;
 
   // Streaming refs
   isStreamingRef: MutableRefObject<boolean>;
@@ -34,16 +35,31 @@ export interface ResetTransientUiStateOptions {
 /**
  * Clear all transient UI state (streaming refs + React state flags).
  * Called on clearMessages and exposed as window.__resetTransientUiState so
- * useSessionManagement can invoke it synchronously during session transitions.
+ * useSessionTransition can invoke it synchronously during session transitions.
+ *
+ * @param opts.skipSessionLoading - When true, do NOT reset sessionLoading.
+ *   Used by beginSessionTransition which sets sessionLoading=true immediately
+ *   after; resetting it here would cause a transient false→true flicker because
+ *   React 18 batches the reset+set into one render with sessionLoading=false.
  */
 export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) => {
-  return () => {
+  return (skipSessionLoading?: boolean) => {
+    const shouldSkipSS = skipSessionLoading || window.__sessionTransitioning;
+    cardDebugLog('[resetTransientUiState] skipSessionLoading:', skipSessionLoading, 'transitioning:', window.__sessionTransitioning, '→ skip:', shouldSkipSS);
+    cardDebugLog('[resetTransientUiState] BEFORE: sessionLoading will', shouldSkipSS ? 'BE KEPT' : 'be SET TO false');
     opts.clearToasts();
     opts.setStatus('');
     opts.setLoading(false);
     opts.setLoadingStartTime(null);
     opts.setIsThinking(false);
     opts.setStreamingActive(false);
+    const shouldSkip = skipSessionLoading || window.__sessionTransitioning;
+    if (!shouldSkip) {
+      cardDebugLog('[resetTransientUiState] EXECUTING: setSessionLoading(false)');
+      opts.setSessionLoading(false);
+    } else {
+      cardDebugLog('[resetTransientUiState] SKIPPED: setSessionLoading not called');
+    }
     opts.isStreamingRef.current = false;
     opts.useBackendStreamingRenderRef.current = false;
     opts.streamingMessageIndexRef.current = -1;
@@ -73,28 +89,16 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     if (typeof window.__cancelPendingUpdateMessages === 'function') {
       window.__cancelPendingUpdateMessages();
     }
-    // Clear JCEF native-rendering ghosting left by the outgoing session's overlays
-    // and input-box content after the transition unmounts/reflows them.
-    forceWebviewRepaint('session-transition');
   };
 };
 
 /**
  * Release the session transition guard flags set by beginSessionTransition
- * (useSessionManagement). Flushes any history snapshot that arrived while the
- * guard was active so updateMessages racing the transition is not lost.
+ * (useSessionManagement).
  */
 export const releaseSessionTransition = (): void => {
   if (window.__sessionTransitioning) {
     window.__sessionTransitioning = false;
   }
   window.__sessionTransitionToken = null;
-  if (typeof window.__flushDeferredTransitionUpdateMessages === 'function') {
-    window.__flushDeferredTransitionUpdateMessages();
-  }
-};
-
-/** Drop a deferred transition snapshot (new transition / clearMessages). */
-export const clearDeferredTransitionUpdateMessages = (): void => {
-  window.__deferredTransitionUpdateMessages = null;
 };

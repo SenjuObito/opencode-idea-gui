@@ -13,11 +13,6 @@ export const EDIT_TOOL_NAMES = new Set([
   'replace_string',
   'write_to_file',
   'multiedit',
-  // Grok / Cursor-style names (UI often shows "Search Replace")
-  'search_replace',
-  'searchreplace',
-  'str_replace',
-  'strreplace',
 ]);
 
 // Bash/command execution tools
@@ -43,6 +38,8 @@ export const TRANSIENT_INTERNAL_TOOL_NAMES = new Set([
 ]);
 
 // File modification tools (StatusPanel Edits tab / rewind — includes write + MultiEdit)
+// `apply_patch`/`patch`：opencode 的补丁工具（对 gpt-5 系模型会替换 edit/write），
+// 输入为 patchText，由 useFileChanges 单独解析出文件与 hunk。
 export const FILE_MODIFY_TOOL_NAMES = new Set([
   'write',
   'write_file',
@@ -53,26 +50,20 @@ export const FILE_MODIFY_TOOL_NAMES = new Set([
   'notebookedit',
   'create_file',
   'multiedit',
-  // Grok / Cursor-style names (UI often shows "Search Replace")
-  'search_replace',
-  'searchreplace',
-  'str_replace',
-  'strreplace',
   'apply_patch',
+  'patch',
 ]);
 
-/**
- * Normalize tool names for set membership checks.
- * - lowercases
- * - strips MCP prefix mcp__server__tool → tool
- * - spaces / hyphens → underscores ("Search Replace" → "search_replace")
- * Does NOT split camelCase (TaskCreate stays "taskcreate") so existing sets keep working.
- */
 export function normalizeToolName(toolName: string): string {
-  const lower = toolName.toLowerCase().trim();
-  const mcpMatch = /^mcp__[^_]+__(.+)$/.exec(lower);
-  const base = mcpMatch ? mcpMatch[1] : lower;
-  return base.replace(/[\s-]+/g, '_');
+  const lower = toolName.toLowerCase();
+  // MCP 工具名形如 mcp__<server>__<tool>；server 名本身可能含下划线，
+  // 因此按最后一个 '__' 切分，而不是第一个。
+  if (lower.startsWith('mcp__')) {
+    const rest = lower.slice(5);
+    const idx = rest.lastIndexOf('__');
+    return idx >= 0 ? rest.slice(idx + 2) : rest;
+  }
+  return lower;
 }
 
 /**
@@ -104,6 +95,13 @@ export function isNonRenderedToolUse(
   if (block.type !== 'tool_use') return false;
   const toolName = normalizeToolName(block.name ?? '');
   if (toolName === 'todowrite' || toolName === 'update_plan' || TASK_MANAGE_TOOL_NAMES.has(toolName)) {
+    return true;
+  }
+  // Interactive tool calls — permission requests are handled by the dedicated
+  // PermissionDialog popup, so the GenericToolBlock rendering is suppressed to
+  // avoid duplicated permission text. `askuserquestion` is NOT suppressed here:
+  // it now renders a read-only Q&A summary via ContentBlockRenderer.
+  if (toolName === 'requestpermissions') {
     return true;
   }
   if (!isStreaming && isTransientInternalToolName(block.name)) {

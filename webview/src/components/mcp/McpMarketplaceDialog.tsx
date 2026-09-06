@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { McpInstallOption, McpMarketplaceEntry, McpMarketplaceSearchResponse, McpMarketplaceSource, McpServer, McpServerSpec } from '../../types/mcp';
-import { sendToJava, openBrowser } from '../../utils/bridge';
+import { sendToJava } from '../../utils/bridge';
 
 interface McpMarketplaceDialogProps {
-  currentProvider?: 'claude' | 'codex' | string;
   existingIds?: string[];
   onClose: () => void;
   onSelect: (server: McpServer) => void;
@@ -56,9 +55,8 @@ function isRiskyInstallOption(option: McpInstallOption): boolean {
 /**
  * MCP Marketplace Browser adapted from the former Swing registry browser.
  */
-export function McpMarketplaceDialog({ currentProvider = 'claude', existingIds = [], onClose, onSelect }: McpMarketplaceDialogProps) {
+export function McpMarketplaceDialog({ existingIds = [], onClose, onSelect }: McpMarketplaceDialogProps) {
   const { t } = useTranslation();
-  const isCodexMode = currentProvider === 'codex';
   const [sources, setSources] = useState<McpMarketplaceSource[]>([]);
   const [entries, setEntries] = useState<McpMarketplaceEntry[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState(readPreferredSourceId);
@@ -170,7 +168,7 @@ export function McpMarketplaceDialog({ currentProvider = 'claude', existingIds =
     if (!selectedEntry || !selectedInstallOption) {
       return;
     }
-    onSelect(createServerFromMarketplaceEntry(selectedEntry, selectedInstallOption, existingIds, isCodexMode));
+    onSelect(createServerFromMarketplaceEntry(selectedEntry, selectedInstallOption, existingIds));
     onClose();
   };
 
@@ -320,12 +318,6 @@ interface MarketplaceDetailsProps {
   onSelectedOptionIndexChange: (index: number) => void;
 }
 
-// JCEF won't route target=_blank to the system browser — go through the bridge.
-const openMarketplaceLink = (event: React.MouseEvent<HTMLAnchorElement>) => {
-  event.preventDefault();
-  openBrowser(event.currentTarget.href);
-};
-
 function MarketplaceDetails({ entry, selectedOptionIndex, onSelectedOptionIndexChange }: MarketplaceDetailsProps) {
   const { t } = useTranslation();
   const selectedOption = entry.installOptions[Math.min(selectedOptionIndex, Math.max(entry.installOptions.length - 1, 0))];
@@ -343,9 +335,9 @@ function MarketplaceDetails({ entry, selectedOptionIndex, onSelectedOptionIndexC
       </div>
 
       <div className="marketplace-link-grid">
-        {isSafeHttpUrl(entry.repositoryUrl) && <a href={entry.repositoryUrl} target="_blank" rel="noopener noreferrer" onClick={openMarketplaceLink}>{t('mcp.market.repository')}</a>}
-        {isSafeHttpUrl(entry.docsUrl) && <a href={entry.docsUrl} target="_blank" rel="noopener noreferrer" onClick={openMarketplaceLink}>{t('mcp.market.docs')}</a>}
-        {isSafeHttpUrl(entry.homepage) && <a href={entry.homepage} target="_blank" rel="noopener noreferrer" onClick={openMarketplaceLink}>{t('mcp.market.homepage')}</a>}
+        {isSafeHttpUrl(entry.repositoryUrl) && <a href={entry.repositoryUrl} target="_blank" rel="noopener noreferrer">{t('mcp.market.repository')}</a>}
+        {isSafeHttpUrl(entry.docsUrl) && <a href={entry.docsUrl} target="_blank" rel="noopener noreferrer">{t('mcp.market.docs')}</a>}
+        {isSafeHttpUrl(entry.homepage) && <a href={entry.homepage} target="_blank" rel="noopener noreferrer">{t('mcp.market.homepage')}</a>}
       </div>
 
       {entry.installOptions.length > 0 ? (
@@ -403,8 +395,7 @@ function InstallPreview({ option }: InstallPreviewProps) {
 function createServerFromMarketplaceEntry(
   entry: McpMarketplaceEntry,
   option: McpInstallOption,
-  existingIds: string[],
-  isCodexMode: boolean
+  existingIds: string[]
 ): McpServer {
   return {
     id: createUniqueServerId(entry, existingIds),
@@ -412,11 +403,6 @@ function createServerFromMarketplaceEntry(
     description: entry.description,
     tags: entry.tags,
     server: createServerSpec(option, entry),
-    apps: {
-      claude: !isCodexMode,
-      codex: isCodexMode,
-      gemini: false,
-    },
     homepage: entry.homepage,
     docs: entry.docsUrl,
     enabled: true,

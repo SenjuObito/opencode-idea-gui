@@ -1,11 +1,19 @@
 import { act, renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { useDialogManagement } from './useDialogManagement';
+import { MessagesProvider } from '../contexts/MessagesContext';
+import { SessionProvider } from '../contexts/SessionContext';
 
 const t = ((key: string) => key) as any;
 
+// useDialogManagement consumes MessagesContext / SessionContext. createElement
+// keeps this file JSX-free (.ts).
+const wrapper = ({ children }: { children: ReactNode }) =>
+  createElement(SessionProvider, null, createElement(MessagesProvider, null, children));
+
 describe('useDialogManagement - context usage requestId isolation', () => {
   it('openContextUsageDialog sets requestId and opens dialog', () => {
-    const { result } = renderHook(() => useDialogManagement({ t }));
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
 
     act(() => {
       result.current.openContextUsageDialog('req-1', true);
@@ -17,7 +25,7 @@ describe('useDialogManagement - context usage requestId isolation', () => {
   });
 
   it('updateContextUsageData accepts matching requestId', () => {
-    const { result } = renderHook(() => useDialogManagement({ t }));
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
     const data = { totalTokens: 1000, maxTokens: 200000 } as any;
 
     act(() => {
@@ -35,7 +43,7 @@ describe('useDialogManagement - context usage requestId isolation', () => {
   });
 
   it('updateContextUsageData rejects stale requestId', () => {
-    const { result } = renderHook(() => useDialogManagement({ t }));
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
     const data1 = { totalTokens: 1000 } as any;
     const data2 = { totalTokens: 2000 } as any;
 
@@ -66,7 +74,7 @@ describe('useDialogManagement - context usage requestId isolation', () => {
   });
 
   it('closeContextUsageDialog with no requestId closes current dialog', () => {
-    const { result } = renderHook(() => useDialogManagement({ t }));
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
 
     act(() => {
       result.current.openContextUsageDialog('req-1', true);
@@ -85,7 +93,7 @@ describe('useDialogManagement - context usage requestId isolation', () => {
   });
 
   it('closeContextUsageDialog rejects stale requestId', () => {
-    const { result } = renderHook(() => useDialogManagement({ t }));
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
 
     act(() => {
       result.current.openContextUsageDialog('req-1', true);
@@ -114,7 +122,7 @@ describe('useDialogManagement - context usage requestId isolation', () => {
   });
 
   it('closeContextUsageDialog with null requestId closes (force close)', () => {
-    const { result } = renderHook(() => useDialogManagement({ t }));
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
 
     act(() => {
       result.current.openContextUsageDialog('req-1', true);

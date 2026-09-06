@@ -21,37 +21,33 @@ describe('WelcomeScreen', () => {
     if (key === 'chat.sendMessage') {
       return `给 ${String(options?.provider ?? '')} 发送消息`;
     }
-    if (key === 'providers.codex.label') {
-      return 'Codex';
-    }
-    if (key === 'providers.claude.label') {
-      return 'Claude Code';
+    if (key === 'providers.opencode.label') {
+      return 'OpenCode';
     }
     return key;
   }) as unknown as TFunction;
 
-  it('uses the translated Codex provider label in the welcome copy', () => {
+  it('uses the translated OpenCode provider label in the welcome copy', () => {
     render(
       <WelcomeScreen
-        currentProvider="codex"
+        currentProvider="opencode"
         t={t}
         onProviderChange={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('给 Codex 发送消息')).toBeTruthy();
-    expect(screen.queryByText('给 Codex Cli 发送消息')).toBeNull();
+    expect(screen.getByText('给 OpenCode 发送消息')).toBeTruthy();
   });
 
-  it('keeps the Claude provider label in the welcome copy', () => {
+  it('falls back to the raw provider id for unknown providers', () => {
     render(
       <WelcomeScreen
-        currentProvider="claude"
+        currentProvider="some-future-cli"
         t={t}
         onProviderChange={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('给 Claude Code 发送消息')).toBeTruthy();
+    expect(screen.getByText('给 some-future-cli 发送消息')).toBeTruthy();
   });
 });

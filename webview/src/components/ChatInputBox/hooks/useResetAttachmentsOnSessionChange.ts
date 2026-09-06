@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { forceWebviewRepaint } from '../../../utils/forceWebviewRepaint.js';
 
 export interface UseResetAttachmentsOnSessionChangeOptions {
   /** Active session id from SessionContext; null when there is no session/provider. */
@@ -12,12 +11,10 @@ export interface UseResetAttachmentsOnSessionChangeOptions {
 
 /**
  * Resets draft attachments when the active session changes so they don't drift
- * into a new conversation, then forces a webview repaint to clear any JCEF
- * native-rendering ghosting the removed thumbnails leave behind on macOS
- * (see forceWebviewRepaint).
+ * into a new conversation.
  *
- * Skips the initial mount (no spurious clear/repaint on first render). In
- * controlled mode the parent owns the attachment list, so only the repaint runs.
+ * Skips the initial mount (no spurious clear on first render). In controlled
+ * mode the parent owns the attachment list, so this hook is a no-op.
  */
 export function useResetAttachmentsOnSessionChange({
   currentSessionId,
@@ -31,6 +28,5 @@ export function useResetAttachmentsOnSessionChange({
     if (!isControlled) {
       clearInternalAttachments();
     }
-    forceWebviewRepaint('session-change-attachments');
   }, [currentSessionId, isControlled, clearInternalAttachments]);
 }

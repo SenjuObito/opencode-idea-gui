@@ -154,6 +154,45 @@
     opacity: 1;
 }
 
+/* Share button — same visual language as the edit button: icon-only,
+   transparent, revealed on wrapper hover. The shared-state copy/close
+   buttons also stay hidden until the wrapper is hovered (consistency with
+   the edit/fork/share buttons). */
+.session-title-share-btn {
+    background: transparent;
+    border: none;
+    color: var(--color-chat-bars-muted-text, var(--text-tertiary));
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    opacity: 0;
+    line-height: 1;
+    flex-shrink: 0;
+
+    .codicon {
+        font-size: 13px;
+    }
+
+    &:hover {
+        background-color: var(--color-button-accent-hover-bg);
+        color: var(--accent-primary);
+    }
+
+    &:active {
+        transform: scale(0.92);
+    }
+
+    &.shared {
+        color: var(--accent-primary);
+    }
+}
+
+.session-title-wrapper:hover .session-title-share-btn {
+    opacity: 1;
+}
+
 /* Edit mode */
 .session-title-edit-mode {
     display: flex;

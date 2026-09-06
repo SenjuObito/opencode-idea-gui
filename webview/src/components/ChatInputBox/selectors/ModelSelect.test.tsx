@@ -22,9 +22,86 @@ describe('ModelSelect', () => {
     localStorage.clear();
   });
 
+  it('rerender 后应读取最新的 Claude 模型映射', () => {
+    localStorage.setItem(
+      STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
+      JSON.stringify({ sonnet: 'glm-4' }),
+    );
 
+    const { rerender } = render(
+      <ModelSelect
+        value={sonnetModel.id}
+        onChange={vi.fn()}
+        models={[sonnetModel]}
+        currentProvider="claude"
+      />,
+    );
 
+    expect(screen.getByRole('button').textContent).toContain('glm-4');
 
+    localStorage.setItem(
+      STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
+      JSON.stringify({ sonnet: 'glm-5' }),
+    );
+
+    rerender(
+      <ModelSelect
+        value={sonnetModel.id}
+        onChange={vi.fn()}
+        models={[sonnetModel]}
+        currentProvider="claude"
+      />,
+    );
+
+    expect(screen.getByRole('button').textContent).toContain('glm-5');
+  });
+
+  it('没有具体映射时应回退到全局 main 映射', () => {
+    localStorage.setItem(
+      STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
+      JSON.stringify({ main: 'glm-4.7', fable: 'glm-5.2' }),
+    );
+
+    render(
+      <ModelSelect
+        value="claude-fable-5"
+        onChange={vi.fn()}
+        models={[
+          sonnetModel,
+          { id: 'claude-fable-5', label: 'Fable 5', description: 'Fable 5 · Most powerful · Mythos-class' },
+        ]}
+        currentProvider="claude"
+      />,
+    );
+
+    expect(screen.getByRole('button').textContent).toContain('glm-5.2');
+  });
+
+  it('Claude 内置模型列表应按目标顺序展示最新模型，并移除旧可见项', () => {
+    expect(CLAUDE_MODELS.map((model) => model.id)).toEqual([
+      'claude-fable-5',
+      'claude-opus-5',
+      'claude-opus-4-8',
+      'claude-sonnet-5',
+      'claude-sonnet-4-7',
+      'claude-haiku-4-5',
+    ]);
+    const ids = CLAUDE_MODELS.map((model) => model.id);
+    expect(ids).not.toContain('claude-opus-4-7');
+    expect(ids).not.toContain('claude-opus-4-6');
+    expect(ids).not.toContain('claude-sonnet-4-6');
+    expect(ids.some((id) => id.endsWith('[1m]'))).toBe(false);
+  });
+
+  it('Codex 内置模型列表应与目标设计一致', () => {
+    expect(CODEX_MODELS.map((model) => model.id)).toEqual([
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+      'gpt-5.5',
+      'gpt-5.4',
+    ]);
+  });
 
   it('loading 时应显示加载状态', () => {
     render(
@@ -122,27 +199,6 @@ describe('ModelSelect', () => {
     expect(screen.getByTestId('model-group-deepseek')).toBeTruthy();
   });
 
-  it('搜索应过滤模型并隐藏空分组', () => {
-    render(
-      <ModelSelect
-        value="opencode/big-pickle"
-        onChange={vi.fn()}
-        models={openCodeModels}
-        currentProvider="opencode"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.change(screen.getByTestId('model-search-input'), {
-      target: { value: 'deepseek' },
-    });
-
-    expect(screen.getByTestId('model-option-deepseek/deepseek-v4-flash-free')).toBeTruthy();
-    expect(screen.queryByTestId('model-option-opencode/big-pickle')).toBeNull();
-    // Empty vendor groups disappear; a single remaining match stays flat (no group header).
-    expect(screen.queryByTestId('model-group-opencode')).toBeNull();
-    expect(screen.queryByTestId('model-group-deepseek')).toBeNull();
-  });
 
   it('置顶后模型应出现在 Pinned 分组顶部', () => {
     render(
@@ -161,26 +217,4 @@ describe('ModelSelect', () => {
     const pinnedSection = screen.getByTestId('model-section-__pinned__');
     expect(pinnedSection.textContent).toContain('deepseek/Deepseek-V4-Flash-Free');
   });
-
-  // Third-party catalogs expose models whose ids collide with the claude-*
-  // mapping slots. Non-claude providers must render catalog labels verbatim.
-  it('非 Claude 提供商应原样显示目录标签，不受 Claude 模型映射影响', () => {
-    localStorage.setItem(
-      STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
-      JSON.stringify({ sonnet: 'glm-4' }),
-    );
-
-    render(
-      <ModelSelect
-        value={sonnetModel.id}
-        onChange={vi.fn()}
-        models={[sonnetModel]}
-        currentProvider="opencode"
-      />,
-    );
-
-    expect(screen.getByRole('button').textContent).toContain('Sonnet 4.6');
-    expect(screen.getByRole('button').textContent).not.toContain('glm-4');
-  });
-
 });

@@ -156,17 +156,38 @@ const isValidFqcn = (className: string): boolean => {
 };
 
 const callBridge = (payload: string) => {
-  if (window.sendToJava) {
-    window.sendToJava(payload);
-    return true;
+  const fn = window.sendToJava;
+  if (typeof fn !== 'function') {
+    console.error(`[bridge] callBridge: window.sendToJava NOT available, payload=${payload.substring(0, 100)}`);
+    BRIDGE_UNAVAILABLE_WARNED.add(payload);
+    return false;
   }
-  // Track warned payloads to avoid spam, but don't log to console
-  BRIDGE_UNAVAILABLE_WARNED.add(payload);
-  return false;
+  try {
+    fn(payload);
+    return true;
+  } catch (err) {
+    console.error(`[bridge] callBridge: sendToJava threw, payload=${payload.substring(0, 100)}`, err);
+    return false;
+  }
 };
 
 export const sendBridgeEvent = (event: string, content = '') => {
   return callBridge(`${event}:${content}`);
+};
+
+/** Send a debug log from the webview to the Extension Host Debug Console. */
+export const cardDebugLog = (...args: unknown[]) => {
+  try {
+    // debug 级日志：生产包不打印也不转发（否则流式期间每次 updateMessages
+    // 都会跨进程发一条 cardDebug 并写进宿主日志管道）。
+    if (!import.meta.env.DEV) return;
+    const msg = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+    // F12 console output — console.error is NOT filtered by production mode
+    console.error('[cardDebug]', msg);
+    sendBridgeEvent('cardDebug', msg);
+  } catch {
+    // Silently ignore — this is debug logging
+  }
 };
 
 export const resolveFilePath = (filePath?: string) => {
@@ -335,23 +356,14 @@ export const showInteractiveDiff = (
 };
 
 /**
- * Rewind files to a specific user message state
- * @param sessionId - Session ID
- * @param userMessageId - User message UUID to rewind to
- */
-export const rewindFiles = (sessionId: string, userMessageId: string) => {
-  sendToJava('rewind_files', { sessionId, userMessageId });
-};
-
-/**
  * Undo changes for a single file
  * @param filePath - Absolute path to the file
- * @param status - File status: 'A' (added) or 'M' (modified)
+ * @param status - File status: 'A' (added), 'M' (modified) or 'D' (deleted)
  * @param operations - Array of edit operations to reverse
  */
 export const undoFileChanges = (
   filePath: string,
-  status: 'A' | 'M',
+  status: 'A' | 'M' | 'D',
   operations: Array<{ oldString: string; newString: string; replaceAll?: boolean }>
 ) => {
   // Security: Validate file path (defense-in-depth, backend also validates)

@@ -1,21 +1,17 @@
 import { useCallback, useEffect, useRef, type MutableRefObject, type RefObject } from 'react';
-import type { CommandItem, FileItem, TriggerQuery } from '../types.js';
+import type { CommandItem, TriggerQuery } from '../types.js';
 import { useCompletionDropdown } from './useCompletionDropdown.js';
 import { useCompletionTriggerDetection } from './useCompletionTriggerDetection.js';
 import { useInlineHistoryCompletion } from './useInlineHistoryCompletion.js';
 import {
-  agentProvider,
-  agentToDropdownItem,
   commandToDropdownItem,
   dollarCommandProvider,
   dollarCommandToDropdownItem,
-  fileReferenceProvider,
-  fileToDropdownItem,
-  promptProvider,
-  promptToDropdownItem,
+  mentionProvider,
+  mentionToDropdownItem,
   slashCommandProvider,
-  type AgentItem,
-  type PromptItem,
+  ensureAgentsLoaded,
+  type MentionItem,
 } from '../providers/index.js';
 import { setCursorOffset } from '../utils/selectionUtils.js';
 
@@ -29,9 +25,6 @@ interface UseChatInputCompletionsCoordinatorOptions {
   closeAllCompletionsRef: MutableRefObject<() => void>;
   handleInputRef: MutableRefObject<() => void>;
   currentProvider: string;
-  onAgentSelect?: (agent: { id: string; name: string; prompt?: string } | null) => void;
-  onOpenAgentSettings?: () => void;
-  onOpenPromptSettings?: () => void;
 }
 
 function replaceTextAndSync(
@@ -60,18 +53,31 @@ export function useChatInputCompletionsCoordinator({
   closeAllCompletionsRef,
   handleInputRef,
   currentProvider,
-  onAgentSelect,
-  onOpenAgentSettings,
-  onOpenPromptSettings,
 }: UseChatInputCompletionsCoordinatorOptions) {
   const renderFileTagsRef = useRef<() => void>(() => {});
 
-  const fileCompletion = useCompletionDropdown<FileItem>({
+  const fileCompletion = useCompletionDropdown<MentionItem>({
     trigger: '@',
-    provider: fileReferenceProvider,
-    toDropdownItem: fileToDropdownItem,
-    onSelect: (file, query) => {
+    provider: mentionProvider,
+    toDropdownItem: mentionToDropdownItem,
+    onSelect: (item, query) => {
       if (!editableRef.current || !query) return;
+
+      // 子代理：插入纯文本 @name，不渲染为 file-tag，也不登记 pathMapping
+      if (item.kind === 'subagent') {
+        const text = getTextContent();
+        const replacement = `@${item.name} `;
+        const newText = fileCompletion.replaceText(text, replacement, query);
+        editableRef.current.innerText = newText;
+        const cursorPos = query.start + replacement.length;
+        setCursorOffset(editableRef.current, cursorPos);
+        handleInputRef.current();
+        return;
+      }
+
+      // 仅处理文件（跳过 section 标题，理论上不会被选中）
+      if (item.kind !== 'file') return;
+      const file = item;
 
       const text = getTextContent();
       const path = file.absolutePath || file.path;
@@ -113,73 +119,6 @@ export function useChatInputCompletionsCoordinator({
     },
   });
 
-  const agentCompletion = useCompletionDropdown<AgentItem>({
-    trigger: '#',
-    provider: agentProvider,
-    toDropdownItem: agentToDropdownItem,
-    onSelect: (agent, query) => {
-      if (
-        agent.id === '__loading__' ||
-        agent.id === '__empty__' ||
-        agent.id === '__empty_state__'
-      ) {
-        return;
-      }
-
-      if (agent.id === '__create_new__') {
-        onOpenAgentSettings?.();
-      } else {
-        onAgentSelect?.({ id: agent.id, name: agent.name, prompt: agent.prompt });
-      }
-
-      if (!editableRef.current || !query) return;
-      const newText = agentCompletion.replaceText(getTextContent(), '', query);
-      editableRef.current.innerText = newText;
-      setCursorOffset(editableRef.current, query.start);
-      handleInputRef.current();
-    },
-  });
-
-  const promptDataProvider = useCallback(
-    (query: string, signal: AbortSignal) => promptProvider(query, signal, currentProvider),
-    [currentProvider],
-  );
-
-  const promptCompletion = useCompletionDropdown<PromptItem>({
-    trigger: '!',
-    provider: promptDataProvider,
-    toDropdownItem: promptToDropdownItem,
-    onSelect: (prompt, query) => {
-      if (
-        prompt.id === '__loading__' ||
-        prompt.id === '__empty__' ||
-        prompt.id === '__empty_state__'
-      ) {
-        return;
-      }
-
-      if (prompt.id === '__create_new__') {
-        onOpenPromptSettings?.();
-        if (!editableRef.current || !query) return;
-        const newText = promptCompletion.replaceText(getTextContent(), '', query);
-        editableRef.current.innerText = newText;
-        setCursorOffset(editableRef.current, query.start);
-        handleInputRef.current();
-        return;
-      }
-
-      if (!editableRef.current || !query) return;
-      replaceTextAndSync(
-        editableRef,
-        getTextContent(),
-        prompt.content,
-        query,
-        promptCompletion.replaceText,
-        () => handleInputRef.current()
-      );
-    },
-  });
-
   const dollarCommandCompletion = useCompletionDropdown<CommandItem>({
     trigger: '$',
     provider: dollarCommandProvider,
@@ -200,14 +139,17 @@ export function useChatInputCompletionsCoordinator({
   const closeAllCompletions = useCallback(() => {
     fileCompletion.close();
     commandCompletion.close();
-    agentCompletion.close();
-    promptCompletion.close();
     dollarCommandCompletion.close();
-  }, [fileCompletion, commandCompletion, agentCompletion, promptCompletion, dollarCommandCompletion]);
+  }, [fileCompletion, commandCompletion, dollarCommandCompletion]);
 
   useEffect(() => {
     closeAllCompletionsRef.current = closeAllCompletions;
   }, [closeAllCompletions, closeAllCompletionsRef]);
+
+  // 预拉取 opencode 子代理列表，使 @ 下拉在用户首次输入时即可显示，无需先打开设置面板。
+  useEffect(() => {
+    ensureAgentsLoaded();
+  }, []);
 
   const inlineCompletion = useInlineHistoryCompletion({
     debounceMs: 100,
@@ -221,8 +163,6 @@ export function useChatInputCompletionsCoordinator({
     getTextContent,
     fileCompletion,
     commandCompletion,
-    agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     isDollarTriggerEnabled: currentProvider === 'codex',
   });
@@ -234,8 +174,6 @@ export function useChatInputCompletionsCoordinator({
     const isOtherCompletionOpen =
       fileCompletion.isOpen ||
       commandCompletion.isOpen ||
-      agentCompletion.isOpen ||
-      promptCompletion.isOpen ||
       dollarCommandCompletion.isOpen;
 
     if (!isOtherCompletionOpen) {
@@ -246,8 +184,6 @@ export function useChatInputCompletionsCoordinator({
   }, [
     fileCompletion,
     commandCompletion,
-    agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     inlineCompletion,
   ]);
@@ -259,8 +195,6 @@ export function useChatInputCompletionsCoordinator({
   return {
     fileCompletion,
     commandCompletion,
-    agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     inlineCompletion,
     closeAllCompletions,

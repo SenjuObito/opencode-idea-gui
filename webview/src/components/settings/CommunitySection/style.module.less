@@ -16,20 +16,33 @@
   font-size: 13px;
 }
 
+.projectDesc {
+  color: var(--text-secondary);
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .qrcodeContainer {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 32px 0;
-  margin-top: 20px;
+  padding: 20px 0;
+  margin-top: 16px;
+}
+
+.qrcodeRow {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
 }
 
 .qrcodeWrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 24px;
+  gap: 10px;
+  padding: 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
@@ -37,8 +50,8 @@
 }
 
 .qrcodeImage {
-  width: 280px;
-  height: 280px;
+  width: 180px;
+  height: 180px;
   object-fit: contain;
   border-radius: 4px;
   background: #ffffff;
@@ -127,16 +140,21 @@
   }
 
   .qrcodeContainer {
-    padding: 24px 0;
+    padding: 16px 0;
+  }
+
+  .qrcodeRow {
+    flex-direction: column;
+    align-items: center;
   }
 
   .qrcodeWrapper {
-    padding: 20px;
+    padding: 12px;
   }
 
   .qrcodeImage {
-    width: 240px;
-    height: 240px;
+    width: 150px;
+    height: 150px;
   }
 
   .qrcodeTip {

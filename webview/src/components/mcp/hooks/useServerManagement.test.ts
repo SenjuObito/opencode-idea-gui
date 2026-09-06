@@ -36,7 +36,6 @@ describe('useServerManagement tool cache invalidation', () => {
   it('clears persisted tools whenever a server is toggled', () => {
     const setServerTools = vi.fn() as unknown as React.Dispatch<React.SetStateAction<ServerToolsState>>;
     const hook = renderHook(() => useServerManagement({
-      isCodexMode: false,
       messagePrefix: '',
       cacheKeys,
       setServerTools,
@@ -60,35 +59,5 @@ describe('useServerManagement tool cache invalidation', () => {
       id: server.id,
       enabled: false,
     }));
-  });
-
-  it('waits for the backend result before reporting a Codex toggle success', () => {
-    const onToast = vi.fn();
-    const loadServers = vi.fn();
-    const loadServerStatus = vi.fn();
-    const hook = renderHook(() => useServerManagement({
-      isCodexMode: true,
-      messagePrefix: 'codex_',
-      cacheKeys,
-      setServerTools: vi.fn() as unknown as React.Dispatch<React.SetStateAction<ServerToolsState>>,
-      loadServers,
-      loadServerStatus,
-      loadServerTools: vi.fn(),
-      onLog: vi.fn(),
-      onToast,
-      t: (key) => key,
-    }));
-
-    act(() => {
-      hook.result.current.handleToggleServer(server, false);
-    });
-
-    expect(sendToJavaMock).toHaveBeenCalledWith('toggle_codex_mcp_server', expect.objectContaining({
-      id: server.id,
-      enabled: false,
-    }));
-    expect(onToast).not.toHaveBeenCalled();
-    expect(loadServers).not.toHaveBeenCalled();
-    expect(loadServerStatus).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,8 @@ interface ChangelogDialogProps {
   onClose: () => void;
   entries: ChangelogEntry[];
   initialPage?: number;
+  loading?: boolean;
+  error?: string;
 }
 
 /**
@@ -21,8 +23,14 @@ function prefersChineseChangelog(language: string | undefined): boolean {
 /**
  * Resolve content to display. Shows both EN and ZH when both exist,
  * ordered by the active UI language (Chinese first for zh / zh-TW).
+ *
+ * `entry` may be undefined when the entries list is empty or when the active
+ * page is out of range (a long list replaced by a shorter one). Returning an
+ * empty list lets the dialog render its empty state instead of throwing during
+ * render and tearing down the whole webview.
  */
-function resolveContent(entry: ChangelogEntry, language?: string): string[] {
+function resolveContent(entry: ChangelogEntry | undefined, language?: string): string[] {
+  if (!entry || !entry.content) return [];
   const { en, zh } = entry.content;
   const parts: string[] = [];
   if (prefersChineseChangelog(language)) {
@@ -126,7 +134,14 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-const ChangelogDialog = ({ isOpen, onClose, entries, initialPage = 0 }: ChangelogDialogProps) => {
+const ChangelogDialog = ({
+  isOpen,
+  onClose,
+  entries,
+  initialPage = 0,
+  loading = false,
+  error,
+}: ChangelogDialogProps) => {
   const { t, i18n } = useTranslation();
   const [currentPage, setCurrentPage] = useState(initialPage);
 
@@ -137,6 +152,18 @@ const ChangelogDialog = ({ isOpen, onClose, entries, initialPage = 0 }: Changelo
     }
   }, [isOpen, initialPage]);
 
+  // Keep the active page inside the list. The entries array can shrink
+  // asynchronously (bundled changelog replaced by a shorter releases list) or
+  // arrive empty (repo with no releases), which would otherwise leave
+  // currentPage past the end and resolve to an undefined entry.
+  useEffect(() => {
+    if (currentPage < 0) {
+      setCurrentPage(0);
+    } else if (entries.length > 0 && currentPage > entries.length - 1) {
+      setCurrentPage(entries.length - 1);
+    }
+  }, [currentPage, entries.length]);
+
   // Keyboard navigation
   useEffect(() => {
     if (!isOpen) return;
@@ -146,8 +173,8 @@ const ChangelogDialog = ({ isOpen, onClose, entries, initialPage = 0 }: Changelo
         onClose();
       } else if (e.key === 'ArrowLeft') {
         setCurrentPage(prev => Math.max(0, prev - 1));
-      } else if (e.key === 'ArrowRight') {
-        setCurrentPage(prev => Math.min(entries.length - 1, prev + 1));
+      } else if (e.key === 'ArrowRight' && totalPages > 0) {
+        setCurrentPage(prev => Math.min(totalPages - 1, prev + 1));
       }
     };
 
@@ -160,16 +187,20 @@ const ChangelogDialog = ({ isOpen, onClose, entries, initialPage = 0 }: Changelo
   }, []);
 
   const handleNext = useCallback(() => {
-    setCurrentPage(prev => Math.min(entries.length - 1, prev + 1));
+    // entries.length === 0 must not produce a negative page index.
+    setCurrentPage(prev => (entries.length > 0 ? Math.min(entries.length - 1, prev + 1) : 0));
   }, [entries.length]);
 
-  if (!isOpen || entries.length === 0) return null;
+  if (!isOpen) return null;
 
-  const entry = entries[currentPage];
-  const contentParts = resolveContent(entry, i18n.language);
+  // Defensive clamp: the effect above fixes the state, but this render may still
+  // see a stale page (effects run after render), so never index blindly.
   const totalPages = entries.length;
-  const hasPrev = currentPage > 0;
-  const hasNext = currentPage < totalPages - 1;
+  const activePage = totalPages > 0 ? Math.min(Math.max(currentPage, 0), totalPages - 1) : -1;
+  const entry = activePage >= 0 ? entries[activePage] : undefined;
+  const contentParts = resolveContent(entry, i18n.language);
+  const hasPrev = activePage > 0;
+  const hasNext = activePage >= 0 && activePage < totalPages - 1;
 
   return (
     <div className="changelog-overlay">
@@ -178,8 +209,14 @@ const ChangelogDialog = ({ isOpen, onClose, entries, initialPage = 0 }: Changelo
         <div className="changelog-header">
           <div className="changelog-title-area">
             <h3>{t('changelog.title')}</h3>
-            <span className="changelog-version-badge">v{entry.version}</span>
-            <span className="changelog-date">{entry.date}</span>
+            {entry ? (
+              <>
+                {entry.version ? (
+                  <span className="changelog-version-badge">v{entry.version}</span>
+                ) : null}
+                {entry.date ? <span className="changelog-date">{entry.date}</span> : null}
+              </>
+            ) : null}
           </div>
           <button className="changelog-close-btn" onClick={onClose}>
             <span className="codicon codicon-close" />
@@ -188,7 +225,28 @@ const ChangelogDialog = ({ isOpen, onClose, entries, initialPage = 0 }: Changelo
 
         {/* Body */}
         <div className="changelog-body">
-          {contentParts.map((part, idx) => (
+          {loading && entries.length === 0 && (
+            <div className="changelog-loading">
+              <span className="codicon codicon-loading codicon-modifier-spin" />
+              {t('changelog.loading', 'Loading release notes…')}
+            </div>
+          )}
+          {error && !loading && (
+            <div className="changelog-error">
+              {t('changelog.loadError', 'Could not load release notes')}: {error}
+            </div>
+          )}
+          {!loading && !error && totalPages === 0 && (
+            <div className="changelog-empty">
+              {t('changelog.empty', 'No release notes published yet')}
+            </div>
+          )}
+          {!loading && entries.length > 0 && contentParts.length === 0 && (
+            <div className="changelog-empty">
+              {t('changelog.emptyContent', 'This release has no notes')}
+            </div>
+          )}
+          {entries.length > 0 && contentParts.map((part, idx) => (
             <div key={idx}>
               {idx > 0 && <hr className="changelog-divider" />}
               <div
@@ -211,12 +269,12 @@ const ChangelogDialog = ({ isOpen, onClose, entries, initialPage = 0 }: Changelo
           </button>
 
           <div className="changelog-pagination">
-            {totalPages <= 10 ? (
+            {totalPages === 0 ? null : totalPages <= 10 ? (
               <div className="changelog-dots">
                 {entries.map((_, idx) => (
                   <button
                     key={idx}
-                    className={`changelog-dot ${idx === currentPage ? 'active' : ''}`}
+                    className={`changelog-dot ${idx === activePage ? 'active' : ''}`}
                     onClick={() => setCurrentPage(idx)}
                     aria-label={`Page ${idx + 1}`}
                   />
@@ -224,7 +282,7 @@ const ChangelogDialog = ({ isOpen, onClose, entries, initialPage = 0 }: Changelo
               </div>
             ) : (
               <span className="changelog-page-text">
-                {t('changelog.page', { current: currentPage + 1, total: totalPages })}
+                {t('changelog.page', { current: activePage + 1, total: totalPages })}
               </span>
             )}
           </div>

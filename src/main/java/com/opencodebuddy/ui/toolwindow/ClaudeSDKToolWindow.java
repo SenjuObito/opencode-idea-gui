@@ -43,7 +43,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
 
     private static final Logger LOG = Logger.getInstance(ClaudeSDKToolWindow.class);
     public static final String TOOL_WINDOW_ID = "OpenCode";
-    public static final String TOOL_WINDOW_DISPLAY_NAME = "CC GUI";
+    public static final String TOOL_WINDOW_DISPLAY_NAME = "OpenCode Buddy";
     private static final Map<Project, ClaudeChatWindow> instances = new ConcurrentHashMap<>();
     private static final Map<Content, ClaudeChatWindow> contentToWindowMap = new ConcurrentHashMap<>();
     private static volatile boolean shutdownHookRegistered = false;

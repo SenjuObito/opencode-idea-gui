@@ -116,7 +116,7 @@ public final class NodeProcessRegistry implements Disposable {
         // -- ORPHAN scan --
         // Find Node processes that look like ours but don't appear in any registry.
         // CRITICAL: we MUST only consider processes whose parent PID is this JVM.
-        // When multiple IDEs (e.g. IDEA + PyCharm) both run CC GUI, each instance's
+        // When multiple IDEs (e.g. IDEA + PyCharm) both run OpenCode Buddy, each instance's
         // daemons would otherwise show up in every other instance's panel — and
         // "Kill all orphans" would terminate live work in foreign IDEs. Each JVM
         // is responsible only for its own children.

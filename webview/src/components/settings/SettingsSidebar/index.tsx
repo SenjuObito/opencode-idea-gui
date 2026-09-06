@@ -1,7 +1,7 @@
 import styles from './style.module.less';
 import { useTranslation } from 'react-i18next';
 
-export type SettingsTab = 'basic' | 'dependencies' | 'usage' | 'mcp' | 'commit' | 'agents' | 'prompts' | 'skills' | 'other' | 'community';
+export type SettingsTab = 'basic' | 'providers' | 'prompts' | 'usage' | 'mcp' | 'agents' | 'skills' | 'other' | 'community';
 
 interface SidebarItem {
   key: SettingsTab;
@@ -11,15 +11,14 @@ interface SidebarItem {
 
 const sidebarItems: SidebarItem[] = [
   { key: 'basic', icon: 'codicon-settings-gear', labelKey: 'settings.basic.title' },
-  { key: 'dependencies', icon: 'codicon-extensions', labelKey: 'settings.dependencies' },
+  { key: 'providers', icon: 'codicon-vm-connect', labelKey: 'settings.providers' },
+  { key: 'prompts', icon: 'codicon-notebook', labelKey: 'settings.prompts' },
   { key: 'usage', icon: 'codicon-graph', labelKey: 'settings.usage' },
   { key: 'mcp', icon: 'codicon-server', labelKey: 'settings.mcp' },
-  { key: 'commit', icon: 'codicon-git-commit', labelKey: 'settings.commit.title' },
-  { key: 'agents', icon: 'codicon-robot', labelKey: 'settings.agents' },
-  { key: 'prompts', icon: 'codicon-notebook', labelKey: 'settings.prompts' },
+  // { key: 'agents', icon: 'codicon-robot', labelKey: 'settings.agents' },
   { key: 'skills', icon: 'codicon-book', labelKey: 'settings.skills' },
   { key: 'other', icon: 'codicon-ellipsis', labelKey: 'settings.other.title' },
-  { key: 'community', icon: 'codicon-comment-discussion', labelKey: 'settings.community' },
+  { key: 'community', icon: 'codicon-feedback', labelKey: 'settings.community' },
 ];
 
 interface SettingsSidebarProps {
@@ -27,8 +26,6 @@ interface SettingsSidebarProps {
   onTabChange: (tab: SettingsTab) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
-  disabledTabs?: SettingsTab[];
-  onDisabledTabClick?: (tab: SettingsTab) => void;
 }
 
 const SettingsSidebar = ({
@@ -36,8 +33,6 @@ const SettingsSidebar = ({
   onTabChange,
   isCollapsed,
   onToggleCollapse,
-  disabledTabs = [],
-  onDisabledTabClick,
 }: SettingsSidebarProps) => {
   const { t } = useTranslation();
 
@@ -46,20 +41,12 @@ const SettingsSidebar = ({
       <div className={styles.sidebarItems}>
         {sidebarItems.map((item) => {
           const label = t(item.labelKey);
-          const isDisabled = disabledTabs.includes(item.key);
           return (
             <div
               key={item.key}
-              className={`${styles.sidebarItem} ${currentTab === item.key ? styles.active : ''} ${isDisabled ? styles.disabled : ''}`}
-              onClick={() => {
-                if (isDisabled) {
-                  onDisabledTabClick?.(item.key);
-                  return;
-                }
-                onTabChange(item.key);
-              }}
+              className={`${styles.sidebarItem} ${currentTab === item.key ? styles.active : ''}`}
+              onClick={() => onTabChange(item.key)}
               title={isCollapsed ? label : ''}
-              aria-disabled={isDisabled}
             >
               <span className={`codicon ${item.icon}`} />
               <span className={styles.sidebarItemText}>{label}</span>

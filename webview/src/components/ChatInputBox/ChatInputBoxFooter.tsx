@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { DropdownItemData, DropdownPosition, PermissionMode, ReasoningEffort, SelectedAgent } from './types.js';
+import type { CodexFastMode, DropdownItemData, DropdownPosition, PermissionMode, ReasoningEffort } from './types.js';
 import type { TooltipState } from './hooks/useTooltip.js';
 import { ButtonArea } from './ButtonArea.js';
 import { CompletionDropdown } from './Dropdown/index.js';
@@ -23,26 +23,21 @@ export function ChatInputBoxFooter({
   permissionMode,
   currentProvider,
   reasoningEffort,
+  codexFastMode,
   onSubmit,
   onStop,
   onModeSelect,
   onModelSelect,
+  onProviderSelect,
   onReasoningChange,
+  onCodexFastModeChange,
   alwaysThinkingEnabled,
   onToggleThinking,
-  streamingEnabled,
-  onStreamingEnabledChange,
-  selectedAgent,
-  onAgentSelect,
-  onOpenAgentSettings,
   onAddModel,
-  onClearAgent,
   longContextEnabled = true,
   onLongContextChange,
   fileCompletion,
   commandCompletion,
-  agentCompletion,
-  promptCompletion,
   dollarCommandCompletion,
   tooltip,
   t,
@@ -54,26 +49,21 @@ export function ChatInputBoxFooter({
   permissionMode: PermissionMode;
   currentProvider: string;
   reasoningEffort: ReasoningEffort;
+  codexFastMode?: CodexFastMode;
   onSubmit: () => void;
   onStop?: () => void;
   onModeSelect?: (mode: PermissionMode) => void;
   onModelSelect?: (modelId: string) => void;
+  onProviderSelect?: (providerId: string) => void;
   onReasoningChange?: (effort: ReasoningEffort) => void;
+  onCodexFastModeChange?: (mode: CodexFastMode) => void;
   alwaysThinkingEnabled?: boolean;
   onToggleThinking?: (enabled: boolean) => void;
-  streamingEnabled?: boolean;
-  onStreamingEnabledChange?: (enabled: boolean) => void;
-  selectedAgent?: SelectedAgent | null;
-  onAgentSelect?: (agent: SelectedAgent) => void;
-  onOpenAgentSettings?: () => void;
   onAddModel?: () => void;
-  onClearAgent: () => void;
   longContextEnabled?: boolean;
   onLongContextChange?: (enabled: boolean) => void;
   fileCompletion: CompletionController;
   commandCompletion: CompletionController;
-  agentCompletion: CompletionController;
-  promptCompletion: CompletionController;
   dollarCommandCompletion?: CompletionController;
   tooltip: TooltipState | null;
   t: TFunction;
@@ -89,20 +79,17 @@ export function ChatInputBoxFooter({
         permissionMode={permissionMode}
         currentProvider={currentProvider}
         reasoningEffort={reasoningEffort}
+        codexFastMode={codexFastMode}
         onSubmit={onSubmit}
         onStop={onStop}
         onModeSelect={onModeSelect}
         onModelSelect={onModelSelect}
+        onProviderSelect={onProviderSelect}
         onReasoningChange={onReasoningChange}
+        onCodexFastModeChange={onCodexFastModeChange}
         alwaysThinkingEnabled={alwaysThinkingEnabled}
         onToggleThinking={onToggleThinking}
-        streamingEnabled={streamingEnabled}
-        onStreamingEnabledChange={onStreamingEnabledChange}
-        selectedAgent={selectedAgent}
-        onAgentSelect={(agent) => onAgentSelect?.(agent)}
-        onOpenAgentSettings={onOpenAgentSettings}
         onAddModel={onAddModel}
-        onClearAgent={onClearAgent}
         longContextEnabled={longContextEnabled}
         onLongContextChange={onLongContextChange}
       />
@@ -134,33 +121,6 @@ export function ChatInputBoxFooter({
         onMouseEnter={commandCompletion.handleMouseEnter}
       />
 
-      {/* # agent selection dropdown menu */}
-      <CompletionDropdown
-        isVisible={agentCompletion.isOpen}
-        position={agentCompletion.position}
-        width={350}
-        items={agentCompletion.items}
-        selectedIndex={agentCompletion.activeIndex}
-        loading={agentCompletion.loading}
-        emptyText={t('chat.noAvailableAgents')}
-        onClose={agentCompletion.close}
-        onSelect={(_, index) => agentCompletion.selectIndex(index)}
-        onMouseEnter={agentCompletion.handleMouseEnter}
-      />
-
-      {/* ! prompt selection dropdown menu */}
-      <CompletionDropdown
-        isVisible={promptCompletion.isOpen}
-        position={promptCompletion.position}
-        width={400}
-        items={promptCompletion.items}
-        selectedIndex={promptCompletion.activeIndex}
-        loading={promptCompletion.loading}
-        emptyText={t('settings.prompt.noPromptsDropdown')}
-        onClose={promptCompletion.close}
-        onSelect={(_, index) => promptCompletion.selectIndex(index)}
-        onMouseEnter={promptCompletion.handleMouseEnter}
-      />
 
       {/* $ command dropdown menu */}
       {dollarCommandCompletion && (

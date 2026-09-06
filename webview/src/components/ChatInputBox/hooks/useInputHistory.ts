@@ -5,7 +5,6 @@
  * This file only contains the React hook and re-exports for backward compatibility.
  */
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
-import { sendToJava } from '../../../utils/bridge.js';
 import {
   INVISIBLE_CHARS_RE,
   MAX_HISTORY_ITEMS,
@@ -146,8 +145,6 @@ export function useInputHistory({
     historyIndexRef.current = -1;
     draftRef.current = '';
 
-    // Also sync to .codemoss (async)
-    sendToJava('record_input_history', JSON.stringify(fragments));
   }, []);
 
   const handleKeyDown = useCallback(

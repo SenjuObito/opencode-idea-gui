@@ -1,13 +1,19 @@
 import { act, fireEvent, render, screen, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRef, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createRef, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../types';
 import { MessageList } from './MessageList';
 import { reconcileMessageKeys, type MessageKeySnapshot } from '../utils/messageUtils';
 
 // Mock MessageItem to keep this suite focused on list-level paging behaviour.
+// Inline cards are rendered in an "inline-card" slot with the resolved block
+// index so the suite can assert on the placement MessageList computed.
 vi.mock('./MessageItem', () => ({
-  MessageItem: ({ messageKey, message }: { messageKey: string; message: ClaudeMessage }) => {
+  MessageItem: ({ messageKey, message, inlineCards }: {
+    messageKey: string;
+    message: ClaudeMessage;
+    inlineCards?: ReadonlyArray<{ key: string; blockIndex: number; render: () => ReactElement }>;
+  }) => {
     const [localState, setLocalState] = useState('initial');
     return (
       <div
@@ -18,6 +24,11 @@ vi.mock('./MessageItem', () => ({
         onClick={() => setLocalState('preserved')}
       >
         {message.content}
+        {(inlineCards ?? []).map((card) => (
+          <div key={card.key} data-testid="inline-card" data-block-index={card.blockIndex}>
+            {card.render()}
+          </div>
+        ))}
       </div>
     );
   },

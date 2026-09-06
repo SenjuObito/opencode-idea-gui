@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, memo, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../../types';
 
@@ -35,26 +36,26 @@ export interface MessageItemProps {
   extractMarkdownContent: (message: ClaudeMessage) => string;
   onNodeRef?: (id: string, node: HTMLDivElement | null) => void;
   onNavigateToProviderSettings?: () => void;
-  onNavigateToDependencySettings?: () => void;
   toolResultSignature?: string;
   /** Current active provider id (e.g. 'claude', 'codex'); drives the streaming-connect label. */
   currentProvider?: string;
   /** Show opt-in detailed footer extras such as turn cost and cache-hit ratio. */
   detailedOutputEnabled?: boolean;
+  /** Whether this is the latest user message */
+  isLatestUserMessage?: boolean;
+  /** Callback to undo this message */
+  onUndo?: (message: ClaudeMessage) => void;
+  /** Callback to fork from this message */
+  onFork?: (message: ClaudeMessage) => void;
+  /** Whether forking is currently disabled (session busy). */
+  forkDisabled?: boolean;
 }
 
 /** Map provider id to a human-readable label used in UI text. */
 function getProviderDisplayName(providerId?: string): string {
-  if (providerId === 'codex') return 'Codex';
-  if (providerId === 'grok') return 'Grok';
-  if (providerId === 'gemini') return 'Gemini';
   if (providerId === 'opencode') return 'OpenCode';
-  if (providerId === 'kimi') return 'Kimi';
-  if (providerId === 'pi') return 'Pi';
-  if (providerId === 'omp') return 'OMP';
-  if (providerId === 'dsh') return 'DSH';
   if (providerId) return providerId.charAt(0).toUpperCase() + providerId.slice(1);
-  return 'Claude';
+  return 'OpenCode';
 }
 
 type GroupedBlock =
@@ -65,13 +66,8 @@ type GroupedBlock =
   | { type: 'search_group'; blocks: ClaudeContentBlock[]; startIndex: number }
   | { type: 'agent_group'; agentBlock: ClaudeContentBlock; followingBlocks: ClaudeContentBlock[]; startIndex: number };
 
-/** Shared copy icon SVG used by both user and assistant message copy buttons */
-const CopyIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 4l0 8a2 2 0 0 0 2 2l8 0a2 2 0 0 0 2 -2l0 -8a2 2 0 0 0 -2 -2l-8 0a2 2 0 0 0 -2 2zm2 0l8 0l0 8l-8 0l0 -8z" fill="currentColor" fillOpacity="0.9"/>
-    <path d="M2 2l0 8l-2 0l0 -8a2 2 0 0 1 2 -2l8 0l0 2l-8 0z" fill="currentColor" fillOpacity="0.6"/>
-  </svg>
-);
+/** Shared copy icon (codicon font) used by both user and assistant message copy buttons */
+const CopyIcon = () => <span className="codicon codicon-copy" />;
 
 interface CopyButtonProps {
   className?: string;
@@ -104,13 +100,8 @@ const CopyButton = memo(function CopyButton({
   );
 });
 
-/** Quote icon (chat bubble with a right-arrow) used by the message quote button */
-const QuoteIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6l-3 3v-3H3a1 1 0 0 1-1-1z" fill="currentColor" fillOpacity="0.6"/>
-    <path d="M7.5 4.5l2.5 2.5-2.5 2.5M5 7h5" stroke="var(--bg-secondary)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
+/** Quote icon (codicon font) used by the message quote button */
+const QuoteIcon = () => <span className="codicon codicon-quote" />;
 
 interface QuoteButtonProps {
   className?: string;
@@ -139,6 +130,45 @@ const QuoteButton = memo(function QuoteButton({
         <QuoteIcon />
       </span>
       <span className="copy-tooltip">{quoteSuccessText}</span>
+    </button>
+  );
+});
+
+interface IconActionButtonProps {
+  className?: string;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}
+
+/**
+ * 用户消息气泡上的通用图标按钮。
+ *
+ * 与 CopyButton / QuoteButton 共用 `message-copy-btn` 的视觉样式。此前 undo /
+ * fork 走 `message-action-btn`（codicon 字体图标、hover 时背景与边框变化），
+ * 与同排的 quoter / copy（SVG 图标、hover 仅变透明度）不是一套外观，
+ * 四个按钮看起来像是两种控件。
+ */
+const IconActionButton = memo(function IconActionButton({
+  className,
+  label,
+  onClick,
+  disabled,
+  children,
+}: IconActionButtonProps) {
+  return (
+    <button
+      type="button"
+      className={`message-copy-btn${className ? ` ${className}` : ''}`}
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+    >
+      <span className="copy-icon">
+        {children}
+      </span>
     </button>
   );
 });
@@ -398,10 +428,13 @@ export const MessageItem = memo(function MessageItem({
   extractMarkdownContent,
   onNodeRef,
   onNavigateToProviderSettings,
-  onNavigateToDependencySettings,
   toolResultSignature: _toolResultSignature,
   currentProvider,
   detailedOutputEnabled = false,
+  isLatestUserMessage = false,
+  onUndo,
+  onFork,
+  forkDisabled = false,
 }: MessageItemProps): React.ReactElement {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const [quotedMessageIndex, setQuotedMessageIndex] = useState<number | null>(null);
@@ -597,7 +630,6 @@ export const MessageItem = memo(function MessageItem({
             <ErrorDiagnosticCard
               t={t}
               pattern={errorDiagnosticPattern}
-              onNavigateToDependencySettings={onNavigateToDependencySettings}
             />
           )}
         </>
@@ -614,7 +646,7 @@ export const MessageItem = memo(function MessageItem({
       );
     }
 
-    return groupedBlocks.map((grouped) => {
+    const renderGroup = (grouped: GroupedBlock): React.ReactNode => {
       if (grouped.type === 'read_group') {
         const readItems = grouped.blocks.map((b) => {
           const block = b as { type: 'tool_use'; id?: string; name?: string; input?: Record<string, unknown> };
@@ -736,8 +768,9 @@ export const MessageItem = memo(function MessageItem({
       }
 
       if (grouped.type === 'agent_group') {
+        const agentToolId = grouped.agentBlock.type === 'tool_use' ? grouped.agentBlock.id : undefined;
         return (
-          <div key={`${messageKey}-agentgroup-${grouped.startIndex}`} className="content-block">
+          <div key={`agentgroup-${agentToolId ?? grouped.startIndex}`} className="content-block">
             <AgentGroupBlock
               agentBlock={grouped.agentBlock}
               followingBlocks={grouped.followingBlocks}
@@ -770,7 +803,9 @@ export const MessageItem = memo(function MessageItem({
           />
         </div>
       );
-    });
+    };
+
+    return groupedBlocks.map(renderGroup);
   };
 
   if (isEmptyStreamingPlaceholder && !showStreamingConnectHint) {
@@ -783,54 +818,77 @@ export const MessageItem = memo(function MessageItem({
       ref={anchorRefCallback}
       data-message-anchor-id={message.type === 'user' ? messageKey : undefined}
     >
-      {/* Timestamp and copy button for user messages */}
-      {message.type === 'user' && message.timestamp && (
+      {/* Action buttons row for user messages (timestamp moved below the bubble) */}
+      {message.type === 'user' && (
         <div className="message-header-row">
-          <div className="message-timestamp-header">
-            {formatTime(message.timestamp)}
+          <div className="message-header-actions">
+            {isLatestUserMessage && onUndo && (
+              <IconActionButton
+                className="message-copy-btn-inline"
+                label={t('chat.undoTooltip')}
+                onClick={() => onUndo(message)}
+              >
+                <span className="codicon codicon-discard" />
+              </IconActionButton>
+            )}
+            {onFork && (
+              <IconActionButton
+                className="message-copy-btn-inline"
+                label={forkDisabled ? t('chat.forkDisabledTooltip') : t('chat.forkTooltip')}
+                onClick={() => { if (!forkDisabled) onFork(message); }}
+                disabled={forkDisabled}
+              >
+                <span className="codicon codicon-git-branch" />
+              </IconActionButton>
+            )}
+            {hasCopyableText && (
+              <>
+                <QuoteButton
+                  className="message-copy-btn-inline"
+                  isQuoted={quotedMessageIndex === messageIndex}
+                  onClick={handleQuoteMessage}
+                  quoteLabel={t('markdown.quoteMessage', 'Quote message')}
+                  quoteSuccessText={t('markdown.quoteSuccess', 'Quoted!')}
+                />
+                <CopyButton
+                  className="message-copy-btn-inline"
+                  isCopied={copiedMessageIndex === messageIndex}
+                  onClick={handleCopyMessage}
+                  copyLabel={t('markdown.copyMessage')}
+                  copySuccessText={t('markdown.copySuccess')}
+                />
+              </>
+            )}
           </div>
-          {hasCopyableText && (
-            <>
-              <QuoteButton
-                className="message-copy-btn-inline"
-                isQuoted={quotedMessageIndex === messageIndex}
-                onClick={handleQuoteMessage}
-                quoteLabel={t('markdown.quoteMessage', 'Quote message')}
-                quoteSuccessText={t('markdown.quoteSuccess', 'Quoted!')}
-              />
-              <CopyButton
-                className="message-copy-btn-inline"
-                isCopied={copiedMessageIndex === messageIndex}
-                onClick={handleCopyMessage}
-                copyLabel={t('markdown.copyMessage')}
-                copySuccessText={t('markdown.copySuccess')}
-              />
-            </>
-          )}
         </div>
       )}
 
       {/* Copy and quote buttons for assistant messages only */}
       {message.type === 'assistant' && !isMessageStreaming && hasCopyableText && (
-        <>
-          <QuoteButton
-            isQuoted={quotedMessageIndex === messageIndex}
-            onClick={handleQuoteMessage}
-            quoteLabel={t('markdown.quoteMessage', 'Quote message')}
-            quoteSuccessText={t('markdown.quoteSuccess', 'Quoted!')}
-          />
-          <CopyButton
-            isCopied={copiedMessageIndex === messageIndex}
-            onClick={handleCopyMessage}
-            copyLabel={t('markdown.copyMessage')}
-            copySuccessText={t('markdown.copySuccess')}
-          />
-        </>
+        <div className="message-header-row">
+          <div className="message-header-actions">
+            <QuoteButton
+              isQuoted={quotedMessageIndex === messageIndex}
+              onClick={handleQuoteMessage}
+              quoteLabel={t('markdown.quoteMessage', 'Quote message')}
+              quoteSuccessText={t('markdown.quoteSuccess', 'Quoted!')}
+              className="message-copy-btn-inline"
+            />
+            <CopyButton
+              isCopied={copiedMessageIndex === messageIndex}
+              onClick={handleCopyMessage}
+              copyLabel={t('markdown.copyMessage')}
+              copySuccessText={t('markdown.copySuccess')}
+              className="message-copy-btn-inline"
+            />
+          </div>
+        </div>
       )}
 
       {/* Role label for non-user/assistant messages — hidden for notification types */}
       {message.type !== 'assistant' && message.type !== 'user'
-        && message.type !== 'notification' && message.type !== 'task_notification' && (
+        && message.type !== 'notification' && message.type !== 'task_notification'
+        && message.type !== 'compact_notification' && (
         <div className="message-role-label">
           {message.type}
         </div>
@@ -839,6 +897,13 @@ export const MessageItem = memo(function MessageItem({
       <div className="message-content">
         {renderGroupedBlocks()}
       </div>
+
+      {/* Timestamp below the user bubble */}
+      {message.type === 'user' && message.timestamp && (
+        <div className="message-timestamp-footer">
+          {formatTime(message.timestamp)}
+        </div>
+      )}
 
       {/* Duration and token display after last assistant message */}
       {message.type === 'assistant' && !isMessageStreaming && typeof message.durationMs === 'number' && (

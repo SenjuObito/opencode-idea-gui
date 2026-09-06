@@ -147,7 +147,28 @@
 .changelog-divider {
   border: none;
   border-top: 1px solid var(--border-primary);
-  margin: 14px 0;
+}
+
+.changelog-loading,
+.changelog-error,
+.changelog-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.changelog-empty {
+  text-align: center;
+}
+
+.changelog-error {
+  color: var(--color-error);
+  text-align: center;
+  flex-direction: column;
 }
 
 /* Footer with pagination */

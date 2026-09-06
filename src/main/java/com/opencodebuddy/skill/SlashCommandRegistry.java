@@ -195,7 +195,7 @@ public final class SlashCommandRegistry {
                 globalCmdCommands = List.of();
                 globalSkillCommands = List.of();
             } else {
-                String claudeDir = userHome + File.separator + ".claude";
+                String claudeDir = userHome + File.separator + ".config" + File.separator + "opencode";
                 globalCmdCommands = scanCommandsAsCommands(
                         claudeDir + File.separator + "commands", "user");
                 globalSkillCommands = scanSkillsAsCommands(
@@ -294,7 +294,7 @@ public final class SlashCommandRegistry {
         List<SkillScanDir> dirs = new ArrayList<>();
         for (String dir : additionalDirs) {
             Path path = Paths.get(dir).toAbsolutePath().normalize();
-            Path candidate = path.resolve(".claude").resolve("skills");
+            Path candidate = path.resolve(".opencode").resolve("skill");
             if (Files.isDirectory(candidate)) {
                 dirs.add(new SkillScanDir(candidate.toString(), "additional"));
             }
@@ -309,7 +309,7 @@ public final class SlashCommandRegistry {
         List<SkillScanDir> dirs = new ArrayList<>();
         for (String dir : additionalDirs) {
             Path path = Paths.get(dir).toAbsolutePath().normalize();
-            Path candidate = path.resolve(".claude").resolve("commands");
+            Path candidate = path.resolve(".opencode").resolve("command");
             if (Files.isDirectory(candidate)) {
                 dirs.add(new SkillScanDir(candidate.toString(), "additional"));
             }

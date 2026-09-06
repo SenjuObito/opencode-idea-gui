@@ -62,7 +62,7 @@ interface HistoryViewProps {
   historyData: HistoryData | null;
   currentProvider?: string; // Current provider (claude or codex)
   currentSessionId?: string | null; // Active session ID; its row must not offer conversion
-  onLoadSession: (sessionId: string, provider?: string, model?: string, agent?: string) => void;
+  onLoadSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void; // Delete session callback
   onDeleteSessions: (sessionIds: string[]) => void; // Batch delete sessions callback
   onExportSession: (sessionId: string, title: string) => void; // Export session callback
@@ -335,7 +335,7 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
       return;
     }
     if (!isEditing) {
-      onLoadSession(session.sessionId, session.provider, session.model, session.agent);
+      onLoadSession(session.sessionId);
     }
   }, [isSelectionMode, toggleSessionSelection, onLoadSession]);
 

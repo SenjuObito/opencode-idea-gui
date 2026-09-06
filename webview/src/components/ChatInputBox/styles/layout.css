@@ -13,21 +13,28 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Show blue border glow effect on hover */
+/* Hover/focus: recolor border only (uniform 1px weight in all modes) */
 .chat-input-box:hover {
   border-color: var(--input-focus-border);
-  box-shadow: 0 0 0 1px var(--input-focus-border);
 }
 
-/* Show blue border effect on focus (consistent with hover) */
 .chat-input-box:focus-within {
   border-color: var(--input-focus-border);
-  box-shadow: 0 0 0 1px var(--input-focus-border);
 }
 
 .chat-input-box.is-resizing {
   border-color: var(--input-focus-border);
-  box-shadow: 0 0 0 1px var(--input-focus-border);
+}
+
+/* Plan mode: orange border on the container only (no shared variables,
+   so child components like context bar / attachments stay theme-colored) */
+.chat-input-box[data-mode="plan"] {
+  border-color: #e07c24;
+}
+.chat-input-box[data-mode="plan"]:hover,
+.chat-input-box[data-mode="plan"]:focus-within,
+.chat-input-box[data-mode="plan"].is-resizing {
+  border-color: #e07c24;
 }
 
 /* ============================================================

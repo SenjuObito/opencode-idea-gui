@@ -1,16 +1,9 @@
 import { renderHook } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { forceWebviewRepaint } from '../../../utils/forceWebviewRepaint.js';
+import { vi, describe, it, expect } from 'vitest';
 import { useResetAttachmentsOnSessionChange } from './useResetAttachmentsOnSessionChange.js';
 
-vi.mock('../../../utils/forceWebviewRepaint.js', () => ({ forceWebviewRepaint: vi.fn() }));
-
 describe('useResetAttachmentsOnSessionChange', () => {
-  beforeEach(() => {
-    vi.mocked(forceWebviewRepaint).mockClear();
-  });
-
-  it('does not clear or repaint on the initial mount', () => {
+  it('does not clear on the initial mount', () => {
     const clear = vi.fn();
     renderHook(() =>
       useResetAttachmentsOnSessionChange({
@@ -21,10 +14,9 @@ describe('useResetAttachmentsOnSessionChange', () => {
     );
 
     expect(clear).not.toHaveBeenCalled();
-    expect(forceWebviewRepaint).not.toHaveBeenCalled();
   });
 
-  it('clears attachments and repaints when the session id changes (uncontrolled)', () => {
+  it('clears attachments when the session id changes (uncontrolled)', () => {
     const clear = vi.fn();
     const { rerender } = renderHook(
       ({ id }: { id: string | null }) =>
@@ -39,10 +31,9 @@ describe('useResetAttachmentsOnSessionChange', () => {
     rerender({ id: 'b' });
 
     expect(clear).toHaveBeenCalledTimes(1);
-    expect(forceWebviewRepaint).toHaveBeenCalledTimes(1);
   });
 
-  it('repaints but does NOT clear in controlled mode', () => {
+  it('does NOT clear in controlled mode', () => {
     const clear = vi.fn();
     const { rerender } = renderHook(
       ({ id }: { id: string | null }) =>
@@ -57,7 +48,6 @@ describe('useResetAttachmentsOnSessionChange', () => {
     rerender({ id: 'b' });
 
     expect(clear).not.toHaveBeenCalled();
-    expect(forceWebviewRepaint).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing when the session id is unchanged across rerenders', () => {
@@ -75,6 +65,5 @@ describe('useResetAttachmentsOnSessionChange', () => {
     rerender({ id: 'a' });
 
     expect(clear).not.toHaveBeenCalled();
-    expect(forceWebviewRepaint).not.toHaveBeenCalled();
   });
 });

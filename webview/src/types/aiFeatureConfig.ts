@@ -1,15 +1,10 @@
 /**
- * AI feature providers used by Prompt Enhancer / Commit AI settings.
+ * AI feature providers used by Prompt Enhancer settings.
  * Mirrors the main chat CLI selector (`AVAILABLE_PROVIDERS`).
  */
+// opencode-only: claude / codex / grok / kimi / pi were removed.
 export const AI_FEATURE_PROVIDERS = [
-  'claude',
-  'codex',
-  'grok',
-  'kimi',
   'opencode',
-  'pi',
-  'omp',
 ] as const;
 
 export type AiFeatureProvider = (typeof AI_FEATURE_PROVIDERS)[number];
@@ -17,13 +12,7 @@ export type AiFeatureResolutionSource = 'manual' | 'auto' | 'unavailable';
 
 /** Default model id per provider — keep in sync with ChatInputBox/types defaults. */
 export const DEFAULT_AI_FEATURE_MODELS: Record<AiFeatureProvider, string> = {
-  claude: 'claude-sonnet-4-6',
-  codex: 'gpt-5.5',
-  grok: 'grok',
-  kimi: 'auto',
   opencode: 'opencode-default',
-  pi: 'auto',
-  omp: 'auto',
 };
 
 export type AiFeatureModels = Record<AiFeatureProvider, string>;
@@ -37,15 +26,11 @@ export interface AiFeatureConfig {
   availability: AiFeatureAvailability;
 }
 
-export type CommitAiProvider = AiFeatureProvider;
-export type CommitAiResolutionSource = AiFeatureResolutionSource;
-export type CommitAiConfig = AiFeatureConfig;
-
 /**
  * Backend/partial payload shape accepted by normalizeAiFeatureConfig: models
  * and availability may carry only a subset of providers — the normalize step
- * fills the rest from defaults. The full AiFeatureConfig shape (all six
- * providers required) is what consumers receive after normalization.
+ * fills the rest from defaults. The full AiFeatureConfig shape (opencode
+ * required) is what consumers receive after normalization.
  */
 export interface AiFeatureConfigInput {
   provider?: AiFeatureProvider | null;
@@ -57,23 +42,9 @@ export interface AiFeatureConfigInput {
 
 function emptyAvailability(value = false): AiFeatureAvailability {
   return {
-    claude: value,
-    codex: value,
-    grok: value,
-    kimi: value,
     opencode: value,
-    pi: value,
-    omp: value,
   };
 }
-
-export const DEFAULT_COMMIT_AI_CONFIG: CommitAiConfig = {
-  provider: null,
-  effectiveProvider: 'codex',
-  resolutionSource: 'auto',
-  models: { ...DEFAULT_AI_FEATURE_MODELS },
-  availability: emptyAvailability(false),
-};
 
 export function isAiFeatureProvider(value: unknown): value is AiFeatureProvider {
   return typeof value === 'string'
@@ -123,7 +94,13 @@ function normalizeAvailability(
  */
 export function normalizeAiFeatureConfig(
   raw: AiFeatureConfigInput | null | undefined,
-  defaults: AiFeatureConfig = DEFAULT_COMMIT_AI_CONFIG,
+  defaults: AiFeatureConfig = {
+    provider: null,
+    effectiveProvider: 'opencode',
+    resolutionSource: 'auto',
+    models: { ...DEFAULT_AI_FEATURE_MODELS },
+    availability: emptyAvailability(false),
+  },
 ): AiFeatureConfig {
   if (raw == null) {
     return {
@@ -154,7 +131,7 @@ export function normalizeAiFeatureConfig(
 /**
  * Resolve auto-mode provider.
  * Prefers `preferredProvider` when available (e.g. current chat CLI for prompt
- * enhancer and commit AI), then Codex → Claude → other available CLIs.
+ * enhancer), then falls back to opencode.
  */
 export function pickAutoAiFeatureProvider(
   availability: AiFeatureAvailability,
@@ -167,11 +144,23 @@ export function pickAutoAiFeatureProvider(
   ) {
     return preferredProvider;
   }
-  if (availability.codex) return 'codex';
-  if (availability.claude) return 'claude';
-  for (const provider of AI_FEATURE_PROVIDERS) {
-    if (provider === 'claude' || provider === 'codex') continue;
-    if (availability[provider]) return provider;
-  }
+  if (availability.opencode) return 'opencode';
   return null;
 }
+
+// ============================================================================
+// Commit AI (opencode-only)
+// ============================================================================
+
+export type CommitAiProvider = AiFeatureProvider;
+
+export interface CommitAiConfig extends AiFeatureConfig {
+}
+
+export const DEFAULT_COMMIT_AI_CONFIG: CommitAiConfig = {
+  provider: 'opencode',
+  effectiveProvider: 'opencode',
+  resolutionSource: 'manual',
+  models: { ...DEFAULT_AI_FEATURE_MODELS },
+  availability: emptyAvailability(false),
+};

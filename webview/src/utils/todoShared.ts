@@ -18,5 +18,8 @@ export function normalizeTodoStatus(status: unknown): 'pending' | 'in_progress' 
   if (value === 'in_progress' || value === 'in-progress' || value === 'active' || value === 'running') {
     return 'in_progress';
   }
+  if (value === 'cancelled' || value === 'canceled') {
+    return 'completed';
+  }
   return 'pending';
 }

@@ -24,8 +24,6 @@ interface UseCompletionTriggerDetectionParams {
   getTextContent: () => string;
   fileCompletion: CompletionDropdownState;
   commandCompletion: CompletionDropdownState;
-  agentCompletion: CompletionDropdownState;
-  promptCompletion: CompletionDropdownState;
   dollarCommandCompletion: CompletionDropdownState;
   /** Only enable $ trigger detection when provider is codex */
   isDollarTriggerEnabled?: boolean;
@@ -42,8 +40,6 @@ export function useCompletionTriggerDetection({
   getTextContent,
   fileCompletion,
   commandCompletion,
-  agentCompletion,
-  promptCompletion,
   dollarCommandCompletion,
   isDollarTriggerEnabled = false,
 }: UseCompletionTriggerDetectionParams) {
@@ -69,8 +65,6 @@ export function useCompletionTriggerDetection({
       justRenderedTagRef.current = false;
       fileCompletion.close();
       commandCompletion.close();
-      agentCompletion.close();
-      promptCompletion.close();
       dollarCommandCompletion.close();
       return;
     }
@@ -83,8 +77,6 @@ export function useCompletionTriggerDetection({
     if (text.length > TEXT_LENGTH_THRESHOLDS.COMPLETION_DETECTION) {
       fileCompletion.close();
       commandCompletion.close();
-      agentCompletion.close();
-      promptCompletion.close();
       dollarCommandCompletion.close();
       timer.mark('skip-large-text');
       timer.end();
@@ -94,15 +86,11 @@ export function useCompletionTriggerDetection({
     // Optimization: Quick check if text contains trigger characters, return immediately if not
     const hasAtSymbol = text.includes('@');
     const hasSlashSymbol = text.includes('/');
-    const hasHashSymbol = text.includes('#');
-    const hasExclamationSymbol = text.includes('!');
     const hasDollarSymbol = isDollarTriggerEnabled && text.includes('$');
 
-    if (!hasAtSymbol && !hasSlashSymbol && !hasHashSymbol && !hasExclamationSymbol && !hasDollarSymbol) {
+    if (!hasAtSymbol && !hasSlashSymbol && !hasDollarSymbol) {
       fileCompletion.close();
       commandCompletion.close();
-      agentCompletion.close();
-      promptCompletion.close();
       dollarCommandCompletion.close();
       timer.end();
       return;
@@ -120,8 +108,6 @@ export function useCompletionTriggerDetection({
     if (!trigger) {
       fileCompletion.close();
       commandCompletion.close();
-      agentCompletion.close();
-      promptCompletion.close();
       dollarCommandCompletion.close();
       timer.end();
       return;
@@ -137,8 +123,6 @@ export function useCompletionTriggerDetection({
     // Open corresponding completion based on trigger symbol
     if (trigger.trigger === '@') {
       commandCompletion.close();
-      agentCompletion.close();
-      promptCompletion.close();
       dollarCommandCompletion.close();
       if (!fileCompletion.isOpen) {
         fileCompletion.open(position, trigger);
@@ -148,8 +132,6 @@ export function useCompletionTriggerDetection({
       }
     } else if (trigger.trigger === '/') {
       fileCompletion.close();
-      agentCompletion.close();
-      promptCompletion.close();
       dollarCommandCompletion.close();
       if (!commandCompletion.isOpen) {
         commandCompletion.open(position, trigger);
@@ -157,43 +139,17 @@ export function useCompletionTriggerDetection({
       } else {
         commandCompletion.updateQuery(trigger);
       }
-    } else if (trigger.trigger === '#') {
-      fileCompletion.close();
-      commandCompletion.close();
-      promptCompletion.close();
-      dollarCommandCompletion.close();
-      if (!agentCompletion.isOpen) {
-        agentCompletion.open(position, trigger);
-        agentCompletion.updateQuery(trigger);
-      } else {
-        agentCompletion.updateQuery(trigger);
-      }
-    } else if (trigger.trigger === '!') {
-      fileCompletion.close();
-      commandCompletion.close();
-      agentCompletion.close();
-      dollarCommandCompletion.close();
-      if (!promptCompletion.isOpen) {
-        promptCompletion.open(position, trigger);
-        promptCompletion.updateQuery(trigger);
-      } else {
-        promptCompletion.updateQuery(trigger);
-      }
     } else if (trigger.trigger === '$') {
       if (!isDollarTriggerEnabled) {
         // Ignore $ trigger when not in Codex provider mode
         fileCompletion.close();
         commandCompletion.close();
-        agentCompletion.close();
-        promptCompletion.close();
         dollarCommandCompletion.close();
         timer.end();
         return;
       }
       fileCompletion.close();
       commandCompletion.close();
-      agentCompletion.close();
-      promptCompletion.close();
       if (!dollarCommandCompletion.isOpen) {
         dollarCommandCompletion.open(position, trigger);
         dollarCommandCompletion.updateQuery(trigger);
@@ -213,8 +169,6 @@ export function useCompletionTriggerDetection({
     getTriggerPosition,
     fileCompletion,
     commandCompletion,
-    agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     isDollarTriggerEnabled,
   ]);

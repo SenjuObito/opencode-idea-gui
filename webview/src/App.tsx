@@ -3,13 +3,13 @@ import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
 import { sendBridgeEvent } from './utils/bridge';
-import { preloadSlashCommands, forceRefreshPrompts } from './components/ChatInputBox/providers';
+import { copyViaHost } from './utils/copyUtils';
+import { preloadSlashCommands } from './components/ChatInputBox/providers';
 import {
   useScrollBehavior,
   useSessionManagement,
   useStreamingMessages,
   useWindowCallbacks,
-  useRewindHandlers,
   useHistoryLoader,
   useMessageQueue,
   useThemeInit,
@@ -18,15 +18,18 @@ import {
   useMessageSender,
   useModelProviderState,
   useChatComputations,
+  useCompactConfirm,
 } from './hooks';
 import {
   NEW_SESSION_COMMANDS,
   RESUME_COMMANDS,
   PLAN_COMMANDS,
   CONTEXT_COMMANDS,
+  BUILTIN_SESSION_COMMANDS,
 } from './hooks/useMessageSender';
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
+import { createCompactSuccessNotice, createCompactFailureNotice } from './utils/messageUtils';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
 import { ToastContainer } from './components/Toast';
@@ -39,13 +42,14 @@ import { useSession } from './contexts/SessionContext';
 import { useUIState } from './contexts/UIStateContext';
 import { useDialogs } from './contexts/DialogContext';
 import { AppDialogs } from './components/AppDialogs';
+import ConfirmDialog from './components/ConfirmDialog';
 import { DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from './utils/permissionDialogTimeout';
 
 const App = () => {
   const { t } = useTranslation();
 
   // ── Dialog management (extracted to DialogContext, stage 4 of TASK-P1-01) ──
-  // Open* / set* are still needed by hooks (useWindowCallbacks, useRewindHandlers).
+  // Open* / set* are still needed by hooks (useWindowCallbacks).
   // Display state (permissionDialogOpen / askUserQuestionDialogOpen / etc.) is
   // consumed directly inside <AppDialogs> via useDialogs().
   const {
@@ -54,12 +58,12 @@ const App = () => {
     openPlanApprovalDialog,
     forceClosePermissionDialog,
     forceCloseAskUserQuestionDialog,
+    invalidateQuestionCard,
+    invalidatePermissionCard,
     forceClosePlanApprovalDialog,
     openContextUsageDialog,
     updateContextUsageData,
     closeContextUsageDialog,
-    setRewindDialogOpen, setCurrentRewindRequest,
-    isRewinding, setIsRewinding, setRewindSelectDialogOpen,
   } = useDialogs();
 
   // ── Messages flow state (extracted to MessagesContext, stage 1 of TASK-P1-01) ──
@@ -71,6 +75,11 @@ const App = () => {
     loading, setLoading, setLoadingStartTime,
     setIsThinking,
     streamingActive, setStreamingActive,
+    setSessionLoading,
+    setSseTodos,
+    sseTodos,
+    isCompacting, setIsCompacting,
+    setCompactingStartTime,
   } = useMessages();
 
   // task_events live in TaskEventProvider (SubagentContext) so their updates do
@@ -131,7 +140,7 @@ const App = () => {
   // ── Scroll behavior ──
   const {
     messagesContainerRef, messagesEndRef, inputAreaRef,
-    isUserAtBottomRef, isAutoScrollingRef, userPausedRef,
+    isUserAtBottomRef, isAutoScrollingRef, userPausedRef, scrollToBottom,
   } = useScrollBehavior({ currentView, messages, loading, streamingActive });
 
   // ── Streaming messages ──
@@ -149,22 +158,27 @@ const App = () => {
   // ── Model/Provider state ──
   const {
     currentProvider, selectedModel, permissionMode,
-    selectedAgent, sdkStatusLoading, sdkStatusError, currentSdkInstalled,
+    daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled,
     currentProviderRef,
-    reasoningEffort, streamingEnabledSetting, sendShortcut, autoOpenFileEnabled,
+    activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
+    reasoningEffort, codexFastMode, sendShortcut, autoOpenFileEnabled,
+    longContextEnabled,
     usagePercentage, usageUsedTokens, usageMaxTokens,
     setPermissionMode, setCurrentProvider,
-    setSelectedOpenCodeModel, setOpenCodePermissionMode, setReasoningEffort,
-    setStreamingEnabledSetting,
+    setClaudePermissionMode, setCodexPermissionMode, setOpenCodePermissionMode,
+    setSelectedClaudeModel, setSelectedCodexModel,
+    setSelectedOpenCodeModel,
+    setLongContextEnabled, setReasoningEffort, setCodexFastMode,
+    setProviderConfigVersion, setActiveProviderConfig,
+    setClaudeSettingsAlwaysThinkingEnabled,
     setSendShortcut, setAutoOpenFileEnabled,
-    setSdkStatus, setSdkStatusLoaded, setSdkStatusError, retrySdkStatus, setSelectedAgent,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
+    syncActiveProviderModelMapping,
     handleModeSelect, handleModelSelect, handleProviderSelect,
-    handleReasoningChange, handleAgentSelect,
-    handleStreamingEnabledChange, handleSendShortcutChange,
-    handleAutoOpenFileEnabledChange,
+    handleReasoningChange, handleCodexFastModeChange, handleToggleThinking,
+    handleSendShortcutChange,
+    handleAutoOpenFileEnabledChange, handleLongContextChange,
   } = useModelProviderState({ addToast, t });
-
 
   // ── Global drag event interception ──
   useEffect(() => {
@@ -240,14 +254,10 @@ const App = () => {
   // ── Slash command preloading ──
   useEffect(() => {
     preloadSlashCommands();
-    forceRefreshPrompts();
-    const retryTimer = setTimeout(() => { forceRefreshPrompts(); }, 1000);
-    return () => clearTimeout(retryTimer);
   }, []);
 
   useEffect(() => {
     if (isFirstMountRef.current) { isFirstMountRef.current = false; return; }
-    if (currentView === 'chat') { forceRefreshPrompts(); }
   }, [currentView]);
 
   // Recover task events from task-notification user messages. Recent Claude Code
@@ -293,40 +303,312 @@ const App = () => {
     messages, loading, historyData, currentSessionId, currentSessionIdRef, currentProvider,
     setHistoryData, setMessages, setCurrentView, setCurrentSessionId,
     setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    setStatus, setLoading, setIsThinking, setStreamingActive,
+    setStatus, setLoading, setIsThinking, setStreamingActive, setSessionLoading,
     setTaskEvents,
+    setSseTodos,
     setSubagentHistories,
     clearToasts, addToast, t,
-    applyHistoryModel: (provider, model, agent) => {
-      // OpenCode-only build: the provider is fixed; apply model/agent directly.
-      void provider;
-      if (model) {
-        setSelectedOpenCodeModel(model);
-        sendBridgeEvent('set_model', model);
-      }
-      if (agent) {
-        handleAgentSelect({ id: agent, name: agent, prompt: '' });
-      }
-    },
   });
 
   useHistoryLoader({ currentView, currentProvider });
 
+  // ── Share state ──
+  const [isShared, setIsShared] = useState(false);
+  const [sharePending, setSharePending] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  /** Set once the server reports sharing is disabled ("share": "disabled") — hides the header controls. */
+  const [shareHidden, setShareHidden] = useState(false);
+
+  const resetShareState = useCallback(() => {
+    setIsShared(false);
+    setSharePending(false);
+    setShareUrl(null);
+    setShareHidden(false);
+  }, []);
+
+  const handleShare = useCallback(async () => {
+    if (!currentSessionId || sharePending || shareHidden) return;
+    // No premature success toast here: the share URL only becomes copyable
+    // when the host round-trips onShareSuccess. Feedback happens there.
+    setSharePending(true);
+    sendBridgeEvent('share_session', currentSessionId);
+  }, [currentSessionId, sharePending, shareHidden]);
+
+  const handleUnshare = useCallback(async () => {
+    if (!currentSessionId) return;
+    sendBridgeEvent('unshare_session', currentSessionId);
+    setIsShared(false);
+    setShareUrl(null);
+  }, [currentSessionId]);
+
+  const handleCopyShareLink = useCallback(() => {
+    if (!shareUrl) {
+      // Link unknown (e.g. page reloaded) — re-create the share instead.
+      void handleShare();
+      return;
+    }
+    void copyViaHost(shareUrl).then((ok) => {
+      addToast(ok ? t('chat.shareSuccess') : t('chat.shareFailed'), ok ? 'success' : 'error');
+    });
+  }, [shareUrl, handleShare, addToast, t]);
+
+  // ── Undo/Redo state ──
+  /** opencode message id of the revert boundary (drives RevertPlaceholderBar). */
+  const [revertBoundaryId, setRevertBoundaryId] = useState<string | null>(null);
+  const hasRevertStateRef = useRef(false);
+  const revertBoundaryIdRef = useRef<string | null>(null);
+
+  /**
+   * 同步更新 revert 状态的 ref 与 boundary（ref 供回调内做变更检测，避开闭包旧值）。
+   * messageId 是服务端 revert 指针指向的用户消息 id，占位条据此定位切片。
+   */
+  const applyRevertState = useCallback((next: boolean, messageId?: string | null) => {
+    hasRevertStateRef.current = next;
+    revertBoundaryIdRef.current = next ? (messageId ?? null) : null;
+    setRevertBoundaryId(next ? (messageId ?? null) : null);
+  }, []);
+
+  /**
+   * Resolve an opencode message id from a chat message. Live messages may
+   * carry it top-level or inside raw.id / raw.uuid; history-restored messages
+   * always have raw.id (see SdkMessageConverter). Returns undefined when the
+   * caller should fall back to the backend's latest-user-message resolution.
+   */
+  const getMessageId = useCallback((message: ClaudeMessage | null | undefined): string | undefined => {
+    if (!message) return undefined;
+    if (typeof message.id === 'string' && message.id) return message.id;
+    const raw = message.raw as Record<string, unknown> | undefined;
+    if (raw && typeof raw === 'object') {
+      if (typeof raw.id === 'string' && raw.id) return raw.id;
+      if (typeof raw.uuid === 'string' && raw.uuid) return raw.uuid;
+    }
+    return undefined;
+  }, []);
+
+  /**
+   * Send the revert/unrevert bridge event. Caller must have settled any
+   * busy-session confirmation beforehand (see pendingRevert flow).
+   */
+  const dispatchRevert = useCallback((message: ClaudeMessage) => {
+    const id = getMessageId(message);
+    if (!id) {
+      // live 消息尚未回填 opencode id —— 让宿主通过 listMessages 解析最后一条用户消息
+      console.warn('[App] undo: message has no id; falling back to backend latest-user resolution');
+      sendBridgeEvent('revert_session', 'latest');
+      applyRevertState(true);
+      return;
+    }
+    console.debug('[App] undo: reverting to message', id);
+    sendBridgeEvent('revert_session', id);
+    // Optimistic: boundary is the undone user message; the host's
+    // onRevertStateUpdate push carries the authoritative pointer.
+    applyRevertState(true, id);
+  }, [applyRevertState, getMessageId]);
+
+  /** Pending "interrupt then undo/redo" confirmation (busy session). */
+  const [pendingRevert, setPendingRevert] = useState<
+    { op: 'undo'; target: ClaudeMessage } | { op: 'redo' } | null
+  >(null);
+
+  const handleUndoMessage = useCallback((message: ClaudeMessage) => {
+    if (streamingActive) {
+      // 运行中撤销：先确认中断（服务端 revert 在 session busy 时会被拒绝）
+      setPendingRevert({ op: 'undo', target: message });
+      return;
+    }
+    dispatchRevert(message);
+  }, [dispatchRevert, streamingActive]);
+
+  const handleRedoMessage = useCallback(() => {
+    if (streamingActive) {
+      setPendingRevert({ op: 'redo' });
+      return;
+    }
+    sendBridgeEvent('unrevert_session');
+    applyRevertState(false);
+  }, [applyRevertState, streamingActive]);
+
+  // Confirm/cancel handlers live below, after `interruptSession` (useMessageSender)
+  // exists — see handleConfirmInterruptRevert.
+
+  const handleForkRequest = useCallback((message: ClaudeMessage) => {
+    if (streamingActive) {
+      addToast(t('chat.forkDisabledTooltip'), 'warning');
+      return;
+    }
+    const id = getMessageId(message);
+    if (!id) {
+      console.warn('[App] fork: message has no id; falling back to backend latest-user resolution');
+      sendBridgeEvent('fork_session', 'latest');
+      return;
+    }
+    sendBridgeEvent('fork_session', id);
+  }, [streamingActive, addToast, t, getMessageId]);
+
+  /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
+  const handleForkFull = useCallback(() => {
+    if (streamingActive) {
+      addToast(t('chat.forkDisabledTooltip'), 'warning');
+      return;
+    }
+    sendBridgeEvent('fork_session', 'full');
+  }, [streamingActive, addToast, t]);
+
+  // Latest user message id, used by the builtin /undo slash command.
+  const findLatestUserMessageId = useCallback((): string | undefined => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.type !== 'user') continue;
+      const id = getMessageId(m);
+      if (id) return id;
+    }
+    return undefined;
+  }, [messages, getMessageId]);
+
+  // Register bridge callbacks for share / fork / revert / compact results
+  useEffect(() => {
+    window.onForkSuccess = (json: string) => {
+      try {
+        const payload = JSON.parse(json) as { sessionId?: string };
+        console.debug('[App] onForkSuccess', payload);
+        const newSessionId = payload.sessionId;
+        if (!newSessionId) return;
+        // Fork result toast with an explicit switch action; default is to stay
+        // in the current session when the toast times out.
+        addToast(t('chat.forkCreatedToast'), 'info', {
+          label: t('chat.forkSwitchAction'),
+          onClick: () => loadHistorySession(newSessionId),
+        }, { duration: 5000 });
+      } catch {
+        // ignore malformed payloads
+      }
+    };
+    window.onForkError = (detail?: string) => {
+      console.warn('[App] onForkError', detail);
+      addToast(`${t('chat.forkFailed')}${detail ? `: ${detail}` : ''}`, 'error');
+    };
+    window.onShareSuccess = (url: string) => {
+      console.debug('[App] onShareSuccess, copying url to clipboard');
+      setSharePending(false);
+      setIsShared(true);
+      setShareUrl(url);
+      void copyViaHost(url).then((ok) => {
+        if (ok) {
+          addToast(t('chat.shareSuccess'), 'success');
+        } else {
+          // 剪贴板写入失败 ≠ 分享失败：链接已在服务端创建，
+          // 提供重试入口而不是误导性的「分享未完成」。
+          addToast(t('chat.shareLinkCreated'), 'info', {
+            label: t('chat.retryCopy'),
+            onClick: () => {
+              void copyViaHost(url).then((retryOk) => {
+                addToast(retryOk ? t('chat.shareSuccess') : t('chat.shareFailed'), retryOk ? 'success' : 'error');
+              });
+            },
+          }, { duration: 5000 });
+        }
+      });
+    };
+    window.onShareError = (detail?: string) => {
+      console.warn('[App] onShareError', detail);
+      setSharePending(false);
+      setIsShared(false);
+      const reason = (detail ?? '').trim();
+      // opencode 在 share 功能被关闭（opencode.json "share": "disabled"）时，
+      // 服务端对 share 接口返回 500 InternalServerError —— 映射为可操作的提示。
+      if (/InternalServerError|UnknownError/i.test(reason)) {
+        setShareHidden(true);
+        addToast(`${t('chat.shareFailed')} — ${t('chat.shareDisabledHint')}`, 'error');
+        return;
+      }
+      addToast(reason ? `${t('chat.shareFailed')}: ${reason}` : t('chat.shareFailed'), 'error');
+    };
+    window.onRevertError = (json: string) => {
+      let op = 'undo';
+      try {
+        op = (JSON.parse(json) as { op?: string }).op ?? 'undo';
+      } catch {
+        // keep default
+      }
+      addToast(op === 'undo' ? t('chat.revertFailed') : t('chat.restoreFailed'), 'error');
+      // 清除乐观撤销边界，避免重载前占位条还在、而底层消息却已恢复的矛盾状态。
+      applyRevertState(false);
+      // 回滚乐观状态：重载会话让宿主推送真实的 revert 指针与消息列表
+      const sessionId = currentSessionIdRef.current;
+      if (sessionId) {
+        loadHistorySession(sessionId);
+      }
+    };
+    window.onRevertStateUpdate = (json: string) => {
+      try {
+        const payload = JSON.parse(json) as { hasRevert?: boolean; messageId?: string | null };
+        console.debug('[App] onRevertStateUpdate', payload);
+        const next = !!payload.hasRevert;
+        const nextId = payload.messageId ?? null;
+        // 重载触发条件：hasRevert 变化「或」边界消息 id 变化。
+        // 仅比较 hasRevert 会在「已有撤销态时再次点击撤销」场景下漏掉重载：
+        // 此时 hasRevert 仍为 true（changed=false），但边界 msg_xxx 已改变，
+        // 新边界消息未被拉取进前端 → messageMatchesId 命中失败 → 消息不折叠、
+        // 占位条为空且「展示」无反应。
+        const changed = next !== hasRevertStateRef.current || nextId !== revertBoundaryIdRef.current;
+        applyRevertState(next, nextId);
+        // Reload the transcript so reverted/restored messages are reflected.
+        // 仅在状态真正变化时重载：宿主在每次历史加载完成后都会推送本事件，
+        // 无条件重载会形成 load_session → onRevertStateUpdate → load_session
+        // 的死循环，表现为消息列表持续闪烁。
+        if (changed) {
+          const sessionId = currentSessionIdRef.current;
+          if (sessionId) {
+            loadHistorySession(sessionId);
+          }
+        }
+      } catch {
+        // ignore malformed payloads
+      }
+    };
+    window.onCompactSuccess = () => {
+      setIsCompacting(false);
+      setCompactingStartTime(null);
+      setMessages((prev) => [...prev, createCompactSuccessNotice(t('chat.compactSuccess'))]);
+      // Force scroll to bottom after compact completes
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    };
+    window.onCompactError = (detail?: string) => {
+      setIsCompacting(false);
+      setCompactingStartTime(null);
+      setMessages((prev) => [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)]);
+    };
+    return () => {
+      delete window.onForkSuccess;
+      delete window.onForkError;
+      delete window.onShareSuccess;
+      delete window.onShareError;
+      delete window.onRevertError;
+      delete window.onRevertStateUpdate;
+      delete window.onCompactSuccess;
+      delete window.onCompactError;
+    };
+  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, scrollToBottom]);
+
   // ── Window callbacks (bridge communication) ──
   useWindowCallbacks({
     t, addToast, clearToasts,
-    setOpenCodePermissionMode, setSelectedOpenCodeModel, setReasoningEffort,
     setMessages, setStatus, setLoading, setLoadingStartTime,
-    setIsThinking, setStreamingActive, setHistoryData,
+    setIsThinking, setStreamingActive, setSessionLoading, setHistoryData,
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    setPermissionMode, setCurrentProvider,
-    setStreamingEnabledSetting,
+    setPermissionMode, setCurrentProvider, setClaudePermissionMode, setCodexPermissionMode,
+    setOpenCodePermissionMode,
+    setSelectedClaudeModel, setSelectedCodexModel, setSelectedOpenCodeModel,
+    setLongContextEnabled, setReasoningEffort, setCodexFastMode,
+    setProviderConfigVersion, setActiveProviderConfig,
+    setClaudeSettingsAlwaysThinkingEnabled,
     setSendShortcut, setAutoOpenFileEnabled,
-    setSdkStatus, setSdkStatusLoaded, setSdkStatusError,
-    setIsRewinding, setRewindDialogOpen, setCurrentRewindRequest,
-    setContextInfo, setSelectedAgent,
+    setContextInfo,
     setSubagentHistories,
     setTaskEvents,
+    setSseTodos,
     currentProviderRef, messagesContainerRef, isUserAtBottomRef, userPausedRef,
     suppressNextStatusToastRef,
     streamingContentRef, streamingThinkingRef, isStreamingRef, useBackendStreamingRenderRef,
@@ -337,8 +619,9 @@ const App = () => {
     lastThinkingUpdateRef, thinkingUpdateTimeoutRef,
     findLastAssistantIndex, extractRawBlocks,
     getOrCreateStreamingAssistantIndex, patchAssistantForStreaming,
+    syncActiveProviderModelMapping,
     openPermissionDialog, openAskUserQuestionDialog, openPlanApprovalDialog,
-    forceClosePermissionDialog, forceCloseAskUserQuestionDialog, forceClosePlanApprovalDialog,
+    forceClosePermissionDialog, forceCloseAskUserQuestionDialog, invalidateQuestionCard, invalidatePermissionCard, forceClosePlanApprovalDialog,
     openContextUsageDialog, updateContextUsageData,
     closeContextUsageDialog,
     customSessionTitleRef, currentSessionIdRef, updateHistoryTitle, applyHistoryTitleLocal,
@@ -366,24 +649,118 @@ const App = () => {
     interruptSession,
   } = useMessageSender({
     t, addToast,
-    currentProvider, selectedModel, permissionMode, reasoningEffort, selectedAgent,
-    sdkStatusLoading, currentSdkInstalled,
+    currentProvider, selectedModel, permissionMode, reasoningEffort, codexFastMode,
+    daemonStatusLoaded, currentSdkInstalled,
     sentAttachmentsRef, chatInputRef, messagesContainerRef,
     isUserAtBottomRef, userPausedRef, isStreamingRef,
+    // Streaming buffers + throttle handles — interruptSession needs them to
+    // drop buffered content and cancel queued rAFs when the user hits stop.
+    streamingContentRef, streamingThinkingRef,
+    contentUpdateTimeoutRef, thinkingUpdateTimeoutRef,
     setMessages, setLoading, setLoadingStartTime, setStreamingActive,
-    setSettingsInitialTab, setCurrentView,
+    setCurrentView,
     forceCreateNewSession,
     handleModeSelect,
+    longContextEnabled,
     openContextUsageDialog,
     closeContextUsageDialog,
   });
+
+  // ── "Interrupt then undo/redo" confirmation handlers (busy session) ──
+  // Declared here because they depend on `interruptSession` from useMessageSender.
+  const handleConfirmInterruptRevert = useCallback(() => {
+    const pending = pendingRevert;
+    setPendingRevert(null);
+    if (!pending) return;
+    // Abort first — daemon abort bypasses the command queue, and the queued
+    // revert runs as soon as the aborted turn settles.
+    interruptSession();
+    if (pending.op === 'undo') {
+      dispatchRevert(pending.target);
+    } else {
+      sendBridgeEvent('unrevert_session');
+      applyRevertState(false);
+    }
+  }, [pendingRevert, interruptSession, dispatchRevert, applyRevertState]);
+
+  const handleCancelInterruptRevert = useCallback(() => {
+    setPendingRevert(null);
+  }, []);
 
   // ── Message queue ──
   const {
     queue: messageQueue,
     enqueue: enqueueMessage,
     dequeue: dequeueMessage,
-  } = useMessageQueue({ isLoading: loading, onExecute: executeMessage });
+  } = useMessageQueue({ isLoading: loading, isCompacting, onExecute: executeMessage });
+
+  /**
+   * 发送真实消息前消费 revert 边界。与 opencode 服务端语义一致：
+   * prompt/command/shell/summarize 都会先执行 revert.cleanup——从边界消息起
+   * 连同自身全部删除（无 partID）并清除 revert 指针。本地同步截断，避免
+   * 占位条滞留、以及清除边界后被撤销的旧消息"复活"。
+   */
+  const consumeRevertBoundary = useCallback(() => {
+    // Use the ref to avoid a stale closure: this callback is invoked from the
+    // submit path where the `revertBoundaryId` state may not have caught up.
+    const boundaryId = revertBoundaryIdRef.current;
+    if (!hasRevertStateRef.current || !boundaryId) return;
+    const idx = messages.findIndex((m) => getMessageId(m) === boundaryId);
+    if (idx >= 0) {
+      setMessages(messages.slice(0, idx));
+    }
+    applyRevertState(false);
+  }, [messages, getMessageId, applyRevertState, setMessages]);
+
+  // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
+  const doCompact = useCallback(() => {
+    consumeRevertBoundary();
+    sendBridgeEvent('compact_session');
+    setIsCompacting(true);
+    setCompactingStartTime(Date.now());
+  }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime]);
+  const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
+    useCompactConfirm(doCompact);
+
+  // Handle opencode builtin session commands typed as slash commands
+  // (mirror the TUI: /compact /undo /redo /fork /share /unshare).
+  const handleBuiltinCommand = useCallback((command: string) => {
+    switch (command) {
+      case '/compact':
+        // 先弹确认框；确认后 doCompact 才发送（不可撤销操作）。
+        requestCompact();
+        break;
+      case '/undo': {
+        const id = findLatestUserMessageId();
+        if (id) {
+          handleUndoMessage({ type: 'user', id } as ClaudeMessage);
+        } else {
+          // 本地无 id —— 交给宿主通过 listMessages 解析
+          handleUndoMessage({ type: 'user' } as ClaudeMessage);
+        }
+        break;
+      }
+      case '/redo':
+        handleRedoMessage();
+        break;
+      case '/fork':
+        handleForkFull();
+        break;
+      case '/share':
+        void handleShare();
+        break;
+      case '/unshare':
+        void handleUnshare();
+        break;
+    }
+  }, [requestCompact, handleUndoMessage, handleRedoMessage, handleForkFull, handleShare, handleUnshare]);
+
+  // Reset revert / share / compact-confirm state on session switch
+  useEffect(() => {
+    applyRevertState(false);
+    resetShareState();
+    handleCancelCompact();
+  }, [applyRevertState, resetShareState, currentSessionId, handleCancelCompact]);
 
   // handleSubmit with queue support (new session and local commands bypass loading check)
   const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
@@ -403,8 +780,8 @@ const App = () => {
         setCurrentView('history');
         return;
       }
-      // /plan - switch to plan mode (Claude only; Codex sends as normal text)
-      if (PLAN_COMMANDS.has(command) && currentProvider === 'claude') {
+      // /plan - switch to plan mode (opencode has a native plan agent)
+      if (PLAN_COMMANDS.has(command)) {
         handleModeSelect('plan');
         addToast(t('chat.planModeEnabled', { defaultValue: 'Plan mode enabled' }), 'info');
         return;
@@ -414,24 +791,33 @@ const App = () => {
         hookHandleSubmit(content, attachments);
         return;
       }
+      // opencode builtin session commands (compact/undo/redo/fork/share/unshare)
+      if (BUILTIN_SESSION_COMMANDS.has(command)) {
+        // /compact 在用户确认后才发送，revert 边界在确认时（doCompact）消费；
+        // 其余（undo/redo/fork/share）是纯客户端操作，不影响服务端 revert 状态。
+        handleBuiltinCommand(command);
+        return;
+      }
     }
-    // If loading, add to queue
-    if (loading) {
+    // 普通消息 / 队列消息 / !shell —— 服务端 prompt 前都会 cleanup revert
+    consumeRevertBoundary();
+    // If loading or compacting, add to queue
+    if (loading || isCompacting) {
       enqueueMessage(content, attachments);
       return;
     }
     hookHandleSubmit(content, attachments);
-  }, [loading, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t]);
+  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
     findToolResult, getToolResultRaw,
     fileChangeMgmt,
-    filteredFileChanges, subagents, globalTodos, rewindableMessages, sessionTitle,
+    filteredFileChanges, subagents, globalTodos, sessionTitle,
   } = useChatComputations({
     t, messages, mergedMessages, subagentHistories, customSessionTitle, streamingActive, currentProvider,
     currentSessionId, currentSessionIdRef,
-    getMessageText, getContentBlocks,
+    getMessageText, getContentBlocks, sseTodos,
   });
 
   const { handleUndoFile, handleDiscardAll: handleDiscardAllRaw, handleKeepAll } = fileChangeMgmt;
@@ -448,19 +834,9 @@ const App = () => {
   );
 
   const handleNavigateToProviderSettings = useCallback(() => {
-    setSettingsInitialTab('basic');
+    setSettingsInitialTab('providers');
     setCurrentView('settings');
   }, [setSettingsInitialTab, setCurrentView]);
-
-  // ── Rewind handlers ──
-  const {
-    handleRewindConfirm, handleRewindCancel,
-    handleOpenRewindSelectDialog, handleRewindSelect, handleRewindSelectCancel,
-  } = useRewindHandlers({
-    t, addToast, currentSessionId, mergedMessages, getMessageText,
-    setCurrentRewindRequest, setRewindDialogOpen, setRewindSelectDialogOpen,
-    setIsRewinding, isRewinding,
-  });
 
   const statusPanelExpanded = !userCollapsedRef.current;
 
@@ -474,7 +850,6 @@ const App = () => {
         t={t}
         onBack={() => setCurrentView('chat')}
         onNewSession={createNewSession}
-        onNewTab={() => sendBridgeEvent('create_new_tab')}
         onHistory={() => setCurrentView('history')}
         onSettings={() => {
           setSettingsInitialTab(undefined);
@@ -488,6 +863,13 @@ const App = () => {
             updateHistoryTitle(currentSessionId, newTitle);
           }
         }}
+        isShared={isShared}
+        sharePending={sharePending}
+        shareHidden={shareHidden}
+        onCopyShareLink={handleCopyShareLink}
+        onShare={handleShare}
+        onUnshare={handleUnshare}
+        onForkAll={handleForkFull}
       />
 
       {currentView === 'settings' ? (
@@ -495,8 +877,6 @@ const App = () => {
           onClose={() => setCurrentView('chat')}
           initialTab={settingsInitialTab}
           currentProvider={currentProvider}
-          streamingEnabled={streamingEnabledSetting}
-          onStreamingEnabledChange={handleStreamingEnabledChange}
           sendShortcut={sendShortcut}
           onSendShortcutChange={handleSendShortcutChange}
           autoOpenFileEnabled={autoOpenFileEnabled}
@@ -543,31 +923,36 @@ const App = () => {
               onKeepAll={handleKeepAll}
               onSubmit={handleSubmit}
               onInterrupt={interruptSession}
-              onRewind={handleOpenRewindSelectDialog}
               onNavigateToProviderSettings={handleNavigateToProviderSettings}
               onProviderSelect={wrappedHandleProviderSelect}
+              revertBoundaryId={revertBoundaryId}
+              onUndo={handleUndoMessage}
+              onRestore={handleRedoMessage}
+              onFork={handleForkRequest}
               currentProvider={currentProvider}
               selectedModel={selectedModel}
               permissionMode={permissionMode}
-              selectedAgent={selectedAgent}
-              sdkStatusLoading={sdkStatusLoading}
-              sdkStatusError={sdkStatusError}
-              onRetrySdkStatus={retrySdkStatus}
               currentSdkInstalled={currentSdkInstalled}
+              daemonStatusLoaded={daemonStatusLoaded}
+              retryDaemonStatus={retryDaemonStatus}
+              activeProviderConfig={activeProviderConfig}
+              claudeSettingsAlwaysThinkingEnabled={claudeSettingsAlwaysThinkingEnabled}
               reasoningEffort={reasoningEffort}
-              streamingEnabledSetting={streamingEnabledSetting}
+              codexFastMode={codexFastMode}
               sendShortcut={sendShortcut}
               autoOpenFileEnabled={autoOpenFileEnabled}
+              longContextEnabled={longContextEnabled}
               usagePercentage={usagePercentage}
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
               onModeSelect={handleModeSelect}
               onModelSelect={handleModelSelect}
-              onAgentSelect={handleAgentSelect}
               onReasoningChange={handleReasoningChange}
-              onStreamingEnabledChange={handleStreamingEnabledChange}
+              onCodexFastModeChange={handleCodexFastModeChange}
+              onToggleThinking={handleToggleThinking}
               onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
-              messageQueue={messageQueue}
+               onLongContextChange={handleLongContextChange}
+               messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
             />
           </div>
@@ -597,13 +982,29 @@ const App = () => {
         showInterruptConfirm={showInterruptConfirm}
         onConfirmInterrupt={handleConfirmInterrupt}
         onCancelInterrupt={handleCancelInterrupt}
-        rewindableMessages={rewindableMessages}
-        onRewindSelect={handleRewindSelect}
-        onRewindSelectCancel={handleRewindSelectCancel}
-        onRewindConfirm={handleRewindConfirm}
-        onRewindCancel={handleRewindCancel}
-        currentProvider={currentProvider}
         permissionDialogTimeoutSeconds={permissionDialogTimeoutSeconds}
+      />
+
+      <ConfirmDialog
+        isOpen={pendingRevert !== null}
+        title={pendingRevert?.op === 'undo' ? t('chat.undoTooltip') : t('chat.redoTooltip')}
+        message={pendingRevert?.op === 'undo'
+          ? t('chat.revertBusyConfirmMessage')
+          : t('chat.restoreBusyConfirmMessage')}
+        confirmText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        onConfirm={handleConfirmInterruptRevert}
+        onCancel={handleCancelInterruptRevert}
+      />
+
+      <ConfirmDialog
+        isOpen={showCompactConfirm}
+        title={t('chat.compactConfirmTitle')}
+        message={t('chat.compactConfirmMessage')}
+        confirmText={t('chat.compactConfirmAction')}
+        cancelText={t('common.cancel')}
+        onConfirm={handleCompactConfirmed}
+        onCancel={handleCancelCompact}
       />
     </>
   );

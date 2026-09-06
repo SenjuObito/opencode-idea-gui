@@ -4,7 +4,6 @@ import type { McpImportPreviewResponse, McpServer } from '../../types/mcp';
 import { sendToJava } from '../../utils/bridge';
 
 interface McpImportDialogProps {
-  currentProvider?: 'claude' | 'codex' | string;
   existingIds?: string[];
   onClose: () => void;
   onImport: (servers: McpServer[]) => void;
@@ -35,9 +34,8 @@ function uniqueId(baseId: string, taken: Set<string>): string {
  * Import MCP servers from a GitHub Copilot configuration (root key `servers`).
  * The Java backend does the format mapping; this dialog only pastes, previews and saves.
  */
-export function McpImportDialog({ currentProvider = 'claude', existingIds = [], onClose, onImport }: McpImportDialogProps) {
+export function McpImportDialog({ existingIds = [], onClose, onImport }: McpImportDialogProps) {
   const { t } = useTranslation();
-  const isCodexMode = currentProvider === 'codex';
   const [jsonContent, setJsonContent] = useState('');
   const [preview, setPreview] = useState<PreviewItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -92,8 +90,8 @@ export function McpImportDialog({ currentProvider = 'claude', existingIds = [], 
     }
     setLoading(true);
     setError(null);
-    sendToJava('parse_copilot_mcp_config', { json: jsonContent, isCodexMode });
-  }, [jsonContent, isCodexMode]);
+    sendToJava('parse_copilot_mcp_config', { json: jsonContent });
+  }, [jsonContent]);
 
   const handleContentChange = (value: string) => {
     setJsonContent(value);

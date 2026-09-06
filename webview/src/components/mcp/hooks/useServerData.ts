@@ -39,7 +39,6 @@ function getTerminalServerIds(servers: McpServer[], terminalStatusNames: Set<str
 }
 
 export interface UseServerDataOptions {
-  isCodexMode: boolean;
   messagePrefix: string;
   cacheKeys: CacheKeys;
   t: (key: string, options?: Record<string, unknown>) => string;
@@ -71,7 +70,6 @@ export interface UseServerDataReturn {
  * Server Data Loading and Initialization Hook
  */
 export function useServerData({
-  isCodexMode,
   messagePrefix,
   cacheKeys,
   t,
@@ -145,10 +143,10 @@ export function useServerData({
       undefined,
       undefined,
       `get_${messagePrefix}mcp_server_status request to backend`,
-      `Querying MCP server connection status via ${isCodexMode ? 'Codex' : 'Claude'} SDK`
+      'Querying MCP server connection status via OpenCode SDK'
     );
     sendToJava(`get_${messagePrefix}mcp_server_status`, {});
-  }, [messagePrefix, isCodexMode, t, onLog]);
+  }, [messagePrefix, t, onLog]);
 
   // Load server tools list
   const loadServerTools = useCallback((server: McpServer, forceRefresh = false) => {
@@ -219,19 +217,17 @@ export function useServerData({
         }
       }
 
-      if (!isCodexMode) {
-        const cachedStatus = readCache<McpServerStatusInfo[]>(cacheKeys.STATUS, cacheKeys);
-        if (cachedStatus && cachedStatus.length > 0) {
-          const terminalStatusNames = getTerminalStatusNames(cachedStatus);
-          terminalStatusNamesRef.current = terminalStatusNames;
-          clearToolsForTerminalStatuses(cachedServers || [], terminalStatusNames);
-          const statusMap = new Map<string, McpServerStatusInfo>();
-          cachedStatus.forEach((status) => {
-            statusMap.set(status.name, status);
-          });
-          setServerStatus(statusMap);
-          setStatusLoading(false);
-        }
+      const cachedStatus = readCache<McpServerStatusInfo[]>(cacheKeys.STATUS, cacheKeys);
+      if (cachedStatus && cachedStatus.length > 0) {
+        const terminalStatusNames = getTerminalStatusNames(cachedStatus);
+        terminalStatusNamesRef.current = terminalStatusNames;
+        clearToolsForTerminalStatuses(cachedServers || [], terminalStatusNames);
+        const statusMap = new Map<string, McpServerStatusInfo>();
+        cachedStatus.forEach((status) => {
+          statusMap.set(status.name, status);
+        });
+        setServerStatus(statusMap);
+        setStatusLoading(false);
       }
 
       // Restore last expanded server
@@ -278,7 +274,7 @@ export function useServerData({
     return () => {
       clearRefreshTimers();
     };
-  }, [cacheKeys, isCodexMode, loadServers, loadServerStatus, t, onLog, clearToolsForTerminalStatuses]);
+  }, [cacheKeys, loadServers, loadServerStatus, t, onLog, clearToolsForTerminalStatuses]);
 
   // Register server list update callback
   useEffect(() => {
@@ -338,24 +334,14 @@ export function useServerData({
     };
 
     // Register callbacks
-    if (isCodexMode) {
-      window.updateCodexMcpServers = handleServerListUpdate;
-      window.updateCodexMcpServerStatus = handleServerStatusUpdate;
-    } else {
-      window.updateMcpServers = handleServerListUpdate;
-      window.updateMcpServerStatus = handleServerStatusUpdate;
-    }
+    window.updateMcpServers = handleServerListUpdate;
+    window.updateMcpServerStatus = handleServerStatusUpdate;
 
     return () => {
-      if (isCodexMode) {
-        window.updateCodexMcpServers = undefined;
-        window.updateCodexMcpServerStatus = undefined;
-      } else {
-        window.updateMcpServers = undefined;
-        window.updateMcpServerStatus = undefined;
-      }
+      window.updateMcpServers = undefined;
+      window.updateMcpServerStatus = undefined;
     };
-  }, [isCodexMode, t, onLog, clearToolsForTerminalStatuses, setServers]);
+  }, [t, onLog, clearToolsForTerminalStatuses, setServers]);
 
   return {
     // State

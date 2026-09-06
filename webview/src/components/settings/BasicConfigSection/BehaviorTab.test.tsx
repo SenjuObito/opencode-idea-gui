@@ -15,18 +15,10 @@ vi.mock('react-i18next', () => ({
 
 function renderBehaviorTab(overrides: Partial<ComponentProps<typeof BehaviorTab>> = {}) {
   const props = {
-    streamingEnabled: true,
-    onStreamingEnabledChange: vi.fn(),
-    codexSandboxMode: 'workspace-write',
-    onCodexSandboxModeChange: vi.fn(),
     sendShortcut: 'enter' as const,
     onSendShortcutChange: vi.fn(),
     autoOpenFileEnabled: false,
     onAutoOpenFileEnabledChange: vi.fn(),
-    commitGenerationEnabled: true,
-    onCommitGenerationEnabledChange: vi.fn(),
-    aiTitleGenerationEnabled: true,
-    onAiTitleGenerationEnabledChange: vi.fn(),
     taskCompletionNotificationEnabled: false,
     onTaskCompletionNotificationEnabledChange: vi.fn(),
     askUserQuestionNotificationEnabled: false,

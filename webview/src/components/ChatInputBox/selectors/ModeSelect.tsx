@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AVAILABLE_MODES, type PermissionMode } from '../types';
+import { getPrimaryAgentsSync, subscribeAgents } from '../providers/agentProvider';
+import type { PermissionMode } from '../types';
 import { useDropdownPosition } from '../../../hooks/useDropdownPosition';
 
 const RELATIVE_INLINE_BLOCK_STYLE: React.CSSProperties = { position: 'relative', display: 'inline-block' };
@@ -15,6 +16,27 @@ const DROPDOWN_STYLE: React.CSSProperties = {
 };
 const MODE_INFO_STYLE: React.CSSProperties = { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' };
 const MODE_TEXT_STYLE: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+/** 下拉顶部快捷键提示行（⇧+Tab 切换模式）。 */
+const MODE_SWITCH_HINT_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '5px 10px',
+  fontSize: '11px',
+  opacity: 0.65,
+  borderBottom: '1px solid rgba(128, 128, 128, 0.25)',
+};
+const KEY_CAP_STYLE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: '16px',
+  padding: '0 3px',
+  border: '1px solid rgba(128, 128, 128, 0.45)',
+  borderRadius: '3px',
+  fontSize: '10px',
+  lineHeight: '14px',
+};
 
 function getModeOptionStyle(disabled: boolean): React.CSSProperties {
   return {
@@ -26,13 +48,17 @@ function getModeOptionStyle(disabled: boolean): React.CSSProperties {
 interface ModeSelectProps {
   value: PermissionMode;
   onChange: (mode: PermissionMode) => void;
+  provider?: string;
 }
 
 /**
- * ModeSelect - Mode selector component
- * Supports switching between default, agent, plan, and auto modes
+ * ModeSelect - Mode selector component.
+ *
+ * For opencode the "mode" is the selected primary agent. The list is populated
+ * dynamically from `getPrimaryAgentsSync()` (mode==='primary' && !hidden).
+ * Until the backend responds we fall back to the built-in build/plan agents.
  */
-export const ModeSelect = ({ value, onChange }: ModeSelectProps) => {
+export const ModeSelect = ({ value, onChange, provider: _provider }: ModeSelectProps) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -43,20 +69,38 @@ export const ModeSelect = ({ value, onChange }: ModeSelectProps) => {
     preferredAlignment: 'right',
   });
 
-  const modeOptions = useMemo(
-    () => AVAILABLE_MODES,
-    [],
-  );
+  // Keep local snapshot in sync with the agent cache without prop drilling.
+  const [primaryAgents, setPrimaryAgents] = useState(() => getPrimaryAgentsSync());
+  useEffect(() => {
+    return subscribeAgents(() => setPrimaryAgents(getPrimaryAgentsSync()));
+  }, []);
 
-  const currentMode = modeOptions.find(m => m.id === value) || modeOptions[0];
+  const modeOptions = useMemo(() => {
+    return primaryAgents.map(agent => {
+      const i18nKey = agent.id === 'build' ? 'default' : agent.id;
+      return {
+        id: agent.id,
+        label: agent.name,
+        icon: agent.id === 'plan' ? 'codicon-tasklist' : 'codicon-tools',
+        tooltip: agent.description || t(`openCodeModes.${i18nKey}.tooltip`),
+        description: agent.description || t(`openCodeModes.${i18nKey}.description`),
+        disabled: false,
+      };
+    });
+  }, [primaryAgents, t]);
 
-  // Helper function to get translated mode text
-  const getModeText = (modeId: PermissionMode, field: 'label' | 'shortLabel' | 'tooltip' | 'description') => {
-    if (field === 'shortLabel') {
-      return t(`modes.${modeId}.shortLabel`, { defaultValue: t(`modes.${modeId}.label`) });
-    }
-    return t(`modes.${modeId}.${field}`);
-  };
+  // Backward compatibility: old persisted value 'default' maps to 'build'.
+  const normalizedValue = value === 'default' ? 'build' : value;
+
+  const currentMode = useMemo(() => {
+    return modeOptions.find(m => m.id === normalizedValue) || modeOptions[0] || {
+      id: normalizedValue,
+      label: normalizedValue,
+      icon: 'codicon-tools',
+      tooltip: '',
+      description: '',
+    };
+  }, [modeOptions, normalizedValue]);
 
   /**
    * Toggle dropdown
@@ -113,16 +157,40 @@ export const ModeSelect = ({ value, onChange }: ModeSelectProps) => {
     }
   }, [isOpen, recalculate]);
 
+  // If the current value disappears from the list (e.g. agent deleted), fall
+  // back to the first available primary agent. Only do this once per value
+  // change to avoid clobbering the user's selection while the agent cache
+  // is still settling.
+  const hasAutoCorrectedRef = useRef(false);
+  useEffect(() => {
+    hasAutoCorrectedRef.current = false;
+  }, [value]);
+  useEffect(() => {
+    if (modeOptions.length === 0 || hasAutoCorrectedRef.current) return;
+
+    const ids = modeOptions.map(m => m.id);
+    const candidates = [
+      normalizedValue,
+      normalizedValue === 'default' ? 'build' : undefined,
+      normalizedValue === 'build' ? 'default' : undefined,
+    ].filter((id): id is string => typeof id === 'string');
+
+    if (!candidates.some(id => ids.includes(id))) {
+      hasAutoCorrectedRef.current = true;
+      onChange(modeOptions[0].id);
+    }
+  }, [modeOptions, normalizedValue, onChange]);
+
   return (
     <div style={RELATIVE_INLINE_BLOCK_STYLE}>
       <button
         ref={buttonRef}
         className={`selector-button${value === 'bypassPermissions' ? ' mode-auto-active' : ''}`}
         onClick={handleToggle}
-        title={getModeText(currentMode.id, 'tooltip') || `${t('chat.currentMode', { mode: getModeText(currentMode.id, 'label') })}`}
+        title={currentMode.tooltip || `${t('chat.currentMode', { mode: currentMode.label })}`}
       >
         <span className={`codicon ${currentMode.icon}`} />
-        <span className="selector-button-text">{getModeText(currentMode.id, 'shortLabel')}</span>
+        <span className="selector-button-text">{currentMode.label}</span>
         <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={CHEVRON_ICON_STYLE} />
       </button>
 
@@ -132,21 +200,26 @@ export const ModeSelect = ({ value, onChange }: ModeSelectProps) => {
           className="selector-dropdown"
           style={{ ...DROPDOWN_STYLE, ...positionedStyle }}
         >
+          <div style={MODE_SWITCH_HINT_STYLE}>
+            <span style={KEY_CAP_STYLE}>⇧</span>
+            <span style={KEY_CAP_STYLE}>Tab</span>
+            <span>{t('modes.switchHint')}</span>
+          </div>
           {modeOptions.map((mode) => (
             <div
               key={mode.id}
               data-testid={`mode-option-${mode.id}`}
-              className={`selector-option ${mode.id === value ? 'selected' : ''} ${mode.disabled ? 'disabled' : ''}`}
+              className={`selector-option ${mode.id === normalizedValue ? 'selected' : ''} ${mode.disabled ? 'disabled' : ''}`}
               onClick={() => handleSelect(mode.id, mode.disabled)}
-              title={getModeText(mode.id, 'tooltip')}
+              title={mode.tooltip}
               style={getModeOptionStyle(!!mode.disabled)}
             >
               <span className={`codicon ${mode.icon}`} />
               <div style={MODE_INFO_STYLE}>
-                <span style={MODE_TEXT_STYLE}>{getModeText(mode.id, 'label')}</span>
-                <span className="mode-description" style={MODE_TEXT_STYLE}>{getModeText(mode.id, 'description')}</span>
+                <span style={MODE_TEXT_STYLE}>{mode.label}</span>
+                <span className="mode-description" style={MODE_TEXT_STYLE}>{mode.description}</span>
               </div>
-              {mode.id === value && (
+              {mode.id === normalizedValue && (
                 <span className="codicon codicon-check check-mark" />
               )}
             </div>

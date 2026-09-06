@@ -7,7 +7,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.PropertyKey;
 
 /**
- * Resource bundle for CC GUI plugin localization.
+ * Resource bundle for OpenCode Buddy plugin localization.
  * <p>
  * This class provides access to localized strings defined in
  * messages/OpenCodeBuddyBundle*.properties files.

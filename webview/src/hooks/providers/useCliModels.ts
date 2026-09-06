@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendBridgeEvent } from '../../utils/bridge';
 import type { ModelInfo } from '../../components/ChatInputBox/types';
-import { OPENCODE_MODELS } from '../../components/ChatInputBox/types';
+import { CODEX_MODELS, OPENCODE_MODELS } from '../../components/ChatInputBox/types';
+import { isCliOnlyProvider } from './cliProviders';
+import { subscribeActiveCodexProvider } from '../../utils/runtimeProviderCapabilities';
 
 type CliModelsByProvider = Record<string, ModelInfo[]>;
 
@@ -26,14 +28,18 @@ export function __resetCliModelsCacheForTests() {
 
 function fallbackModels(providerId: string): ModelInfo[] {
   if (providerId === 'opencode') return OPENCODE_MODELS;
+  if (providerId === 'codex') return CODEX_MODELS;
   return [];
 }
 
 /**
- * OpenCode's model list is discovered dynamically via `get_cli_models`.
+ * Providers whose model list is discovered dynamically via `get_cli_models`.
+ * Codex is included even though it is not a CLI-only provider: its list comes
+ * from ~/.codex/config.toml + model_catalog_json, same as the codex CLI picker.
  */
 function supportsDynamicModels(providerId: string): boolean {
-  return providerId === 'opencode';
+  if (providerId === 'codex') return true;
+  return isCliOnlyProvider(providerId);
 }
 
 function normalizeModels(raw: unknown): ModelInfo[] {
@@ -50,14 +56,17 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       ? row.label.trim()
       : id;
     const description = typeof row.description === 'string' ? row.description : undefined;
-    out.push({ id, label, description });
+    const variants = Array.isArray(row.variants)
+      ? row.variants.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+      : undefined;
+    out.push({ id, label, description, ...(variants && variants.length > 0 ? { variants } : {}) });
   }
   return out;
 }
 
 /**
- * Loads the OpenCode model catalog via `get_cli_models`.
- * Falls back to the static default until loaded.
+ * Loads model catalogs for headless CLI providers (Kimi / OpenCode) and Codex
+ * via channel-manager `listModels`. Falls back to static defaults until loaded.
  */
 export function useCliModels(currentProvider: string) {
   // Seed from module cache so history→chat remounts keep the last catalog.
@@ -179,6 +188,38 @@ export function useCliModels(currentProvider: string) {
     beginLoad(currentProvider);
   }, [currentProvider, modelsByProvider, beginLoad]);
 
+  // Switching the active Codex provider rewrites ~/.codex/config.toml, so the
+  // cached catalog no longer reflects what the CLI would serve. Drop the cache
+  // and refetch when the chat is currently on codex.
+  useEffect(() => {
+    return subscribeActiveCodexProvider(() => {
+      delete modelsCache.codex;
+      delete defaultModelCache.codex;
+      delete catalogHasEntriesCache.codex;
+      setModelsByProvider((prev) => {
+        if (!('codex' in prev)) return prev;
+        const next = { ...prev };
+        delete next.codex;
+        return next;
+      });
+      setDefaultModelByProvider((prev) => {
+        if (!('codex' in prev)) return prev;
+        const next = { ...prev };
+        delete next.codex;
+        return next;
+      });
+      setCatalogHasEntriesByProvider((prev) => {
+        if (!('codex' in prev)) return prev;
+        const next = { ...prev };
+        delete next.codex;
+        return next;
+      });
+      if (currentProvider === 'codex') {
+        beginLoad('codex');
+      }
+    });
+  }, [currentProvider, beginLoad]);
+
   const refreshCliModels = useCallback((providerId: string) => {
     if (!supportsDynamicModels(providerId)) return;
     beginLoad(providerId);
@@ -200,4 +241,3 @@ export function useCliModels(currentProvider: string) {
 }
 
 export type UseCliModelsReturn = ReturnType<typeof useCliModels>;
-

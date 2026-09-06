@@ -11,7 +11,6 @@
     "back": "戻る",
     "close": "閉じる",
     "newSession": "新規セッション",
-    "newTab": "新しいタブ",
     "dontAskAgain": "次回から表示しない",
     "history": "履歴",
     "settings": "設定",
@@ -35,9 +34,9 @@
     "emptyMessage": "メッセージが空です",
     "clickToPreview": "クリックしてプレビュー",
     "userUploadedImage": "ユーザーがアップロードした画像",
-    "inputPlaceholder": "@でファイルを参照、#でエージェントを呼び出し、Enterで送信",
-    "inputPlaceholderEnter": "@でファイルを参照、#でエージェントを呼び出し、Enterで送信",
-    "inputPlaceholderCmdEnter": "@でファイルを参照、#でエージェントを呼び出し、⌘Enterで送信",
+    "inputPlaceholder": "@でファイルを参照、!でbashコマンドを実行、/でopencodeコマンド、Enterで送信",
+    "inputPlaceholderEnter": "@でファイルを参照、!でbashコマンドを実行、/でopencodeコマンド、Enterで送信",
+    "inputPlaceholderCmdEnter": "@でファイルを参照、!でbashコマンドを実行、/でopencodeコマンド、⌘Enterで送信",
     "noThinkingContent": "思考内容がありません",
     "parseError": "コンテンツの解析に失敗しました",
     "sendMessageEnter": "メッセージを送信 (Enter)",
@@ -80,21 +79,34 @@
     "global": "グローバル",
     "localProject": "ローカル",
     "disabled": "無効",
-    "sdkNotInstalled": "{{provider}} SDKがインストールされていません。チャットを開始するにはSDKをインストールしてください。",
-    "sdkStatusLoading": "Checking SDK status...",
-    "sdkStatusUnavailable": "SDK の状態を確認できませんでした。",
-    "retrySdkStatus": "再試行",
-    "openSourceBanner": "このプロジェクトは100%オープンソースかつ無料を保証します（海賊版プロジェクトにご注意ください）",
-    "openSourceBannerStar": "Star",
-    "openSourceBannerStarToast": "リポジトリのURLをクリップボードにコピーしました。ブラウザに貼り付けてアクセスできます ⭐",
-    "openSourceBannerStarAria": "リポジトリのURLをコピーして GitHub でスター",
-    "goInstallSdk": "インストールへ",
     "commandNotImplemented": "`{{command}}` 機能はまだ実装されていません。",
+    "daemonStatusLoading": "OpenCode サービスを起動しています。しばらくお待ちください",
     "clearCommandDescription": "会話履歴をクリアして新しいセッションを開始",
+    "builtinCommands": {
+      "compact": "コンテキストを減らすためにセッションを要約",
+      "undo": "最後のメッセージを元に戻す",
+      "redo": "取り消したメッセージをやり直す",
+      "fork": "セッション全体を新しいフォークにコピー",
+      "share": "セッションリンクを共有",
+      "unshare": "セッションの共有を解除"
+    },
+    "compactTooltip": "クリックでセッションを圧縮",
+    "compactStarted": "セッションを要約中…",
+    "compactSuccess": "セッションを要約しました",
+    "compactFailed": "セッションの圧縮に失敗しました",
+    "compactConfirmTitle": "セッションを圧縮",
+    "compactConfirmMessage": "圧縮を実行すると、opencode が現在の会話を要約し古いメッセージを削除してコンテキスト領域を確保します。この操作は取り消せません。続行しますか?",
+    "compactConfirmAction": "圧縮を実行",
+    "undoTooltip": "このメッセージを元に戻す",
+    "redoTooltip": "このメッセージをやり直す",
+    "forkTooltip": "新しいセッションにフォーク",
+    "shareTooltip": "セッションを共有",
+    "unshareTooltip": "セッションの共有を解除",
+    "shareSuccess": "リンクをクリップボードにコピーしました",
     "attachmentFile": "[添付ファイル: {{fileName}}]",
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[添付ファイルがアップロードされました]",
-    "streamingConnected": "{{provider}}に接続しました、質問を理解しています",
+    "streamingConnected": "質問を理解しています…",
     "showEarlierMessages": "以前の{{count}}件のメッセージを表示",
     "showEarlierTurns": "前の{{count}}ターンを表示（読み込み済み残り{{remaining}}ターン）",
     "loadEarlierTurns": "ディスクから前の{{count}}ターンを読み込む（全{{total}}ターン中、残り{{remaining}}ターン）",
@@ -127,7 +139,29 @@
       "userContext": "コンテキスト：「{{context}}」",
       "expand": "要約を展開",
       "collapse": "要約を折りたたむ"
-    }
+    },
+    "shareFailed": "コピーに失敗しました。共有されませんでした",
+    "shareDisabledHint": "共有機能がopencode.jsonで無効化されているか（\"share\": \"disabled\"）、opencodeアカウントのログインが必要です。設定を確認して再試行してください",
+    "sharePendingTooltip": "共有中…",
+    "copyShareLinkTooltip": "共有リンクをコピー",
+    "revertPlaceholderTitle": "このメッセージと以降の返信を取り消しました",
+    "revertPlaceholderCount": "{{count}} 件のメッセージを取り消しました",
+    "revertExpand": "表示",
+    "revertCollapse": "閉じる",
+    "revertRestore": "復元",
+    "revertBusyConfirmMessage": "返信を生成中です。取り消すと現在のタスクを中断してこのメッセージまで戻ります。続行しますか？",
+    "restoreBusyConfirmMessage": "返信を生成中です。復元すると現在のタスクを中断して取り消したメッセージを戻します。続行しますか？",
+    "revertFailed": "取り消しに失敗しました",
+    "restoreFailed": "復元に失敗しました",
+    "forkDisabledTooltip": "現在の返信の完了後に利用できます",
+    "forkCreatedToast": "フォークセッションを作成しました",
+    "forkSwitchAction": "新しいセッションへ移動",
+    "forkFailed": "フォークセッションの作成に失敗しました",
+    "forkAllTooltip": "セッション全体を新しいセッションにフォーク",
+    "shareLinkCreated": "共有リンクを作成しました",
+    "retryCopy": "再コピー",
+    "subagentsSection": "サブエージェント",
+    "filesSection": "ファイル"
   },
   "settings": {
     "title": "設定",
@@ -141,8 +175,8 @@
       },
       "theme": {
         "label": "テーマ",
-        "system": "IDE のテーマに従う",
-        "systemDesc": "IDE のテーマに自動的に従う",
+        "system": "VS Code のテーマに従う",
+        "systemDesc": "VS Code のテーマに自動的に従う",
         "light": "ライト",
         "lightDesc": "爽やかで明るい、昼間の使用に適しています",
         "dark": "ダーク",
@@ -150,7 +184,7 @@
       },
       "language": {
         "label": "言語",
-        "followIde": "IDE に従う",
+        "followIde": "VS Code に従う",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -170,15 +204,10 @@
         "hintText": "実際のNode.js実行可能ファイルのパスを取得します。空欄の場合は自動検出します。",
         "versionTooLow": "Node.jsのバージョンが低すぎます。プラグインを正常に動作させるにはv{{minVersion}}以上が必要です"
       },
-      "claudeCliPath": {
-        "label": "Claude CLI パス（オーバーライド）",
-        "placeholder": "例: /usr/local/bin/claude — 空欄の場合は内蔵 SDK を使用",
-        "hint": "任意。設定すると、内蔵の @anthropic-ai/claude-agent-sdk の代わりにこのバイナリを起動します。保存時にデーモンが再起動されます。"
-      },
       "workingDirectory": {
         "label": "作業ディレクトリ",
         "placeholder": "例: project1 または空欄でプロジェクトルートを使用",
-        "hint": "Claudeが作業するディレクトリを指定します。相対パス(プロジェクトルートからの相対)または絶対パスを使用できます。空欄の場合はプロジェクトルートを使用します。"
+        "hint": "opencode が作業するディレクトリを指定します。プロジェクトルートからの相対パスまたは絶対パスを指定できます。空欄の場合はプロジェクトルートを使用します。"
       },
       "fontSize": {
         "label": "フォントサイズ",
@@ -192,25 +221,29 @@
       "editorFont": {
         "label": "UI フォント",
         "hint": "ここではプラグイン UI のフォントを変更します。コード用のフォントは別に設定できます。",
-        "followOption": "IDEA UI フォントに従う ({{font}})",
+        "followOption": "VS Code UI フォントに従う ({{font}})",
         "customOption": "カスタム UI フォントファイル",
         "customPathLabel": "UI フォントファイルのパス",
         "customPathPlaceholder": ".ttf / .otf UI フォントファイルのパスを選択または入力",
         "browse": "参照",
-        "warningUnavailable": "UI フォントを利用できないため、現在は IDEA UI フォントを使用しています",
-        "statusFollowEditor": "現在は IDEA UI フォントを使用中: {{font}}",
-        "statusCustom": "現在はカスタム UI フォントを使用中: {{font}}"
+        "warningUnavailable": "UI フォントを利用できないため、現在は VS Code UI フォントを使用しています",
+        "statusFollowEditor": "現在は VS Code UI フォントを使用中: {{font}}",
+        "statusCustom": "現在はカスタム UI フォントを使用中: {{font}}",
+        "systemFontGroup": "システムフォント",
+        "systemFontLoading": "システムフォントを読み込み中…",
+        "systemFontFailed": "システムフォントの読み込みに失敗しました。",
+        "systemFontRetry": "再試行"
       },
       "codeFont": {
         "label": "コードフォント",
         "hint": "Markdown のコードやコマンドブロックで使用されます。",
-        "followOption": "エディタフォントに従う ({{font}})",
+        "followOption": "VS Code エディタフォントに従う ({{font}})",
         "customOption": "カスタムコードフォントファイル",
         "customPathLabel": "コードフォントファイルのパス",
         "customPathPlaceholder": ".ttf / .otf コードフォントファイルのパスを選択または入力",
         "browse": "参照",
         "warningUnavailable": "コードフォントを利用できないため、現在はエディタフォントを使用しています",
-        "statusFollowEditor": "現在はエディタフォントを使用中: {{font}}",
+        "statusFollowEditor": "現在は VS Code エディタフォントを使用中: {{font}}",
         "statusCustom": "現在はカスタムコードフォントを使用中: {{font}}"
       },
       "streaming": {
@@ -232,13 +265,7 @@
         "providerAvailable": "Available",
         "providerUnavailable": "Currently unavailable",
         "provider": {
-          "claude": "Claude Code",
-          "codex": "Codex",
-          "grok": "Grok CLI",
-          "kimi": "Kimi CLI",
-          "opencode": "OpenCode",
-          "pi": "PI CLI",
-          "omp": "OMP CLI"
+          "opencode": "OpenCode"
         },
         "currentProviderAuto": "Currently using automatic selection: {{provider}}",
         "currentProviderManual": "Currently using manually selected provider: {{provider}}",
@@ -265,7 +292,7 @@
         "label": "質問システム通知",
         "enabled": "有効",
         "disabled": "無効",
-        "hint": "有効にすると、Claude が質問した時にシステム通知を表示し、見逃しを防ぎます。無効の場合、通知は表示されません。"
+        "hint": "有効にすると、OpenCode が質問した時にシステム通知を表示し、見逃しを防ぎます。無効の場合、通知は表示されません。"
       },
       "detailedOutput": {
         "label": "詳細な出力情報",
@@ -277,7 +304,7 @@
         "label": "質問アラート音",
         "enabled": "有効",
         "disabled": "無効",
-        "hint": "有効にすると、Claude が質問した時に設定済みのアラート音を再生します。下のサウンド選択とフォーカス規則を使用します。"
+        "hint": "有効にすると、OpenCode が質問した時に設定済みのアラート音を再生します。下のサウンド選択とフォーカス規則を使用します。"
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "IDE がフォーカスされていない時だけシステム通知を表示",
@@ -317,7 +344,7 @@
       "permissionDialogTimeout": {
         "label": "権限と質問ダイアログのタイムアウト",
         "unit": "秒",
-        "hint": "Claudeの質問ダイアログと権限リクエストダイアログのタイムアウト時間を設定します（30~3600秒）。タイムアウト後、ダイアログは自動的に閉じられ、Claudeは続行します。"
+        "hint": "OpenCodeの質問ダイアログと権限リクエストダイアログのタイムアウト時間を設定します（30~3600秒）。タイムアウト後、ダイアログは自動的に閉じられ、OpenCodeは続行します。"
       },
       "chatBgColor": {
         "label": "チャット背景色",
@@ -342,13 +369,16 @@
         "enabled": "有効",
         "disabled": "無効",
         "hint": "無効にすると、メッセージが存在するセッションで新規作成を選択した際、確認ダイアログを表示せず直接新規セッションを作成します。"
+      },
+      "opencodeCliPath": {
+        "label": "Opencode TUI パス",
+        "placeholder": "例: /usr/local/bin/opencode — 空欄で自動検出",
+        "hint": "opencode サービスの起動に使うカスタム opencode バイナリ（任意）。空欄の場合は PATH と既定のインストール先（~/.opencode/bin）を自動検索します。保存後にデーモンが再起動されて反映されます。"
       }
     },
     "providers": "プロバイダー管理",
-    "providersDesc": "ClaudeとCodex APIプロバイダー設定を管理し、異なるAPIサービスプロバイダー間で切り替え",
+    "providersDesc": "opencode CLI 統合を管理し、ローカル CLI ツールのインストール状況を確認",
     "providerTab": {
-      "claude": "Claude Code",
-      "codex": "Codex",
       "cli": "CLI"
     },
     "pluginModels": {
@@ -378,83 +408,19 @@
         "invalidValue": "最大コンテキストはK単位の正の整数で入力してください",
         "summary": "コンテキスト: {{value}} トークン"
       },
-      "configuredSectionTitle": "設定済みの Claude モデル",
-      "configuredSectionDesc": "現在の Claude プロバイダーまたは settings.json のモデルは既にモデル選択リストに表示されています。ここでは料金のみ変更できます。",
-      "configuredEditHint": "このモデルは現在の Claude プロバイダーまたは settings.json で管理されています。ここでは料金のみ変更できます。",
+      "configuredSectionTitle": "設定済みの OpenCode モデル",
+      "configuredSectionDesc": "現在の OpenCode プロバイダーまたは settings.json のモデルは既にモデル選択リストに表示されています。ここでは料金のみ変更できます。",
+      "configuredEditHint": "このモデルは現在の OpenCode プロバイダーまたは settings.json で管理されています。ここでは料金のみ変更できます。",
       "customSectionTitle": "カスタムモデル",
       "editPricing": "料金を編集"
-    },
-    "dependencies": "SDK依存関係",
-    "dependenciesDesc": "AI SDK依存関係のインストールと更新を管理",
-    "dependency": {
-      "title": "SDK依存関係管理",
-      "description": "AI SDK依存関係を管理します。初回使用前に必要なSDKをインストールしてください。",
-      "installPolicyTip": "インストールに問題がある場合、エラーをターミナルCLI AIにコピーして解決できます",
-      "claudeSdkName": "Claude Code SDK",
-      "claudeSdkDescription": "Claude AI機能に必要です。Claude Code SDKと関連依存関係が含まれます。",
-      "codexSdkName": "Codex SDK",
-      "codexSdkDescription": "Codex AI機能に必要です。OpenAI Codex SDKが含まれます。",
-      "loading": "依存関係の状態を読み込み中...",
-      "install": "インストール",
-      "installing": "インストール中...",
-      "uninstall": "アンインストール",
-      "uninstalling": "アンインストール中...",
-      "update": "更新",
-      "updateAvailable": "更新あり",
-      "installLogs": "インストールログ",
-      "waitingForLogs": "ログ出力を待機中...",
-      "nodeNotConfigured": "Node.jsが設定されていません。まず基本設定でNode.jsパスを設定してください。",
-      "installSuccess": "{{name}}のインストールが完了しました",
-      "installFailed": "インストール失敗: {{error}}",
-      "uninstallSuccess": "{{name}}がアンインストールされました",
-      "uninstallFailed": "アンインストール失敗: {{error}}",
-      "updating": "更新中...",
-      "updateSuccess": "{{name}}が正常に更新されました"
     },
     "usage": "使用統計",
     "usageDesc": "トークン消費量、コスト統計、使用傾向分析を表示",
     "mcp": "MCPサーバー",
     "mcpDesc": "Model Context Protocolサーバーを設定および管理",
-    "permissions": "権限",
-    "permissionsDesc": "Claude Codeのファイルアクセスおよび操作権限を管理",
     "promptEnhancer": {
       "title": "Prompt Enhancer",
       "description": "Choose which provider and model should be used when enhancing prompts before sending them."
-    },
-    "commit": {
-      "title": "Commit AI",
-      "description": "Configure AI-generated Git commit message behavior",
-      "providerModel": {
-        "label": "コミットモデルプロバイダー",
-        "modelLabel": "コミットモデル",
-        "resetToDefault": "リセット",
-        "providerAvailable": "利用可能",
-        "providerUnavailable": "利用不可",
-        "currentProviderAuto": "現在自動選択を使用中：{{provider}}",
-        "currentProviderManual": "現在手動選択したプロバイダーを使用中：{{provider}}",
-        "currentProviderUnavailable": "選択したプロバイダーは現在利用できません：{{provider}}",
-        "modeLabel": "選択モード",
-        "modeAuto": "自動",
-        "modeManual": "手動",
-        "autoSummary": "現在のチャット CLI に追従 · 現在は {{provider}}",
-        "autoUnavailable": "利用可能な CLI がありません。手動に切り替えて選択してください。"
-      },
-      "prompt": {
-        "label": "Additional Prompt",
-        "placeholder": "Add your extra requirements here, e.g., generate commit in English, include issue number, etc...",
-        "hint": "The plugin has built-in CCG Commits specification prompts. Content you add here will be used as additional requirements, and AI will prioritize your instructions."
-      },
-      "projectPrompt": {
-        "label": "プロジェクト固有の追加プロンプト",
-        "placeholder": "現在のプロジェクト固有の要件をここに追加してください。例：scopeにはモジュール名を使用、commit bodyに影響範囲を含めるなど...",
-        "hint": "このプロンプトは現在のプロジェクトにのみ適用され、グローバル追加プロンプトと同時に結合されます。両者の内容が矛盾する場合、プロジェクトプロンプトが優先されます。異なるプロジェクトを独立して設定できます。"
-      },
-      "codeReview": {
-        "comingSoon": "Coming Soon",
-        "label": "Code Review AI Additional Prompt",
-        "placeholder": "This feature is under development, stay tuned...",
-        "hint": "Code Review AI will help you automatically review code, identify potential issues, and provide improvement suggestions. You can configure review preferences and focus areas here."
-      }
     },
     "agents": "エージェント",
     "agentsDesc": "AIエージェントを管理および設定",
@@ -503,23 +469,21 @@
           "hoursAgo": "{{count}}時間前",
           "minutesAgo": "{{count}}分前"
         }
-      },
-      "aiTitleGeneration": {
-        "label": "AI セッションタイトル自動生成",
-        "enabled": "有効",
-        "disabled": "無効",
-        "hint": "有効にすると、新しいセッションの最初の応答後に Haiku モデルで短いタイトルを自動生成します。無効の場合は最初のメッセージがタイトルとして使われます。"
       }
     },
-    "codexFeatureUnavailable": "Codexではこの設定セクションは未対応です。Claude Codeに切り替えてください。",
     "sidebar": {
       "expand": "Expand Sidebar",
       "collapse": "Collapse Sidebar"
     },
-    "community": "コミュニティ",
-    "communityDesc": "下のQRコードをスキャンして、公式WeChatグループに参加し、最新ニュースと技術サポートを入手",
-    "communityQrTip": "WeChatでスキャンしてコミュニティに参加",
-    "communityQrAlt": "公式WeChatコミュニティQRコード",
+    "community": "寄付支援",
+    "communityDesc": "下のQRコードをスキャンして著者を支援し、プロジェクトの継続的なメンテナンスをサポートします",
+    "communityQrTipWechat": "WeChat 寄付",
+    "communityQrTipAlipay": "Alipay 寄付",
+    "communityQrTipPayPal": "PayPal 寄付",
+    "communityQrAlt": "寄付QRコード",
+    "communityQrAltAlipay": "Alipay 寄付QRコード",
+    "communityQrAltPayPal": "PayPal 寄付QRコード",
+    "projectDesc": "このプロジェクトは OpenCode Buddy VS Code 拡張機能です (https://github.com/SenjuObito/opencode-vscode-plugin)",
     "githubTitle": "GitHub リポジトリ",
     "githubDesc": "このプロジェクトは GitHub でオープンソースです。Star で応援してください！",
     "githubCopyBtn": "リポジトリURLをコピー",
@@ -531,7 +495,6 @@
     "wechatPay": "WeChat Pay",
     "paypal": "PayPal",
     "provider": {
-      "currentConfig": "現在のClaudeCode設定",
       "loading": "読み込み中...",
       "noConfig": "設定なし",
       "emptyProvider": "プロバイダーが設定されていません",
@@ -561,7 +524,6 @@
       "importFromCcSwitchUpdate": "cc-switchからインポート/更新",
       "importFromCcSwitchFile": "インポートするcc-switch.dbファイルを選択",
       "importFromCcSwitchCli": "cc-switch CLIからインポート/更新",
-      "importFromClaudeRouter": "Claude Code Routerからインポート/更新",
       "featureComingSoon": "この機能はまだ実装されていません。近日公開予定",
       "readingCcSwitch": "cc-switch設定を読み込み中...",
       "editCcSwitchTitle": "cc-switch設定を編集",
@@ -574,62 +536,8 @@
       "confirmConvert": "変換を確認",
       "inUse": "使用中",
       "enable": "有効化",
-      "localProviderName": "Local settings.json",
-      "localProviderDescription": "Use configuration directly from ~/.claude/settings.json",
-      "localProviderHelp": "When using local provider mode:\n• The plugin will not modify your ~/.claude/settings.json file\n• You need to manually manage your configurations\n• Make sure the file exists and contains valid JSON\n• Suitable for advanced users who prefer manual control",
       "authorizeAndEnable": "承認して有効化",
       "revokeAuthorization": "承認を取り消す",
-      "cliLoginProviderName": "CLIログイン状態",
-      "cliLoginProviderDescription": "ターミナルで完了した既存のClaude CLIログイン状態を再利用します",
-      "cliLoginAuthorizeTitle": "CLIログイン状態を許可",
-      "cliLoginAuthorizeMessage": "プラグインがClaude CLIのログインセッションをAPIリクエストに使用することを許可します。事前にターミナルでClaude CLIにログインしている必要があります。",
-      "cliLoginAuthorizeDetail": "プラグインは認証をClaude SDKのネイティブOAuthフローに委任します。この許可はいつでも取り消すことができます。",
-      "cliLoginDisableTitle": "CLIログイン許可を取り消す",
-      "cliLoginDisableMessage": "CLIログイン状態の使用を停止し、別のプロバイダーを明示的に有効にするまでClaudeはアクティブなプロバイダーがない状態になります。",
-      "cliLoginAccountInfo": "ログイン中: {{email}}",
-      "subscriptionTutorial": {
-        "entry": "サブスクリプションアカウントガイド",
-        "dialogTitle": "サブスクリプションアカウントの使い方",
-        "tabAriaLabel": "サブスクリプションアカウントガイドタブ",
-        "tabs": {
-          "claude": "Claude サブスクリプション",
-          "codex": "Codex サブスクリプション"
-        },
-        "code": {
-          "copy": "コードをコピー",
-          "copied": "コピー済み"
-        },
-        "providers": {
-          "claude": {
-            "title": "Claude Code サブスクリプションアカウントの使い方",
-            "item1": "ターミナルの Claude Code CLI でサブスクリプションアカウントにログインし、ターミナルで正常にチャットできることを確認してください",
-            "item2": "~/.claude/settings.json ファイルと .env ファイルが空であることを確認してください",
-            "item3": "IDEA を再起動すると、正常にチャットできます",
-            "emptyConfigCodeLabel": "~/.claude/settings.json",
-            "emptyConfigCode": "{\n  \"env\": {\n  }\n}",
-            "noteTitle": "特殊ケースの注意：",
-            "note1": "上記の手順を実行したにもかかわらずプラグインが応答しない場合は、~/.claude/settings.json .env を以下に変更してみてください：",
-            "proxyConfigCodeLabel": "~/.claude/settings.json",
-            "proxyConfigCode": "{\n  \"env\": {\n    \"HTTP_PROXY\": \"http://127.0.0.1:7897\",\n    \"HTTPS_PROXY\": \"http://127.0.0.1:7897\"\n  }\n}",
-            "issuePrefix": "それでも解決しない場合は、GitHub に問題を報告してください：",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          },
-          "codex": {
-            "title": "Codex サブスクリプションアカウントのセットアップ",
-            "item1": "ターミナルの Codex CLI で codex login を実行してログインし、ターミナルでチャットできることを確認してください",
-            "item2": "IDEA を再起動",
-            "item3": "正常にチャットできます",
-            "emptyConfigCodeLabel": "",
-            "emptyConfigCode": "",
-            "noteTitle": "",
-            "note1": "",
-            "proxyConfigCodeLabel": "",
-            "proxyConfigCode": "",
-            "issuePrefix": "それでも解決しない場合は、GitHub に問題を報告してください：",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          }
-        }
-      },
       "importDialog": {
         "title": "cc-switch設定をインポート",
         "summary": "{{total}}個の設定が見つかりました。以下を含みます",
@@ -644,50 +552,6 @@
         "confirmImport": "インポートを確認"
       },
       "deleteProviderMessage": "プロバイダー\"{{name}}\"を削除してもよろしいですか?\n\nこの操作は元に戻せません。",
-      "dialog": {
-        "addTitle": "プロバイダーを追加",
-        "editTitle": "プロバイダーを編集: {{name}}",
-        "addDescription": "新しいプロバイダー情報を設定",
-        "securityNotice": "注意：すべての設定はお使いのコンピュータにローカル保存されます。本プロジェクトは100%オープンソースです。安心してご利用ください。",
-        "editDescription": "変更は現在のプロバイダーにすぐに適用されます。",
-        "providerName": "プロバイダー名",
-        "providerNamePlaceholder": "例: Claude公式",
-        "remark": "備考",
-        "remarkPlaceholder": "オプション",
-        "apiKey": "APIキー",
-        "apiKeyPlaceholder": "sk-ant-...",
-        "apiKeyHint": "APIキーを入力してください",
-        "apiUrl": "APIエンドポイント",
-        "apiUrlPlaceholder": "https://api.anthropic.com",
-        "apiUrlHint": "Claude API互換サービスエンドポイントアドレスを入力",
-        "modelMapping": "モデルマッピング (JSON環境に注入されます)",
-        "mainModel": "メインモデル",
-        "mainModelPlaceholder": "例: claude-sonnet-4-6",
-        "fableModel": "Fableデフォルトモデル",
-        "fableModelPlaceholder": "例: claude-fable-5",
-        "haikuModel": "Haikuデフォルトモデル",
-        "haikuModelPlaceholder": "例: claude-haiku-4-5",
-        "sonnetModel": "Sonnetデフォルトモデル",
-        "sonnetModelPlaceholder": "例: claude-sonnet-4-6",
-        "opusModel": "Opusデフォルトモデル",
-        "opusModelPlaceholder": "例: claude-opus-4-6",
-        "modelMappingHint": "オプション: 使用するデフォルトのClaudeモデルを指定します。空欄の場合はシステムデフォルトを使用します。",
-        "customModels": "カスタムモデル",
-        "customModelsHint": "このプロバイダーがサポートする追加モデルを追加します。カスタムモデルはモデル選択リストの最上部に表示されます",
-        "jsonConfig": "JSON設定",
-        "jsonConfigDescription": "完全なsettings.jsonコンテンツをここで設定できます。すべてのフィールドをサポート(例: model、alwaysThinkingEnabled、ccSwitchProviderId、codemossProviderIdなど)",
-        "jsonError": "無効なJSON形式",
-        "required": "*",
-        "showApiKey": "表示",
-        "hideApiKey": "非表示",
-        "confirmAdd": "追加を確認",
-        "saveChanges": "変更を保存",
-        "codeView": "コード",
-        "visualView": "ビジュアル",
-        "formatJson": "フォーマット",
-        "invalidJson": "無効なJSON形式です。コードビューに切り替えて修正してください",
-        "presetGroup": "クイックプリセット"
-      },
       "presets": {
         "custom": "カスタム",
         "zhipu": "Zhipu GLM",
@@ -706,7 +570,6 @@
       }
     },
     "comingSoon": "近日公開予定...",
-    "permissionsComingSoon": "権限設定は近日公開予定...",
     "agentsComingSoon": "エージェント設定は近日公開予定...",
     "skillsComingSoon": "スキル設定は近日公開予定...",
     "codexProvider": {
@@ -722,7 +585,7 @@
         "editDescription": "Changes will be applied immediately to ~/.codex/ directory",
         "officialPreset": "OpenAI Official Direct",
         "officialSectionHint": "Use your manually entered OPENAI_API_KEY with the official endpoint https://api.openai.com/v1.",
-        "presetHint": "These presets include only third-party or proxy endpoints that match the Claude Code provider set.",
+        "presetHint": "These presets include only third-party or proxy endpoints that match the OpenCode provider set.",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Codex Official",
         "configJson": "Config",
@@ -798,40 +661,6 @@
         "saveChanges": "保存"
       }
     },
-    "prompts": "Prompt Library",
-    "promptsDesc": "Manage common prompt templates for quick insertion during chat",
-    "prompt": {
-      "title": "Prompt Library",
-      "create": "Create",
-      "createPrompt": "Create Prompt",
-      "createPromptHint": "Click to go to prompt settings page to create",
-      "customPrompts": "Custom Prompts",
-      "noPrompts": "No custom prompts",
-      "noPromptsDropdown": "No prompts",
-      "loadFailed": "Load failed",
-      "loading": "Loading...",
-      "menu": "Menu",
-      "addSuccess": "Prompt created successfully",
-      "updateSuccess": "Prompt updated successfully",
-      "deleteSuccess": "Prompt deleted successfully",
-      "operationSuccess": "Operation successful",
-      "operationFailed": "Operation failed",
-      "deleteConfirmTitle": "Confirm Delete",
-      "deleteConfirmMessage": "Are you sure you want to delete prompt \"{{name}}\"? This action cannot be undone.",
-      "description": "Create common prompt templates. Type ! in the chat input to quickly select and insert",
-      "dialog": {
-        "addTitle": "Create Prompt",
-        "editTitle": "Edit Prompt",
-        "name": "Name",
-        "namePlaceholder": "Enter prompt name",
-        "nameRequired": "Please enter prompt name",
-        "content": "Content",
-        "contentPlaceholder": "Enter prompt content, you can include variables like {{variable}}",
-        "contentHint": "Prompt content will be inserted directly into the input box when selected",
-        "confirmAdd": "Create",
-        "saveChanges": "Save"
-      }
-    },
     "cli": {
       "hint": "These CLIs must be installed and configured in your system terminal. The plugin only detects installation status and version — it will never install them for you. Confirm each CLI works in the terminal before coming back here to use it.",
       "refresh": "Re-check",
@@ -848,14 +677,6 @@
       "copied": "Copied to clipboard",
       "copyFailed": "Failed to copy",
       "tools": {
-        "grok": {
-          "name": "Grok CLI",
-          "description": "xAI Grok terminal coding agent"
-        },
-        "kimi": {
-          "name": "Kimi CLI",
-          "description": "Moonshot Kimi Code CLI"
-        },
         "opencode": {
           "name": "OpenCode",
           "description": "Open-source terminal AI coding agent"
@@ -863,10 +684,6 @@
         "pi": {
           "name": "PI CLI",
           "description": "マルチプロバイダーのモデルに対応したミニマルなターミナルコーディングエージェント"
-        },
-        "omp": {
-          "name": "OMP CLI",
-          "description": "マルチプロバイダーのモデルに対応した Oh My Pi ターミナルコーディングエージェント"
         }
       },
       "installDialog": {
@@ -913,7 +730,7 @@
     "loading": "履歴を読み込み中...",
     "loadFailed": "読み込み失敗",
     "noSessions": "履歴セッションなし",
-    "noSessionsDesc": "現在のプロジェクトにセッション記録が見つかりません",
+    "noSessionsDesc": "現在のプロジェクトにOpenCodeセッション記録が見つかりません",
     "totalSessions": "{{count}}セッション · {{total}}メッセージ",
     "messageCount": "{{count}}メッセージ",
     "searchPlaceholder": "セッションタイトルを検索...",
@@ -933,7 +750,7 @@
     "convertSuccess": "セッションをCLI認識可能に変換しました",
     "convertFailed": "変換に失敗しました",
     "confirmConvert": "CLIセッションに変換しますか？",
-    "convertConfirmMessage": "セッションのentrypointを変更し、Claude Code CLIの/resumeリストに表示されるようにします。",
+    "convertConfirmMessage": "セッションのentrypointを変更し、OpenCode CLIの/resumeリストに表示されるようにします。",
     "timeAgo": {
       "yearsAgo": "年前",
       "monthsAgo": "ヶ月前",
@@ -955,12 +772,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDKセッション",
       "claude-vscode": "VS Code",
-      "remote": "リモート"
+      "remote": "リモート",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "このセッションはSDK経由でプラグインによって作成されており、CLIではデフォルトで表示されません。ターミナルCLIの/resumeリストに表示するには「CLIに変換」をクリックしてください",
       "claude-vscode": "このセッションはVS Code拡張機能によって作成されており、CLIではデフォルトで表示されません。ターミナルCLIの/resumeリストに表示するには「CLIに変換」をクリックしてください",
-      "remote": "このセッションはリモートのClaude Codeインスタンスによって作成されました"
+      "remote": "このセッションはリモートのOpenCodeインスタンスによって作成されました",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -981,32 +800,37 @@
       "WebSearch": "ウェブ検索",
       "WebFetch": "ウェブ取得",
       "execute": "{{toolName}}を実行",
-      "readDirectory": "ディレクトリを読み取る",
-      "timeoutWarning": "お早めにご回答ください。ダイアログは {{seconds}} 秒後に自動的に閉じます"
-    }
+      "readDirectory": "ディレクトリを読み取る"
+    },
+    "approvedStatus": "許可済み",
+    "approvedAlwaysStatus": "常に許可",
+    "deniedStatus": "拒否",
+    "timeoutWarning": "お早めにご回答ください。ダイアログは {{seconds}} 秒後に自動的に閉じます"
   },
   "askUserQuestion": {
-    "title": "Claudeからの質問があります",
-    "progress": "質問 {{current}} / {{total}}",
-    "multiSelectHint": "複数のオプションを選択できます",
-    "cancel": "キャンセル",
-    "back": "戻る",
-    "next": "次へ",
+    "title": "OpenCodeからいくつか質問があります",
+    "skip": "スキップ",
+    "answeredStatus": "回答済み",
+    "skippedStatus": "スキップ済み",
+    "fallbackHeader": "質問",
+    "multiSelectHint": "複数選択できます",
     "submit": "送信",
     "otherOption": "その他",
     "otherOptionDesc": "カスタム回答を入力",
     "customInputPlaceholder": "回答を入力してください...",
-    "timeoutWarning": "お早めにご回答ください。ダイアログは {{seconds}} 秒後に自動的に閉じます",
-    "expand": "展開",
-    "collapse": "折りたたむ",
-    "clickToAnswer": "クリックして回答"
+    "timeoutWarning": "すぐに回答してください。{{seconds}} 秒後に自動でスキップされます",
+    "progress": "質問 {{current}} / {{total}}",
+    "prev": "前へ",
+    "next": "次へ",
+    "unansweredStatus": "未回答",
+    "cancelledStatus": "キャンセル"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
-    "subtitle": "Claude has finished planning and is ready to execute.",
+    "subtitle": "OpenCode has finished planning and is ready to execute.",
     "requestedPermissions": "Requested Permissions",
     "executionMode": "Execution Mode",
-    "executionModeDescription": "Select how Claude should execute the plan:",
+    "executionModeDescription": "Select how OpenCode should execute the plan:",
     "approve": "Approve & Execute",
     "reject": "Reject",
     "toApprove": "to approve",
@@ -1036,7 +860,6 @@
   },
   "config": {
     "clickToCopy": "クリックしてコピー",
-    "officialDocs": "公式ドキュメント",
     "switch": "切り替え",
     "switchProvider": "プロバイダーを切り替え",
     "runtimeProvider": {
@@ -1237,7 +1060,7 @@
         "title": "主な機能",
         "toolExtension": {
           "label": "ツール拡張",
-          "description": "ファイルシステムやネットワークアクセスなどの機能をClaudeに追加"
+          "description": "ファイルシステムやネットワークアクセスなどの機能をOpenCodeに追加"
         },
         "dataConnection": {
           "label": "データ接続",
@@ -1324,9 +1147,9 @@
     "todoList": "Todoリスト",
     "editFileTitle": "ファイルを編集",
     "clickToOpen": "クリックして{{filePath}}を開く",
-    "refreshFileInIdea": "IDEAでファイルを更新",
-    "refreshFileInIdeaSuccess": "IDEAでこのファイルを手動で更新しました",
-    "showDiffInIdea": "IDEAで変更を表示",
+    "refreshFileInEditor": "エディターでファイルを更新",
+    "refreshFileInEditorSuccess": "エディターでこのファイルを手動で更新しました",
+    "showDiffInEditor": "エディターで変更を表示",
     "diffButton": "差分",
     "editBatchTitle": "ファイル一括編集",
     "searchBatchTitle": "一括検索",
@@ -1381,7 +1204,7 @@
     "undoChanges": "変更を元に戻す",
     "undoConfirmTitle": "ファイル変更を元に戻す",
     "undoWillDelete": "このファイルは新規作成されました。元に戻すとファイルが削除されます。",
-    "undoWillRestore": "Claude が変更する前の状態にファイルを復元します。",
+    "undoWillRestore": "OpenCode が変更する前の状態にファイルを復元します。",
     "undoCannotUndo": "この操作は取り消せません。",
     "confirmUndo": "元に戻す",
     "undoSuccess": "{{fileName}} の変更を元に戻しました",
@@ -1394,9 +1217,9 @@
     "keepAllConfirmMessage": "現在の変更を新しい基準として保持します。今後の変更はゼロからカウントされます。",
     "discardAllSuccess": "すべての変更を元に戻しました",
     "discardAllFailed": "元に戻す失敗: {{error}}",
+    "discardAllPartial": "{{undone}} 件を取り消しましたが、{{failed}} 件が失敗しました（例: {{first}}）",
     "keepAllSuccess": "すべて保持しました。変更記録をリセットしました",
-    "multiAgentBadge": "複数エージェント",
-    "multiAgentEdited": "このセッションで {{count}} 個のエージェントがこのファイルを編集しました。ご注意ください"
+    "loadingSession": "会話を読み込み中…"
   },
   "skills": {
     "title": "スキル",
@@ -1444,7 +1267,7 @@
       "title": "Skills とは？",
       "overview": {
         "title": "概要",
-        "description": "Skills は、特定のタスクに対する Claude のパフォーマンスを向上させる、動的にロードされる命令セット、スクリプト、リソースフォルダです。Skills は、企業のブランドガイドラインを使用してドキュメントを作成したり、組織固有のワークフローに従ってデータを分析したり、個人的なタスクを自動化したりするなど、特定のタスクを繰り返し可能な方法で完了する方法を Claude に教えます。"
+        "description": "Skills は、特定のタスクに対する OpenCode のパフォーマンスを向上させる、動的にロードされる命令セット、スクリプト、リソースフォルダです。Skills は、企業のブランドガイドラインを使用してドキュメントを作成したり、組織固有のワークフローに従ってデータを分析したり、個人的なタスクを自動化したりするなど、特定のタスクを繰り返し可能な方法で完了する方法を OpenCode に教えます。"
       },
       "structure": {
         "title": "Skill 構造",
@@ -1477,7 +1300,7 @@
         "title": "使用のヒント",
         "item1": "Skill ディレクトリに有効な SKILL.md ファイルが含まれていることを確認してください",
         "item2": "Skill 名は小文字、数字、ハイフン（hyphen-case）を使用する必要があります",
-        "item3": "Skills はロード後、Claude セッションで自動的に有効になります",
+        "item3": "Skills はロード後、OpenCode セッションで自動的に有効になります",
         "item4": "有効/無効トグルで個々の Skill のステータスを制御します",
         "item5": "チャットで Skill 名を言及して使用します。例：\"pdf skill を使用してフォームフィールドを抽出\""
       },
@@ -1558,7 +1381,11 @@
       },
       "sonnet5": {
         "label": "Sonnet 5",
-        "description": "Sonnet 5 · デフォルトモデルを使用"
+        "description": "Sonnet 5 · Sonnet 4.6 のアップグレードモデル"
+      },
+      "sonnet47": {
+        "label": "Sonnet 4.7",
+        "description": "Sonnet 4.7 · デフォルトモデルを使用"
       },
       "opus5": {
         "label": "Opus 5",
@@ -1624,12 +1451,13 @@
       "label": "自動モード",
       "tooltip": "すべての権限チェックをバイパス",
       "description": "完全自動、すべての権限チェックをバイパス[注意して使用]"
-    }
+    },
+    "switchHint": "モードを切り替え"
   },
   "codexModes": {
     "default": {
       "label": "Suggest (approval)",
-      "tooltip": "Codex approval_policy=on-request – prompts before editing files or running shell commands.",
+      "tooltip": "Codex approval_policy=untrusted – prompts before editing files or running shell commands.",
       "description": "Safest option. Every write or command requires your approval."
     },
     "plan": {
@@ -1648,46 +1476,12 @@
       "description": "Hands-off mode. Codex executes edits and shell commands immediately."
     }
   },
-  "ompModes": {
-    "default": {
-      "label": "デフォルト",
-      "tooltip": "選択したモデルを使用（または OMP auto）",
-      "description": "モデルドロップダウンで選択したモデルを使用します。Auto の場合は OMP CLI のデフォルトを使用します。"
-    },
-    "smol": {
-      "label": "Smol",
-      "tooltip": "高速モデルロール (omp --model smol)",
-      "description": "omp の smol ロールに設定されたモデルでこの会話を実行します。モデルドロップダウンを上書きします。"
-    },
-    "slow": {
-      "label": "Slow",
-      "tooltip": "推論モデルロール (omp --model slow)",
-      "description": "omp の slow ロールに設定されたモデルでこの会話を実行します。モデルドロップダウンを上書きします。"
-    },
-    "plan": {
-      "label": "Plan",
-      "tooltip": "プランニングモデルロール (omp --model plan)",
-      "description": "omp の plan ロールに設定されたモデルでこの会話を実行します。モデルドロップダウンを上書きします。"
-    }
-  },
   "providers": {
-    "claude": {
-      "label": "Claude Code"
-    },
-    "codex": {
-      "label": "Codex"
-    },
     "gemini": {
       "label": "Gemini Cli"
     },
     "opencode": {
       "label": "OpenCode"
-    },
-    "pi": {
-      "label": "PI CLI"
-    },
-    "omp": {
-      "label": "OMP CLI"
     }
   },
   "promptEnhancer": {
@@ -1744,6 +1538,7 @@
     "parseError": "結果の解析に失敗しました"
   },
   "reasoning": {
+    "cycleHint": "推論の強さを切り替え",
     "title": "思考深度を選択",
     "low": {
       "label": "低",
@@ -1777,8 +1572,8 @@
     "helpText": "If the problem persists, please copy the error information and submit it as an issue on GitHub, or share it in the community group."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code が中断されました（レスポンスタイムアウトまたはユーザーキャンセルの可能性）：",
-    "claudeCodeError": "Claude Code エラー：",
+    "claudeCodeInterrupted": "OpenCode が中断されました（レスポンスタイムアウトまたはユーザーキャンセルの可能性）：",
+    "claudeCodeError": "OpenCode エラー：",
     "errorMessage": "エラーメッセージ",
     "currentApiKeySource": "現在の API Key ソース",
     "currentApiKeyPreview": "現在の API Key プレビュー",
@@ -1789,7 +1584,7 @@
     "defaultBaseUrl": "デフォルト（https://api.anthropic.com）",
     "configTip": "ヒント：CLI は環境変数または settings.json から読み取れますが、このプラグインは問題を避けるため settings.json からの読み取りのみサポートしています。プラグイン右上の設定 > プロバイダー管理で設定できます",
     "apiError": "API エラー",
-    "apiErrorCauses": "考えられる原因：\n1. API Key が正しく設定されていない\n2. サードパーティプロキシサービスの設定問題\n3. ~/.claude/settings.json の設定を確認してください",
+    "apiErrorCauses": "考えられる原因：\n1. API Key が正しく設定されていない\n2. サードパーティプロキシサービスの設定問題\n3. ~/.config/opencode/opencode.json の設定を確認してください",
     "codexAuthError": "Codex 認証エラー：",
     "codexAuthErrorChecks": "以下を確認してください：\n1. プラグイン設定の Codex API Key は正しいですか\n2. API Key に十分な権限がありますか\n3. カスタム Base URL を使用している場合、アドレスが正しいか確認してください",
     "codexAuthTip": "ヒント：Codex には有効な OpenAI API Key が必要です",
@@ -1824,7 +1619,6 @@
   "errorDiagnostic": {
     "copyCommand": "コピー",
     "copied": "コピー済み",
-    "openDependencySettings": "依存関係管理を開く",
     "recommended": "推奨",
     "codexThreadResume": {
       "title": "セッションスレッドが無効です",
@@ -1841,10 +1635,6 @@
           "step0": "1. ターミナルで実行（npm 公式レジストリへ切り替え）：",
           "step1": "2. プラグインの「依存関係管理」設定を開き、再インストールをクリック：",
           "step2": "3. 再インストール完了後、Taobao ミラーに戻す："
-        },
-        "downgrade": {
-          "title": "方法 2：バージョンをロールバック",
-          "step0": "「依存関係管理」で SDK バージョンを v0.2.112 以前に切り替えてください。切り替え後は IDEA の再起動が必要です。"
         }
       }
     },
@@ -1856,13 +1646,20 @@
         "checkNodeVersion": {
           "title": "方法 1：Node.js のバージョンを確認する",
           "step0": "ターミナルで以下のコマンドを実行してバージョンを確認してください。Node 22 または現在の最新 LTS を推奨します — Node 24 では多数のエラー報告があるため、Node 20 または 22 をご利用ください："
-        },
-        "reinstallLatestSdk": {
-          "title": "方法 2：npm 公式レジストリから最新の SDK を再インストール",
-          "step0": "1. npm 公式レジストリに切り替える（Taobao ミラーは最新版に同期されていない可能性があります、使用しないでください）：",
-          "step1": "2. 「依存関係管理」を開いて最新の SDK を再インストール："
         }
       }
+    }
+  },
+  "openCodeModes": {
+    "default": {
+      "label": "Build",
+      "tooltip": "OpenCode build エージェント",
+      "description": "フルアクセスの開発エージェント（opencode デフォルト）"
+    },
+    "plan": {
+      "label": "Plan",
+      "tooltip": "OpenCode plan エージェント",
+      "description": "読み取り専用で分析し、コードを書く前に計画を作成"
     }
   }
 }

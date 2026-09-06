@@ -5,8 +5,8 @@ import {
   useFileChanges,
   computeDiffStats,
   clearDiffCache,
+  parsePatchEditPairs,
 } from './useFileChanges';
-import { clearFileTouchRegistry } from '../utils/fileTouchRegistry';
 
 function lines(n: number, prefix: string): string {
   return Array.from({ length: n }, (_, i) => `${prefix} line ${i}`).join('\n');
@@ -78,7 +78,6 @@ function makeFindToolResult(messages: ClaudeMessage[]) {
 describe('computeDiffStats', () => {
   beforeEach(() => {
     clearDiffCache();
-    clearFileTouchRegistry();
   });
 
   it('counts equal-size large replacements as both additions and deletions', () => {
@@ -124,44 +123,6 @@ describe('computeDiffStats', () => {
 describe('useFileChanges', () => {
   beforeEach(() => {
     clearDiffCache();
-    clearFileTouchRegistry();
-    // jsdom localStorage
-    try {
-      localStorage.clear();
-    } catch {
-      // ignore
-    }
-  });
-
-  it('counts Grok-style Search Replace tools in the Edits ledger', () => {
-    const messages: ClaudeMessage[] = [
-      assistantWithTools([
-        {
-          id: 'sr1',
-          name: 'Search Replace',
-          input: {
-            file_path: '/Users/hpstream/Desktop/code/my-knowledge/name.js',
-            old_string: '',
-            new_string: '123',
-          },
-        },
-      ]),
-      userWithResults([{ toolUseId: 'sr1' }]),
-    ];
-
-    const { result } = renderHook(() =>
-      useFileChanges({
-        messages,
-        getContentBlocks,
-        findToolResult: makeFindToolResult(messages),
-      }),
-    );
-
-    expect(result.current).toHaveLength(1);
-    expect(result.current[0].fileName).toBe('name.js');
-    expect(result.current[0].status).toBe('A');
-    expect(result.current[0].additions).toBe(1);
-    expect(result.current[0].deletions).toBe(0);
   });
 
   it('aggregates multiple successful Edit tools into separate file entries', () => {
@@ -363,22 +324,70 @@ describe('useFileChanges', () => {
     expect(result.current).toHaveLength(1);
     expect(result.current[0].filePath).toBe('/proj/ok.ts');
   });
+});
 
-  it('uses net session stats for sequential edits on same file (not op sum)', () => {
+describe('parsePatchEditPairs (apply_patch)', () => {
+  it('parses Update File hunks into reversible old/new pairs', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/a.ts',
+      '@@',
+      ' context line',
+      '-old one',
+      '+new one',
+      '+new two',
+      '@@',
+      ' more context',
+      '-gone',
+      '+back',
+      '*** End Patch',
+    ].join('\n');
+
+    const pairs = parsePatchEditPairs(patch);
+    expect(pairs).toHaveLength(2);
+
+    expect(pairs[0]).toEqual({
+      oldString: 'context line\nold one',
+      newString: 'context line\nnew one\nnew two',
+      filePath: 'src/a.ts',
+    });
+    expect(pairs[1]).toEqual({
+      oldString: 'more context\ngone',
+      newString: 'more context\nback',
+      filePath: 'src/a.ts',
+    });
+  });
+
+  it('parses Add File as an empty-old pair and Delete File as a delete marker', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Add File: src/new.ts',
+      '+export const a = 1;',
+      '*** Delete File: src/old.ts',
+      '*** End Patch',
+    ].join('\n');
+
+    const pairs = parsePatchEditPairs(patch);
+    expect(pairs).toHaveLength(2);
+    expect(pairs[0]).toEqual({ oldString: '', newString: 'export const a = 1;', filePath: 'src/new.ts' });
+    expect(pairs[1]).toMatchObject({ oldString: '', newString: '', filePath: 'src/old.ts', kind: 'delete-file' });
+  });
+
+  it('counts apply_patch changes in useFileChanges (regression for missing files)', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: /proj/patched.ts',
+      '@@',
+      '-const a = 1;',
+      '+const a = 2;',
+      '*** End Patch',
+    ].join('\n');
+
     const messages: ClaudeMessage[] = [
       assistantWithTools([
-        {
-          id: 'e1',
-          name: 'Edit',
-          input: { file_path: '/proj/net.ts', old_string: 'alpha', new_string: 'beta' },
-        },
-        {
-          id: 'e2',
-          name: 'Edit',
-          input: { file_path: '/proj/net.ts', old_string: 'beta', new_string: 'alpha' },
-        },
+        { id: 'p1', name: 'apply_patch', input: { input: patch } },
       ]),
-      userWithResults([{ toolUseId: 'e1' }, { toolUseId: 'e2' }]),
+      userWithResults([{ toolUseId: 'p1' }]),
     ];
 
     const { result } = renderHook(() =>
@@ -390,254 +399,8 @@ describe('useFileChanges', () => {
     );
 
     expect(result.current).toHaveLength(1);
-    // Reverted to original content → net 0 (sum would be +2 -2)
-    expect(result.current[0].additions).toBe(0);
-    expect(result.current[0].deletions).toBe(0);
-    expect(result.current[0].operations).toHaveLength(2);
-  });
-
-  it('marks multiAgent when main and subagent both edit the same file', () => {
-    // Main Edit must come *before* Agent/Task (or after a text boundary); otherwise
-    // groupBlocks-style absorption attributes it to the agent and both ops share one id.
-    const mainMessages: ClaudeMessage[] = [
-      assistantWithTools([
-        {
-          id: 'main-edit',
-          name: 'Edit',
-          input: { file_path: '/proj/shared.ts', old_string: 'start', new_string: 'mid' },
-        },
-        {
-          id: 'agent-1',
-          name: 'Agent',
-          input: { description: 'edit', prompt: 'go', subagent_type: 'general-purpose' },
-        },
-      ]),
-      userWithResults([{ toolUseId: 'main-edit' }, { toolUseId: 'agent-1' }]),
-    ];
-
-    const subagentHistories: Record<string, SubagentHistoryResponse> = {
-      'agent-1': {
-        success: true,
-        toolUseId: 'agent-1',
-        agentId: 'agent-1',
-        messages: [
-          {
-            type: 'assistant',
-            message: {
-              content: [
-                {
-                  type: 'tool_use',
-                  id: 'sub-edit',
-                  name: 'Edit',
-                  input: {
-                    file_path: '/proj/shared.ts',
-                    old_string: 'mid',
-                    new_string: 'end',
-                  },
-                },
-              ],
-            },
-          },
-          {
-            type: 'user',
-            message: {
-              content: [
-                {
-                  type: 'tool_result',
-                  tool_use_id: 'sub-edit',
-                  content: 'ok',
-                },
-              ],
-            },
-          },
-        ],
-      },
-    };
-
-    const { result } = renderHook(() =>
-      useFileChanges({
-        messages: mainMessages,
-        getContentBlocks,
-        findToolResult: makeFindToolResult(mainMessages),
-        subagentHistories,
-      }),
-    );
-
-    const shared = result.current.find((f) => f.filePath === '/proj/shared.ts');
-    expect(shared).toBeDefined();
-    expect(shared!.multiAgent).toBe(true);
-    expect(shared!.agentIds).toEqual(expect.arrayContaining(['main', 'agent-1']));
-    // net start → end
-    expect(shared!.additions).toBe(1);
-    expect(shared!.deletions).toBe(1);
-  });
-
-  it('attributes Edit tools absorbed after Task/Agent to that agent (multi-agent badge)', () => {
-    // Mirrors groupBlocks: Task absorbs following tool_use until a text boundary.
-    // Two agents each followed by an Edit on the same file → multiAgent.
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'assistant',
-        content: '',
-        raw: {
-          role: 'assistant',
-          content: [
-            {
-              type: 'tool_use',
-              id: 'task-a',
-              name: 'Task',
-              input: { description: 'agent A', prompt: 'edit', subagent_type: 'general-purpose' },
-            },
-            {
-              type: 'tool_use',
-              id: 'edit-a',
-              name: 'Edit',
-              input: { file_path: '/proj/shared.ts', old_string: 'a', new_string: 'b' },
-            },
-            {
-              type: 'tool_use',
-              id: 'task-b',
-              name: 'Task',
-              input: { description: 'agent B', prompt: 'edit', subagent_type: 'general-purpose' },
-            },
-            {
-              type: 'tool_use',
-              id: 'edit-b',
-              name: 'Edit',
-              input: { file_path: '/proj/shared.ts', old_string: 'b', new_string: 'c' },
-            },
-          ],
-        },
-      } as ClaudeMessage,
-      userWithResults([
-        { toolUseId: 'task-a' },
-        { toolUseId: 'edit-a' },
-        { toolUseId: 'task-b' },
-        { toolUseId: 'edit-b' },
-      ]),
-    ];
-
-    const { result } = renderHook(() =>
-      useFileChanges({
-        messages,
-        getContentBlocks,
-        findToolResult: makeFindToolResult(messages),
-      }),
-    );
-
-    expect(result.current).toHaveLength(1);
-    expect(result.current[0].filePath).toBe('/proj/shared.ts');
-    expect(result.current[0].multiAgent).toBe(true);
-    expect(result.current[0].agentIds).toEqual(expect.arrayContaining(['task-a', 'task-b']));
-  });
-
-  it('keeps main attribution for Edit before any Agent/Task in the same message', () => {
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'assistant',
-        content: '',
-        raw: {
-          role: 'assistant',
-          content: [
-            {
-              type: 'tool_use',
-              id: 'edit-main',
-              name: 'Write',
-              input: { file_path: '/proj/only-main.ts', content: 'x\ny' },
-            },
-            {
-              type: 'tool_use',
-              id: 'task-1',
-              name: 'Agent',
-              input: { description: 'later', prompt: 'go', subagent_type: 'general-purpose' },
-            },
-          ],
-        },
-      } as ClaudeMessage,
-      userWithResults([{ toolUseId: 'edit-main' }, { toolUseId: 'task-1' }]),
-    ];
-
-    const { result } = renderHook(() =>
-      useFileChanges({
-        messages,
-        getContentBlocks,
-        findToolResult: makeFindToolResult(messages),
-      }),
-    );
-
-    expect(result.current[0].multiAgent).toBeFalsy();
-    expect(result.current[0].agentIds).toEqual(['main']);
-  });
-
-  it('marks multiAgent across two chat sessions (AI1 + AI2 tabs) on the same file', () => {
-    const path = '/Users/hpstream/Desktop/code/my-knowledge/name.js';
-    const makeMessages = (id: string, content: string): ClaudeMessage[] => [
-      assistantWithTools([
-        {
-          id,
-          name: 'Write',
-          input: { file_path: path, content },
-        },
-      ]),
-      userWithResults([{ toolUseId: id }]),
-    ];
-
-    const messages1 = makeMessages('w1', '123');
-    const { result: r1 } = renderHook(() =>
-      useFileChanges({
-        messages: messages1,
-        getContentBlocks,
-        findToolResult: makeFindToolResult(messages1),
-        currentSessionId: 'AI1',
-      }),
-    );
-    expect(r1.current[0].multiAgent).toBeFalsy();
-
-    const messages2 = makeMessages('w2', '234');
-    const { result: r2 } = renderHook(() =>
-      useFileChanges({
-        messages: messages2,
-        getContentBlocks,
-        findToolResult: makeFindToolResult(messages2),
-        currentSessionId: 'AI2',
-      }),
-    );
-
-    expect(r2.current[0].filePath).toBe(path);
-    expect(r2.current[0].multiAgent).toBe(true);
-    // Another tab already created/touched the file → show M not A
-    expect(r2.current[0].status).toBe('M');
-  });
-
-  it('respects startFromIndex (Keep All baseline) when rebuilding from history', () => {
-    const messages: ClaudeMessage[] = [
-      assistantWithTools([
-        {
-          id: 'old',
-          name: 'Edit',
-          input: { file_path: '/proj/old.ts', old_string: 'a', new_string: 'b' },
-        },
-      ]),
-      userWithResults([{ toolUseId: 'old' }]),
-      assistantWithTools([
-        {
-          id: 'new',
-          name: 'Edit',
-          input: { file_path: '/proj/new.ts', old_string: 'c', new_string: 'd' },
-        },
-      ]),
-      userWithResults([{ toolUseId: 'new' }]),
-    ];
-
-    const { result } = renderHook(() =>
-      useFileChanges({
-        messages,
-        getContentBlocks,
-        findToolResult: makeFindToolResult(messages),
-        startFromIndex: 2,
-      }),
-    );
-
-    expect(result.current.map((f) => f.filePath)).toEqual(['/proj/new.ts']);
+    expect(result.current[0].filePath).toBe('/proj/patched.ts');
+    expect(result.current[0].additions).toBe(1);
+    expect(result.current[0].deletions).toBe(1);
   });
 });

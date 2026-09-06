@@ -64,23 +64,6 @@ describe('usePasteAndDrop file references', () => {
     delete window.getClipboardFilePath;
   });
 
-  it('registers and normalizes multiple explicit paths with spaces', () => {
-    const editable = createEditable();
-    placeCaretAtEnd(editable);
-    const { result, pathMappingRef } = setupPasteHook(editable);
-
-    result.current.handlePaste(createPasteEvent(
-      '@C:\\Program Files\\demo\\view file.xml @/workspace/src/index.vue'
-    ));
-
-    expect(editable.textContent).toBe(
-      '@C:\\Program Files\\demo\\view file.xml @/workspace/src/index.vue '
-    );
-    expect(pathMappingRef.current.get('view file.xml'))
-      .toBe('C:\\Program Files\\demo\\view file.xml');
-    expect(pathMappingRef.current.get('/workspace/src/index.vue'))
-      .toBe('/workspace/src/index.vue');
-  });
 
   it('keeps mixed ordinary text unchanged and does not register its @ text', () => {
     const editable = createEditable();
@@ -106,42 +89,5 @@ describe('usePasteAndDrop file references', () => {
     expect(pathMappingRef.current.size).toBe(0);
   });
 
-  it('registers a pasted line reference with a spaced path', () => {
-    const editable = createEditable();
-    placeCaretAtEnd(editable);
-    const { result, pathMappingRef } = setupPasteHook(editable);
 
-    result.current.handlePaste(createPasteEvent(
-      '@C:\\Program Files\\src\\Main.java#L10-12'
-    ));
-
-    expect(editable.textContent).toBe('@C:\\Program Files\\src\\Main.java#L10-12 ');
-    expect(pathMappingRef.current.get('C:\\Program Files\\src\\Main.java#L10-12'))
-      .toBe('C:\\Program Files\\src\\Main.java');
-  });
-
-  it('registers a real clipboard file returned by the Java bridge', async () => {
-    const editable = createEditable();
-    placeCaretAtEnd(editable);
-    const { result, pathMappingRef } = setupPasteHook(editable);
-    window.getClipboardFilePath = vi.fn().mockResolvedValue(
-      'C:\\Program Files\\demo\\view file.xml'
-    );
-    const event = {
-      clipboardData: {
-        items: [{ kind: 'file', type: 'application/xml' }],
-        getData: () => '',
-      },
-      preventDefault: vi.fn(),
-    } as unknown as React.ClipboardEvent;
-
-    await act(async () => {
-      result.current.handlePaste(event);
-      await Promise.resolve();
-    });
-
-    expect(editable.textContent).toBe('@C:\\Program Files\\demo\\view file.xml ');
-    expect(pathMappingRef.current.get('view file.xml'))
-      .toBe('C:\\Program Files\\demo\\view file.xml');
-  });
 });

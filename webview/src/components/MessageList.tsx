@@ -1,13 +1,15 @@
-import { memo, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { memo, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, forwardRef, useImperativeHandle, Fragment } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, ClaudeContentBlock, CodexHistoryPageInfo, ToolResultBlock } from '../types';
 import { sendBridgeEvent } from '../utils/bridge';
 import { MessageItem } from './MessageItem';
 import WaitingIndicator from './WaitingIndicator';
+import CompactingIndicator from './CompactingIndicator';
 import { ContextMenu } from './ContextMenu';
 import { useContextMenu, copySelection } from '../hooks/useContextMenu.js';
 import { quoteToChatInput } from '../utils/quoteUtils';
 import type { MessageListRevealHandle } from './ConversationSearch/types';
+import RevertPlaceholderBar, { extractPreviewText, type RevertedMessagePreview } from './MessageList/RevertPlaceholderBar';
 import {
   DETAILED_OUTPUT_ENABLED_EVENT,
   getDetailedOutputEnabled,
@@ -17,6 +19,8 @@ import {
 /** Keep pagination aligned to complete user turns so assistant/tool chains are never split. */
 const INITIAL_VISIBLE_TURNS = 5;
 const REVEAL_TURN_PAGE_SIZE = 5;
+/** opencode 恢复分页页大小（与宿主 RESTORE_PAGE_MESSAGES 对齐）。 */
+const OPENCODE_HISTORY_PAGE_SIZE = 200;
 const HISTORY_DISK_PAGE_SIZE = 30;
 
 function isHumanUserMessage(message: ClaudeMessage): boolean {
@@ -87,6 +91,8 @@ interface MessageListProps {
   isThinking: boolean;
   loading: boolean;
   loadingStartTime: number | null;
+  isCompacting: boolean;
+  compactingStartTime: number | null;
   t: TFunction;
   getMessageText: (message: ClaudeMessage) => string;
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[];
@@ -97,10 +103,23 @@ interface MessageListProps {
   /** Notify parent when the number of collapsed (hidden) messages changes. */
   onCollapsedCountChange?: (count: number) => void;
   onNavigateToProviderSettings?: () => void;
-  onNavigateToDependencySettings?: () => void;
   /** Current active provider id; forwarded to MessageItem for streaming-connect label. */
   currentProvider?: string;
   currentSessionId?: string | null;
+  /**
+   * opencode message id of the revert boundary (the undone user message).
+   * When set, this message and everything after it is hidden behind a
+   * RevertPlaceholderBar which carries the restore (redo) action.
+   */
+  revertBoundaryId?: string | null;
+  /** Callback to undo a message */
+  onUndo?: (message: ClaudeMessage) => void;
+  /** Restore (redo) reverted messages — rendered on the placeholder bar. */
+  onRestore?: () => void;
+  /** Callback to fork from a message */
+  onFork?: (message: ClaudeMessage) => void;
+  /** Whether the session is currently streaming (disables fork). */
+  forkDisabled?: boolean;
 }
 
 export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListProps>(function MessageList({
@@ -110,6 +129,8 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   isThinking,
   loading,
   loadingStartTime,
+  isCompacting,
+  compactingStartTime,
   t,
   getMessageText,
   getContentBlocks,
@@ -119,14 +140,21 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   onMessageNodeRef,
   onCollapsedCountChange,
   onNavigateToProviderSettings,
-  onNavigateToDependencySettings,
   currentProvider,
   currentSessionId,
+  revertBoundaryId,
+  onUndo,
+  onRestore,
+  onFork,
+  forkDisabled = false,
 }, ref) {
   const [revealedTurnCount, setRevealedTurnCount] = useState(0);
   const [historyPageInfo, setHistoryPageInfo] = useState<CodexHistoryPageInfo | null>(null);
   const [loadingEarlierHistory, setLoadingEarlierHistory] = useState(false);
   const loadingEarlierHistoryRef = useRef(false);
+  /** opencode 恢复分页：宿主推送的窗口状态（hasEarlier = 还有更早的页）。 */
+  const [opencodeWindowInfo, setOpencodeWindowInfo] = useState<NonNullable<Window['__opencodeHistoryWindow']> | null>(() =>
+    window.__opencodeHistoryWindow ?? null);
   const [detailedOutputEnabled, setDetailedOutputEnabled] = useState(() =>
     getDetailedOutputEnabled()
   );
@@ -175,6 +203,12 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       setHistoryPageInfo(
         currentProvider === 'codex' && cached?.sessionId === currentSessionId ? cached ?? null : null,
       );
+      const cachedWindow = window.__opencodeHistoryWindow;
+      setOpencodeWindowInfo(
+        cachedWindow && cachedWindow.sessionId && cachedWindow.sessionId === currentSessionId
+          ? cachedWindow
+          : null,
+      );
     }
     previousSessionRef.current = currentSessionId;
     firstMessageBoundaryRef.current = currentBoundary;
@@ -196,6 +230,16 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       }
     };
 
+    // opencode 恢复分页：宿主在 restore/load_earlier_messages 后推送窗口状态
+    const handleOpencodeWindowInfo = (event: Event) => {
+      const info = (event as CustomEvent<NonNullable<Window['__opencodeHistoryWindow']>>).detail;
+      if (!info || (info.sessionId && info.sessionId !== currentSessionId)) return;
+      setOpencodeWindowInfo(info);
+      setLoadingEarlierHistory(false);
+      loadingEarlierHistoryRef.current = false;
+    };
+    window.addEventListener('opencode-history-window-info', handleOpencodeWindowInfo);
+
     window.addEventListener('codex-history-page-info', handlePageInfo);
     window.addEventListener('codex-history-page-error', handlePageError);
     const cached = window.__codexHistoryPageInfo;
@@ -205,15 +249,52 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
     return () => {
       window.removeEventListener('codex-history-page-info', handlePageInfo);
       window.removeEventListener('codex-history-page-error', handlePageError);
+      window.removeEventListener('opencode-history-window-info', handleOpencodeWindowInfo);
     };
   }, [currentProvider, currentSessionId]);
 
+  /** Match a message against an opencode message id (top-level id or raw.id/raw.uuid). */
+  const messageMatchesId = useCallback((message: ClaudeMessage, id: string): boolean => {
+    if (typeof message.id === 'string' && message.id === id) return true;
+    const raw = message.raw as Record<string, unknown> | undefined;
+    if (raw && typeof raw === 'object') {
+      if (typeof raw.id === 'string' && raw.id === id) return true;
+      if (typeof raw.uuid === 'string' && raw.uuid === id) return true;
+    }
+    return false;
+  }, []);
+
+  // Revert boundary slicing: when a revert (undo) is active, hide the boundary
+  // user message and everything after it behind a RevertPlaceholderBar. Applied
+  // BEFORE pagination math so collapsed-turn bookkeeping stays consistent.
+  const { displayMessages, revertedMessages } = useMemo(() => {
+    if (!revertBoundaryId) return { displayMessages: messages, revertedMessages: [] as ClaudeMessage[] };
+    const idx = messages.findIndex((m) => messageMatchesId(m, revertBoundaryId));
+    if (idx < 0) {
+      // Boundary not present in the loaded transcript (e.g. server already
+      // filtered it) — keep the full list; the bar still renders via hasRevert.
+      return { displayMessages: messages, revertedMessages: [] as ClaudeMessage[] };
+    }
+    return {
+      displayMessages: messages.slice(0, idx),
+      revertedMessages: messages.slice(idx),
+    };
+  }, [messages, revertBoundaryId, messageMatchesId]);
+
+  const revertedPreviews = useMemo<RevertedMessagePreview[]>(
+    () => revertedMessages.map((m) => ({
+      role: m.type === 'user' ? 'user' as const : 'assistant' as const,
+      text: extractPreviewText(m).slice(0, 400),
+    })),
+    [revertedMessages],
+  );
+
   const userTurnStartIndexes = useMemo(
-    () => messages.reduce<number[]>((indexes, message, index) => {
+    () => displayMessages.reduce<number[]>((indexes, message, index) => {
       if (isHumanUserMessage(message)) indexes.push(index);
       return indexes;
     }, []),
-    [messages],
+    [displayMessages],
   );
   const visibleTurnCount = Math.min(
     userTurnStartIndexes.length,
@@ -227,26 +308,44 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   const canLoadEarlierFromDisk = Boolean(currentProvider === 'codex'
     && historyPageInfo?.sessionId === currentSessionId
     && historyPageInfo?.hasMore);
+  // opencode 恢复分页：宿主 restore 只装了最近窗口，还有更早的页可前插。
+  const canLoadEarlierOpencode = Boolean(
+    currentSessionId
+    && opencodeWindowInfo
+    && opencodeWindowInfo.hasEarlier
+    && opencodeWindowInfo.sessionId === currentSessionId,
+  );
   const handleRevealMore = useCallback(() => {
     if (hiddenTurnCount > 0) {
       setRevealedTurnCount((prev) => prev + REVEAL_TURN_PAGE_SIZE);
       return;
     }
-    if (!canLoadEarlierFromDisk || loadingEarlierHistoryRef.current || !currentSessionId || !historyPageInfo) {
+    if (canLoadEarlierFromDisk && !loadingEarlierHistoryRef.current && currentSessionId && historyPageInfo) {
+      loadingEarlierHistoryRef.current = true;
+      setLoadingEarlierHistory(true);
+      const sent = sendBridgeEvent('load_codex_history_page', JSON.stringify({
+        sessionId: currentSessionId,
+        beforeTurn: historyPageInfo.fromTurn,
+      }));
+      if (!sent) {
+        loadingEarlierHistoryRef.current = false;
+        setLoadingEarlierHistory(false);
+      }
       return;
     }
-
-    loadingEarlierHistoryRef.current = true;
-    setLoadingEarlierHistory(true);
-    const sent = sendBridgeEvent('load_codex_history_page', JSON.stringify({
-      sessionId: currentSessionId,
-      beforeTurn: historyPageInfo.fromTurn,
-    }));
-    if (!sent) {
-      loadingEarlierHistoryRef.current = false;
-      setLoadingEarlierHistory(false);
+    if (canLoadEarlierOpencode && !loadingEarlierHistoryRef.current) {
+      loadingEarlierHistoryRef.current = true;
+      setLoadingEarlierHistory(true);
+      const sent = sendBridgeEvent('load_earlier_messages', JSON.stringify({
+        sessionId: currentSessionId,
+        count: OPENCODE_HISTORY_PAGE_SIZE,
+      }));
+      if (!sent) {
+        loadingEarlierHistoryRef.current = false;
+        setLoadingEarlierHistory(false);
+      }
     }
-  }, [canLoadEarlierFromDisk, currentSessionId, hiddenTurnCount, historyPageInfo]);
+  }, [canLoadEarlierFromDisk, canLoadEarlierOpencode, currentSessionId, hiddenTurnCount, historyPageInfo]);
 
   // Imperative API so the in-page search can expand everything before scanning.
   // Returns the number of messages that were just revealed (0 when nothing
@@ -278,9 +377,10 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   }, []);
 
   const visibleMessages = useMemo(
-    () => (shouldCollapse ? messages.slice(collapsedCount) : messages),
-    [messages, shouldCollapse, collapsedCount]
+    () => (shouldCollapse ? displayMessages.slice(collapsedCount) : displayMessages),
+    [displayMessages, shouldCollapse, collapsedCount]
   );
+
   return (
     <div ref={containerRef} onContextMenu={handleMessageContextMenu}>
       {ctxMenu.visible && (
@@ -294,7 +394,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
           ]}
         />
       )}
-      {(shouldCollapse || canLoadEarlierFromDisk) && (
+      {(shouldCollapse || canLoadEarlierFromDisk || canLoadEarlierOpencode) && (
         <div
           className="collapsed-messages-indicator"
           onClick={handleRevealMore}
@@ -307,11 +407,17 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
                 remaining: hiddenTurnCount,
                 total: historyPageInfo?.totalTurns,
               })
-              : t('chat.loadEarlierTurns', {
-                count: Math.min(HISTORY_DISK_PAGE_SIZE, historyPageInfo?.fromTurn ?? 0),
-                remaining: historyPageInfo?.fromTurn ?? 0,
-                total: historyPageInfo?.totalTurns ?? 0,
-              })}
+              : canLoadEarlierFromDisk
+                ? t('chat.loadEarlierTurns', {
+                  count: Math.min(HISTORY_DISK_PAGE_SIZE, historyPageInfo?.fromTurn ?? 0),
+                  remaining: historyPageInfo?.fromTurn ?? 0,
+                  total: historyPageInfo?.totalTurns ?? 0,
+                })
+                : t('chat.loadEarlierTurns', {
+                  count: Math.min(OPENCODE_HISTORY_PAGE_SIZE, opencodeWindowInfo?.windowStart ?? 0),
+                  remaining: opencodeWindowInfo?.windowStart ?? 0,
+                  total: opencodeWindowInfo?.total ?? 0,
+                })}
         </div>
       )}
 
@@ -320,32 +426,54 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
         const messageKey = messageKeys[messageIndex];
         const toolResultSignature = getMessageToolResultSignature(message, messageIndex, getContentBlocks, findToolResult);
 
+        const isLatestUserMessage = message.type === 'user' &&
+          messageIndex === displayMessages.length - 1 ||
+          (messageIndex < displayMessages.length - 1 &&
+           displayMessages.slice(messageIndex + 1).some(m => m.type === 'user') === false);
+
         return (
-          <MessageItem
-            key={messageKey}
-            message={message}
-            messageIndex={messageIndex}
-            messageKey={messageKey}
-            isLast={messageIndex === messages.length - 1}
-            streamingActive={streamingActive}
-            isThinking={isThinking}
-            t={t}
-            getMessageText={getMessageText}
-            getContentBlocks={getContentBlocks}
-            findToolResult={findToolResult}
-            extractMarkdownContent={extractMarkdownContent}
-            onNodeRef={onMessageNodeRef}
-            onNavigateToProviderSettings={onNavigateToProviderSettings}
-            onNavigateToDependencySettings={onNavigateToDependencySettings}
-            toolResultSignature={toolResultSignature}
-            currentProvider={currentProvider}
-            detailedOutputEnabled={detailedOutputEnabled}
-          />
+          <Fragment key={messageKey}>
+            <MessageItem
+              message={message}
+              messageIndex={messageIndex}
+              messageKey={messageKey}
+              isLast={messageIndex === displayMessages.length - 1}
+              streamingActive={streamingActive}
+              isThinking={isThinking}
+              t={t}
+              getMessageText={getMessageText}
+              getContentBlocks={getContentBlocks}
+              findToolResult={findToolResult}
+              extractMarkdownContent={extractMarkdownContent}
+              onNodeRef={onMessageNodeRef}
+              onNavigateToProviderSettings={onNavigateToProviderSettings}
+              toolResultSignature={toolResultSignature}
+              currentProvider={currentProvider}
+              detailedOutputEnabled={detailedOutputEnabled}
+              isLatestUserMessage={isLatestUserMessage}
+              onUndo={onUndo}
+              onFork={onFork}
+              forkDisabled={forkDisabled}
+            />
+          </Fragment>
         );
       })}
 
+      {/* Revert boundary placeholder — carries the restore (redo) action */}
+      {revertBoundaryId && (
+        <RevertPlaceholderBar
+          count={revertedMessages.length}
+          previews={revertedPreviews}
+          onRestore={() => onRestore?.()}
+        />
+      )}
+
       {/* Loading indicator */}
       {loading && <WaitingIndicator startTime={loadingStartTime ?? undefined} />}
+
+      {/* Compacting indicator */}
+      {isCompacting && <CompactingIndicator startTime={compactingStartTime ?? undefined} />}
+
       <div ref={messagesEndRef} />
     </div>
   );

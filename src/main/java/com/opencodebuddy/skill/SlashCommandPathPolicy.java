@@ -103,7 +103,7 @@ final class SlashCommandPathPolicy {
     }
 
     static Path resolveManagedSkillsDirectory(Path managedPath) {
-        Path candidate = managedPath.resolve(".claude").resolve("skills");
+        Path candidate = managedPath.resolve(".opencode").resolve("skill");
         if (Files.isDirectory(candidate)) {
             return candidate;
         }

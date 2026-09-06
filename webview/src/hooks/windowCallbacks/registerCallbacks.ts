@@ -12,13 +12,10 @@
 
 import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../useWindowCallbacks';
-import type {
-  SubagentHistoryResponse,
-  SubagentStatusesResponse,
-} from '../../types';
+import { cardDebugLog } from '../../utils/bridge';
 import { parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
-import { isLatestCodexStatusRequest } from '../../utils/codexStatusRequestTracker';
+import type { SubagentHistoryResponse } from '../../types/subagent';
 import {
   setupSlashCommandsCallback,
   resetSlashCommandsState,
@@ -34,15 +31,15 @@ import {
 } from './settingsBootstrap';
 import { registerMessageCallbacks } from './registerCallbacks/messageCallbacks';
 import { registerStreamingCallbacks } from './registerCallbacks/streamingCallbacks';
-import { registerSessionAndSdkCallbacks } from './registerCallbacks/sessionCallbacks';
+import { registerSessionCallbacks } from './registerCallbacks/sessionCallbacks';
 import { registerUsageModeCallbacks } from './registerCallbacks/usageModeCallbacks';
 import { registerPermissionCallbacks } from './registerCallbacks/permissionCallbacks';
 import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCallbacks';
-import {
-  isCurrentSubagentResponse,
-  mergeSubagentHistory,
-  toSubagentHistoryResponse,
-} from './subagentHistoryMerge';
+
+function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, nextMessages: unknown[] | undefined): boolean {
+  if (previousMessages === nextMessages) return true;
+  return deepEqual(previousMessages, nextMessages);
+}
 
 const pendingSubagentHistoryChunks = new Map<string, string[]>();
 const MAX_PENDING_SUBAGENT_HISTORY_TRANSFERS = 16;
@@ -79,6 +76,7 @@ export function registerWindowCallbacks(
     setLoadingStartTime: options.setLoadingStartTime,
     setIsThinking: options.setIsThinking,
     setStreamingActive: options.setStreamingActive,
+    setSessionLoading: options.setSessionLoading,
     isStreamingRef: options.isStreamingRef,
     useBackendStreamingRenderRef: options.useBackendStreamingRenderRef,
     streamingMessageIndexRef: options.streamingMessageIndexRef,
@@ -101,7 +99,7 @@ export function registerWindowCallbacks(
 
   registerMessageCallbacks(options, resetTransientUiState, requestHistoryRenderCommit);
   registerStreamingCallbacks(options);
-  registerSessionAndSdkCallbacks(options, tRef);
+  registerSessionCallbacks(options, tRef);
   registerUsageModeCallbacks(options);
   registerPermissionCallbacks(options);
   registerAgentAndSelectionCallbacks(options);
@@ -109,63 +107,46 @@ export function registerWindowCallbacks(
   window.onSubagentHistoryChunk = appendSubagentHistoryChunk;
 
   window.onSubagentHistoryLoaded = (json: string) => {
+    // 子代理 transcript 上限：Record 按插入序保留最近 MAX_SUBAGENT_HISTORIES
+    // 条。每条持有完整子代理消息数组，agent 重度会话里无界累积会把渲染进程
+    // 内存拖高；被裁掉的条目可由用户重新展开该 Agent 行（触发重新拉取）。
+    const MAX_SUBAGENT_HISTORIES = 50;
     try {
       if (!options.setSubagentHistories) return;
-      const result = JSON.parse(json) as SubagentHistoryResponse;
-      if (!isCurrentSubagentResponse(
-        result,
-        options.currentSessionIdRef.current,
-        options.currentProviderRef.current,
-      )) return;
+      const result = JSON.parse(json);
       const key = result.toolUseId || result.agentId;
       if (!key) return;
       options.setSubagentHistories((prev) => {
         const existing = prev[key];
-        const merged = mergeSubagentHistory(existing, result);
         // Skip state update when the payload is structurally identical.
         // This prevents cascading re-renders and scroll jumps caused by
         // periodic subagent polling (every 2 s) returning unchanged data.
-        if (existing && deepEqual(existing, merged)) {
+        if (existing && existing.success === result.success
+          && existing.completed === result.completed
+          && existing.status === result.status
+          && existing.error === result.error
+          && existing.sessionId === result.sessionId
+          && existing.provider === result.provider
+          && existing.toolUseId === result.toolUseId
+          && existing.agentId === result.agentId
+          && existing.agentPath === result.agentPath
+          && areSubagentMessagesEquivalent(existing.messages, result.messages)) {
           return prev;
         }
-        return { ...prev, [key]: merged };
-      });
-    } catch {
-      // Ignore malformed callback payloads; the request can be retried by reopening the Agent row.
-    }
-  };
-
-  window.onSubagentStatusesLoaded = (json: string) => {
-    try {
-      if (!options.setSubagentHistories) return;
-      const result = JSON.parse(json) as SubagentStatusesResponse;
-      if (!isCurrentSubagentResponse(
-        result,
-        options.currentSessionIdRef.current,
-        options.currentProviderRef.current,
-      ) || !Array.isArray(result.statuses)) return;
-      // Drop late/out-of-order poll responses: only the answer to the latest
-      // request the frontend sent may be merged.
-      if (!isLatestCodexStatusRequest(result.requestId)) return;
-
-      options.setSubagentHistories((prev) => {
-        let next = prev;
-        for (const snapshot of result.statuses ?? []) {
-          const key = snapshot.toolUseId || snapshot.agentId;
-          if (!key) continue;
-          const existing = next[key];
-          const merged = mergeSubagentHistory(
-            existing,
-            toSubagentHistoryResponse(snapshot, result),
-          );
-          if (existing && deepEqual(existing, merged)) continue;
-          if (next === prev) next = { ...prev };
-          next[key] = merged;
+        const next: Record<string, SubagentHistoryResponse> = { ...prev, [key]: result as SubagentHistoryResponse };
+        if (Object.keys(next).length <= MAX_SUBAGENT_HISTORIES) {
+          return next;
+        }
+        // 超限：丢掉最旧的条目（先重建为删除序，再保留最近 N 条）。
+        const oldestFirst = Object.keys(next).filter((k) => k !== key);
+        const keep = new Set([...oldestFirst.slice(oldestFirst.length - (MAX_SUBAGENT_HISTORIES - 1)), key]);
+        for (const k of Object.keys(next)) {
+          if (!keep.has(k)) delete next[k];
         }
         return next;
       });
     } catch {
-      // Ignore malformed status batches; the next bounded poll will retry.
+      // Ignore malformed callback payloads; the request can be retried by reopening the Agent row.
     }
   };
 
@@ -213,6 +194,28 @@ export function registerWindowCallbacks(
       // so a dropped event is not retried - but a later task_progress /
       // task_notification for the same tool_use_id will still land and update
       // the entry, so the subagent list is not permanently stuck.
+    }
+  };
+
+  // opencode todo.updated SSE event — stores authoritative todo list
+  window.onTodoUpdated = (payload: string) => {
+    try {
+      cardDebugLog('[onTodoUpdated] received payload length:', payload?.length);
+      const { sessionID, todos } = JSON.parse(payload);
+      cardDebugLog('[onTodoUpdated] parsed sessionID:', sessionID, 'currentSessionId:', options.currentSessionIdRef.current, 'todos count:', todos?.length);
+      if (sessionID !== options.currentSessionIdRef.current) {
+        cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch');
+        return;
+      }
+      if (options.setSseTodos) {
+        cardDebugLog('[onTodoUpdated] calling setSseTodos with', todos?.length, 'todos');
+        options.setSseTodos(todos);
+      } else {
+        cardDebugLog('[onTodoUpdated] SKIPPED: setSseTodos is undefined');
+      }
+    } catch (e) {
+      console.error('[onTodoUpdated] parse error:', e);
+      // Ignore malformed todo event payloads.
     }
   };
 

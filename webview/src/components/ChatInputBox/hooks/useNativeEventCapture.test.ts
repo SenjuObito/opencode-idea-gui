@@ -17,8 +17,6 @@ describe('useNativeEventCapture', () => {
         sendShortcut: 'enter',
         fileCompletion: { isOpen: false },
         commandCompletion: { isOpen: false },
-        agentCompletion: { isOpen: false },
-        promptCompletion: { isOpen: false },
         dollarCommandCompletion: { isOpen: false },
         completionSelectedRef,
         submittedOnEnterRef,
@@ -44,8 +42,6 @@ describe('useNativeEventCapture', () => {
         sendShortcut: 'enter',
         fileCompletion: { isOpen: true },
         commandCompletion: { isOpen: false },
-        agentCompletion: { isOpen: false },
-        promptCompletion: { isOpen: false },
         dollarCommandCompletion: { isOpen: false },
         completionSelectedRef: { current: false },
         submittedOnEnterRef: { current: false },
@@ -56,5 +52,5 @@ describe('useNativeEventCapture', () => {
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13 }));
     expect(handleSubmit).not.toHaveBeenCalled();
   });
-
 });
+

@@ -9,6 +9,7 @@ import {
   formatTaskNotificationForDisplay,
   hasCommandMessageTag,
   hasTaskNotificationTag,
+  isPlaceholderMessageContent,
   isSyntheticToolMessageContent,
   HIDDEN_OUTPUT_TAGS,
   INTERNAL_METADATA_TAGS,
@@ -40,6 +41,7 @@ export {
   formatTaskNotificationForDisplay,
   createTaskNotificationBlock,
   extractCommandMessageContent,
+  isPlaceholderMessageContent,
   isSyntheticToolMessageContent,
   normalizeBlocks,
 } from './contentBlockNormalize';
@@ -377,6 +379,40 @@ export function buildCompactNotification(group: ClaudeMessage[]): ClaudeMessage 
 }
 
 /**
+ * Create a synthetic compact_notification message (e.g. "Session compacted")
+ * appended locally after a successful /compact summarize. The notice is
+ * UI-only — it is not persisted in the session and disappears on reload.
+ */
+export function createCompactSuccessNotice(headerText: string): ClaudeMessage {
+  return {
+    type: MESSAGE_TYPES.COMPACT_NOTIFICATION,
+    content: headerText,
+    timestamp: new Date().toISOString(),
+    raw: {
+      compactItems: [],
+      compactStatus: 'success',
+    },
+  };
+}
+
+/**
+ * Create a synthetic compact_notification message for a failed compact.
+ * Shows an error card in the chat list instead of a toast.
+ */
+export function createCompactFailureNotice(headerText: string, detail?: string): ClaudeMessage {
+  return {
+    type: MESSAGE_TYPES.COMPACT_NOTIFICATION,
+    content: headerText,
+    timestamp: new Date().toISOString(),
+    raw: {
+      compactItems: [],
+      compactStatus: 'failure',
+      compactDetail: detail || '',
+    },
+  };
+}
+
+/**
  * Get text content from a message
  */
 export function getMessageText(
@@ -577,7 +613,9 @@ export function getContentBlocks(
     const rawObj = typeof message.raw === 'object' ? (message.raw as Record<string, unknown> | null) : null;
     const items = rawObj?.compactItems as CompactNotificationItem[] | undefined;
     const headerText = message.content || '';
-    return [{ type: 'compact_notification', headerText, items: items || [] }];
+    const status = (rawObj?.compactStatus as 'success' | 'failure' | undefined) || undefined;
+    const detail = (rawObj?.compactDetail as string) || undefined;
+    return [{ type: 'compact_notification', headerText, items: items || [], status, detail }];
   }
 
   // Compact summary notifications — show title + metadata subtitle + full content (expanded)
@@ -642,7 +680,8 @@ export function getContentBlocks(
       !hasTextBlock &&
       message.content &&
       message.content.trim() &&
-      !isSyntheticToolMessageContent(message.content, rawBlocks)
+      !isSyntheticToolMessageContent(message.content, rawBlocks) &&
+      !isPlaceholderMessageContent(message.content)
     ) {
       return [...rawBlocks, { type: 'text', text: localizeMessage(message.content) }];
     }
@@ -770,7 +809,7 @@ export function mergeConsecutiveAssistantMessages(
       }
       if (msg.content) {
         const trimmed = msg.content.trim();
-        if (trimmed) {
+        if (trimmed && !isPlaceholderMessageContent(msg.content)) {
           contentParts.push(msg.content);
         }
       }

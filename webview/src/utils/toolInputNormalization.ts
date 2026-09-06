@@ -88,15 +88,7 @@ export function normalizeToolInput(name: string | undefined, input: ToolInput | 
 
   const inputRecord = input as ToolInputRecord;
   const normalizedName = normalizeToolName(name ?? '');
-  // Edit / Search Replace / StrReplace style tools
-  if (
-    normalizedName === 'edit_file'
-    || normalizedName === 'search_replace'
-    || normalizedName === 'searchreplace'
-    || normalizedName === 'str_replace'
-    || normalizedName === 'strreplace'
-    || normalizedName === 'replace_string'
-  ) {
+  if (normalizedName === 'edit_file') {
     const firstEdit = getFirstEdit(inputRecord);
     return {
       ...inputRecord,
@@ -107,16 +99,11 @@ export function normalizeToolInput(name: string | undefined, input: ToolInput | 
       old_string:
         (typeof inputRecord.old_string === 'string' ? inputRecord.old_string : undefined) ??
         (typeof inputRecord.oldString === 'string' ? inputRecord.oldString : undefined) ??
-        (typeof inputRecord.old_str === 'string' ? inputRecord.old_str : undefined) ??
-        (typeof firstEdit?.oldText === 'string' ? firstEdit.oldText : undefined) ??
-        '',
+        (typeof firstEdit?.oldText === 'string' ? firstEdit.oldText : undefined),
       new_string:
         (typeof inputRecord.new_string === 'string' ? inputRecord.new_string : undefined) ??
         (typeof inputRecord.newString === 'string' ? inputRecord.newString : undefined) ??
-        (typeof inputRecord.new_str === 'string' ? inputRecord.new_str : undefined) ??
-        (typeof firstEdit?.newText === 'string' ? firstEdit.newText : undefined) ??
-        (typeof inputRecord.content === 'string' ? inputRecord.content : undefined) ??
-        '',
+        (typeof firstEdit?.newText === 'string' ? firstEdit.newText : undefined),
     };
   }
 

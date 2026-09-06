@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FileChangeSummary } from '../../types';
-import { undoFileChanges, sendToJava } from '../../utils/bridge';
+import { undoFileChanges, sendToJava, cardDebugLog } from '../../utils/bridge';
 import { getFileName } from '../../utils/helpers';
 import TodoList from './TodoList';
 import SubagentList from './SubagentList';
@@ -11,7 +11,8 @@ import DiscardAllDialog from './DiscardAllDialog';
 import type { TabType, StatusPanelProps } from './types';
 import './StatusPanel.less';
 
-const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, expanded = true, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll }: StatusPanelProps) => {
+const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, sessionLoading = false, expanded = true, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll }: StatusPanelProps) => {
+  cardDebugLog('[StatusPanel] render, sessionLoading:', sessionLoading, 'expanded:', expanded);
   const { t } = useTranslation();
   const [openPopover, setOpenPopover] = useState<TabType | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -87,7 +88,9 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
     if (!confirmUndoFile) return;
 
     const { filePath, operations } = confirmUndoFile;
-    const safeStatus = confirmUndoFile.status === 'A' ? 'A' : 'M';
+    const safeStatus = confirmUndoFile.status === 'A' || confirmUndoFile.status === 'D'
+      ? confirmUndoFile.status
+      : 'M';
 
     setUndoingFile(filePath);
     setConfirmUndoFile(null);
@@ -111,20 +114,24 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
   }, []);
 
   const handleConfirmDiscardAll = useCallback(() => {
-    if (fileChanges.length === 0) return;
+    // 仅撤销已完成的编辑；仍在进行中的（pending）编辑尚无确定内容，跳过。
+    // 若所有编辑都还在进行中，则不发送空批次。
+    const files = fileChanges
+      .filter((fc) => !fc.pending)
+      .map((fc) => ({
+        filePath: fc.filePath,
+        status: fc.status === 'A' || fc.status === 'D' ? fc.status : 'M',
+        operations: fc.operations.map((op) => ({
+          oldString: op.oldString,
+          newString: op.newString,
+          replaceAll: op.replaceAll,
+        })),
+      }));
+
+    if (files.length === 0) return;
 
     setIsDiscardingAll(true);
     setConfirmDiscardAll(false);
-
-    const files = fileChanges.map((fc) => ({
-      filePath: fc.filePath,
-      status: fc.status === 'A' ? 'A' : 'M',
-      operations: fc.operations.map((op) => ({
-        oldString: op.oldString,
-        newString: op.newString,
-        replaceAll: op.replaceAll,
-      })),
-    }));
 
     sendToJava('undo_all_file_changes', { files });
   }, [fileChanges]);
@@ -174,18 +181,41 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
   useEffect(() => {
     const handleUndoAllResult = (resultJson: string) => {
       try {
-        const result = JSON.parse(resultJson);
+        const result = JSON.parse(resultJson) as {
+          success?: boolean;
+          undone?: string[];
+          failed?: Array<{ filePath?: string; error?: string }>;
+          error?: string;
+        };
         setIsDiscardingAll(false);
 
         if (result.success) {
           onDiscardAll?.();
           window.addToast?.(t('statusPanel.discardAllSuccess'), 'success');
-        } else {
-          window.addToast?.(
-            t('statusPanel.discardAllFailed', { error: result.error || 'Unknown error' }),
-            'error'
-          );
+          return;
         }
+
+        // 部分成功：已撤销的文件从面板移除，失败的如实提示并保留在列表中
+        const failed = Array.isArray(result.failed) ? result.failed : [];
+        if (failed.length > 0 && Array.isArray(result.undone)) {
+          for (const filePath of result.undone) {
+            onUndoFile?.(filePath);
+          }
+          window.addToast?.(
+            t('statusPanel.discardAllPartial', {
+              undone: result.undone.length,
+              failed: failed.length,
+              first: getFileName(failed[0]?.filePath ?? '') || (failed[0]?.error ?? ''),
+            }),
+            'warning'
+          );
+          return;
+        }
+
+        window.addToast?.(
+          t('statusPanel.discardAllFailed', { error: result.error || 'Unknown error' }),
+          'error'
+        );
       } catch {
         // JSON parse failed, reset state silently
         setIsDiscardingAll(false);
@@ -196,16 +226,17 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
     return () => {
       delete window.onUndoAllFileResult;
     };
-  }, [onDiscardAll, t]);
+  }, [onDiscardAll, onUndoFile, t]);
 
   if (!expanded) {
+    cardDebugLog('[StatusPanel] expanded is false, returning null (sessionLoading:', sessionLoading, ')');
     return null;
   }
 
   const renderPopoverContent = () => {
     switch (openPopover) {
       case 'todo':
-        return <TodoList todos={todos} isStreaming={isStreaming} />;
+        return <TodoList todos={todos} />;
       case 'subagent':
         return <SubagentList subagents={subagents} histories={subagentHistories} currentSessionId={currentSessionId} currentProvider={currentProvider} isStreaming={isStreaming} />;
       case 'files':
@@ -234,9 +265,7 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
           onClick={() => handleTabClick('todo')}
         >
           <span className="codicon codicon-checklist" />
-          <span className="tab-label">
-            {t(currentProvider === 'codex' ? 'statusPanel.todoTab' : 'statusPanel.tasksTab')}
-          </span>
+          <span className="tab-label">{t('statusPanel.tasksTab')}</span>
           {hasTodos && (
             <span className="tab-progress">
               {completedCount}/{totalCount}

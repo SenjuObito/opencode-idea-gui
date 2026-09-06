@@ -1,9 +1,11 @@
 /**
  * Headless CLI tools shown under Settings → Provider Management → CLI.
  * Detection only — the plugin never auto-installs these binaries.
+ *
+ * opencode-only: 插件只保留 opencode 一个 CLI，删除 cc-gui 的 grok/kimi/pi。
  */
 
-export type CliToolId = 'grok' | 'kimi' | 'opencode' | 'pi' | 'dsh' | 'omp';
+export type CliToolId = 'opencode';
 
 export interface CliToolStatus {
   id: CliToolId;
@@ -41,24 +43,6 @@ export interface CliToolDefinition {
  */
 export const CLI_TOOL_DEFINITIONS: CliToolDefinition[] = [
   {
-    id: 'grok',
-    nameKey: 'settings.cli.tools.grok.name',
-    descriptionKey: 'settings.cli.tools.grok.description',
-    binaryName: 'grok',
-    docsUrl: 'https://x.ai/cli',
-    installCommand: 'curl -fsSL https://x.ai/cli/install.sh | bash',
-  },
-  {
-    id: 'kimi',
-    nameKey: 'settings.cli.tools.kimi.name',
-    descriptionKey: 'settings.cli.tools.kimi.description',
-    binaryName: 'kimi',
-    docsUrl: 'https://github.com/MoonshotAI/kimi-code',
-    installCommand: 'curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash',
-    installCommandWindows: 'irm https://code.kimi.com/kimi-code/install.ps1 | iex',
-    altInstallCommand: 'npm install -g @moonshot-ai/kimi-code',
-  },
-  {
     id: 'opencode',
     nameKey: 'settings.cli.tools.opencode.name',
     descriptionKey: 'settings.cli.tools.opencode.description',
@@ -66,31 +50,5 @@ export const CLI_TOOL_DEFINITIONS: CliToolDefinition[] = [
     docsUrl: 'https://opencode.ai/docs/',
     installCommand: 'curl -fsSL https://opencode.ai/install | bash',
     altInstallCommand: 'npm i -g opencode-ai',
-  },
-  {
-    id: 'pi',
-    nameKey: 'settings.cli.tools.pi.name',
-    descriptionKey: 'settings.cli.tools.pi.description',
-    binaryName: 'pi',
-    docsUrl: 'https://pi.dev/',
-    installCommand: 'curl -fsSL https://pi.dev/install.sh | sh',
-    altInstallCommand: 'npm install -g @earendil-works/pi-coding-agent',
-  },
-  {
-    id: 'dsh',
-    nameKey: 'settings.cli.tools.dsh.name',
-    descriptionKey: 'settings.cli.tools.dsh.description',
-    binaryName: 'dsh',
-    docsUrl: 'https://github.com/deepseek-ai/dsh',
-    installCommand: 'npm i -g @deepseek-ai/dsh',
-  },
-  {
-    id: 'omp',
-    nameKey: 'settings.cli.tools.omp.name',
-    descriptionKey: 'settings.cli.tools.omp.description',
-    binaryName: 'omp',
-    docsUrl: 'https://omp.sh/',
-    installCommand: 'curl -fsSL https://omp.sh/install.sh | sh',
-    altInstallCommand: 'npm install -g @oh-my-pi/pi-coding-agent',
   },
 ];

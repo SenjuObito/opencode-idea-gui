@@ -6,7 +6,6 @@ import { copyToClipboard } from '../../utils/copyUtils';
 interface ErrorDiagnosticCardProps {
   t: TFunction;
   pattern: DiagnosticPattern;
-  onNavigateToDependencySettings?: () => void;
 }
 
 const InfoIcon = () => (
@@ -26,12 +25,6 @@ const CopyIcon = () => (
 const CheckIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M5 12l5 5L20 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const ArrowRightIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M5 12h14m-7-7 7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -74,33 +67,14 @@ interface StepRendererProps {
   step: DiagnosticStep;
   description: string;
   t: TFunction;
-  onNavigateToDependencySettings?: () => void;
 }
 
-function StepRenderer({ step, description, t, onNavigateToDependencySettings }: StepRendererProps) {
+function StepRenderer({ step, description, t }: StepRendererProps) {
   if (step.kind === 'command') {
     return (
       <div className="error-diagnostic-step">
         <p className="error-diagnostic-step-text">{description}</p>
         <CommandBlock command={step.command} t={t} />
-      </div>
-    );
-  }
-
-  if (step.kind === 'navigation') {
-    return (
-      <div className="error-diagnostic-step">
-        <p className="error-diagnostic-step-text">{description}</p>
-        {onNavigateToDependencySettings && step.action === 'openDependencySettings' && (
-          <button
-            type="button"
-            className="error-diagnostic-nav-btn"
-            onClick={onNavigateToDependencySettings}
-          >
-            {t('errorDiagnostic.openDependencySettings')}
-            <ArrowRightIcon />
-          </button>
-        )}
       </div>
     );
   }
@@ -111,7 +85,6 @@ function StepRenderer({ step, description, t, onNavigateToDependencySettings }: 
 export const ErrorDiagnosticCard = memo(function ErrorDiagnosticCard({
   t,
   pattern,
-  onNavigateToDependencySettings,
 }: ErrorDiagnosticCardProps) {
   const baseKey = `errorDiagnostic.${pattern.code}`;
 
@@ -151,7 +124,6 @@ export const ErrorDiagnosticCard = memo(function ErrorDiagnosticCard({
                   step={step}
                   description={t(`${solutionKey}.step${index}`)}
                   t={t}
-                  onNavigateToDependencySettings={onNavigateToDependencySettings}
                 />
               ))}
             </div>

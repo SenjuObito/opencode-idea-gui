@@ -17,22 +17,16 @@ export {
   agentToDropdownItem,
   setupAgentsCallback,
   resetAgentsState,
+  getSubagentsSync,
+  getPrimaryAgentsSync,
+  subscribeAgents,
+  unsubscribeAgents,
+  ensureAgentsLoaded,
+  subagentMentionProvider,
+  subagentMentionToDropdownItem,
 } from './agentProvider';
 
-export type { AgentItem } from './agentProvider';
-
-export {
-  promptProvider,
-  promptToDropdownItem,
-  setupPromptsCallback,
-  resetPromptsState,
-  updateGlobalPromptsCache,
-  updateProjectPromptsCache,
-  preloadPrompts,
-  forceRefreshPrompts,
-} from './promptProvider';
-
-export type { PromptItem } from './promptProvider';
+export type { AgentItem, SubagentMentionItem } from './agentProvider';
 
 export {
   dollarCommandProvider,
@@ -40,3 +34,10 @@ export {
   setupDollarCommandsCallback,
   resetDollarCommandsState,
 } from './dollarCommandProvider';
+
+export {
+  mentionProvider,
+  mentionToDropdownItem,
+} from './mentionProvider';
+
+export type { MentionItem } from './mentionProvider';

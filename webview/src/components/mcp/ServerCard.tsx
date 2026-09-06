@@ -11,7 +11,6 @@ import { isEmptyToolsResult, ServerToolsPanel } from './ServerToolsPanel';
 export interface ServerCardProps {
   server: McpServer;
   isExpanded: boolean;
-  isCodexMode: boolean;
   serverStatus: Map<string, McpServerStatusInfo>;
   refreshState?: ServerRefreshState[string];
   toolsInfo?: ServerToolsState[string];
@@ -33,7 +32,6 @@ export interface ServerCardProps {
 export function ServerCard({
   server,
   isExpanded,
-  isCodexMode,
   serverStatus,
   toolsInfo,
   t,
@@ -52,13 +50,13 @@ export function ServerCard({
     status === 'pending' && (toolsInfo?.tools?.length ?? 0) > 0
       ? 'connected'
       : status;
-  const enabled = isServerEnabled(server, isCodexMode);
+  const enabled = isServerEnabled(server);
   const isConnected = effectiveStatus === 'connected';
   const emptyToolsWarning = hasEmptyToolsWarning(effectiveStatus, toolsInfo, enabled);
 
   const iconStyle: React.CSSProperties = { background: getIconColor(server.id) };
   const statusColorStyle: React.CSSProperties = {
-    color: emptyToolsWarning ? 'var(--color-warning)' : getStatusColor(server, effectiveStatus, isCodexMode),
+    color: emptyToolsWarning ? 'var(--color-warning)' : getStatusColor(server, effectiveStatus),
   };
 
   return (
@@ -78,12 +76,12 @@ export function ServerCard({
             className="status-indicator"
             style={statusColorStyle}
             title={emptyToolsWarning
-              ? `${getStatusText(server, effectiveStatus, isCodexMode, t)}: ${t('mcp.noTools')}`
-              : getStatusText(server, effectiveStatus, isCodexMode, t)}
+              ? `${getStatusText(server, effectiveStatus, t)}: ${t('mcp.noTools')}`
+              : getStatusText(server, effectiveStatus, t)}
           >
             <span className={`codicon ${emptyToolsWarning
               ? 'codicon-warning'
-              : getStatusIcon(server, effectiveStatus, isCodexMode)}`}></span>
+              : getStatusIcon(server, effectiveStatus)}`}></span>
           </span>
         </div>
         <div className="header-right-section" onClick={(e) => e.stopPropagation()}>
@@ -142,8 +140,8 @@ export function ServerCard({
                 className="info-value status-value"
                 style={statusColorStyle}
               >
-                <span className={`codicon ${getStatusIcon(server, effectiveStatus, isCodexMode)}`}></span>
-                {' '}{getStatusText(server, effectiveStatus, isCodexMode, t)}
+                <span className={`codicon ${getStatusIcon(server, effectiveStatus)}`}></span>
+                {' '}{getStatusText(server, effectiveStatus, t)}
               </span>
             </div>
             {statusInfo?.serverInfo && (
@@ -184,7 +182,6 @@ export function ServerCard({
           <ServerToolsPanel
             toolsInfo={toolsInfo}
             isConnected={isConnected}
-            isCodexMode={isCodexMode}
             t={t}
             onLoadTools={onLoadTools}
             onToolHover={onToolHover}

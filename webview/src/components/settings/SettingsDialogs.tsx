@@ -1,7 +1,9 @@
 // SettingsDialogs.tsx
+// opencode-only: the Claude/Codex provider dialogs and their delete-confirm
+// dialogs have been removed together with their management hooks. Only the
+// alert and agent dialogs remain.
 import { useTranslation } from 'react-i18next';
 import type { AgentConfig } from '../../types/agent';
-
 import AlertDialog from '../AlertDialog';
 import type { AlertType } from '../AlertDialog';
 import ConfirmDialog from '../ConfirmDialog';
@@ -32,6 +34,8 @@ interface SettingsDialogsProps {
   onConfirmAgentExport: (selectedIds: string[]) => void;
   onCloseAgentImportPreview: () => void;
   onSaveImportedAgents: (selectedIds: string[], strategy: ConflictStrategy) => void;
+
+  // Note: Prompt dialogs are now handled in PromptSection component
 }
 
 const SettingsDialogs = ({

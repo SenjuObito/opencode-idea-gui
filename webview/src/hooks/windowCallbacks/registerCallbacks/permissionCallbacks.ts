@@ -7,20 +7,47 @@
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
+import { cardDebugLog } from '../../../utils/bridge';
+import { setQuestionAnswer } from '../../../store/questionAnswerStore';
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
+    addToast,
     openPermissionDialog,
     openAskUserQuestionDialog,
     openPlanApprovalDialog,
     forceClosePermissionDialog,
     forceCloseAskUserQuestionDialog,
     forceClosePlanApprovalDialog,
+    invalidateQuestionCard,
+    invalidatePermissionCard,
   } = options;
+
+  // Host-side failures (e.g. opencode.replyQuestion / replyPermission errors
+  // surfaced by PermissionHandler) land here as a user-visible toast.
+  window.showToast = (message) => {
+    cardDebugLog(`[PCard][webview] showToast: ${message}`);
+    addToast(String(message ?? ''), 'error');
+  };
+
+  // A question reply failed server-side — flip the optimistic "answered"
+  // record back to an honest skipped state.
+  window.invalidateQuestionCard = (requestId) => {
+    cardDebugLog(`[PCard][webview] invalidateQuestionCard called: requestId=${requestId}`);
+    invalidateQuestionCard?.(requestId ?? '');
+  };
+
+  // A permission reply failed server-side — flip the optimistic
+  // approved/denied record back to a denied state.
+  window.invalidatePermissionCard = (channelId) => {
+    cardDebugLog(`[PCard][webview] invalidatePermissionCard called: channelId=${channelId}`);
+    invalidatePermissionCard?.(channelId ?? '');
+  };
 
   window.showPermissionDialog = (json) => {
     try {
       const request = JSON.parse(json);
+      console.log(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName}`);
       openPermissionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse permission request:', error);
@@ -59,9 +86,22 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showAskUserQuestionDialog = (json) => {
     try {
       const request = JSON.parse(json);
+      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0}`);
       openAskUserQuestionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse ask user question request:', error);
+    }
+  };
+
+  // Host sends complete Q&A data after the user answers.
+  window.onQuestionAnswered = (json) => {
+    try {
+      const data = JSON.parse(json);
+      console.log(`[PCard][webview] onQuestionAnswered callId="${data.callId}" requestId="${data.requestId}" questions=${data.questions?.length ?? 0} answers=`, data.answers);
+      cardDebugLog(`[QCard][webview] onQuestionAnswered callId=${data.callId} requestId=${data.requestId}`);
+      setQuestionAnswer(data);
+    } catch (error) {
+      console.error('[Frontend] Failed to parse onQuestionAnswered:', error);
     }
   };
 

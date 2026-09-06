@@ -12,10 +12,6 @@ describe('normalizeToolName', () => {
     expect(normalizeToolName('Write')).toBe('write');
   });
 
-  it('maps "Search Replace" (Grok UI name) to search_replace', () => {
-    expect(normalizeToolName('Search Replace')).toBe('search_replace');
-    expect(normalizeToolName('search-replace')).toBe('search_replace');
-  });
 
   it('keeps camelCase tools as concatenated lower (TaskCreate)', () => {
     expect(normalizeToolName('TaskCreate')).toBe('taskcreate');
@@ -27,12 +23,6 @@ describe('normalizeToolName', () => {
 });
 
 describe('FILE_MODIFY_TOOL_NAMES', () => {
-  it('recognizes Search Replace aliases as file-modify tools', () => {
-    expect(isToolName('Search Replace', FILE_MODIFY_TOOL_NAMES)).toBe(true);
-    expect(isToolName('search_replace', FILE_MODIFY_TOOL_NAMES)).toBe(true);
-    expect(isToolName('SearchReplace', FILE_MODIFY_TOOL_NAMES)).toBe(true);
-    expect(isToolName('str_replace', FILE_MODIFY_TOOL_NAMES)).toBe(true);
-  });
 
   it('still recognizes classic Edit/Write', () => {
     expect(isToolName('Edit', FILE_MODIFY_TOOL_NAMES)).toBe(true);
@@ -40,8 +30,3 @@ describe('FILE_MODIFY_TOOL_NAMES', () => {
   });
 });
 
-describe('EDIT_TOOL_NAMES', () => {
-  it('routes Search Replace to edit tool UI grouping', () => {
-    expect(isToolName('Search Replace', EDIT_TOOL_NAMES)).toBe(true);
-  });
-});

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { SubagentHistoryResponse, SubagentInfo } from '../../types';
 import { sendBridgeEvent } from '../../utils/bridge';
-import { hasSubagentTranscript } from '../../utils/subagentResult';
 import { subagentStatusIconMap } from './types';
 import SubagentProcessDetails from './SubagentProcessDetails';
 
@@ -51,7 +50,7 @@ const SubagentRow = memo(({ subagent, isExpanded, history, canLoad, onToggle, t 
 
       {isExpanded && (
         <SubagentProcessDetails
-          agentId={history?.agentId ?? subagent.agentId}
+          agentId={subagent.agentId}
           totalDurationMs={subagent.totalDurationMs}
           totalTokens={subagent.totalTokens}
           totalToolUseCount={subagent.totalToolUseCount}
@@ -80,13 +79,11 @@ const SubagentList = memo(({ subagents, histories = {}, currentSessionId, curren
 
   const requestHistory = useCallback((subagent: SubagentInfo) => {
     if (!currentSessionId) return;
-    const history = historiesRef.current[subagent.id]
-      ?? (subagent.agentId ? historiesRef.current[subagent.agentId] : undefined);
     sendBridgeEvent('load_subagent_session', JSON.stringify({
       sessionId: currentSessionId,
       provider: currentProvider,
-      agentId: history?.agentId ?? subagent.agentId,
-      agentPath: history?.agentPath ?? subagent.agentPath,
+      agentId: subagent.agentId,
+      agentPath: subagent.agentPath,
       description: subagent.description,
       toolUseId: subagent.id,
     }));
@@ -101,9 +98,7 @@ const SubagentList = memo(({ subagents, histories = {}, currentSessionId, curren
     if (!expandedId) return;
     const subagent = subagentsRef.current.find((item) => item.id === expandedId);
     if (!subagent || !currentSessionId) return;
-    const history = historiesRef.current[expandedId]
-      ?? (subagent.agentId ? historiesRef.current[subagent.agentId] : undefined);
-    if (!hasSubagentTranscript(history)) {
+    if (!historiesRef.current[expandedId]) {
       requestHistory(subagent);
     }
     if (!currentSessionId || subagent.status !== 'running') return;

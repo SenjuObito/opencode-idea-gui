@@ -7,42 +7,54 @@ interface Window {
    */
   sendToJava?: (message: string) => void;
 
-  /** Legacy windowed-JCEF repaint requested after its IntelliJ content tab is activated. */
-  onTabActivated?: () => void;
-
-  /** Strict two-frame OSR damage pulse, owned by a Java frame-fence attempt token. */
-  __ccguiSurfaceDamagePhaseA?: (token: string) => boolean;
-  __ccguiSurfaceDamagePhaseB?: (token: string) => boolean;
-  __ccguiSurfaceDamageReplace?: (previousToken: string, nextToken: string) => boolean;
-  __ccguiSurfaceDamageFinish?: (token: string) => boolean;
-  __ccguiSurfaceDamageCancel?: (token: string, predecessorToken?: string) => boolean;
-
   /**
    * Get clipboard file path from Java
    */
   getClipboardFilePath?: () => Promise<string>;
 
   /**
-   * Insert structured absolute file references from Java or another IDE
-   * integration. The array form preserves spaces inside each path.
-   */
-  insertFileReferencesAtCursor?: (filePathInput: string | string[]) => void;
-
-  /**
-   * Legacy file-path callback retained for older integrations.
+   * Handle file path(s) dropped from Java (supports batch files)
    */
   handleFilePathFromJava?: (filePathInput: string | string[]) => void;
 
   /**
    * Update messages from backend
    */
-  updateMessages?: (json: string, sequence?: string | number) => void;
+  /**
+   * Update messages from backend.
+   * The optional third argument is the host window base index (global message
+   * ordinal of snapshot[0], see SessionState windowing). When it changes
+   * between snapshots the webview performs a windowed splice instead of the
+   * legacy index-aligned merge. Absent = legacy semantics (base 0).
+   */
+  updateMessages?: (json: string, sequence?: string | number, baseIndex?: string | number) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
   updateMessageTail?: (
     json: string,
     baseIndex: string | number,
     sequence?: string | number,
   ) => void;
+  /**
+   * Prepend an earlier history page (opencode restore paging / live window
+   * recall) to the top of the message list, preserving scroll position.
+   * `pageStart` is the global message ordinal of page[0].
+   */
+  updateMessagesPrepend?: (json: string, pageStart?: string | number) => void;
+  /**
+   * Backend push describing the message window: whether older pages exist
+   * (hasEarlier), the earliest loaded ordinal (windowStart), and the total
+   * host-side message count.
+   */
+  onHistoryWindowInfo?: (json: string) => void;
+  /** Latest restore-window state pushed by the host (see onHistoryWindowInfo). */
+  __opencodeHistoryWindow?: {
+    sessionId: string | null;
+    hasEarlier: boolean;
+    windowStart: number;
+    total: number;
+  };
+  /** Global message ordinal of the webview list's first entry (window paging). */
+  __opencodeListStart?: number;
 
   /**
    * Patch a single message UUID without re-sending the full message list.
@@ -148,9 +160,6 @@ interface Window {
    */
   onSubagentHistoryLoaded?: (json: string) => void;
 
-  /** Batched lightweight Codex subagent lifecycle status callback. */
-  onSubagentStatusesLoaded?: (json: string) => void;
-
   /**
    * task_* SDK system event callback (async subagent lifecycle).
    * Payload: { subtype: 'task_started'|'task_progress'|'task_notification',
@@ -159,6 +168,12 @@ interface Window {
    * StatusPanel uses to mark a background (run_in_background) Agent subagent as completed.
    */
   onTaskEvent?: (eventJson: string) => void;
+
+  /**
+   * opencode todo.updated SSE event callback.
+   * Payload: { sessionID: string, todos: Array<{content, status, priority}> }.
+   */
+  onTodoUpdated?: (payload: string) => void;
 
   /**
    * SDK-to-CLI session conversion result callback.
@@ -225,9 +240,25 @@ interface Window {
   onModelConfirmed?: (modelId: string, provider: string) => void;
 
   /**
-   * Provider confirmed callback - the OpenCode-only build echoes the fixed provider
+   * Notification sound playback - fired by host NotificationService when a
+   * gated notification sound should play. Payload:
+   * `{ soundId?: string; variant?: string; customDataBase64?: string }`.
    */
-  onProviderConfirmed?: (provider: string) => void;
+  playNotificationSound?: (json: string) => void;
+
+  /**
+   * Sound file picked via the native open dialog (browse_sound_file flow).
+   * Payload: `{ path: string }` — fills the custom-sound input (not saved).
+   */
+  onSoundFileSelected?: (json: string) => void;
+
+  /**
+   * Session state restored callback - fired when a history session is loaded
+   * and the daemon's authoritative per-session state (model / permission mode
+   * / reasoning effort, read from `session.get`) is applied to the UI.
+   * Local-only application; the webview must NOT echo set_model / set_mode.
+   */
+  onSessionStateRestored?: (json: string) => void;
 
   /**
    * Show permission dialog
@@ -235,19 +266,28 @@ interface Window {
   showPermissionDialog?: (json: string) => void;
 
   /**
+   * Host-side failure notification (e.g. opencode.replyQuestion /
+   * replyPermission errors surfaced by PermissionHandler). Rendered as an
+   * error toast via the shared Toast container.
+   */
+  showToast?: (message: string) => void;
+
+  /**
    * Show AskUserQuestion dialog
    */
   showAskUserQuestionDialog?: (json: string) => void;
-  updateCodexPets?: (json: string) => void;
-  updateCodexPetPreview?: (json: string) => void;
-  onCodexPetAssetsChanged?: () => void;
-  updateCodexPetConfig?: (json: string) => void;
-  updatePetdexCatalog?: (json: string) => void;
-  updatePetdexPreview?: (json: string) => void;
-  onCodexPetOperation?: (json: string) => void;
-  updateHatchPetStatus?: (json: string) => void;
-  updateHatchPetReference?: (json: string) => void;
-  onHatchPetCommandPrepared?: (json: string) => void;
+
+  /**
+   * Host sends complete Q&A data after the user answers.
+   * JSON: { callId, requestId, questions, answers }
+   */
+  onQuestionAnswered?: (json: string) => void;
+
+  /**
+   * Revert state update callback - JSON `{ hasRevert: boolean, messageId?: string }`
+   * where messageId is the opencode revert boundary (the undone user message).
+   */
+  onRevertStateUpdate?: (json: string) => void;
 
   /**
    * Show PlanApproval dialog
@@ -264,6 +304,18 @@ interface Window {
    * dialog is closed.
    */
   forceCloseAskUserQuestionDialog?: (requestId?: string | null) => void;
+
+  /**
+   * A question reply failed server-side (e.g. "Question request not found").
+   * Flips the optimistically-answered card record back to a skipped state.
+   */
+  invalidateQuestionCard?: (requestId: string) => void;
+
+  /**
+   * A permission reply failed server-side (e.g. "Permission request not found").
+   * Flips the optimistically-approved card record back to a denied state.
+   */
+  invalidatePermissionCard?: (channelId: string) => void;
 
   /**
    * Force-close the open permission dialog matching the given channelId, or
@@ -343,40 +395,7 @@ interface Window {
    */
   updateMcpServerTools?: (json: string) => void;
 
-  /** Update Codex MCP server tools list. */
-  updateCodexMcpServerTools?: (json: string) => void;
-
   mcpServerToggled?: (json: string) => void;
-
-  /**
-   * Update Codex MCP servers list (from ~/.codex/config.toml)
-   */
-  updateCodexMcpServers?: (json: string) => void;
-
-  /**
-   * Update Codex MCP server connection status
-   */
-  updateCodexMcpServerStatus?: (json: string) => void;
-
-  /**
-   * Codex MCP server toggled callback
-   */
-  codexMcpServerToggled?: (json: string) => void;
-
-  /**
-   * Codex MCP server added callback
-   */
-  codexMcpServerAdded?: (json: string) => void;
-
-  /**
-   * Codex MCP server updated callback
-   */
-  codexMcpServerUpdated?: (json: string) => void;
-
-  /**
-   * Codex MCP server deleted callback
-   */
-  codexMcpServerDeleted?: (json: string) => void;
 
   /**
    * Update providers list
@@ -389,16 +408,6 @@ interface Window {
   updateActiveProvider?: (providerId: string) => void;
 
   updateThinkingEnabled?: (json: string) => void;
-
-  /**
-   * Update streaming enabled setting
-   */
-  updateStreamingEnabled?: (json: string) => void;
-
-  /**
-   * Update Codex sandbox mode setting
-   */
-  updateCodexSandboxMode?: (json: string) => void;
 
   /**
    * Update send shortcut setting
@@ -424,21 +433,6 @@ interface Window {
    * Update sound notification configuration
    */
   updateSoundNotificationConfig?: (json: string) => void;
-
-  /**
-   * Update AI commit generation enabled state
-   */
-  updateCommitGenerationEnabled?: (json: string) => void;
-
-  /**
-   * Update AI session title generation enabled state
-   */
-  updateAiTitleGenerationEnabled?: (json: string) => void;
-
-  /**
-   * Update status bar widget enabled state
-   */
-  updateStatusBarWidgetEnabled?: (json: string) => void;
 
   /**
    * Update task completion notification enabled state
@@ -481,14 +475,9 @@ interface Window {
   showSwitchSuccess?: (message: string) => void;
 
   /**
-   * Update Node.js path
+   * Update custom Claude CLI path
    */
-  updateNodePath?: (path: string) => void;
-
-  /**
-   * Update custom OpenCode CLI path
-   */
-  updateOpencodeCliPath?: (json: string) => void;
+  updateOpencodeCliPath?: (path: string) => void;
 
   /**
    * Update working directory configuration
@@ -631,16 +620,6 @@ interface Window {
   updateEnhancedPrompt?: (result: string) => void;
 
   /**
-   * Update prompt enhancer settings config from backend
-   */
-  updatePromptEnhancerConfig?: (json: string) => void;
-
-  /**
-   * Update commit AI settings config from backend
-   */
-  updateCommitAiConfig?: (json: string) => void;
-
-  /**
    * Update session title (called when AI generates a title).
    * @param sessionId - The session ID the title belongs to
    * @param title - The generated title text
@@ -663,6 +642,21 @@ interface Window {
   onCodeFontConfigReceived?: (json: string) => void;
 
   /**
+   * VS Code editor.fontFamily font list received callback
+   */
+  onVscodeFontListReceived?: (json: string) => void;
+
+  /**
+   * System font families list received callback (host-side enumeration)
+   */
+  onSystemFontListReceived?: (json: string) => void;
+
+  /**
+   * System installed font list received callback (queryLocalFonts)
+   */
+  onSystemFontListReceived?: (json: string) => void;
+
+  /**
    * IDE theme received callback - receives IDE theme configuration
    */
   onIdeThemeReceived?: (json: string) => void;
@@ -671,6 +665,14 @@ interface Window {
    * IDE theme changed callback - invoked when the IDE theme changes
    */
   onIdeThemeChanged?: (json: string) => void;
+
+  /**
+   * Authoritative UI preferences pushed by the VS Code extension host
+   * (globalState). Payload is a `UiPreferences` JSON object — see
+   * utils/uiPreferences.ts. Replaces the localStorage-only copy so appearance /
+   * behaviour settings survive webview teardown.
+   */
+  applyUiPreferences?: (json: string) => void;
 
   /**
    * Update agents list
@@ -693,19 +695,44 @@ interface Window {
   agentImportResult?: (json: string) => void;
 
   /**
-   * Update prompts list
+   * Share session success callback - receives the share URL
    */
-  updatePrompts?: (json: string) => void;
+  onShareSuccess?: (url: string) => void;
 
   /**
-   * Update global prompts list
+   * Host-side clipboard write result callback - 'true' | 'false'
    */
-  updateGlobalPrompts?: (json: string) => void;
+  onCopyToClipboardResult?: (ok: string) => void;
 
   /**
-   * Update project prompts list
+   * Share session failure callback - receives optional daemon error detail
    */
-  updateProjectPrompts?: (json: string) => void;
+  onShareError?: (detail?: string) => void;
+
+  /**
+   * Fork session success callback - receives JSON `{ sessionId: <new session id> }`
+   */
+  onForkSuccess?: (json: string) => void;
+
+  /**
+   * Fork session failure callback - receives optional error detail
+   */
+  onForkError?: (detail?: string) => void;
+
+  /**
+   * Revert/unrevert failure callback - receives JSON `{ op: 'undo' | 'redo', error? }`
+   */
+  onRevertError?: (json: string) => void;
+
+  /**
+   * Compact (summarize) session success callback
+   */
+  onCompactSuccess?: () => void;
+
+  /**
+   * Compact (summarize) session failure callback (detail = daemon error text)
+   */
+  onCompactError?: (detail?: string) => void;
 
   /**
    * Update project info
@@ -713,29 +740,12 @@ interface Window {
   updateProjectInfo?: (json: string) => void;
 
   /**
-   * Prompt operation result callback
-   */
-  promptOperationResult?: (json: string) => void;
-
-  /**
-   * Prompt import preview result callback
-   */
-  promptImportPreviewResult?: (json: string) => void;
-
-  /**
-   * Prompt import result callback
-   */
-  promptImportResult?: (json: string) => void;
-
-  /**
    * Selected agent received callback - receives the currently selected agent during initialization
    */
-  onSelectedAgentReceived?: (json: string) => void;
 
   /**
    * Selected agent changed callback - invoked after an agent is selected
    */
-  onSelectedAgentChanged?: (json: string) => void;
 
   /**
    * Update Codex providers list
@@ -835,24 +845,19 @@ interface Window {
   __sessionTransitionToken?: string | null;
 
   /**
-   * Latest history/session snapshot received while `__sessionTransitioning` was true.
-   * Applied when the transition ends (historyLoadComplete / setSessionId) so Grok (and
-   * other providers) do not lose the transcript if updateMessages races the guard.
+   * In-flight dedup guard for the same-session soft reload issued by
+   * loadHistorySession. Holds the sessionId being soft-reloaded; cleared by
+   * historyLoadComplete (or a safety timeout) so repeated triggers cannot form
+   * a load_session request loop.
    */
-  __deferredTransitionUpdateMessages?: { json: string; sequence: number | null } | null;
-
-  /** Stash an updateMessages payload for post-transition flush. */
-  __stashDeferredTransitionUpdateMessages?: (json: string, sequence?: number | null) => void;
-
-  /** Apply and clear `__deferredTransitionUpdateMessages` after the guard is released. */
-  __flushDeferredTransitionUpdateMessages?: () => void;
+  __softSessionReloadInFlight?: string | null;
 
   /**
    * Resets all transient UI state (loading, streaming, toasts, refs) in one shot.
    * Called by beginSessionTransition (useSessionManagement) to synchronously
    * clear both React state AND internal refs before starting a new session.
    */
-  __resetTransientUiState?: () => void;
+  __resetTransientUiState?: (skipSessionLoading?: boolean) => void;
 
   /**
    * Timestamp of the last streaming activity (content/thinking delta or message update).
@@ -916,7 +921,6 @@ interface Window {
   /**
    * Rewind result callback - returns the result of a rewind operation
    */
-  onRewindResult?: (json: string) => void;
 
   /**
    * Undo file result callback - returns the result of a single-file undo operation
@@ -940,13 +944,13 @@ interface Window {
   handleDiffResult?: (json: string) => void;
 
   // ============================================================================
-  // Dependency Management Callbacks
+  // Daemon Status Callback
   // ============================================================================
 
   /**
-   * Update dependency status callback
+   * Update daemon alive status callback
    */
-  updateDependencyStatus?: (json: string) => void;
+  updateDaemonStatus?: (json: string) => void;
 
   /**
    * CLI tools install/version detection result (Settings → CLI tab).
@@ -954,67 +958,7 @@ interface Window {
    */
   updateCliStatus?: (json: string) => void;
 
-  /**
-   * Dependency install progress callback
-   */
-  dependencyInstallProgress?: (json: string) => void;
-
-  /**
-   * Dependency install result callback
-   */
-  dependencyInstallResult?: (json: string) => void;
-
-  /**
-   * Dependency uninstall result callback
-   */
-  dependencyUninstallResult?: (json: string) => void;
-
-  /**
-   * Node environment status callback
-   */
-  nodeEnvironmentStatus?: (json: string) => void;
-
-  /**
-   * Trigger Node environment re-check.
-   */
-  checkNodeEnvironment?: () => void;
-
-  /**
-   * Trigger concurrent Node environment checks for diagnostics.
-   */
-  runNodeEnvironmentStressTest?: (count?: number) => void;
-
-  /**
-   * Dependency update available callback
-   */
-  dependencyUpdateAvailable?: (json: string) => void;
-
-  /**
-   * Dependency versions loaded callback
-   */
-  dependencyVersionsLoaded?: (json: string) => void;
-
-  /**
-   * Pending dependency versions payload before settings initialization
-   */
-  __pendingDependencyVersions?: string;
-
-  /**
-   * Pending dependency updates payload before settings initialization
-   */
-  __pendingDependencyUpdates?: string;
-
-  /**
-   * Pending dependency status payload before React initialization
-   */
-  __pendingDependencyStatus?: string;
-  __dependencyStatusState?: 'pending' | 'ready' | 'error';
   __ccgOnBridgeReady?: () => void;
-
-  /**
-   * Pending streaming enabled status before React initialization
-   */
-  __pendingStreamingEnabled?: string;
 
   /**
    * Pending send shortcut status before React initialization
@@ -1088,6 +1032,14 @@ interface Window {
   __INITIAL_IDE_THEME__?: 'light' | 'dark';
 
   /**
+   * Authoritative UI preferences inlined by the VS Code host into the HTML
+   * before React boots (see utils/uiPreferences.ts). Present from the very
+   * first script evaluation, so first paint already uses the persisted theme /
+   * font scale instead of flashing the CSS default.
+   */
+  __INITIAL_UI_PREFERENCES__?: Partial<import('./utils/uiPreferences').UiPreferences>;
+
+  /**
    * Per-tab provider id ("claude" / "codex") injected by Java into the HTML
    * before React boots. Used by useModelStatePersistence to override the
    * global localStorage snapshot ("model-selection-state") when the backend
@@ -1101,9 +1053,6 @@ interface Window {
    * __INITIAL_TAB_PROVIDER__. Empty / unset means no backend preference.
    */
   __INITIAL_TAB_MODEL__?: string;
-
-  /** User-installed DSH agent preset ids discovered from the DSH home. */
-  __INITIAL_DSH_PRESETS__?: string[];
 
   /** Runtime page generation established by Java before exposing the bridge. */
   __CCG_PAGE_GENERATION__?: number;
@@ -1174,43 +1123,16 @@ interface Window {
           success?: boolean;
           provider?: string;
           models?: Array<{ id?: string; label?: string; description?: string }>;
-          /** Dynamic model roles (omp); description = resolved model selector. */
-          roles?: Array<{ id?: string; label?: string; description?: string }>;
           error?: string;
           defaultModel?: string;
         }
   ) => void;
+}
 
-  /**
-   * DSH host lifecycle status. Java pushes JSON after
-   * `get_dsh_status` / `start_dsh_host` / `stop_dsh_host` /
-   * `save_dsh_settings:<json>` via channel-manager `dsh status|ensureHost|stopHost`.
-   */
-  updateDshStatus?: (
-    dataOrStr:
-      | string
-      | {
-          success?: boolean;
-          provider?: string;
-          installed?: boolean;
-          version?: string;
-          bin?: string;
-          origin?: string;
-          hostRunning?: boolean;
-          ownership?: 'spawned' | 'adopted';
-          error?: string;
-          describe?: {
-            version?: string;
-            provider?: string;
-            model?: string;
-            attachedSessions?: number;
-          };
-          settings?: {
-            bin?: string;
-            host?: string;
-            port?: number;
-            autoStart?: boolean;
-          };
-        }
-  ) => void;
+declare module 'mermaid' {
+  const mermaid: {
+    initialize: (config: Record<string, unknown>) => void;
+    render: (id: string, text: string) => Promise<{ svg: string }>;
+  };
+  export default mermaid;
 }

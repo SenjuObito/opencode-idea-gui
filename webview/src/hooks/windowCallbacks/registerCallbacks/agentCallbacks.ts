@@ -1,18 +1,16 @@
 /**
  * agentCallbacks.ts
  *
- * Registers window bridge callbacks for agent management and selection context:
- * addSelectionInfo, addCodeSnippet, clearSelectionInfo,
- * onSelectedAgentReceived, onSelectedAgentChanged.
+ * Registers window bridge callbacks for selection context:
+ * addSelectionInfo, addCodeSnippet, clearSelectionInfo.
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 
 export function registerAgentAndSelectionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
-    setContextInfo,
-    setSelectedAgent,
-  } = options;
+  setContextInfo,
+} = options;
 
   window.addSelectionInfo = (selectionInfo) => {
     if (selectionInfo) {
@@ -42,62 +40,4 @@ export function registerAgentAndSelectionCallbacks(options: UseWindowCallbacksOp
     setContextInfo(null);
   };
 
-  window.onSelectedAgentReceived = (json) => {
-    try {
-      if (!json || json === 'null' || json === '{}') {
-        setSelectedAgent(null);
-        return;
-      }
-      const data = JSON.parse(json);
-      const agentFromNewShape = data?.agent;
-      const agentFromLegacyShape = data;
-
-      const agentData = agentFromNewShape?.id
-        ? agentFromNewShape
-        : agentFromLegacyShape?.id
-          ? agentFromLegacyShape
-          : null;
-      if (!agentData) {
-        setSelectedAgent(null);
-        return;
-      }
-
-      setSelectedAgent({
-        id: agentData.id,
-        name: agentData.name || '',
-        prompt: agentData.prompt,
-      });
-    } catch (error) {
-      console.error('[Frontend] Failed to parse selected agent:', error);
-      setSelectedAgent(null);
-    }
-  };
-
-  window.onSelectedAgentChanged = (json) => {
-    try {
-      if (!json || json === 'null' || json === '{}') {
-        setSelectedAgent(null);
-        return;
-      }
-
-      const data = JSON.parse(json);
-      if (data?.success === false) {
-        return;
-      }
-
-      const agentData = data?.agent;
-      if (!agentData || !agentData.id) {
-        setSelectedAgent(null);
-        return;
-      }
-
-      setSelectedAgent({
-        id: agentData.id,
-        name: agentData.name || '',
-        prompt: agentData.prompt,
-      });
-    } catch (error) {
-      console.error('[Frontend] Failed to parse selected agent changed:', error);
-    }
-  };
 }

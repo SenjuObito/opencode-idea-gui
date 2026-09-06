@@ -1,9 +1,9 @@
 /**
- * Effective font configuration resolved by the Java backend.
+ * Effective font configuration resolved by the backend.
  * Shared across global.d.ts, main.tsx, and settings hooks.
  */
 export interface ResolvedFontConfig {
-  mode: 'followEditor' | 'customFile';
+  mode: 'followEditor' | 'named' | 'customFile';
   effectiveMode: 'followEditor' | 'customFile';
   customFontPath?: string;
   fontFamily: string;

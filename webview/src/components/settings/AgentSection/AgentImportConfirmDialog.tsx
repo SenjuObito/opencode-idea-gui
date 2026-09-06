@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { AgentConfig } from '../../../types/agent';
 import type { ImportPreviewResult, ConflictStrategy } from '../../../types/import';
-import styles from './style.module.less';
+import styles from '../styles/sharedCard.module.less';
 
 interface AgentImportConfirmDialogProps {
   previewData: ImportPreviewResult<AgentConfig>;

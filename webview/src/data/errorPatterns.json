@@ -23,22 +23,8 @@
               "command": "npm config set registry https://registry.npmjs.org/"
             },
             {
-              "kind": "navigation",
-              "action": "openDependencySettings"
-            },
-            {
               "kind": "command",
               "command": "npm config set registry https://registry.npmmirror.com/"
-            }
-          ]
-        },
-        {
-          "key": "downgrade",
-          "recommended": false,
-          "steps": [
-            {
-              "kind": "navigation",
-              "action": "openDependencySettings"
             }
           ]
         }
@@ -57,20 +43,6 @@
             {
               "kind": "command",
               "command": "node -v"
-            }
-          ]
-        },
-        {
-          "key": "reinstallLatestSdk",
-          "recommended": false,
-          "steps": [
-            {
-              "kind": "command",
-              "command": "npm config set registry https://registry.npmjs.org/"
-            },
-            {
-              "kind": "navigation",
-              "action": "openDependencySettings"
             }
           ]
         }

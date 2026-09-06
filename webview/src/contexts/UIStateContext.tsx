@@ -4,7 +4,6 @@ import type { SettingsTab } from '../components/settings/SettingsSidebar';
 import type { ContextInfo, ViewMode } from '../hooks';
 import { APP_VERSION } from '../version/version';
 import { DEFAULT_STATUS } from './MessagesContext';
-import { forceWebviewRepaint } from '../utils/forceWebviewRepaint';
 
 const LAST_SEEN_VERSION_KEY = 'lastSeenChangelogVersion';
 
@@ -17,7 +16,12 @@ export interface UIStateContextValue {
 
   // Toasts
   toasts: ToastMessage[];
-  addToast: (message: string, type?: ToastMessage['type'], action?: ToastAction) => void;
+  addToast: (
+    message: string,
+    type?: ToastMessage['type'],
+    action?: ToastAction,
+    options?: { duration?: number },
+  ) => void;
   dismissToast: (id: string) => void;
   clearToasts: () => void;
 
@@ -62,10 +66,15 @@ export function UIStateProvider({ children }: { children: ReactNode }) {
   const [draftInput, setDraftInput] = useState<string>('');
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
 
-  const addToast = useCallback((message: string, type: ToastMessage['type'] = 'info', action?: ToastAction) => {
+  const addToast = useCallback((
+    message: string,
+    type: ToastMessage['type'] = 'info',
+    action?: ToastAction,
+    options?: { duration?: number },
+  ) => {
     if (message === DEFAULT_STATUS || !message) return;
     const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, message, type, action }]);
+    setToasts((prev) => [...prev, { id, message, type, action, duration: options?.duration }]);
   }, []);
 
   const dismissToast = useCallback((id: string) => {
@@ -77,8 +86,6 @@ export function UIStateProvider({ children }: { children: ReactNode }) {
   const closeChangelogDialog = useCallback(() => {
     localStorage.setItem(LAST_SEEN_VERSION_KEY, APP_VERSION);
     setShowChangelogDialog(false);
-    // The fixed-position fullscreen overlay can leave ghosting after unmount on macOS JCEF.
-    forceWebviewRepaint('changelog-dialog-close');
   }, []);
 
   const openChangelogDialog = useCallback(() => { setShowChangelogDialog(true); }, []);

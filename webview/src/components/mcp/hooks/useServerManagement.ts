@@ -10,7 +10,6 @@ import { clearToolsCache, clearAllToolsCache } from '../utils';
 import type { ToastMessage } from '../../Toast';
 
 export interface UseServerManagementOptions {
-  isCodexMode: boolean;
   messagePrefix: string;
   cacheKeys: CacheKeys;
   setServerTools: React.Dispatch<React.SetStateAction<ServerToolsState>>;
@@ -33,7 +32,6 @@ export interface UseServerManagementReturn {
  * Server Management Operations Hook
  */
 export function useServerManagement({
-  isCodexMode,
   messagePrefix,
   cacheKeys,
   setServerTools,
@@ -101,15 +99,10 @@ export function useServerManagement({
 
   // Toggle server enabled state
   const handleToggleServer = useCallback((server: McpServer, enabled: boolean) => {
-    // Set apps based on current provider mode
+    // Update server enabled state
     const updatedServer: McpServer = {
       ...server,
       enabled,
-      apps: {
-        claude: isCodexMode ? (server.apps?.claude ?? false) : enabled,
-        codex: isCodexMode ? enabled : (server.apps?.codex ?? false),
-        gemini: server.apps?.gemini ?? false,
-      }
     };
 
     sendToJava(`toggle_${messagePrefix}mcp_server`, updatedServer);
@@ -123,17 +116,17 @@ export function useServerManagement({
       return next;
     });
 
-    if (!isCodexMode) {
-      onToast(
-        enabled
-          ? `${t('mcp.enabled')} ${server.name || server.id}`
-          : `${t('mcp.disabled')} ${server.name || server.id}`,
-        'success'
-      );
-      loadServers();
-      loadServerStatus();
-    }
-  }, [isCodexMode, messagePrefix, cacheKeys, setServerTools, onToast, t, loadServers, loadServerStatus]);
+    // Show toast notification
+    onToast(
+      enabled
+        ? `${t('mcp.enabled')} ${server.name || server.id}`
+        : `${t('mcp.disabled')} ${server.name || server.id}`,
+      'success'
+    );
+
+    loadServers();
+    loadServerStatus();
+  }, [messagePrefix, cacheKeys, setServerTools, onToast, t, loadServers, loadServerStatus]);
 
   return {
     serverRefreshStates,

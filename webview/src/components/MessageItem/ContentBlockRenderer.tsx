@@ -1,9 +1,10 @@
-import { useState, useCallback, memo } from 'react';
+import { useState, useCallback, useSyncExternalStore, memo } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeContentBlock, ToolResultBlock, CompactSummaryMetadata } from '../../types';
 
 import MarkdownBlock from '../MarkdownBlock';
 import CollapsibleTextBlock from '../CollapsibleTextBlock';
+import { QuestionAnswerSummary, type QuestionSummaryItem } from './QuestionAnswerSummary';
 import {
   BashToolBlock,
   EditToolBlock,
@@ -13,6 +14,7 @@ import {
 import type { EditToolItem } from '../toolBlocks/EditToolBlock';
 import { EDIT_TOOL_NAMES, BASH_TOOL_NAMES, TASK_MANAGE_TOOL_NAMES, AGENT_TOOL_NAMES, isToolName, isTransientInternalToolName, normalizeToolName } from '../../utils/toolConstants';
 import { TASK_STATUS_COLORS } from '../../utils/messageUtils';
+import { getQuestionAnswer, subscribe as subscribeQuestionAnswer, getSnapshot as getQuestionAnswerSnapshot } from '../../store/questionAnswerStore';
 
 const IMAGE_BLOCK_STYLE: React.CSSProperties = { cursor: 'pointer' };
 
@@ -202,6 +204,11 @@ export function ContentBlockRenderer({
   // false), so switching between them stays invisible.
   const isActivelyStreaming = isStreaming && isLastBlock;
 
+  // Subscribe to questionAnswerStore so that when setQuestionAnswer is called
+  // (user answers a question), this component re-renders to display the card.
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- hook order is stable
+  useSyncExternalStore(subscribeQuestionAnswer, getQuestionAnswerSnapshot);
+
   if (block.type === 'text') {
     return messageType === 'user' ? (
       <CollapsibleTextBlock content={block.text ?? ''} />
@@ -305,8 +312,110 @@ export function ContentBlockRenderer({
 
   if (block.type === 'tool_use') {
     const toolName = normalizeToolName(block.name ?? '');
+    console.log(`[ContentBlockRenderer] tool_use: name="${block.name}" normalized="${toolName}" id="${block.id}" isStreaming=${isStreaming}`);
 
     if (toolName === 'todowrite' || toolName === 'update_plan' || TASK_MANAGE_TOOL_NAMES.has(toolName)) {
+      return null;
+    }
+
+    // Interactive tool calls — permission requests are handled by the
+    // PermissionDialog popup; askuserquestion renders a read-only Q&A summary
+    // inline in the flow. The answer comes from the host's onQuestionAnswered
+    // bridge event (stored in questionAnswerStore), falling back to findToolResult.
+    if (toolName === 'askuserquestion' || toolName === 'question') {
+      const blockId = block.id ?? '';
+      const storedQA = getQuestionAnswer(blockId);
+      console.log(`[ContentBlockRenderer] askuserquestion blockId="${blockId}" storedQA=${!!storedQA} block.input.questions=${JSON.stringify(block.input?.questions ?? []).substring(0, 300)}`);
+      let answerBlock: ToolResultBlock | null = null;
+      let storedAnswers: Map<string, string> | undefined;
+      if (storedQA) {
+        const answerText = Object.entries(storedQA.answers)
+          .map(([question, value]) => {
+            const ans = Array.isArray(value) ? value.join(', ') : value;
+            return `${question}\n${ans}`;
+          })
+          .join('\n\n');
+        answerBlock = { type: 'tool_result', tool_use_id: blockId, content: answerText };
+        // Build the structured answers map at the source of truth, so the
+        // card never has to re-parse our own synthetic content string.
+        storedAnswers = new Map<string, string>();
+        for (const [question, value] of Object.entries(storedQA.answers)) {
+          const ans = Array.isArray(value) ? value.join(', ') : value;
+          storedAnswers.set(question, ans);
+        }
+        console.log(`[ContentBlockRenderer] askuserquestion using storedQA, answerText=${answerText.substring(0, 200)}`);
+      } else {
+        answerBlock = findToolResult(blockId, messageIndex) ?? null;
+        console.log(`[ContentBlockRenderer] askuserquestion fallback findToolResult blockId="${blockId}" found=${!!answerBlock}`);
+      }
+      // Resolve the card lifecycle status from the tool_result shape:
+      //   1. opencode flagged the tool as errored (rejectQuestion → failTool
+      //      "question rejected")  → 'cancelled'. We can't distinguish user
+      //      skip from daemon-side timeout (same `failTool` path), so both
+      //      render as "已取消" per the agreed fallback.
+      //   2. parsed `"q"="a"` pairs present                → 'answered'
+      //   3. otherwise (no tool_result yet, or empty text) → 'unanswered'
+      //
+      // opencode's `failTool(state, ask.ref, "question rejected")` writes that
+      // exact string into `state.error`, which the bridge emits as the
+      // tool_result's content. We fall back on that literal so the cancelled
+      // badge shows even if the `is_error` flag is missing on the wire (older
+      // daemon builds, partial messages, etc.).
+      const answerBlockText = answerBlock
+        ? (typeof answerBlock.content === 'string'
+            ? answerBlock.content
+            : Array.isArray(answerBlock.content)
+              ? answerBlock.content
+                  .map((item) => (item && typeof item.text === 'string' ? item.text : ''))
+                  .filter(Boolean)
+                  .join('\n')
+              : '')
+        : '';
+      const isCancelled = answerBlock?.is_error === true
+        || answerBlockText.includes('question rejected');
+      // Count real answer pairs. storedQA (from the host's onQuestionAnswered
+      // callback) is the structured source of truth and wins over the parser;
+      // otherwise we count `"q"="a"` pairs in the opencode wire format, with
+      // a storedQA-flavoured "question\nanswer" round-trip fallback so the
+      // card never falsely reports "未回答" when the user actually replied.
+      const parsedAnswerCount = (() => {
+        if (storedAnswers && storedAnswers.size > 0) return storedAnswers.size;
+        const map = new Map<string, string>();
+        const regex = /"([^"]+)"\s*=\s*"([^"]+)"/g;
+        let m: RegExpExecArray | null;
+        while ((m = regex.exec(answerBlockText)) !== null) {
+          map.set(m[1], m[2]);
+        }
+        if (map.size > 0) return map.size;
+        for (const pair of answerBlockText.split(/\n\n+/)) {
+          const newlineIdx = pair.indexOf('\n');
+          if (newlineIdx <= 0) continue;
+          const q = pair.slice(0, newlineIdx).trim();
+          const a = pair.slice(newlineIdx + 1).trim();
+          if (q && a) map.set(q, a);
+        }
+        return map.size;
+      })();
+      const status: 'answered' | 'cancelled' | 'unanswered' = isCancelled
+        ? 'cancelled'
+        : parsedAnswerCount > 0
+          ? 'answered'
+          : 'unanswered';
+      return (
+        <QuestionAnswerSummary
+          questions={
+            ((block.input?.questions as QuestionSummaryItem[] | undefined)
+              ?? storedQA?.questions
+              ?? []) as QuestionSummaryItem[]
+          }
+          answer={answerBlock}
+          answers={storedAnswers}
+          status={status}
+          t={t}
+        />
+      );
+    }
+    if (toolName === 'requestpermissions') {
       return null;
     }
 
@@ -358,23 +467,32 @@ export function ContentBlockRenderer({
     );
   }
 
-  // Compact notification block - renders as header + indented sub-items
+  // Compact notification block — success / failure card
   if (block.type === 'compact_notification') {
+    const isFailure = block.status === 'failure';
+    const cardClass = `compact-card ${isFailure ? 'compact-card--failure' : 'compact-card--success'}`;
     return (
-      <div className="compact-notification-block">
-        <div className="compact-notification-header">
-          {block.headerText}
+      <div className="compact-card-wrapper">
+        <div className={cardClass}>
+          <span className="compact-card__icon">
+            {isFailure ? '!' : '\u2713'}
+          </span>
+          <span className="compact-card__text">
+            {isFailure ? (
+              <>
+                <strong>{block.headerText}</strong>
+                {block.detail ? ` \u2014 ${block.detail}` : ''}
+              </>
+            ) : (
+              <>
+                {block.headerText}
+                {block.items.length > 0 && (
+                  <> \u2014 <strong>{block.items.length} messages</strong> summarized</>
+                )}
+              </>
+            )}
+          </span>
         </div>
-        {block.items.length > 0 && (
-          <div className="compact-notification-items">
-            {block.items.map((item, idx) => (
-              <div key={idx} className="compact-notification-item">
-                <span className="compact-notification-prefix">⎿</span>
-                <span className="compact-notification-text">{item.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     );
   }

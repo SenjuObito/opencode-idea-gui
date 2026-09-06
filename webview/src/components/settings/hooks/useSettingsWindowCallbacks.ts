@@ -2,9 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AgentConfig } from '../../../types/agent';
-import type { PromptConfig } from '../../../types/prompt';
-import type { CommitAiConfig } from '../../../types/aiFeatureConfig';
-import { normalizeAiFeatureConfig, DEFAULT_COMMIT_AI_CONFIG } from '../../../types/aiFeatureConfig';
+
 import type { UiFontConfig, CodeFontConfig } from './useSettingsBasicActions';
 import type { AlertType } from '../../AlertDialog';
 import type { ToastMessage } from '../../Toast';
@@ -22,20 +20,18 @@ const sendToJava = (message: string) => {
  */
 export const SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES = [
   // Environment + permissions (visible / used early on basic tab)
-  'get_node_path:',
   'get_opencode_cli_path:',
   'get_working_directory:',
   'get_streaming_enabled:',
   'get_permission_dialog_timeout:',
   // Appearance fonts
   'get_editor_font_config:',
+  'get_vscode_font_list:',
+  'get_system_font_list:',
   'get_ui_font_config:',
   'get_code_font_config:',
   // Behavior / feature toggles (basic tab sub-views)
   'get_sound_notification_config:',
-  'get_commit_generation_enabled:',
-  'get_ai_title_generation_enabled:',
-  'get_status_bar_widget_enabled:',
   'get_task_completion_notification_enabled:',
   'get_ask_user_question_notification_enabled:',
   'get_system_notification_only_when_unfocused:',
@@ -47,29 +43,20 @@ export const SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES = [
 
 export interface SettingsWindowCallbacksDeps {
   // State setters
-  setNodePath: (path: string) => void;
-  setNodeVersion: (version: string | null) => void;
-  setMinNodeVersion: (version: number) => void;
-  setSavingNodePath: (saving: boolean) => void;
   setOpencodeCliPath: (path: string) => void;
   setSavingOpencodeCliPath: (saving: boolean) => void;
   setWorkingDirectory: (dir: string) => void;
   setSavingWorkingDirectory: (saving: boolean) => void;
-  setCommitPrompt: (prompt: string) => void;
-  setSavingCommitPrompt: (saving: boolean) => void;
-  setCommitAiConfig: (config: CommitAiConfig) => void;
-  setProjectCommitPrompt: (prompt: string) => void;
-  setSavingProjectCommitPrompt: (saving: boolean) => void;
+
   setEditorFontConfig: (config: { fontFamily: string; fontSize: number; lineSpacing: number } | undefined) => void;
-  setUiFontConfig: (config: UiFontConfig | undefined) => void;
-  setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
+   setUiFontConfig: (config: UiFontConfig | undefined) => void;
+   setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
+   setVscodeFontList?: (fonts: string[]) => void;
+   setSystemFontList?: (fonts: string[]) => void;
+   setSystemFontError?: (error: string | null) => void;
   setIdeTheme: (theme: 'light' | 'dark' | null) => void;
-  setLocalStreamingEnabled: (enabled: boolean) => void;
   setLocalSendShortcut: (shortcut: 'enter' | 'cmdEnter') => void;
   // AI feature toggle setters
-  setCommitGenerationEnabled?: (enabled: boolean) => void;
-  setAiTitleGenerationEnabled?: (enabled: boolean) => void;
-  setStatusBarWidgetEnabled?: (enabled: boolean) => void;
   setTaskCompletionNotificationEnabled?: (enabled: boolean) => void;
   setAskUserQuestionNotificationEnabled?: (enabled: boolean) => void;
   setSystemNotificationOnlyWhenUnfocused?: (enabled: boolean) => void;
@@ -88,20 +75,11 @@ export interface SettingsWindowCallbacksDeps {
   handleAgentImportResult: (result: any) => void;
   cleanupAgentsTimeout: () => void;
 
-  // Prompt-related handlers (optional - now handled by PromptSection component)
-  loadPrompts?: () => void;
-  updatePrompts?: (prompts: PromptConfig[]) => void;
-  handlePromptOperationResult?: (result: any) => void;
-  handlePromptImportPreviewResult?: (previewData: any) => void;
-  handlePromptImportResult?: (result: any) => void;
-  cleanupPromptsTimeout?: () => void;
-
   // Callbacks
   showAlert: (type: AlertType, title: string, message: string) => void;
   addToast: (message: string, type?: ToastMessage['type']) => void;
 
   // Props
-  onStreamingEnabledChangeProp?: (enabled: boolean) => void;
   onSendShortcutChangeProp?: (shortcut: 'enter' | 'cmdEnter') => void;
 }
 
@@ -121,31 +99,12 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     window.showError = (message: string) => {
       d().showAlert('error', t('toast.operationFailed'), message);
-      d().setSavingNodePath(false);
       d().setSavingOpencodeCliPath(false);
       d().setSavingWorkingDirectory(false);
-      d().setSavingCommitPrompt(false);
-      d().setSavingProjectCommitPrompt(false);
     };
 
     window.showSwitchSuccess = (message: string) => {
       d().showAlert('success', t('toast.switchSuccess'), message);
-    };
-
-    window.updateNodePath = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        d().setNodePath(data.path || '');
-        d().setNodeVersion(data.version || null);
-        if (data.minVersion) {
-          d().setMinNodeVersion(data.minVersion);
-        }
-      } catch (e) {
-        console.warn('[SettingsView] Failed to parse updateNodePath JSON, fallback to legacy format:', e);
-        d().setNodePath(jsonStr || '');
-      }
-      d().setSavingNodePath(false);
-      window.dispatchEvent(new CustomEvent('nodePathReady'));
     };
 
     window.updateOpencodeCliPath = (jsonStr: string) => {
@@ -172,7 +131,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     window.showSuccess = (message: string) => {
       d().showAlert('success', t('toast.operationSuccess'), message);
-      d().setSavingNodePath(false);
       d().setSavingOpencodeCliPath(false);
       d().setSavingWorkingDirectory(false);
     };
@@ -211,6 +169,30 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
     };
 
+    window.onVscodeFontListReceived = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (Array.isArray(data?.fonts)) {
+          d().setVscodeFontList?.(data.fonts.filter((f: unknown) => typeof f === 'string'));
+        }
+      } catch {
+        // Silently ignore malformed font list from backend
+      }
+    };
+
+    window.onSystemFontListReceived = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        const fonts = Array.isArray(data?.fonts)
+          ? data.fonts.filter((f: unknown): f is string => typeof f === 'string')
+          : [];
+        d().setSystemFontList?.(fonts);
+        d().setSystemFontError?.(typeof data?.error === 'string' ? data.error : null);
+      } catch {
+        // Silently ignore malformed font list from backend
+      }
+    };
+
     // IDE theme callback
     const previousOnIdeThemeReceived = window.onIdeThemeReceived;
     window.onIdeThemeReceived = (jsonStr: string) => {
@@ -223,19 +205,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         console.error('[SettingsView] Failed to parse IDE theme:', error);
       }
     };
-
-    // Streaming configuration callback
-    const previousUpdateStreamingEnabled = window.updateStreamingEnabled;
-    if (!d().onStreamingEnabledChangeProp) {
-      window.updateStreamingEnabled = (jsonStr: string) => {
-        try {
-          const data = JSON.parse(jsonStr);
-          d().setLocalStreamingEnabled(data.streamingEnabled ?? true);
-        } catch (error) {
-          console.error('[SettingsView] Failed to parse streaming config:', error);
-        }
-      };
-    }
 
     // Send shortcut configuration callback
     const previousUpdateSendShortcut = window.updateSendShortcut;
@@ -250,79 +219,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       };
     }
 
-    // Commit AI prompt callback
-    window.updateCommitPrompt = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        d().setCommitPrompt(data.commitPrompt || '');
-        d().setSavingCommitPrompt(false);
-        if (data.projectCommitPrompt !== undefined) {
-          d().setProjectCommitPrompt(data.projectCommitPrompt || '');
-        }
-        if (data.saved) {
-          d().addToast(t('toast.saveSuccess'), 'success');
-        }
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse commit prompt:', error);
-        d().setSavingCommitPrompt(false);
-        d().addToast(t('toast.saveFailed'), 'error');
-      }
-    };
-
-    window.updateCommitAiConfig = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        d().setCommitAiConfig(normalizeAiFeatureConfig(data, DEFAULT_COMMIT_AI_CONFIG));
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse commit AI config:', error);
-      }
-    };
-
-    // Project-level commit AI prompt callback
-    window.updateProjectCommitPrompt = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        d().setProjectCommitPrompt(data.projectCommitPrompt || '');
-        d().setSavingProjectCommitPrompt(false);
-        if (data.saved) {
-          d().addToast(t('toast.saveSuccess'), 'success');
-        }
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse project commit prompt:', error);
-        d().setSavingProjectCommitPrompt(false);
-        d().addToast(t('toast.saveFailed'), 'error');
-      }
-    };
-
-    // AI commit generation config callback
-    window.updateCommitGenerationEnabled = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        d().setCommitGenerationEnabled?.(data.commitGenerationEnabled ?? true);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse commit generation config:', error);
-      }
-    };
-
-    // AI session title generation config callback
-    window.updateAiTitleGenerationEnabled = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        d().setAiTitleGenerationEnabled?.(data.aiTitleGenerationEnabled ?? true);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse AI title generation config:', error);
-      }
-    };
-
-    // Status bar widget config callback
-    window.updateStatusBarWidgetEnabled = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        d().setStatusBarWidgetEnabled?.(data.statusBarWidgetEnabled ?? true);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse status bar widget config:', error);
-      }
-    };
 
     // Task completion notification config callback (opt-in feature, default false)
     window.updateTaskCompletionNotificationEnabled = (jsonStr: string) => {
@@ -397,6 +293,19 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       previousUpdateAgents?.(jsonStr);
     };
 
+    // 自定义声音"浏览"：宿主 showOpenDialog 选完回填输入框（不自动保存，
+    // 保留用户确认语义）。仅设置页挂载期间有效——浏览按钮只在此处出现。
+    window.onSoundFileSelected = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr) as { path?: string };
+        if (typeof data.path === 'string' && data.path.trim()) {
+          d().setCustomSoundPath?.(data.path.trim());
+        }
+      } catch (error) {
+        console.error('[SettingsView] Failed to parse selected sound file:', error);
+      }
+    };
+
     window.agentOperationResult = (jsonStr: string) => {
       try {
         const result = JSON.parse(jsonStr);
@@ -428,49 +337,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
     };
 
-    // Prompt library callbacks (legacy support - now primarily handled by PromptSection)
-    const previousUpdatePrompts = window.updatePrompts;
-    window.updatePrompts = (jsonStr: string) => {
-      try {
-        const promptsList: PromptConfig[] = JSON.parse(jsonStr);
-        d().updatePrompts?.(promptsList);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse prompts:', error);
-      }
-      previousUpdatePrompts?.(jsonStr);
-    };
-
-    window.promptOperationResult = (jsonStr: string) => {
-      try {
-        const result = JSON.parse(jsonStr);
-        d().handlePromptOperationResult?.(result);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse prompt operation result:', error);
-      }
-    };
-
-    window.promptImportPreviewResult = (jsonStr: string) => {
-      try {
-        const previewData = JSON.parse(jsonStr);
-        if (!Array.isArray(previewData?.items) || typeof previewData?.summary !== 'object') {
-          console.error('[SettingsView] Invalid prompt import preview data structure');
-          return;
-        }
-        d().handlePromptImportPreviewResult?.(previewData);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse prompt import preview result:', error);
-      }
-    };
-
-    window.promptImportResult = (jsonStr: string) => {
-      try {
-        const result = JSON.parse(jsonStr);
-        d().handlePromptImportResult?.(result);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse prompt import result:', error);
-      }
-    };
-
     // Initial data loading for the default (basic) settings surface only.
     // Provider / agent / prompt lists are fetched when their tabs first mount.
     // Bootstrap messages are batched so open-settings does not stampede CEF.
@@ -484,11 +350,9 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     return () => {
       bootstrapRequests.cancel();
       d().cleanupAgentsTimeout();
-      d().cleanupPromptsTimeout?.();
 
       window.showError = undefined;
       window.showSwitchSuccess = undefined;
-      window.updateNodePath = undefined;
       window.updateOpencodeCliPath = undefined;
       window.updateWorkingDirectory = undefined;
       window.showSuccess = undefined;
@@ -496,20 +360,14 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       window.onEditorFontConfigReceived = undefined;
       window.onUiFontConfigReceived = undefined;
       window.onCodeFontConfigReceived = undefined;
+      window.onVscodeFontListReceived = undefined;
+      window.onSystemFontListReceived = undefined;
       window.onIdeThemeReceived = previousOnIdeThemeReceived;
-      if (!d().onStreamingEnabledChangeProp) {
-        window.updateStreamingEnabled = previousUpdateStreamingEnabled;
-      }
       if (!d().onSendShortcutChangeProp) {
         window.updateSendShortcut = previousUpdateSendShortcut;
       }
-      window.updateCommitPrompt = undefined;
-      window.updateCommitAiConfig = undefined;
-      window.updateProjectCommitPrompt = undefined;
       window.updateSoundNotificationConfig = undefined;
-      window.updateCommitGenerationEnabled = undefined;
-      window.updateAiTitleGenerationEnabled = undefined;
-      window.updateStatusBarWidgetEnabled = undefined;
+      window.onSoundFileSelected = undefined;
       window.updateTaskCompletionNotificationEnabled = undefined;
       window.updateAskUserQuestionNotificationEnabled = undefined;
       window.updateSystemNotificationOnlyWhenUnfocused = undefined;
@@ -518,10 +376,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       window.agentOperationResult = undefined;
       window.agentImportPreviewResult = undefined;
       window.agentImportResult = undefined;
-      window.updatePrompts = previousUpdatePrompts;
-      window.promptOperationResult = undefined;
-      window.promptImportPreviewResult = undefined;
-      window.promptImportResult = undefined;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t]);

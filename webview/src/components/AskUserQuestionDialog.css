@@ -1,4 +1,4 @@
-/* AskUserQuestion Dialog Styles */
+/* AskUserQuestion Dialog Styles — cc-gui aligned */
 
 .ask-user-question-dialog {
   position: relative;
@@ -6,10 +6,6 @@
   border: 1px solid var(--border-secondary);
   border-radius: 8px;
   padding: 24px;
-  /* Float as a card instead of hugging the tool-window edges: the full border
-     and rounded corners must stay visible, otherwise the left border line is
-     clipped by the plugin's display boundary. Stretch within the overlay minus
-     these insets, including while collapsed mode aligns its children to the end. */
   align-self: stretch;
   margin: 0 8px 8px;
   box-shadow: var(--shadow-lg);
@@ -19,33 +15,11 @@
   transition: all 0.3s ease;
 }
 
-/* Expanded state - no height limit, scrollable */
 .ask-user-question-dialog.expanded {
   max-height: 80vh;
   overflow-y: auto;
 }
 
-/* Collapsed state - compact display */
-.ask-user-question-dialog.collapsed {
-  padding: 16px 24px;
-  gap: 12px;
-  overflow: hidden;
-}
-
-/* Collapsed mode overlay - does not block page content */
-.permission-dialog-overlay.collapsed-mode {
-  background: transparent;
-  pointer-events: none;
-  align-items: flex-end;
-  padding-bottom: 20px;
-}
-
-.permission-dialog-overlay.collapsed-mode .ask-user-question-dialog {
-  pointer-events: auto;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
-}
-
-/* Header area (with collapse button) */
 .ask-user-question-dialog-header {
   display: flex;
   justify-content: space-between;
@@ -61,28 +35,6 @@
   flex: 1;
 }
 
-/* Collapse/expand toggle button */
-.collapse-toggle-button {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-secondary);
-  border-radius: 4px;
-  cursor: pointer;
-  color: var(--text-primary);
-  transition: all 0.2s;
-}
-
-.collapse-toggle-button:hover {
-  background: var(--bg-hover);
-  color: var(--color-link);
-}
-
-/* Countdown timer display */
 .countdown-timer {
   display: flex;
   align-items: center;
@@ -106,7 +58,6 @@
   text-align: center;
 }
 
-/* Countdown warning state */
 .countdown-timer.warning {
   color: var(--text-warning);
   background: rgba(204, 167, 0, 0.1);
@@ -119,7 +70,6 @@
   50% { opacity: 0.7; }
 }
 
-/* Timeout warning banner */
 .timeout-warning-banner {
   display: flex;
   align-items: center;
@@ -140,59 +90,15 @@
 }
 
 @keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Dialog warning state border */
 .ask-user-question-dialog.time-warning {
   border-color: var(--text-warning);
   box-shadow: var(--shadow-lg), 0 0 0 1px var(--text-warning);
 }
 
-/* Countdown in collapsed state */
-.collapsed-timer {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.collapsed-timer.warning {
-  color: var(--text-warning);
-  animation: pulse-warning 1s ease-in-out infinite;
-}
-
-.collapsed-timer .codicon {
-  font-size: 14px;
-}
-
-/* Hint area in collapsed state */
-.collapsed-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.collapsed-progress {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.expand-button {
-  flex-shrink: 0;
-}
-
-/* Progress row (contains progress text and countdown) */
 .ask-user-question-dialog-progress-row {
   display: flex;
   align-items: center;
@@ -301,7 +207,6 @@
   margin: -8px 0 0 0;
 }
 
-/* "Other" option styles */
 .question-option.other-option {
   border-style: dashed;
 }
@@ -310,12 +215,10 @@
   color: var(--color-link);
 }
 
-/* Custom input container */
 .custom-input-container {
   margin-top: 8px;
 }
 
-/* Custom input field */
 .custom-input {
   width: 100%;
   min-height: 80px;
@@ -394,20 +297,50 @@
   background: var(--bg-hover);
 }
 
-/* Responsive adjustments */
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Resize handle (our unique feature) */
+.ask-user-question-dialog-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  border-radius: 8px 8px 0 0;
+  z-index: 1;
+}
+
+.ask-user-question-dialog-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 3px;
+  background: var(--border-secondary);
+  border-radius: 2px;
+  transition: background 0.15s;
+}
+
+.ask-user-question-dialog-resize-handle:hover::after {
+  background: var(--accent-primary);
+}
+
 @media (max-width: 600px) {
   .ask-user-question-dialog {
     padding: 16px;
   }
-
   .ask-user-question-dialog-title {
     font-size: 16px;
   }
-
   .question-text {
     font-size: 14px;
   }
-
   .question-option {
     padding: 10px;
   }

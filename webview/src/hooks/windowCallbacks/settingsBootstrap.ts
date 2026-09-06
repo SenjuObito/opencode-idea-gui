@@ -25,7 +25,6 @@ export const startInitialSettingsRequest = (): void => {
       return;
     }
     if (window.sendToJava) {
-      window.sendToJava('get_streaming_enabled:');
       window.sendToJava('get_send_shortcut:');
       window.sendToJava('get_auto_open_file_enabled:');
       window.sendToJava('get_permission_dialog_timeout:');
@@ -127,12 +126,6 @@ export const drainPendingSettings = (): void => {
 
   const w = window as unknown as Record<string, unknown>;
 
-  if (w.__pendingStreamingEnabled) {
-    const pending = w.__pendingStreamingEnabled as string;
-    delete w.__pendingStreamingEnabled;
-    window.updateStreamingEnabled?.(pending);
-  }
-
   if (w.__pendingSendShortcut) {
     const pending = w.__pendingSendShortcut as string;
     delete w.__pendingSendShortcut;
@@ -155,24 +148,5 @@ export const drainPendingSettings = (): void => {
     const pending = w.__pendingModeReceived as string;
     delete w.__pendingModeReceived;
     window.onModeReceived?.(pending);
-  }
-};
-
-/**
- * Drain any dependency-status payload that arrived before the callback was
- * registered. The startup poller in main.tsx owns the initial request so this
- * callback registration cannot create a duplicate in-flight query.
- */
-export const drainPendingDependencyStatus = (): void => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const w = window as unknown as Record<string, unknown>;
-
-  if (w.__pendingDependencyStatus) {
-    const pending = w.__pendingDependencyStatus as string;
-    delete w.__pendingDependencyStatus;
-    window.updateDependencyStatus?.(pending);
   }
 };

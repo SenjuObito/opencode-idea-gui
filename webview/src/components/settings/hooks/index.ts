@@ -7,14 +7,6 @@ export type {
   DeleteAgentConfirmState,
 } from './useAgentManagement';
 
-export { usePromptManagement } from './usePromptManagement';
-export type {
-  UsePromptManagementOptions,
-  UsePromptManagementReturn,
-  PromptDialogState,
-  DeletePromptConfirmState,
-} from './usePromptManagement';
-
 export { useSettingsWindowCallbacks } from './useSettingsWindowCallbacks';
 export type { SettingsWindowCallbacksDeps } from './useSettingsWindowCallbacks';
 

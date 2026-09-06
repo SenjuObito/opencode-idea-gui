@@ -10,7 +10,7 @@ export interface UseSubmitHandlerOptions {
   getTextContent: () => string;
   attachments: Attachment[];
   isLoading: boolean;
-  sdkStatusLoading: boolean;
+  daemonStatusLoaded: boolean;
   sdkInstalled: boolean;
   currentProvider: string;
   clearInput: () => void;
@@ -24,12 +24,9 @@ export interface UseSubmitHandlerOptions {
   clearAttachmentsDraft?: () => void;
   fileCompletion: CompletionLike;
   commandCompletion: CompletionLike;
-  agentCompletion: CompletionLike;
-  promptCompletion: CompletionLike;
   dollarCommandCompletion: CompletionLike;
   recordInputHistory: (text: string) => void;
   onSubmit?: (content: string, attachmentsToSend?: Attachment[]) => void;
-  onInstallSdk?: () => void;
   addToast?: (message: string, type: 'info' | 'warning' | 'error' | 'success') => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
@@ -46,7 +43,7 @@ export function useSubmitHandler({
   getTextContent,
   attachments,
   isLoading,
-  sdkStatusLoading,
+  daemonStatusLoaded,
   sdkInstalled,
   currentProvider,
   clearInput,
@@ -57,12 +54,9 @@ export function useSubmitHandler({
   clearAttachmentsDraft,
   fileCompletion,
   commandCompletion,
-  agentCompletion,
-  promptCompletion,
   dollarCommandCompletion,
   recordInputHistory,
   onSubmit,
-  onInstallSdk,
   addToast,
   t,
 }: UseSubmitHandlerOptions) {
@@ -72,21 +66,13 @@ export function useSubmitHandler({
     const content = getTextContent();
     const cleanContent = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 
-    if (sdkStatusLoading) {
-      addToast?.(t('chat.sdkStatusLoading'), 'info');
+    if (!daemonStatusLoaded) {
+      addToast?.('Checking daemon status...', 'info');
       return;
     }
 
     if (!sdkInstalled) {
-      addToast?.(
-        t('chat.sdkNotInstalled', {
-          provider: currentProvider === 'codex' ? 'Codex' : 'Claude Code',
-        }) +
-          ' ' +
-          t('chat.goInstallSdk'),
-        'warning'
-      );
-      onInstallSdk?.();
+      addToast?.('OpenCode daemon is not running', 'warning');
       return;
     }
 
@@ -95,8 +81,6 @@ export function useSubmitHandler({
     // Close completions
     fileCompletion.close();
     commandCompletion.close();
-    agentCompletion.close();
-    promptCompletion.close();
     dollarCommandCompletion.close();
 
     // Record input history
@@ -123,7 +107,7 @@ export function useSubmitHandler({
     invalidateCache,
     attachments,
     isLoading,
-    sdkStatusLoading,
+    daemonStatusLoaded,
     sdkInstalled,
     currentProvider,
     clearInput,
@@ -133,12 +117,9 @@ export function useSubmitHandler({
     clearAttachmentsDraft,
     fileCompletion,
     commandCompletion,
-    agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     recordInputHistory,
     onSubmit,
-    onInstallSdk,
     addToast,
     t,
   ]);

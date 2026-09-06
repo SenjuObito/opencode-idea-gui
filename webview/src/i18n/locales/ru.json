@@ -11,7 +11,6 @@
     "back": "Назад",
     "close": "Закрыть",
     "newSession": "Новый чат",
-    "newTab": "Новая вкладка",
     "dontAskAgain": "Больше не спрашивать",
     "history": "История",
     "settings": "Настройки",
@@ -35,9 +34,9 @@
     "emptyMessage": "Пустое сообщение",
     "clickToPreview": "Нажмите для просмотра",
     "userUploadedImage": "Загружено изображение",
-    "inputPlaceholder": "@файлы, #агенты, Enter — отправить",
-    "inputPlaceholderEnter": "@файлы, #агенты, Enter — отправить",
-    "inputPlaceholderCmdEnter": "@файлы, #агенты, ⌘Enter — отправить",
+    "inputPlaceholder": "@файлы, !bash-команды, /команды opencode, Enter — отправить",
+    "inputPlaceholderEnter": "@файлы, !bash-команды, /команды opencode, Enter — отправить",
+    "inputPlaceholderCmdEnter": "@файлы, !bash-команды, /команды opencode, ⌘Enter — отправить",
     "noThinkingContent": "Нет данных о размышлениях",
     "parseError": "Не удалось разобрать содержимое",
     "sendMessageEnter": "Отправить сообщение (Enter)",
@@ -80,17 +79,30 @@
     "global": "Глобальный",
     "localProject": "Локальный",
     "disabled": "Отключено",
-    "sdkNotInstalled": "SDK {{provider}} не установлен. Установите SDK для начала работы.",
-    "sdkStatusLoading": "Проверка статуса SDK...",
-    "sdkStatusUnavailable": "Не удалось проверить состояние SDK.",
-    "retrySdkStatus": "Повторить",
-    "openSourceBanner": "Этот проект гарантированно 100% с открытым исходным кодом и бесплатный (остерегайтесь пиратских проектов)",
-    "openSourceBannerStar": "Star",
-    "openSourceBannerStarToast": "Ссылка скопирована в буфер обмена — вставьте её в браузере, чтобы открыть ⭐",
-    "openSourceBannerStarAria": "Скопировать ссылку и поставить звезду на GitHub",
-    "goInstallSdk": "Перейти к установке",
     "commandNotImplemented": "Функция `{{command}}` ещё не реализована.",
+    "daemonStatusLoading": "Запуск службы OpenCode, пожалуйста, подождите",
     "clearCommandDescription": "Очистить историю и начать новый чат",
+    "builtinCommands": {
+      "compact": "Сжать сессию для уменьшения размера контекста",
+      "undo": "Отменить последнее сообщение",
+      "redo": "Повторить отменённое сообщение",
+      "fork": "Скопировать весь сеанс в новую ветку",
+      "share": "Поделиться ссылкой на сессию",
+      "unshare": "Отменить доступ к сессии"
+    },
+    "compactTooltip": "Нажмите, чтобы сжать сессию",
+    "compactStarted": "Сжатие сессии…",
+    "compactSuccess": "Сессия сжата",
+    "compactFailed": "Не удалось сжать сессию",
+    "compactConfirmTitle": "Сжать сессию",
+    "compactConfirmMessage": "Сжатие попросит opencode сделать краткое резюме текущего диалога и удалить более старые сообщения, чтобы освободить место в контексте. Это действие нельзя отменить — продолжить?",
+    "compactConfirmAction": "Сжать",
+    "undoTooltip": "Отменить это сообщение",
+    "redoTooltip": "Повторить это сообщение",
+    "forkTooltip": "Форкнуть в новую сессию",
+    "shareTooltip": "Поделиться сессией",
+    "unshareTooltip": "Отменить доступ к сессии",
+    "shareSuccess": "Ссылка скопирована в буфер обмена",
     "attachmentFile": "[Вложение: {{fileName}}]",
     "unknownFile": "Неизвестный файл",
     "attachmentsUploaded": "[Вложения загружены]",
@@ -127,7 +139,29 @@
       "userContext": "Контекст: «{{context}}»",
       "expand": "Развернуть сводку",
       "collapse": "Свернуть сводку"
-    }
+    },
+    "shareFailed": "Не удалось скопировать — сеанс не опубликован",
+    "shareDisabledHint": "Возможно, общий доступ отключён в opencode.json (\"share\": \"disabled\") или требуется вход в opencode. Проверьте конфигурацию и повторите",
+    "sharePendingTooltip": "Публикация…",
+    "copyShareLinkTooltip": "Скопировать ссылку",
+    "revertPlaceholderTitle": "Это сообщение и последующие ответы отменены",
+    "revertPlaceholderCount": "Отменено сообщений: {{count}}",
+    "revertExpand": "Показать",
+    "revertCollapse": "Свернуть",
+    "revertRestore": "Восстановить",
+    "revertBusyConfirmMessage": "Генерируется ответ. Отмена прервёт текущую задачу и выполнит откат к этому сообщению. Продолжить?",
+    "restoreBusyConfirmMessage": "Генерируется ответ. Восстановление прервёт текущую задачу и вернёт отменённые сообщения. Продолжить?",
+    "revertFailed": "Не удалось отменить",
+    "restoreFailed": "Не удалось восстановить",
+    "forkDisabledTooltip": "Будет доступно после завершения текущего ответа",
+    "forkCreatedToast": "Создан форк сеанса",
+    "forkSwitchAction": "Перейти в новый сеанс",
+    "forkFailed": "Не удалось создать форк сеанса",
+    "forkAllTooltip": "Форкнуть весь сеанс в новый сеанс",
+    "shareLinkCreated": "Ссылка создана",
+    "retryCopy": "Копировать снова",
+    "subagentsSection": "Субагенты",
+    "filesSection": "Файлы"
   },
   "settings": {
     "title": "Настройки",
@@ -141,8 +175,8 @@
       },
       "theme": {
         "label": "Тема",
-        "system": "Как в IDE",
-        "systemDesc": "Следует за темой IDE",
+        "system": "Как в VS Code",
+        "systemDesc": "Следует за темой VS Code",
         "light": "Светлая",
         "lightDesc": "Свежая и яркая, для работы днём",
         "dark": "Тёмная",
@@ -150,7 +184,7 @@
       },
       "language": {
         "label": "Язык",
-        "followIde": "Следовать IDE",
+        "followIde": "Следовать VS Code",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -170,15 +204,10 @@
         "hintText": "чтобы узнать путь к исполняемому файлу Node.js. Оставьте пустым для автоопределения.",
         "versionTooLow": "Версия Node.js слишком старая. Плагин требует v{{minVersion}} или выше"
       },
-      "claudeCliPath": {
-        "label": "Путь к Claude CLI (переопределение)",
-        "placeholder": "напр. /usr/local/bin/claude — оставьте пустым для использования встроенного SDK",
-        "hint": "Необязательно. Если задано, плагин запускает этот исполняемый файл вместо встроенного @anthropic-ai/claude-agent-sdk. При сохранении демон перезапускается."
-      },
       "workingDirectory": {
         "label": "Рабочая директория",
         "placeholder": "например, project1 или оставьте пустым для корня проекта",
-        "hint": "Укажите директорию, в которой будет работать Claude. Можно использовать относительный (от корня проекта) или абсолютный путь. Оставьте пустым для корня проекта."
+        "hint": "Укажите каталог, в котором работает opencode. Можно использовать относительный путь (от корня проекта) или абсолютный. Оставьте пустым, чтобы использовать корень проекта."
       },
       "fontSize": {
         "label": "Размер шрифта",
@@ -192,25 +221,29 @@
       "editorFont": {
         "label": "UI-шрифт",
         "hint": "Здесь меняется шрифт интерфейса плагина; для кода можно выбрать отдельный шрифт.",
-        "followOption": "Использовать UI-шрифт IDEA ({{font}})",
+        "followOption": "Использовать UI-шрифт VS Code ({{font}})",
         "customOption": "Пользовательский файл UI-шрифта",
         "customPathLabel": "Путь к файлу UI-шрифта",
         "customPathPlaceholder": "Выберите или введите путь к файлу .ttf / .otf для UI-шрифта",
         "browse": "Обзор",
-        "warningUnavailable": "UI-шрифт недоступен, сейчас используется UI-шрифт IDEA",
-        "statusFollowEditor": "Сейчас используется UI-шрифт IDEA: {{font}}",
-        "statusCustom": "Сейчас используется пользовательский UI-шрифт: {{font}}"
+        "warningUnavailable": "UI-шрифт недоступен, сейчас используется UI-шрифт VS Code",
+        "statusFollowEditor": "Сейчас используется UI-шрифт VS Code: {{font}}",
+        "statusCustom": "Сейчас используется пользовательский UI-шрифт: {{font}}",
+        "systemFontGroup": "Системные шрифты",
+        "systemFontLoading": "Загрузка системных шрифтов…",
+        "systemFontFailed": "Не удалось загрузить системные шрифты.",
+        "systemFontRetry": "Повторить"
       },
       "codeFont": {
         "label": "Шрифт кода",
         "hint": "Markdown-код и блоки команд используют этот шрифт.",
-        "followOption": "Следовать шрифту редактора ({{font}})",
+        "followOption": "Следовать шрифту редактора VS Code ({{font}})",
         "customOption": "Пользовательский файл шрифта кода",
         "customPathLabel": "Путь к файлу шрифта кода",
         "customPathPlaceholder": "Выберите или введите путь к файлу .ttf / .otf для шрифта кода",
         "browse": "Обзор",
         "warningUnavailable": "Шрифт кода недоступен, сейчас используется шрифт редактора",
-        "statusFollowEditor": "Сейчас используется шрифт редактора: {{font}}",
+        "statusFollowEditor": "Сейчас используется шрифт редактора VS Code: {{font}}",
         "statusCustom": "Сейчас используется пользовательский шрифт кода: {{font}}"
       },
       "streaming": {
@@ -232,13 +265,7 @@
         "providerAvailable": "Available",
         "providerUnavailable": "Currently unavailable",
         "provider": {
-          "claude": "Claude Code",
-          "codex": "Codex",
-          "grok": "Grok CLI",
-          "kimi": "Kimi CLI",
-          "opencode": "OpenCode",
-          "pi": "PI CLI",
-          "omp": "OMP CLI"
+          "opencode": "OpenCode"
         },
         "currentProviderAuto": "Currently using automatic selection: {{provider}}",
         "currentProviderManual": "Currently using manually selected provider: {{provider}}",
@@ -265,7 +292,7 @@
         "label": "Системное уведомление о вопросе",
         "enabled": "Включено",
         "disabled": "Выключено",
-        "hint": "При включении показывает системное уведомление, когда Claude задаёт вопрос, чтобы вы его не пропустили. При выключении уведомление не появляется."
+        "hint": "При включении показывает системное уведомление, когда OpenCode задаёт вопрос, чтобы вы его не пропустили. При выключении уведомление не появляется."
       },
       "detailedOutput": {
         "label": "Подробная информация о выводе",
@@ -277,7 +304,7 @@
         "label": "Звуковой сигнал при вопросе",
         "enabled": "Включено",
         "disabled": "Выключено",
-        "hint": "При включении воспроизводит настроенный звуковой сигнал, когда Claude задаёт вопрос. Использует выбор звука и правила фокуса ниже."
+        "hint": "При включении воспроизводит настроенный звуковой сигнал, когда OpenCode задаёт вопрос. Использует выбор звука и правила фокуса ниже."
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "Показывать системные уведомления только когда IDE не в фокусе",
@@ -317,7 +344,7 @@
       "permissionDialogTimeout": {
         "label": "Таймаут диалогов разрешений и вопросов",
         "unit": "секунд",
-        "hint": "Установите таймаут для диалогов вопросов Claude и диалогов запроса разрешений (30~3600 секунд). После таймаута диалог закроется автоматически, и Claude продолжит работу."
+        "hint": "Установите таймаут для диалогов вопросов OpenCode и диалогов запроса разрешений (30~3600 секунд). После таймаута диалог закроется автоматически, и OpenCode продолжит работу."
       },
       "chatBgColor": {
         "label": "Цвет фона чата",
@@ -342,13 +369,16 @@
         "enabled": "Включено",
         "disabled": "Отключено",
         "hint": "При отключении создание нового чата в существующем диалоге будет происходить напрямую, без подтверждения."
+      },
+      "opencodeCliPath": {
+        "label": "Путь к TUI Opencode",
+        "placeholder": "напр. /usr/local/bin/opencode — оставьте пустым для автовыбора",
+        "hint": "Необязательный пользовательский бинарный файл opencode для запуска сервиса opencode. Оставьте пустым для поиска в PATH и стандартных местах установки (~/.opencode/bin). Вступает в силу после перезапуска демона при сохранении."
       }
     },
     "providers": "Управление провайдерами",
-    "providersDesc": "Управление конфигурациями API-провайдеров Claude и Codex и переключение между ними",
+    "providersDesc": "Управление интеграцией CLI opencode и проверка статуса установки локальных CLI-инструментов",
     "providerTab": {
-      "claude": "Claude Code",
-      "codex": "Codex",
       "cli": "CLI"
     },
     "pluginModels": {
@@ -378,83 +408,19 @@
         "invalidValue": "Максимальный контекст должен быть положительным целым числом в единицах K",
         "summary": "Контекст: {{value}} токенов"
       },
-      "configuredSectionTitle": "Настроенные модели Claude",
-      "configuredSectionDesc": "Модели активного провайдера Claude или settings.json уже отображаются в списке выбора. Здесь можно изменить только стоимость.",
-      "configuredEditHint": "Эта модель управляется активным провайдером Claude или settings.json. Здесь можно изменить только стоимость.",
+      "configuredSectionTitle": "Настроенные модели OpenCode",
+      "configuredSectionDesc": "Модели активного провайдера OpenCode или settings.json уже отображаются в списке выбора. Здесь можно изменить только стоимость.",
+      "configuredEditHint": "Эта модель управляется активным провайдером OpenCode или settings.json. Здесь можно изменить только стоимость.",
       "customSectionTitle": "Пользовательские модели",
       "editPricing": "Изменить стоимость"
-    },
-    "dependencies": "Зависимости SDK",
-    "dependenciesDesc": "Управление установкой и обновлением зависимостей AI SDK",
-    "dependency": {
-      "title": "Управление зависимостями SDK",
-      "description": "Управление зависимостями AI SDK. Установите необходимый SDK перед первым использованием.",
-      "installPolicyTip": "Проблемы с установкой? Скопируйте ошибку в терминальный CLI AI для решения",
-      "claudeSdkName": "Claude Code SDK",
-      "claudeSdkDescription": "Необходим для функций Claude AI. Включает Claude Code SDK и связанные зависимости.",
-      "codexSdkName": "Codex SDK",
-      "codexSdkDescription": "Необходим для функций Codex AI. Включает OpenAI Codex SDK.",
-      "loading": "Загрузка статуса зависимостей...",
-      "install": "Установить",
-      "installing": "Установка...",
-      "uninstall": "Удалить",
-      "uninstalling": "Удаление...",
-      "update": "Обновить",
-      "updateAvailable": "Доступно обновление",
-      "installLogs": "Журнал установки",
-      "waitingForLogs": "Ожидание вывода журнала...",
-      "nodeNotConfigured": "Node.js не настроен. Укажите путь в основных настройках.",
-      "installSuccess": "{{name}} успешно установлен",
-      "installFailed": "Ошибка установки: {{error}}",
-      "uninstallSuccess": "{{name}} удалён",
-      "uninstallFailed": "Ошибка удаления: {{error}}",
-      "updating": "Обновление...",
-      "updateSuccess": "{{name}} успешно обновлён"
     },
     "usage": "Статистика использования",
     "usageDesc": "Просмотр потребления токенов, статистики затрат и анализа тенденций",
     "mcp": "MCP-серверы",
     "mcpDesc": "Настройка и управление серверами Model Context Protocol",
-    "permissions": "Разрешения",
-    "permissionsDesc": "Управление правами доступа Claude Code к файлам и операциям",
     "promptEnhancer": {
       "title": "Prompt Enhancer",
       "description": "Choose which provider and model should be used when enhancing prompts before sending them."
-    },
-    "commit": {
-      "title": "Commit AI",
-      "description": "Настройка AI-генерации сообщений Git-коммитов",
-      "providerModel": {
-        "label": "Провайдер модели коммитов",
-        "modelLabel": "Модель коммитов",
-        "resetToDefault": "Сбросить",
-        "providerAvailable": "Доступно",
-        "providerUnavailable": "Недоступно",
-        "currentProviderAuto": "Сейчас используется автоматический выбор: {{provider}}",
-        "currentProviderManual": "Сейчас используется выбранный вручную провайдер: {{provider}}",
-        "currentProviderUnavailable": "Выбранный провайдер сейчас недоступен: {{provider}}",
-        "modeLabel": "Режим выбора",
-        "modeAuto": "Авто",
-        "modeManual": "Вручную",
-        "autoSummary": "Следует текущему чат CLI · сейчас {{provider}}",
-        "autoUnavailable": "Нет доступного CLI. Переключитесь на ручной выбор."
-      },
-      "prompt": {
-        "label": "Дополнительный промпт",
-        "placeholder": "Добавьте дополнительные требования, например, генерировать коммит на английском, включать номер issue и т.д...",
-        "hint": "Плагин содержит встроенные промпты для CCG Commits. Ваш текст будет использован как дополнительные требования, и AI отдаст приоритет вашим указаниям."
-      },
-      "projectPrompt": {
-        "label": "Дополнительный промпт для проекта",
-        "placeholder": "Добавьте здесь требования, специфичные для проекта, например: scope должен содержать имя модуля, body коммита должен включать область влияния и т.д...",
-        "hint": "Этот промпт применяется только к текущему проекту и объединяется с глобальным дополнительным промптом. При противоречии приоритет отдаётся промпту проекта. Разные проекты можно настраивать независимо."
-      },
-      "codeReview": {
-        "comingSoon": "Скоро",
-        "label": "Дополнительный промпт Code Review AI",
-        "placeholder": "Эта функция в разработке, следите за обновлениями...",
-        "hint": "Code Review AI поможет автоматически проверять код, находить потенциальные проблемы и предлагать улучшения. Здесь можно настроить предпочтения и приоритеты проверки."
-      }
     },
     "agents": "Агенты",
     "agentsDesc": "Управление и настройка AI-агентов",
@@ -508,25 +474,23 @@
           "minutesAgo_few": "{{count}} минуты назад",
           "minutesAgo_many": "{{count}} минут назад"
         }
-      },
-      "aiTitleGeneration": {
-        "label": "Автогенерация заголовка сессии ИИ",
-        "enabled": "Включено",
-        "disabled": "Выключено",
-        "hint": "При включении после первой реплики новой сессии будет автоматически сгенерирован короткий заголовок моделью Haiku. При выключении в качестве заголовка остаётся первое сообщение пользователя."
       }
     },
-    "codexFeatureUnavailable": "Этот раздел настроек недоступен для Codex. Переключитесь на Claude Code.",
     "sidebar": {
       "expand": "Развернуть боковую панель",
       "collapse": "Свернуть боковую панель"
     },
-    "community": "Сообщество",
-    "communityDesc": "Отсканируйте QR-код ниже, чтобы присоединиться к официальной группе WeChat для новостей и техподдержки",
+    "community": "Поддержать",
+    "communityDesc": "Отсканируйте QR-код ниже, чтобы поддержать автора и помочь в дальнейшем развитии проекта",
     "versionHistory": "История версий",
     "versionHistoryDesc": "Просмотр всех записей об обновлениях версий",
-    "communityQrTip": "Отсканируйте WeChat для вступления в сообщество",
-    "communityQrAlt": "QR-код официального сообщества WeChat",
+    "communityQrTipWechat": "Поддержка через WeChat",
+    "communityQrTipAlipay": "Поддержка через Alipay",
+    "communityQrTipPayPal": "Поддержка через PayPal",
+    "communityQrAlt": "QR-код для поддержки",
+    "communityQrAltAlipay": "QR-код для поддержки Alipay",
+    "communityQrAltPayPal": "QR-код для поддержки PayPal",
+    "projectDesc": "Этот проект — расширение VS Code OpenCode Buddy (https://github.com/SenjuObito/opencode-vscode-plugin)",
     "githubTitle": "Репозиторий GitHub",
     "githubDesc": "Этот проект с открытым исходным кодом на GitHub. Поставьте звезду в поддержку!",
     "githubCopyBtn": "Скопировать URL репозитория",
@@ -538,7 +502,6 @@
     "wechatPay": "WeChat Pay",
     "paypal": "PayPal",
     "provider": {
-      "currentConfig": "Текущая конфигурация ClaudeCode",
       "loading": "Загрузка...",
       "noConfig": "Нет конфигурации",
       "emptyProvider": "Провайдер не настроен",
@@ -568,7 +531,6 @@
       "importFromCcSwitchUpdate": "Импорт/Обновление из cc-switch",
       "importFromCcSwitchFile": "Выберите файл cc-switch.db для импорта",
       "importFromCcSwitchCli": "Импорт/Обновление из cc-switch CLI",
-      "importFromClaudeRouter": "Импорт/Обновление из Claude Code Router",
       "featureComingSoon": "Функция ещё не реализована, скоро будет",
       "readingCcSwitch": "Читаю конфигурацию cc-switch...",
       "editCcSwitchTitle": "Редактирование конфигурации cc-switch",
@@ -581,62 +543,8 @@
       "confirmConvert": "Подтвердить конвертацию",
       "inUse": "Используется",
       "enable": "Включить",
-      "localProviderName": "Локальный settings.json",
-      "localProviderDescription": "Использовать конфигурацию напрямую из ~/.claude/settings.json",
-      "localProviderHelp": "В режиме локального провайдера:\n• Плагин не будет изменять ваш файл ~/.claude/settings.json\n• Вам нужно управлять конфигурацией вручную\n• Убедитесь, что файл существует и содержит валидный JSON\n• Подходит для опытных пользователей, предпочитающих ручное управление",
       "authorizeAndEnable": "Авторизовать и включить",
       "revokeAuthorization": "Отозвать авторизацию",
-      "cliLoginProviderName": "Состояние входа CLI",
-      "cliLoginProviderDescription": "Повторно использовать уже выполненное в терминале состояние входа Claude CLI",
-      "cliLoginAuthorizeTitle": "Авторизовать состояние входа CLI",
-      "cliLoginAuthorizeMessage": "Это позволит плагину использовать вашу сессию входа Claude CLI для API-запросов. Вы должны предварительно войти через Claude CLI в терминале.",
-      "cliLoginAuthorizeDetail": "Плагин делегирует аутентификацию нативному OAuth потоку SDK Claude. Вы можете отозвать эту авторизацию в любое время.",
-      "cliLoginDisableTitle": "Отозвать авторизацию входа CLI",
-      "cliLoginDisableMessage": "Это прекратит использование состояния входа CLI и оставит Claude без активного провайдера, пока вы явно не включите другой.",
-      "cliLoginAccountInfo": "Вошел как: {{email}}",
-      "subscriptionTutorial": {
-        "entry": "Руководство по подписке",
-        "dialogTitle": "Как использовать аккаунт подписки",
-        "tabAriaLabel": "Вкладки руководства по подписке",
-        "tabs": {
-          "claude": "Подписка Claude",
-          "codex": "Подписка Codex"
-        },
-        "code": {
-          "copy": "Скопировать код",
-          "copied": "Скопировано"
-        },
-        "providers": {
-          "claude": {
-            "title": "Как использовать аккаунт подписки Claude Code",
-            "item1": "Войдите в аккаунт подписки Claude Code через CLI в терминале, затем вы сможете нормально общаться в терминале",
-            "item2": "Убедитесь, что файл ~/.claude/settings.json и файл .env пусты",
-            "item3": "Перезапустите IDEA, и вы сможете нормально общаться",
-            "emptyConfigCodeLabel": "~/.claude/settings.json",
-            "emptyConfigCode": "{\n  \"env\": {\n  }\n}",
-            "noteTitle": "Примечания к особым случаям:",
-            "note1": "Если вы выполнили вышеуказанные шаги, но плагин всё ещё не отвечает, попробуйте установить ~/.claude/settings.json .env в:",
-            "proxyConfigCodeLabel": "~/.claude/settings.json",
-            "proxyConfigCode": "{\n  \"env\": {\n    \"HTTP_PROXY\": \"http://127.0.0.1:7897\",\n    \"HTTPS_PROXY\": \"http://127.0.0.1:7897\"\n  }\n}",
-            "issuePrefix": "Если это всё ещё не работает, сообщите о проблеме на GitHub: ",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          },
-          "codex": {
-            "title": "Настройка аккаунта подписки Codex",
-            "item1": "Запустите codex login в терминале Codex CLI и войдите в систему, затем вы сможете общаться в терминале",
-            "item2": "Перезапустите IDEA",
-            "item3": "Теперь вы можете нормально общаться",
-            "emptyConfigCodeLabel": "",
-            "emptyConfigCode": "",
-            "noteTitle": "",
-            "note1": "",
-            "proxyConfigCodeLabel": "",
-            "proxyConfigCode": "",
-            "issuePrefix": "Если это всё ещё не работает, сообщите о проблеме на GitHub: ",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          }
-        }
-      },
       "importDialog": {
         "title": "Импорт конфигурации cc-switch",
         "summary": "Найдено {{total}} конфигураций, в том числе",
@@ -651,50 +559,6 @@
         "confirmImport": "Подтвердить импорт"
       },
       "deleteProviderMessage": "Вы уверены, что хотите удалить провайдер «{{name}}»?\n\nЭто действие необратимо.",
-      "dialog": {
-        "addTitle": "Добавить провайдер",
-        "editTitle": "Редактировать провайдер: {{name}}",
-        "addDescription": "Настройте информацию о новом провайдере",
-        "securityNotice": "Уведомление: Все настройки хранятся локально на вашем компьютере. Этот проект на 100% с открытым исходным кодом. Пользуйтесь с уверенностью.",
-        "editDescription": "Изменения будут применены немедленно к текущему провайдеру.",
-        "providerName": "Имя провайдера",
-        "providerNamePlaceholder": "например, Claude Official",
-        "remark": "Примечание",
-        "remarkPlaceholder": "Необязательно",
-        "apiKey": "API-ключ",
-        "apiKeyPlaceholder": "sk-ant-...",
-        "apiKeyHint": "Введите ваш API-ключ",
-        "apiUrl": "API Endpoint",
-        "apiUrlPlaceholder": "https://api.anthropic.com",
-        "apiUrlHint": "Введите адрес сервиса, совместимого с Claude API",
-        "modelMapping": "Маппинг моделей (будет добавлен в JSON env)",
-        "mainModel": "Основная модель",
-        "mainModelPlaceholder": "например, claude-sonnet-4-6",
-        "fableModel": "Модель Fable по умолчанию",
-        "fableModelPlaceholder": "например, claude-fable-5",
-        "haikuModel": "Модель Haiku по умолчанию",
-        "haikuModelPlaceholder": "например, claude-haiku-4-5",
-        "sonnetModel": "Модель Sonnet по умолчанию",
-        "sonnetModelPlaceholder": "например, claude-sonnet-4-6",
-        "opusModel": "Модель Opus по умолчанию",
-        "opusModelPlaceholder": "например, claude-opus-4-6",
-        "modelMappingHint": "Необязательно: укажите модели Claude по умолчанию. Оставьте пустым для системных значений.",
-        "customModels": "Пользовательские модели",
-        "customModelsHint": "Добавьте дополнительные модели, поддерживаемые этим провайдером. Пользовательские модели будут отображаться вверху списка выбора моделей",
-        "jsonConfig": "JSON-конфигурация",
-        "jsonConfigDescription": "Настройте полное содержимое settings.json, поддерживаются все поля (model, alwaysThinkingEnabled, ccSwitchProviderId, codemossProviderId и т.д.)",
-        "jsonError": "Некорректный формат JSON",
-        "required": "*",
-        "showApiKey": "Показать",
-        "hideApiKey": "Скрыть",
-        "confirmAdd": "Подтвердить добавление",
-        "saveChanges": "Сохранить изменения",
-        "codeView": "Код",
-        "visualView": "Визуально",
-        "formatJson": "Форматировать",
-        "invalidJson": "Некорректный формат JSON, переключитесь в режим кода для исправления",
-        "presetGroup": "Быстрые пресеты"
-      },
       "presets": {
         "custom": "Своё",
         "zhipu": "Zhipu GLM",
@@ -713,7 +577,6 @@
       }
     },
     "comingSoon": "Скоро...",
-    "permissionsComingSoon": "Настройка разрешений скоро...",
     "agentsComingSoon": "Настройка агентов скоро...",
     "skillsComingSoon": "Настройка навыков скоро...",
     "codexProvider": {
@@ -729,7 +592,7 @@
         "editDescription": "Изменения будут немедленно применены к ~/.codex/",
         "officialPreset": "Прямое подключение OpenAI",
         "officialSectionHint": "Используйте вручную введенный OPENAI_API_KEY с официальной конечной точкой https://api.openai.com/v1.",
-        "presetHint": "Эти пресеты включают только сторонние или прокси-конечные точки, совпадающие с набором провайдеров Claude Code.",
+        "presetHint": "Эти пресеты включают только сторонние или прокси-конечные точки, совпадающие с набором провайдеров OpenCode.",
         "providerName": "Имя провайдера",
         "providerNamePlaceholder": "например, Codex Official",
         "configJson": "Конфигурация",
@@ -805,40 +668,6 @@
         "saveChanges": "Сохранить"
       }
     },
-    "prompts": "Библиотека промптов",
-    "promptsDesc": "Шаблоны промптов для быстрой вставки в чат",
-    "prompt": {
-      "title": "Библиотека промптов",
-      "create": "Создать",
-      "createPrompt": "Создать промпт",
-      "createPromptHint": "Перейти в настройки промптов",
-      "customPrompts": "Пользовательские промпты",
-      "noPrompts": "Нет промптов",
-      "noPromptsDropdown": "Нет промптов",
-      "loadFailed": "Ошибка загрузки",
-      "loading": "Загрузка...",
-      "menu": "Меню",
-      "addSuccess": "Промпт создан",
-      "updateSuccess": "Промпт обновлён",
-      "deleteSuccess": "Промпт удалён",
-      "operationSuccess": "Операция выполнена",
-      "operationFailed": "Ошибка операции",
-      "deleteConfirmTitle": "Подтвердить удаление",
-      "deleteConfirmMessage": "Удалить промпт «{{name}}»? Это действие необратимо.",
-      "description": "Создавайте шаблоны промптов. Введите ! в чате, чтобы выбрать и вставить",
-      "dialog": {
-        "addTitle": "Создать промпт",
-        "editTitle": "Редактировать промпт",
-        "name": "Название",
-        "namePlaceholder": "Введите название промпта",
-        "nameRequired": "Введите название промпта",
-        "content": "Содержимое",
-        "contentPlaceholder": "Введите текст промпта, можно использовать переменные вида {{variable}}",
-        "contentHint": "Содержимое промпта будет вставлено прямо в поле ввода при выборе",
-        "confirmAdd": "Создать",
-        "saveChanges": "Сохранить"
-      }
-    },
     "cli": {
       "hint": "These CLIs must be installed and configured in your system terminal. The plugin only detects installation status and version — it will never install them for you. Confirm each CLI works in the terminal before coming back here to use it.",
       "refresh": "Re-check",
@@ -855,14 +684,6 @@
       "copied": "Copied to clipboard",
       "copyFailed": "Failed to copy",
       "tools": {
-        "grok": {
-          "name": "Grok CLI",
-          "description": "xAI Grok terminal coding agent"
-        },
-        "kimi": {
-          "name": "Kimi CLI",
-          "description": "Moonshot Kimi Code CLI"
-        },
         "opencode": {
           "name": "OpenCode",
           "description": "Open-source terminal AI coding agent"
@@ -870,10 +691,6 @@
         "pi": {
           "name": "PI CLI",
           "description": "Минималистичный терминальный агент для кодирования с поддержкой нескольких провайдеров"
-        },
-        "omp": {
-          "name": "OMP CLI",
-          "description": "Терминальный агент для кодирования Oh My Pi с поддержкой нескольких провайдеров"
         }
       },
       "installDialog": {
@@ -920,7 +737,7 @@
     "loading": "Загрузка истории...",
     "loadFailed": "Ошибка загрузки",
     "noSessions": "Нет чатов в истории",
-    "noSessionsDesc": "В текущем проекте не найдено записей сессий",
+    "noSessionsDesc": "В текущем проекте не найдено чатов с OpenCode",
     "totalSessions": "{{count}} чатов · {{total}} сообщений",
     "messageCount": "{{count}} сообщений",
     "searchPlaceholder": "Поиск по чатам...",
@@ -940,7 +757,7 @@
     "convertSuccess": "Сессия преобразована для распознавания CLI",
     "convertFailed": "Ошибка преобразования",
     "confirmConvert": "Преобразовать в сессию CLI?",
-    "convertConfirmMessage": "Это изменит entrypoint сессии, чтобы она отображалась в списке /resume CLI Claude Code.",
+    "convertConfirmMessage": "Это изменит entrypoint сессии, чтобы она отображалась в списке /resume CLI OpenCode.",
     "timeAgo": {
       "yearsAgo_one": "{{count}} год назад",
       "yearsAgo_other": "{{count}} лет назад",
@@ -977,12 +794,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDK сеанс",
       "claude-vscode": "VS Code",
-      "remote": "Удаленный"
+      "remote": "Удаленный",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "Этот сеанс был создан плагином через SDK и по умолчанию не отображается в CLI. Нажмите 'Преобразовать в CLI', чтобы он появился в списке /resume терминала CLI",
       "claude-vscode": "Этот сеанс был создан расширением VS Code и по умолчанию не отображается в CLI. Нажмите 'Преобразовать в CLI', чтобы он появился в списке /resume терминала CLI",
-      "remote": "Этот сеанс был создан удаленным экземпляром Claude Code"
+      "remote": "Этот сеанс был создан удаленным экземпляром OpenCode",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -1003,32 +822,37 @@
       "WebSearch": "Ищу в интернете",
       "WebFetch": "Загружаю из сети",
       "execute": "Выполняю {{toolName}}",
-      "readDirectory": "Читаю директорию",
-      "timeoutWarning": "Ответьте в течение {{seconds}} сек, иначе диалог закроется"
-    }
+      "readDirectory": "Читаю директорию"
+    },
+    "approvedStatus": "Разрешено",
+    "approvedAlwaysStatus": "Всегда разрешать",
+    "deniedStatus": "Отклонено",
+    "timeoutWarning": "Ответьте в течение {{seconds}} сек, иначе диалог закроется"
   },
   "askUserQuestion": {
-    "title": "У Claude есть вопросы к вам",
-    "progress": "Вопрос {{current}} / {{total}}",
+    "title": "У OpenCode есть несколько вопросов к вам",
+    "skip": "Пропустить",
+    "answeredStatus": "Отвечено",
+    "skippedStatus": "Пропущено",
+    "fallbackHeader": "Вопрос",
     "multiSelectHint": "Можно выбрать несколько вариантов",
-    "cancel": "Отмена",
-    "back": "Назад",
-    "next": "Далее",
     "submit": "Отправить",
     "otherOption": "Другое",
     "otherOptionDesc": "Введите свой ответ",
     "customInputPlaceholder": "Введите ваш ответ...",
-    "timeoutWarning": "Ответьте в течение {{seconds}} сек, иначе диалог закроется",
-    "expand": "Развернуть",
-    "collapse": "Свернуть",
-    "clickToAnswer": "Нажмите, чтобы ответить"
+    "timeoutWarning": "Ответьте скорее, вопрос будет пропущен через {{seconds}} сек.",
+    "progress": "Вопрос {{current}} / {{total}}",
+    "prev": "Назад",
+    "next": "Далее",
+    "unansweredStatus": "Без ответа",
+    "cancelledStatus": "Отменено"
   },
   "planApproval": {
     "title": "План готов к утверждению",
-    "subtitle": "Claude составил план и ждёт одобрения.",
+    "subtitle": "OpenCode составил план и ждёт одобрения.",
     "requestedPermissions": "Запрашиваемые разрешения",
     "executionMode": "Режим выполнения",
-    "executionModeDescription": "Как Claude будет выполнять план:",
+    "executionModeDescription": "Как OpenCode будет выполнять план:",
     "approve": "Утвердить и выполнить",
     "reject": "Отклонить",
     "toApprove": "чтобы утвердить",
@@ -1058,7 +882,6 @@
   },
   "config": {
     "clickToCopy": "Нажмите для копирования",
-    "officialDocs": "Официальная документация",
     "switch": "Переключить",
     "switchProvider": "Переключить провайдер",
     "runtimeProvider": {
@@ -1259,7 +1082,7 @@
         "title": "Ключевые возможности",
         "toolExtension": {
           "label": "Расширение инструментов",
-          "description": "Добавление возможностей доступа к файловой системе и сети для Claude"
+          "description": "Добавление возможностей доступа к файловой системе и сети для OpenCode"
         },
         "dataConnection": {
           "label": "Подключение данных",
@@ -1345,9 +1168,9 @@
     "todoList": "Список задач",
     "editFileTitle": "Редактирую файл",
     "clickToOpen": "Нажмите для открытия {{filePath}}",
-    "refreshFileInIdea": "Обновить файл в IDEA",
-    "refreshFileInIdeaSuccess": "Файл обновлён в IDEA вручную",
-    "showDiffInIdea": "Показать изменения в IDEA",
+    "refreshFileInEditor": "Обновить файл в редакторе",
+    "refreshFileInEditorSuccess": "Файл обновлён в редакторе вручную",
+    "showDiffInEditor": "Показать изменения в редакторе",
     "diffButton": "Diff",
     "editBatchTitle": "Редактирую файлы",
     "searchBatchTitle": "Ищу",
@@ -1401,8 +1224,8 @@
     "collapse": "Свернуть панель статуса",
     "undoChanges": "Отменить изменения",
     "undoConfirmTitle": "Отмена изменений файла",
-    "undoWillDelete": "Файл был создан Claude. Отмена удалит его.",
-    "undoWillRestore": "Файл вернётся к состоянию до изменений Claude.",
+    "undoWillDelete": "Файл был создан OpenCode. Отмена удалит его.",
+    "undoWillRestore": "Файл вернётся к состоянию до изменений OpenCode.",
     "undoCannotUndo": "Это действие необратимо.",
     "confirmUndo": "Подтвердить отмену",
     "undoSuccess": "Изменения {{fileName}} отменены",
@@ -1415,9 +1238,9 @@
     "keepAllConfirmMessage": "Принять изменения как базу. Дальнейшие правки будут отслеживаться заново.",
     "discardAllSuccess": "Все изменения отменены",
     "discardAllFailed": "Ошибка отмены: {{error}}",
+    "discardAllPartial": "Отменено файлов: {{undone}}, не удалось: {{failed}} (например {{first}})",
     "keepAllSuccess": "Все изменения сохранены, отслеживание сброшено",
-    "multiAgentBadge": "Несколько агентов",
-    "multiAgentEdited": "{{count}} агентов изменили этот файл в сессии — проверьте внимательно"
+    "loadingSession": "Загрузка разговора…"
   },
   "skills": {
     "title": "Навыки",
@@ -1465,7 +1288,7 @@
       "title": "Что такое навыки?",
       "overview": {
         "title": "Обзор",
-        "description": "Навыки — это динамически загружаемые наборы инструкций, скрипты и папки ресурсов, которые улучшают работу Claude для конкретных задач. Навыки учат Claude выполнять определённые задачи воспроизводимым способом — например, создавать документы по бренд-гайдлайнам, анализировать данные по корпоративным процессам или автоматизировать личные задачи."
+        "description": "Навыки — это динамически загружаемые наборы инструкций, скрипты и папки ресурсов, которые улучшают работу OpenCode для конкретных задач. Навыки учат OpenCode выполнять определённые задачи воспроизводимым способом — например, создавать документы по бренд-гайдлайнам, анализировать данные по корпоративным процессам или автоматизировать личные задачи."
       },
       "structure": {
         "title": "Структура навыка",
@@ -1498,7 +1321,7 @@
         "title": "Советы по использованию",
         "item1": "Убедитесь, что директория навыка содержит валидный файл SKILL.md",
         "item2": "Имена навыков должны использовать строчные буквы, цифры и дефисы (kebab-case)",
-        "item3": "Навыки автоматически применяются в чатах Claude после загрузки",
+        "item3": "Навыки автоматически применяются в чатах OpenCode после загрузки",
         "item4": "Управляйте статусом отдельных навыков с помощью переключателей",
         "item5": "Упомяните имя навыка в чате для использования, например, «Используй навык pdf для извлечения полей формы»"
       },
@@ -1573,7 +1396,11 @@
       },
       "sonnet5": {
         "label": "Sonnet 5",
-        "description": "Sonnet 5 · Модель по умолчанию"
+        "description": "Sonnet 5 · Обновленная модель Sonnet 4.6"
+      },
+      "sonnet47": {
+        "label": "Sonnet 4.7",
+        "description": "Sonnet 4.7 · Модель по умолчанию"
       },
       "opus5": {
         "label": "Opus 5",
@@ -1645,12 +1472,13 @@
       "label": "Авто-режим",
       "tooltip": "Пропуск всех проверок разрешений",
       "description": "Полностью автоматический, пропускает все проверки разрешений [Используйте с осторожностью]"
-    }
+    },
+    "switchHint": "переключить режим"
   },
   "codexModes": {
     "default": {
       "label": "Предложение (одобрение)",
-      "tooltip": "Codex approval_policy=on-request - запрашивает перед редактированием файлов или выполнением команд.",
+      "tooltip": "Codex approval_policy=untrusted — запрашивает перед редактированием файлов или выполнением команд.",
       "description": "Самый безопасный вариант. Каждая запись или команда требует вашего одобрения."
     },
     "plan": {
@@ -1669,46 +1497,12 @@
       "description": "Режим без вмешательства. Codex выполняет правки и команды немедленно."
     }
   },
-  "ompModes": {
-    "default": {
-      "label": "По умолчанию",
-      "tooltip": "Использовать выбранную модель (или OMP auto)",
-      "description": "Использует модель, выбранную в выпадающем списке, или модель OMP CLI по умолчанию при значении Auto."
-    },
-    "smol": {
-      "label": "Smol",
-      "tooltip": "Быстрая роль модели (omp --model smol)",
-      "description": "Запускает этот диалог с моделью, настроенной для роли smol в omp. Переопределяет выбор в списке моделей."
-    },
-    "slow": {
-      "label": "Slow",
-      "tooltip": "Роль модели для рассуждений (omp --model slow)",
-      "description": "Запускает этот диалог с моделью, настроенной для роли slow в omp. Переопределяет выбор в списке моделей."
-    },
-    "plan": {
-      "label": "Plan",
-      "tooltip": "Роль модели для планирования (omp --model plan)",
-      "description": "Запускает этот диалог с моделью, настроенной для роли plan в omp. Переопределяет выбор в списке моделей."
-    }
-  },
   "providers": {
-    "claude": {
-      "label": "Claude Code"
-    },
-    "codex": {
-      "label": "Codex"
-    },
     "gemini": {
       "label": "Gemini Cli"
     },
     "opencode": {
       "label": "OpenCode"
-    },
-    "pi": {
-      "label": "PI CLI"
-    },
-    "omp": {
-      "label": "OMP CLI"
     }
   },
   "promptEnhancer": {
@@ -1765,6 +1559,7 @@
     "parseError": "Не удалось разобрать результат"
   },
   "reasoning": {
+    "cycleHint": "Переключить уровень рассуждений",
     "title": "Выберите глубину рассуждений",
     "low": {
       "label": "Низкая",
@@ -1798,8 +1593,8 @@
     "helpText": "Если проблема не уходит — скопируйте ошибку и создайте issue на GitHub."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code прерван (таймаут или отмена):",
-    "claudeCodeError": "Ошибка Claude Code:",
+    "claudeCodeInterrupted": "OpenCode прерван (таймаут или отмена):",
+    "claudeCodeError": "Ошибка OpenCode:",
     "errorMessage": "Сообщение об ошибке",
     "currentApiKeySource": "Источник API-ключа",
     "currentApiKeyPreview": "Превью API-ключа",
@@ -1810,7 +1605,7 @@
     "defaultBaseUrl": "По умолчанию (https://api.anthropic.com)",
     "configTip": "CLI может читать из env или settings.json, но плагин поддерживает только settings.json. Настроить: Настройки → Управление провайдерами",
     "apiError": "Ошибка API",
-    "apiErrorCauses": "Возможные причины:\n1. Неверный API-ключ\n2. Проблема прокси-сервиса\n3. Проверьте ~/.claude/settings.json",
+    "apiErrorCauses": "Возможные причины:\n1. Неверный API-ключ\n2. Проблема прокси-сервиса\n3. Проверьте ~/.config/opencode/opencode.json",
     "codexAuthError": "Ошибка аутентификации Codex:",
     "codexAuthErrorChecks": "Проверьте:\n1. API-ключ Codex в настройках\n2. Разрешения ключа\n3. Правильность Base URL (если кастомный)",
     "codexAuthTip": "Codex требует действующий OpenAI API-ключ",
@@ -1845,7 +1640,6 @@
   "errorDiagnostic": {
     "copyCommand": "Копировать",
     "copied": "Скопировано",
-    "openDependencySettings": "Открыть управление зависимостями",
     "recommended": "Рекомендуется",
     "codexThreadResume": {
       "title": "Поток сеанса больше не действителен",
@@ -1862,10 +1656,6 @@
           "step0": "1. Выполните в терминале (переключение на официальный реестр npm):",
           "step1": "2. Откройте настройки управления зависимостями плагина и нажмите «Переустановить»:",
           "step2": "3. После завершения переустановки переключитесь обратно на зеркало Taobao:"
-        },
-        "downgrade": {
-          "title": "Вариант 2: откатить на более раннюю версию",
-          "step0": "В управлении зависимостями переключите версию SDK на v0.2.112 или более раннюю. После переключения перезапустите IDEA."
         }
       }
     },
@@ -1877,13 +1667,20 @@
         "checkNodeVersion": {
           "title": "Вариант 1: Проверьте версию Node.js",
           "step0": "Выполните команду ниже в терминале, чтобы увидеть свою версию. Рекомендуется Node 22 или текущая LTS — пользователи сообщили о многих проблемах с Node 24, поэтому отдавайте предпочтение Node 20 или 22:"
-        },
-        "reinstallLatestSdk": {
-          "title": "Вариант 2: Переустановите последний SDK из официального реестра npm",
-          "step0": "1. Переключитесь на официальный реестр npm (избегайте зеркала Taobao — у него может не быть последней версии):",
-          "step1": "2. Откройте управление зависимостями и переустановите последний SDK:"
         }
       }
+    }
+  },
+  "openCodeModes": {
+    "default": {
+      "label": "Build",
+      "tooltip": "Агент build в OpenCode",
+      "description": "Агент разработки с полным доступом (по умолчанию в opencode)"
+    },
+    "plan": {
+      "label": "Plan",
+      "tooltip": "Агент plan в OpenCode",
+      "description": "Анализ только для чтения: сначала план, потом код"
     }
   }
 }

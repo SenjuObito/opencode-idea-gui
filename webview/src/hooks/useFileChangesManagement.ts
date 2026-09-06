@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { ClaudeMessage, ToolResultBlock } from '../types';
 import { debugLog } from '../utils/debug';
-import { clearLedgerMeta } from '../utils/sessionFileLedger';
 
 export interface UseFileChangesManagementOptions {
   currentSessionId: string | null;
@@ -100,7 +99,7 @@ export function useFileChangesManagement({
     });
   }, [currentSessionId]);
 
-  // Callback for Keep All - set current changes as the new baseline (ledger rebuilds from index)
+  // Callback for Keep All - set current changes as the new baseline
   const handleKeepAll = useCallback(() => {
     // Use ref to get the latest messages.length, avoiding stale closure issues
     const newBaseIndex = messagesRef.current.length;
@@ -111,7 +110,6 @@ export function useFileChangesManagement({
       try {
         localStorage.setItem(`keep-all-base-${currentSessionId}`, String(newBaseIndex));
         localStorage.removeItem(`processed-files-${currentSessionId}`);
-        clearLedgerMeta(currentSessionId);
       } catch (e) {
         console.error('Failed to persist Keep All state:', e);
       }

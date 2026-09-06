@@ -1,3 +1,7 @@
+// VS Code bridge: must load before React so window.sendToJava + message
+// dispatch are installed before bridgeStartup's waitForBridge polls.
+import './vscodeBridge';
+
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -13,19 +17,13 @@ import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
+import { installRuntimeProviderDispatchers } from './utils/runtimeProviderCapabilities';
 import { sendBridgeEvent } from './utils/bridge';
+import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
 import { debugLog } from './utils/debug';
-import { forceWebviewRepaint } from './utils/forceWebviewRepaint';
-import {
-  advanceSurfaceDamagePulse,
-  beginSurfaceDamagePulse,
-  cancelSurfaceDamagePulse,
-  finishSurfaceDamagePulse,
-  replaceSurfaceDamagePulse,
-  runAfterSurfaceDamagePulse,
-} from './utils/surfaceDamagePulse';
-import { requestDependencyStatusUntilSettled, waitForBridge } from './utils/bridgeStartup';
+import { waitForBridge } from './utils/bridgeStartup';
 import type { UiFontConfig, CodeFontConfig } from './types/uiFontConfig';
+import { playNotificationSound } from './utils/notificationSound';
 
 // Silence noisy console output in production (including third-party libs).
 // console.error is preserved so ErrorBoundary and unhandled exceptions still
@@ -42,6 +40,7 @@ if (!import.meta.env.DEV) {
 // consumer (Settings, RuntimeProviderSelect, …) receives provider events
 // through a deterministic subscriber registry instead of overriding
 // `window.update*Provider*` callbacks ad-hoc.
+installRuntimeProviderDispatchers();
 
 function createBridgeHeartbeatStarter() {
   let started = false;
@@ -122,129 +121,6 @@ if (enableVConsole) {
 /**
  * Apply IDEA editor font configuration to CSS variables
  */
-/**
- * JCEF (macOS) may occasionally render with an incorrect zoom/layout after the IDE
- * stays in background / screen-off for a while. The UI uses CSS `zoom` with an
- * inverse `vw/vh` container size to implement font scaling. If the zoom is not
- * applied correctly after resume, the container becomes smaller than the viewport,
- * leaving blank areas and causing "misalignment".
- *
- * This recovery nudges Chromium/JCEF to re-apply the expected zoom and triggers
- * a resize recalculation for components relying on window size.
- */
-function setupScaleRecovery() {
-  const getExpectedScale = (): string => {
-    const fromCss = getComputedStyle(document.documentElement).getPropertyValue('--font-scale').trim();
-    if (fromCss) return fromCss;
-
-    const savedLevel = localStorage.getItem('fontSizeLevel');
-    const level = savedLevel ? parseInt(savedLevel, 10) : 3;
-    const fontSizeLevel = level >= 1 && level <= 6 ? level : 3;
-    const fontSizeMap: Record<number, number> = {
-      1: 0.8,
-      2: 0.9,
-      3: 1.0,
-      4: 1.1,
-      5: 1.2,
-      6: 1.4,
-    };
-    return String(fontSizeMap[fontSizeLevel] || 1.0);
-  };
-
-  let hiddenAt: number | null = null;
-  let lastRecoveryAt = 0;
-  let scheduled = false;
-  const RECOVERY_COOLDOWN_MS = 1500;
-
-  const forceReapply = (reason: string) => {
-    const expected = getExpectedScale();
-    const app = document.getElementById('app');
-    const computedZoom = app
-      ? (getComputedStyle(app) as CSSStyleDeclaration & { zoom?: string }).zoom
-      : '';
-    const expectedNumber = Number.parseFloat(expected);
-    const computedNumber = Number.parseFloat(computedZoom || '');
-    const needsZoomNudge = !!app
-      && Number.isFinite(expectedNumber)
-      && (!Number.isFinite(computedNumber) || Math.abs(computedNumber - expectedNumber) > 0.01);
-
-    // Re-set the CSS variable to ensure width/height calc(100vw/scale) is refreshed.
-    document.documentElement.style.setProperty('--font-scale', expected);
-    const completeRecovery = () => {
-      debugLog('[ScaleRecovery] Applied scale recovery:', {
-        reason,
-        expected,
-        computedZoom,
-        needsZoomNudge,
-      });
-      lastRecoveryAt = Date.now();
-    };
-    if (needsZoomNudge) {
-      // The shared coordinator is the sole inline-zoom writer. If an OSR pulse is
-      // active this request remains coalesced until that exact token settles.
-      forceWebviewRepaint(`scale-recovery:${reason}`, completeRecovery);
-      return;
-    }
-    const resizeOnly = () => {
-      if (runAfterSurfaceDamagePulse(resizeOnly)) return;
-      window.dispatchEvent(new Event('resize'));
-      completeRecovery();
-    };
-    requestAnimationFrame(resizeOnly);
-  };
-
-  const schedule = (reason: string) => {
-    if (scheduled || Date.now() - lastRecoveryAt < RECOVERY_COOLDOWN_MS) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      forceReapply(reason);
-    });
-  };
-
-  const onVisibilityChange = () => {
-    if (document.hidden) {
-      hiddenAt = Date.now();
-      return;
-    }
-
-    const elapsed = hiddenAt ? Date.now() - hiddenAt : 0;
-    hiddenAt = null;
-    // Only nudge after a meaningful pause to avoid unnecessary work during normal tab switches.
-    if (elapsed > 1500) {
-      schedule('visibilitychange-resume');
-    }
-  };
-
-  const onWindowFocus = () => {
-    // Focus can return without a visibilitychange in some IDE/window states.
-    schedule('window-focus');
-  };
-
-  const onPageShow = () => {
-    // Helps if the page is restored from bfcache-like behavior.
-    schedule('pageshow');
-  };
-
-  document.addEventListener('visibilitychange', onVisibilityChange);
-  window.addEventListener('focus', onWindowFocus);
-  window.addEventListener('pageshow', onPageShow);
-
-  const cleanup = () => {
-    document.removeEventListener('visibilitychange', onVisibilityChange);
-    window.removeEventListener('focus', onWindowFocus);
-    window.removeEventListener('pageshow', onPageShow);
-  };
-
-  // Best-effort teardown to release listeners on navigation/unload, mirroring
-  // the heartbeat cleanup pattern above.
-  window.addEventListener('beforeunload', cleanup, { once: true });
-  window.addEventListener('pagehide', cleanup, { once: true });
-
-  if (import.meta.hot) {
-    import.meta.hot.dispose(() => cleanup());
-  }
-}
 
 let latestEditorFontConfig: {
   fontFamily: string;
@@ -494,6 +370,18 @@ function applyLanguageConfig(rawConfig: { language: string; source?: string; ide
 // Register the applyIdeaLanguageConfig function
 window.applyIdeaLanguageConfig = applyLanguageConfig;
 
+// 通知提示音播放器（全局常驻）：判定在宿主 NotificationService，
+// 这里只负责发声。payload: { soundId?, variant?, customDataBase64? }
+window.playNotificationSound = (json: string) => {
+  try {
+    const payload = JSON.parse(json) as { soundId?: string; variant?: string; customDataBase64?: string };
+    console.error(`[Main] playNotificationSound received payload=${json.slice(0, 140)}`);
+    playNotificationSound(payload);
+  } catch {
+    // ignore malformed payloads
+  }
+};
+
 // Check for pending language config (Java side may execute before JS)
 if (window.__pendingLanguageConfig) {
   debugLog('[Main] Found pending language config, applying...');
@@ -586,40 +474,23 @@ if (typeof window !== 'undefined' && !window.setSessionId) {
   };
 }
 
-// Pre-register updateDependencyStatus to handle backend status responses that arrive before React initializes
-if (typeof window !== 'undefined' && !window.updateDependencyStatus) {
-  window.__dependencyStatusState = 'pending';
-  debugLog('[Main] Pre-registering updateDependencyStatus placeholder');
-  window.updateDependencyStatus = (json: string) => {
-    debugLog('[Main] Storing pending dependency status, length=' + (json ? json.length : 0));
-    window.__pendingDependencyStatus = json;
-  };
-}
-
-// Pre-register dependencyUpdateAvailable to handle backend update checks that arrive before Settings/React initializes
-if (typeof window !== 'undefined' && !window.dependencyUpdateAvailable) {
-  debugLog('[Main] Pre-registering dependencyUpdateAvailable placeholder');
-  window.dependencyUpdateAvailable = (json: string) => {
-    debugLog('[Main] Storing pending dependency updates, length=' + (json ? json.length : 0));
-    window.__pendingDependencyUpdates = json;
-  };
-}
-
-// Pre-register updateStreamingEnabled to handle backend status responses that arrive before React initializes
-if (typeof window !== 'undefined' && !window.updateStreamingEnabled) {
-  debugLog('[Main] Pre-registering updateStreamingEnabled placeholder');
-  window.updateStreamingEnabled = (json: string) => {
-    debugLog('[Main] Storing pending streaming enabled status, length=' + (json ? json.length : 0));
-    window.__pendingStreamingEnabled = json;
-  };
-}
-
 // Pre-register updateSendShortcut to handle backend status responses that arrive before React initializes
 if (typeof window !== 'undefined' && !window.updateSendShortcut) {
   debugLog('[Main] Pre-registering updateSendShortcut placeholder');
   window.updateSendShortcut = (json: string) => {
     debugLog('[Main] Storing pending send shortcut status, length=' + (json ? json.length : 0));
     window.__pendingSendShortcut = json;
+  };
+}
+
+// Pre-register updateDaemonStatus to bridge vscodeBridge function calls to CustomEvent
+// vscodeBridge dispatches host messages as window[type](...args) function calls,
+// but useUsageTracking listens for a DOM CustomEvent. This adapter converts the
+// function call into a CustomEvent so the hook receives the daemon alive status.
+if (typeof window !== 'undefined' && !window.updateDaemonStatus) {
+  debugLog('[Main] Pre-registering updateDaemonStatus bridge');
+  window.updateDaemonStatus = (json: string) => {
+    window.dispatchEvent(new CustomEvent('updateDaemonStatus', { detail: json }));
   };
 }
 
@@ -685,18 +556,15 @@ if (typeof window !== 'undefined' && !window.showPlanApprovalDialog) {
 }
 
 if (typeof window !== 'undefined') {
-  window.__ccguiSurfaceDamagePhaseA = beginSurfaceDamagePulse;
-  window.__ccguiSurfaceDamagePhaseB = advanceSurfaceDamagePulse;
-  window.__ccguiSurfaceDamageReplace = replaceSurfaceDamagePulse;
-  window.__ccguiSurfaceDamageFinish = finishSurfaceDamagePulse;
-  window.__ccguiSurfaceDamageCancel = cancelSurfaceDamagePulse;
   window.updateLinkifyCapabilities = (json: string) => {
     applyLinkifyCapabilitiesPayload(json);
   };
-  window.onTabActivated = () => {
-    forceWebviewRepaint('tab-activated');
-  };
 }
+
+// UI preferences (theme / font scale / colors / behaviour toggles) are owned by
+// the extension host; register the push callback before React mounts so an early
+// `applyUiPreferences` is never dropped.
+installUiPreferencesBridge();
 
 // Render the React application
 ReactDOM.createRoot(document.getElementById('app') as HTMLElement).render(
@@ -715,11 +583,6 @@ ReactDOM.createRoot(document.getElementById('app') as HTMLElement).render(
   </ErrorBoundary>,
 );
 
-/**
- * Wait for the sendToJava bridge function to become available
- */
-setupScaleRecovery();
-
 // Once the bridge is available, initialize slash commands
 waitForBridge(() => {
   debugLog('[Main] Bridge ready, setting up slash commands');
@@ -730,12 +593,12 @@ waitForBridge(() => {
   debugLog('[Main] Sending frontend_ready signal');
   sendBridgeEvent('frontend_ready');
 
+  // Authoritative appearance / behaviour settings (host globalState). Sent
+  // right after frontend_ready so the host can answer from warm state.
+  requestUiPreferences();
+
   debugLog('[Main] Sending refresh_slash_commands request');
   sendBridgeEvent('refresh_slash_commands');
-
-  // Ensure SDK dependency status is fetched on initial load (not only after opening Settings).
-  debugLog('[Main] Requesting dependency status');
-  requestDependencyStatusUntilSettled();
 
   sendBridgeEvent('get_linkify_capabilities');
 });

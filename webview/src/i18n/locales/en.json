@@ -1,20 +1,4 @@
 {
-  "codexPet": {
-    "title": "Codex pet",
-    "close": "Hide pet",
-    "next": "Switch pet",
-    "drag": "Drag to move",
-    "hidden": "Codex pet hidden",
-    "shown": "Codex pet shown",
-    "sessionTitle": "Session {{id}}",
-    "states": {
-      "idle": "Ready",
-      "thinking": "Thinking",
-      "running": "Working",
-      "success": "Done",
-      "error": "Needs attention"
-    }
-  },
   "common": {
     "ready": "Ready",
     "loading": "Loading",
@@ -27,7 +11,6 @@
     "back": "Back",
     "close": "Close",
     "newSession": "New Session",
-    "newTab": "New Tab",
     "dontAskAgain": "Don't ask again",
     "history": "History",
     "settings": "Settings",
@@ -52,9 +35,9 @@
     "emptyMessage": "Empty message",
     "clickToPreview": "Click to preview",
     "userUploadedImage": "User uploaded image",
-    "inputPlaceholder": "@reference files, #invoke agents, !insert prompts, Enter to send",
-    "inputPlaceholderEnter": "@reference files, #invoke agents, !insert prompts, Enter to send",
-    "inputPlaceholderCmdEnter": "@reference files, #invoke agents, !insert prompts, ⌘Enter to send",
+    "inputPlaceholder": "@reference files, !bash commands, /opencode commands, Enter to send",
+    "inputPlaceholderEnter": "@reference files, !bash commands, /opencode commands, Enter to send",
+    "inputPlaceholderCmdEnter": "@reference files, !bash commands, /opencode commands, ⌘Enter to send",
     "noThinkingContent": "No thinking content",
     "parseError": "Failed to parse content",
     "sendMessageEnter": "Send message (Enter)",
@@ -97,23 +80,52 @@
     "global": "Global",
     "localProject": "Local",
     "disabled": "Disabled",
-    "sdkNotInstalled": "{{provider}} SDK is not installed. Please install the SDK to start chatting.",
-    "sdkStatusLoading": "Checking SDK status...",
-    "sdkStatusUnavailable": "Could not check SDK status.",
-    "retrySdkStatus": "Retry",
-    "openSourceBanner": "This project is guaranteed to be 100% open source and free (beware of pirated projects)",
-    "openSourceBannerStar": "Star",
-    "openSourceBannerStarToast": "Repo link copied to clipboard — paste it in your browser to visit ⭐",
-    "openSourceBannerStarAria": "Copy repository link and star on GitHub",
-    "goInstallSdk": "Go to Install",
-    "sdkTooLowForFable": "Claude SDK version is too low for the Fable model. Update the Claude Code SDK in Settings.",
-    "updateSdk": "Update SDK",
     "commandNotImplemented": "`{{command}}` feature is not yet implemented.",
+    "daemonStatusLoading": "Starting OpenCode service, please wait",
+    "daemonNotRunning": "OpenCode serve is not running",
+    "retryDaemonStatus": "Retry",
+    "daemonIssue": {
+      "NOT_INSTALLED": "opencode not found — install it and try again",
+      "START_TIMEOUT": "opencode serve timed out while starting",
+      "START_FAILED": "opencode serve failed to start",
+      "BRIDGE_DEPS_MISSING": "Plugin dependencies are missing — the OpenCode bridge cannot start",
+      "BRIDGE_LAUNCH_FAILED": "The OpenCode bridge process could not be launched",
+      "BRIDGE_START_FAILED": "The OpenCode bridge process timed out while starting",
+      "DAEMON_DIED": "The OpenCode bridge process exited unexpectedly",
+      "NO_DAEMON": "The OpenCode bridge process is not initialized"
+    },
+    "daemonIssueInstallCmd": "Install command: {{cmd}}",
+    "copyInstallCommand": "Copy install command",
+    "installCommandCopied": "Install command copied to clipboard",
+    "installCommandCopyFailed": "Failed to copy install command",
+    "daemonIssueDetail": "Details: {{detail}}",
     "clearCommandDescription": "Clear conversation history and start a new session",
+    "builtinCommands": {
+      "compact": "Summarize session to reduce context size",
+      "undo": "Undo last message",
+      "redo": "Redo last undone message",
+      "fork": "Fork the entire session into a new branch",
+      "share": "Share session link",
+      "unshare": "Unshare session"
+    },
+    "compactTooltip": "Click to compact session",
+    "compactStarted": "Compacting session…",
+    "compactingSession": "Compacting session",
+    "compactSuccess": "Session compacted",
+    "compactFailed": "Failed to compact session",
+    "compactConfirmTitle": "Compact session",
+    "compactConfirmMessage": "Compacting asks opencode to summarize the current conversation and prune older messages to free up context space. This cannot be undone — are you sure you want to continue?",
+    "compactConfirmAction": "Compact",
+    "undoTooltip": "Undo this message",
+    "redoTooltip": "Redo this message",
+    "forkTooltip": "Fork to new session",
+    "shareTooltip": "Share session",
+    "unshareTooltip": "Unshare session",
+    "shareSuccess": "Link copied to clipboard",
     "attachmentFile": "[Attachment: {{fileName}}]",
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[Attachments Uploaded]",
-    "streamingConnected": "{{provider}} connected, understanding your question",
+    "streamingConnected": "Understanding your question…",
     "showEarlierMessages": "Show {{count}} earlier messages",
     "showEarlierTurns": "Show {{count}} earlier turns ({{remaining}} loaded turns remaining)",
     "loadEarlierTurns": "Load {{count}} earlier turns from disk ({{remaining}} of {{total}} remaining)",
@@ -146,229 +158,32 @@
       "userContext": "Context: \"{{context}}\"",
       "expand": "Expand summary",
       "collapse": "Collapse summary"
-    }
+    },
+    "shareFailed": "Copy failed — session was not shared",
+    "shareDisabledHint": "Sharing may be disabled in opencode.json (\"share\": \"disabled\") or requires an opencode login. Check the config and retry",
+    "sharePendingTooltip": "Sharing…",
+    "copyShareLinkTooltip": "Copy share link",
+    "revertPlaceholderTitle": "This message and the replies after it were undone",
+    "revertPlaceholderCount": "{{count}} messages undone",
+    "revertExpand": "Show",
+    "revertCollapse": "Hide",
+    "revertRestore": "Restore",
+    "revertBusyConfirmMessage": "A reply is being generated. Undoing will interrupt the current task and revert to this message. Continue?",
+    "restoreBusyConfirmMessage": "A reply is being generated. Restoring will interrupt the current task and bring back the undone messages. Continue?",
+    "revertFailed": "Undo failed",
+    "restoreFailed": "Restore failed",
+    "forkDisabledTooltip": "Available once the current reply finishes",
+    "forkCreatedToast": "Fork session created",
+    "forkSwitchAction": "Switch to new session",
+    "forkFailed": "Failed to fork session",
+    "forkAllTooltip": "Fork entire session to a new session",
+    "shareLinkCreated": "Share link created",
+    "retryCopy": "Copy again",
+    "subagentsSection": "Subagents",
+    "filesSection": "Files"
   },
   "settings": {
     "title": "Settings",
-    "pet": {
-      "title": "Codex Pet",
-      "description": "Manage the pet that floats across the current IDE window.",
-      "temporarilyUnavailable": "The pet feature is temporarily unavailable. Stay tuned.",
-      "scopeLabel": "Configuration scope",
-      "scopeDescriptions": {
-        "project": "Use independent pet, size, opacity, and bubble settings for this project.",
-        "global": "Share pet, size, opacity, and bubble settings across all projects."
-      },
-      "scopePositionHint": "Pet position is always saved separately for each IDE window.",
-      "scopeOptions": {
-        "project": "Project",
-        "global": "Global"
-      },
-      "tabs": {
-        "basic": "Basic",
-        "actions": "Actions",
-        "bubble": "Bubbles",
-        "local": "Custom",
-        "petdex": "Petdex"
-      },
-      "floatingTitle": "IDE floating pet",
-      "floatingDescription": "The pet stays above editors and tool windows and can be dragged anywhere inside the IDE.",
-      "enabled": "Enabled",
-      "disabled": "Disabled",
-      "preview": "Pet preview",
-      "currentPet": "Current pet",
-      "currentPetHint": "Choose from locally installed pets.",
-      "petSearchPlaceholder": "Search alias, original name, or ID",
-      "noMatchingLocalPets": "No matching installed pets",
-      "alias": "Local alias",
-      "aliasPlaceholder": "For example: {{name}}",
-      "aliasDescription": "Aliases only change the local display name. The remote slug, install directory, and pet assets remain unchanged.",
-      "saveAlias": "Save alias",
-      "clearAlias": "Clear alias",
-      "size": "Size",
-      "sizeHint": "Applied to the pet in the current window.",
-      "opacity": "Opacity",
-      "opacityHint": "Reduce obstruction over the editor while inactive.",
-      "showStatusIndicator": "Show status dot",
-      "showStatusIndicatorHint": "Show the current task state next to the floating pet.",
-      "confirmBeforeDelete": "Confirm before deleting a pet",
-      "confirmBeforeDeleteHint": "Require confirmation before removing a local pet.",
-      "displayAndOperations": "Pet display and operations",
-      "refreshAssets": "Refresh assets",
-      "delete": "Delete",
-      "deleteConfirmTitle": "Delete local pet?",
-      "deleteConfirm": "Delete {{name}} from local pet storage? This cannot be undone.",
-      "deleteSuccess": "Pet deleted",
-      "resetPosition": "Reset position",
-      "actionsTitle": "Status actions",
-      "actionsDescription": "Choose one or more sprite actions for each task status.",
-      "actionsHint": "One selected action is chosen at random when a status begins. Action mappings apply to animated 8x9 pets; static images use the full image.",
-      "actionStateLabel": "Task status",
-      "actionMappingTitle": "Action mapping",
-      "actionSelectedCount": "{{count}} selected",
-      "actionStateDescriptions": {
-        "idle": "Choose an animation while waiting for the next task.",
-        "success": "Choose an animation when a task completes.",
-        "thinking": "Choose an animation while the model is reasoning.",
-        "running": "Choose an animation while a tool or task is running.",
-        "error": "Choose an animation when a task needs attention."
-      },
-      "actionDescriptions": {
-        "idle": "Default resting frame",
-        "running-right": "Continuous rightward motion",
-        "running-left": "Continuous leftward motion",
-        "waving": "Short greeting loop",
-        "jumping": "Completion or reminder",
-        "failed": "Exceptional state animation",
-        "waiting": "Brief pause",
-        "running": "Loop while running",
-        "review": "Review animation"
-      },
-      "actionPreview": "Action preview",
-      "actionPreviewHint": "Choose a sprite action to inspect.",
-      "previewAction": "Preview action",
-      "previewFrame": "Frame",
-      "playPreview": "Play preview",
-      "pausePreview": "Pause preview",
-      "actionPreviewSpriteHint": "Shows the selected spritesheet action frame.",
-      "actionPreviewStaticHint": "Static images have no action frames; the full image is shown.",
-      "visualStates": {
-        "idle": "Idle",
-        "success": "Success",
-        "thinking": "Thinking",
-        "running": "Running",
-        "error": "Error"
-      },
-      "actions": {
-        "idle": "Idle",
-        "running-right": "Running right",
-        "running-left": "Running left",
-        "waving": "Waving",
-        "jumping": "Jumping",
-        "failed": "Failed",
-        "waiting": "Waiting",
-        "running": "Working",
-        "review": "Review"
-      },
-      "refreshLocalPets": "Refresh local pets",
-      "openPetDirectory": "Open pet directory",
-      "localPetOperationFailed": "The local pet operation failed. Check ~/.codex/pets permissions.",
-      "petDirectoryUnavailable": "The ~/.codex/pets directory could not be created or opened.",
-      "hatchTitle": "Create pets with hatch-pet",
-      "hatchDescription": "Detect the official curated Skill and place an editable command in the active Codex input. The plugin never runs the Skill in the background.",
-      "hatchStatus": {
-        "loading": "Checking hatch-pet Skill",
-        "missing": "hatch-pet Skill not installed",
-        "broken": "hatch-pet Skill install is broken",
-        "installed": "hatch-pet Skill installed"
-      },
-      "prepareInstallSkill": "Prepare install command",
-      "prepareRepairSkill": "Prepare Skill repair command",
-      "hatchOfficialSource": "Official Skill source",
-      "refreshSkillStatus": "Check Skill again",
-      "hatchName": "Pet name",
-      "hatchStyle": "Visual style",
-      "hatchPrompt": "Pet description",
-      "referenceImage": "Reference image",
-      "petDirectory": "Pet directory",
-      "petDirectoryHint": "Local pets and generated assets are managed together.",
-      "hatchCommandHint": "The command is sent to the active Codex input for execution.",
-      "noReference": "No reference image selected",
-      "chooseReference": "Choose reference",
-      "clearReference": "Clear reference",
-      "prepareCreatePet": "Prepare create command",
-      "prepareRepairPet": "Prepare repair command",
-      "hatchCommandPrepared": "Command added to the active Codex input. Review it before sending.",
-      "hatchReplaceDraftConfirmTitle": "Replace current chat draft?",
-      "hatchReplaceDraftConfirm": "Replace the current chat draft with this hatch-pet command?",
-      "hatchReplaceDraftAction": "Replace draft",
-      "hatchCommandFailed": "The hatch-pet command could not be prepared.",
-      "hatchSkillNotReady": "The hatch-pet Skill is not installed correctly.",
-      "hatchInputRequired": "Enter a name or description, or choose a reference image.",
-      "hatchRequiresCodex": "Switch to a Codex tab before preparing a hatch-pet command.",
-      "bubbleTitle": "Pet bubbles",
-      "bubbleDescription": "Show short status bubbles for live Claude Code and Codex tasks. Bubble text uses templates only and never includes chat content.",
-      "bubbleDuration": "Bubble duration (seconds)",
-      "bubbleSize": "Bubble size",
-      "bubbleShowForBackgroundTabs": "Show bubbles from background tabs",
-      "templateVariables": "Available variables",
-      "templateVariableTable": {
-        "variable": "Variable",
-        "content": "Inserted content",
-        "tabTitle": "Custom conversation title; falls back to the IDE tab title when unavailable.",
-        "provider": "Current AI provider, such as Codex or Claude.",
-        "model": "Currently selected model name.",
-        "duration": "Elapsed time for the current task, for example 12.8s."
-      },
-      "bubbleSizes": {
-        "small": "Small",
-        "medium": "Medium",
-        "large": "Large",
-        "xlarge": "Extra large"
-      },
-      "bubbleEvents": {
-        "task_started": "Task started",
-        "thinking": "Thinking",
-        "running": "Running",
-        "task_success": "Task completed",
-        "task_error": "Task failed",
-        "idle": "Idle"
-      },
-      "petdexTitle": "Petdex community",
-      "petdexDescription": "Browse and install verified pet packages from the official Petdex repository.",
-      "refreshCatalog": "Refresh Petdex catalog",
-      "searchPlaceholder": "Search name, author, type, or slug",
-      "catalogError": "Unable to load Petdex: {{error}}",
-      "noPets": "No matching pets",
-      "loadingCatalog": "Loading Petdex pets...",
-      "install": "Install",
-      "pagination": "Pet catalog pages",
-      "previousPage": "Previous page",
-      "nextPage": "Next page",
-      "pageStatus": "{{current}} / {{total}}",
-      "previewUnavailable": "Preview unavailable",
-      "connectTimeout": "Connect timeout (seconds)",
-      "requestTimeout": "Request timeout (seconds)",
-      "retryAttempts": "Retry attempts",
-      "catalogColumns": "Cards per row",
-      "catalogPageSize": "Items per page",
-      "pageSizeOption": "{{count}} per page",
-      "pageJump": "Go to",
-      "goToPage": "Go to page",
-      "sort": {
-        "default": "Default order",
-        "name_asc": "Name ascending",
-        "name_desc": "Name descending",
-        "author_asc": "Author ascending",
-        "kind_asc": "Kind ascending",
-        "slug_asc": "Slug ascending"
-      },
-      "columns3": "3 columns",
-      "columns4": "4 columns",
-      "columns5": "5 columns",
-      "columns6": "6 columns",
-      "connectTimeoutError": "Connection to Petdex timed out. Check your network or proxy, or increase the connection timeout.",
-      "requestTimeoutError": "The Petdex download timed out. Increase the request timeout and try again.",
-      "networkError": "Petdex is unreachable. Check your network, proxy, or firewall and try again.",
-      "petNotFound": "This pet is no longer available in Petdex.",
-      "alreadyInstalled": "This pet is already installed.",
-      "resourceTooLarge": "The pet package exceeds the allowed size.",
-      "invalidPackage": "The downloaded pet package is invalid or cannot be decoded.",
-      "aliasTooLong": "Pet aliases cannot exceed 60 characters.",
-      "invalidAlias": "The pet alias contains unsupported control characters.",
-      "aliasUpdateFailed": "The pet metadata could not be written. Check the permissions and file usage under ~/.codex/pets.",
-      "httpError": "Petdex returned HTTP {{status}}. Please try again later.",
-      "unknownError": "Operation failed ({{code}}). Check idea.log for details.",
-      "uninstall": "Uninstall",
-      "uninstallConfirmTitle": "Uninstall Pet?",
-      "uninstallConfirm": "Uninstall {{name}} and remove its managed local files?",
-      "processing": "Processing",
-      "installedExternally": "Installed locally",
-      "installSuccess": "Pet installed and selected",
-      "uninstallSuccess": "Pet uninstalled",
-      "aliasSuccess": "Pet alias updated",
-      "operationFailed": "Pet operation failed: {{error}}"
-    },
     "basic": {
       "title": "Basic Configuration",
       "description": "Configure page theme, language and Node.js environment",
@@ -379,8 +194,8 @@
       },
       "theme": {
         "label": "Theme",
-        "system": "Follow IDE",
-        "systemDesc": "Automatically follow IDE theme",
+        "system": "Follow VS Code",
+        "systemDesc": "Automatically follow the VS Code theme",
         "light": "Light",
         "lightDesc": "Fresh and bright, suitable for daytime use",
         "dark": "Dark",
@@ -388,7 +203,7 @@
       },
       "language": {
         "label": "Language",
-        "followIde": "Follow IDE",
+        "followIde": "Follow VS Code",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -412,15 +227,10 @@
         "invalidFileName": "Path must end with node.exe on Windows, or node on macOS/Linux",
         "cannotExecute": "File exists but cannot be executed, please check file permissions"
       },
-      "claudeCliPath": {
-        "label": "Claude CLI Path (override)",
-        "placeholder": "e.g. /usr/local/bin/claude — leave empty to use the bundled SDK",
-        "hint": "Optional. When set, the plugin spawns this binary instead of the bundled @anthropic-ai/claude-agent-sdk. Daemon restarts on save."
-      },
       "workingDirectory": {
         "label": "Working Directory",
         "placeholder": "e.g. project1 or leave empty to use project root",
-        "hint": "Specify the directory where Claude works. Can use relative path (relative to project root) or absolute path. Leave empty to use project root."
+        "hint": "Specify the directory where opencode works. Can use relative path (relative to project root) or absolute path. Leave empty to use project root."
       },
       "fontSize": {
         "label": "Font Size",
@@ -434,25 +244,29 @@
       "editorFont": {
         "label": "UI Font",
         "hint": "This controls the plugin UI font only. Code can use a separate code font.",
-        "followOption": "Follow IDEA UI font ({{font}})",
+        "followOption": "Follow VS Code UI font ({{font}})",
         "customOption": "Custom UI font file",
         "customPathLabel": "UI font file path",
         "customPathPlaceholder": "Choose or enter a .ttf / .otf UI font file path",
         "browse": "Browse",
-        "warningUnavailable": "UI font unavailable, currently using IDEA UI font",
-        "statusFollowEditor": "Currently following IDEA UI font: {{font}}",
-        "statusCustom": "Currently using custom UI font: {{font}}"
+        "warningUnavailable": "UI font unavailable, currently using VS Code UI font",
+        "statusFollowEditor": "Currently following VS Code UI font: {{font}}",
+        "statusCustom": "Currently using custom UI font: {{font}}",
+        "systemFontGroup": "System fonts",
+        "systemFontLoading": "Loading system fonts…",
+        "systemFontFailed": "Failed to load system fonts.",
+        "systemFontRetry": "Retry"
       },
       "codeFont": {
         "label": "Code Font",
         "hint": "Markdown code and command blocks use this font.",
-        "followOption": "Follow editor font ({{font}})",
+        "followOption": "Follow VS Code editor font ({{font}})",
         "customOption": "Custom code font file",
         "customPathLabel": "Code font file path",
         "customPathPlaceholder": "Choose or enter a .ttf / .otf code font file path",
         "browse": "Browse",
         "warningUnavailable": "Code font unavailable, currently using editor font",
-        "statusFollowEditor": "Currently following editor font: {{font}}",
+        "statusFollowEditor": "Currently following VS Code editor font: {{font}}",
         "statusCustom": "Currently using custom code font: {{font}}"
       },
       "streaming": {
@@ -474,13 +288,7 @@
         "providerAvailable": "Available",
         "providerUnavailable": "Currently unavailable",
         "provider": {
-          "claude": "Claude Code",
-          "codex": "Codex",
-          "grok": "Grok CLI",
-          "kimi": "Kimi CLI",
-          "opencode": "OpenCode",
-          "pi": "PI CLI",
-          "omp": "OMP CLI"
+          "opencode": "OpenCode"
         },
         "currentProviderAuto": "Currently using automatic selection: {{provider}}",
         "currentProviderManual": "Currently using manually selected provider: {{provider}}",
@@ -497,18 +305,6 @@
         "disabled": "Disabled",
         "hint": "When enabled, code diffs in chat will be expanded by default. When disabled, diffs start collapsed and can be expanded by clicking."
       },
-      "commitGeneration": {
-        "label": "AI Commit Message Generation",
-        "enabled": "Enabled",
-        "disabled": "Disabled",
-        "hint": "When enabled, shows the 'AI Generate Commit Message' button in the commit dialog. When disabled, the button is hidden."
-      },
-      "statusBarWidget": {
-        "label": "Status Bar Info Display",
-        "enabled": "Enabled",
-        "disabled": "Disabled",
-        "hint": "When enabled, shows current model and mode info in the IDE status bar (e.g. GUI [Opus] {Auto}). When disabled, the widget is hidden."
-      },
       "taskCompletionNotification": {
         "label": "Task completion system notification",
         "enabled": "Enabled",
@@ -519,7 +315,7 @@
         "label": "Question system notification",
         "enabled": "Enabled",
         "disabled": "Disabled",
-        "hint": "When enabled, shows a system notification when Claude asks you a question, so you won't miss it. When disabled, no notification appears."
+        "hint": "When enabled, shows a system notification when opencode asks you a question, so you won't miss it. When disabled, no notification appears."
       },
       "detailedOutput": {
         "label": "Detailed Output Information",
@@ -531,13 +327,13 @@
         "label": "Question alert sound",
         "enabled": "Enabled",
         "disabled": "Disabled",
-        "hint": "When enabled, plays the configured alert sound when Claude asks you a question. Uses the sound selection and focus rules below."
+        "hint": "When enabled, plays the configured alert sound when opencode asks you a question. Uses the sound selection and focus rules below."
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "Show system notifications only when IDE is unfocused",
+        "label": "Show system notifications only when Visual Studio Code is unfocused",
         "enabled": "Enabled",
         "disabled": "Disabled",
-        "hint": "When enabled, task completion and question system notifications are shown only while the IDE is unfocused."
+        "hint": "When enabled, task completion and question system notifications are shown only while Visual Studio Code is unfocused."
       },
       "sendShortcut": {
         "label": "Send Shortcut",
@@ -549,7 +345,7 @@
       "permissionDialogTimeout": {
         "label": "Permission & Question Dialog Timeout",
         "unit": "seconds",
-        "hint": "Set the timeout for Claude question dialogs and permission request dialogs (30~3600 seconds). After timeout, the dialog will close automatically and Claude will continue."
+        "hint": "Set the timeout for opencode question dialogs and permission request dialogs (30~3600 seconds). After timeout, the dialog will close automatically and opencode will continue."
       },
       "chatBgColor": {
         "label": "Chat Background",
@@ -579,8 +375,8 @@
         "enabled": "Enabled",
         "disabled": "Disabled",
         "hint": "When enabled, a notification sound will play when AI completes a task, so you'll know even when away from the screen.",
-        "onlyWhenUnfocused": "Play alert sounds only when IDE is unfocused",
-        "onlyWhenUnfocusedHint": "When enabled, task completion and question alert sounds play only while the IDE is unfocused.",
+        "onlyWhenUnfocused": "Play alert sounds only when Visual Studio Code is unfocused",
+        "onlyWhenUnfocusedHint": "When enabled, task completion and question alert sounds play only while Visual Studio Code is unfocused.",
         "selectSound": "Notification Sound",
         "soundDefault": "Default",
         "soundChime": "Chime",
@@ -607,17 +403,20 @@
         "enabled": "Enabled",
         "disabled": "Disabled",
         "hint": "When disabled, creating a new session in a conversation with existing messages will skip the confirmation dialog."
+      },
+      "opencodeCliPath": {
+        "label": "Opencode TUI Path",
+        "placeholder": "e.g. /usr/local/bin/opencode — leave empty to auto-detect",
+        "hint": "Optional custom opencode binary used to start the opencode service. Leave empty to search PATH and default install locations (~/.opencode/bin). Takes effect after the daemon restarts on save."
       }
     },
     "providers": "Provider Management",
-    "providersDesc": "Manage Claude and Codex API provider configurations, switch API service providers, and check local CLI tool installation status",
+    "providersDesc": "Manage the opencode CLI integration and check its installation status",
     "promptEnhancer": {
       "title": "Prompt Enhancer",
       "description": "Choose which provider and model should be used when enhancing prompts before sending them."
     },
     "providerTab": {
-      "claude": "Claude Code",
-      "codex": "Codex",
       "cli": "CLI"
     },
     "cli": {
@@ -636,14 +435,6 @@
       "copied": "Copied to clipboard",
       "copyFailed": "Failed to copy",
       "tools": {
-        "grok": {
-          "name": "Grok CLI",
-          "description": "xAI Grok terminal coding agent"
-        },
-        "kimi": {
-          "name": "Kimi CLI",
-          "description": "Moonshot Kimi Code CLI"
-        },
         "opencode": {
           "name": "OpenCode",
           "description": "Open-source terminal AI coding agent"
@@ -651,14 +442,6 @@
         "pi": {
           "name": "PI CLI",
           "description": "Minimal terminal coding agent with multi-provider model support"
-        },
-        "omp": {
-          "name": "OMP CLI",
-          "description": "Oh My Pi terminal coding agent with multi-provider model support"
-        },
-        "dsh": {
-          "name": "DeepSeek Harness",
-          "description": "DeepSeek terminal agent CLI (dsh)"
         }
       },
       "installDialog": {
@@ -676,27 +459,7 @@
       "listTitle": "Local CLI tools",
       "summary": "{{installed}} / {{total}} installed",
       "moreComingSoon": "More coming soon",
-      "copyPath": "Copy path",
-      "dsh": {
-        "groupTitle": "DeepSeek Harness",
-        "cliRowTitle": "CLI install",
-        "cardTitle": "Local host",
-        "rowHint": "Start or adopt the local dsh web host",
-        "hint": "One persistent local dsh web host serves all sessions; the plugin adopts a running host instead of spawning a second one.",
-        "state": {
-          "checking": "Checking…",
-          "notInstalled": "Not installed",
-          "notRunning": "Not running",
-          "connected": "Connected"
-        },
-        "adopted": "adopted",
-        "adoptedHint": "Adopted an already-running host; it is never stopped by the plugin.",
-        "openWebUi": "Open DSH Web UI",
-        "startHost": "Start host",
-        "stopHost": "Stop host (plugin-spawned only)",
-        "autoStart": "Auto-start when needed",
-        "moreActions": "More"
-      }
+      "copyPath": "Copy path"
     },
     "pluginModels": {
       "title": "Custom Models",
@@ -725,102 +488,16 @@
         "invalidValue": "Maximum context must be a positive integer in K units",
         "summary": "Context: {{value}} tokens"
       },
-      "configuredSectionTitle": "Configured Claude models",
-      "configuredSectionDesc": "Models from the active Claude provider/settings.json are already in the selector. Only pricing can be changed here.",
-      "configuredEditHint": "This model is managed by the active Claude provider/settings.json. Only pricing can be changed here.",
+      "configuredSectionTitle": "Configured OpenCode models",
+      "configuredSectionDesc": "Models from the active OpenCode provider/settings.json are already in the selector. Only pricing can be changed here.",
+      "configuredEditHint": "This model is managed by the active OpenCode provider/settings.json. Only pricing can be changed here.",
       "customSectionTitle": "Custom models",
       "editPricing": "Edit pricing"
-    },
-    "dependencies": "SDK Dependencies",
-    "dependenciesDesc": "Manage AI SDK dependency installations and updates",
-    "dependency": {
-      "title": "SDK Dependency Management",
-      "description": "Manage AI SDK dependencies. Install the required SDK before first use.",
-      "installPolicyTip": "Installation issues? Copy the error to a terminal CLI AI to resolve",
-      "claudeSdkName": "Claude Code SDK",
-      "claudeSdkDescription": "Required for Claude AI features. Includes Claude Code SDK and related dependencies.",
-      "codexSdkName": "Codex SDK",
-      "codexSdkDescription": "Required for Codex AI features. Includes OpenAI Codex SDK.",
-      "loading": "Loading dependency status...",
-      "install": "Install",
-      "installing": "Installing...",
-      "uninstall": "Uninstall",
-      "uninstalling": "Uninstalling...",
-      "update": "Update",
-      "installVersion": "Install {{version}}",
-      "updateToVersion": "Update to {{version}}",
-      "rollbackToVersion": "Rollback to {{version}}",
-      "currentVersionAction": "Current version",
-      "updateAvailable": "Update available",
-      "installLogs": "Install Logs",
-      "waitingForLogs": "Waiting for log output...",
-      "targetVersion": "Target version",
-      "loadingVersions": "Version list loading",
-      "installedVersion": "Installed {{version}}",
-      "latestStableVersion": "Latest stable {{version}}",
-      "targetVersionValue": "Target {{version}}",
-      "versionSourceFallback": "Remote versions could not be loaded. Showing the built-in recommended versions instead. You can still enter a version manually.",
-      "rollbackWarning": "This is a rollback operation. Re-check the related AI features after switching versions.",
-      "nodeNotConfigured": "Node.js is not configured. Please set the Node.js path in Basic Settings first.",
-      "installSuccess": "{{name}} installed successfully",
-      "installFailed": "Installation failed: {{error}}",
-      "uninstallSuccess": "{{name}} has been uninstalled",
-      "uninstallFailed": "Uninstall failed: {{error}}",
-      "updating": "Updating...",
-      "updateSuccess": "{{name}} updated successfully"
     },
     "usage": "Usage Statistics",
     "usageDesc": "View your Token consumption, cost statistics and usage trend analysis",
     "mcp": "MCP Servers",
     "mcpDesc": "Configure and manage Model Context Protocol servers",
-    "permissions": "Permissions",
-    "permissionsDesc": "Manage Claude Code file access and operation permissions",
-    "codexPermissionsDesc": "Manage Codex permissions and sandbox policies",
-    "permissionsPanel": {
-      "codexSandboxTitle": "Codex Sandbox Mode",
-      "codexSandboxDesc": "Control system access boundaries when Codex executes commands. Defaults to the safer workspace-write (read/write within the workspace only). Switch to danger-full-access for system-level commands such as adb or docker.",
-      "workspaceWriteTitle": "workspace-write",
-      "workspaceWriteDesc": "Read/write is limited to the workspace. System-level operations are restricted for safety.",
-      "fullAccessTitle": "danger-full-access",
-      "fullAccessDesc": "Allows higher system access, suitable for commands like adb or docker that require extra permissions.",
-      "hint": "This setting only affects Codex process sandboxing and does not change Claude Code permission behavior.",
-      "claudeTip": "Claude Code approval mode is configured from the chat input mode selector."
-    },
-    "commit": {
-      "title": "Commit AI",
-      "description": "Configure AI-generated Git commit message behavior",
-      "providerModel": {
-        "label": "Commit Model Provider",
-        "modelLabel": "Commit Model",
-        "resetToDefault": "Reset",
-        "providerAvailable": "Available",
-        "providerUnavailable": "Unavailable",
-        "currentProviderAuto": "Currently using auto selection: {{provider}}",
-        "currentProviderManual": "Currently using the manually selected provider: {{provider}}",
-        "currentProviderUnavailable": "The selected provider is currently unavailable: {{provider}}",
-        "modeLabel": "Selection mode",
-        "modeAuto": "Auto",
-        "modeManual": "Manual",
-        "autoSummary": "Follows the current chat CLI · currently {{provider}}",
-        "autoUnavailable": "No CLI is available right now. Switch to Manual to pick one."
-      },
-      "prompt": {
-        "label": "Additional Prompt",
-        "placeholder": "Add your extra requirements here, e.g., generate commit in English, include issue number, etc...",
-        "hint": "The plugin has built-in CCG Commits specification prompts. Content you add here will be used as additional requirements, and AI will prioritize your instructions."
-      },
-      "projectPrompt": {
-        "label": "Project-specific Additional Prompt",
-        "placeholder": "Add project-specific requirements here, e.g., scope must use module name, commit body should include impact scope, etc...",
-        "hint": "This prompt only applies to the current project and is appended together with the global additional prompt. When they conflict, the project prompt takes precedence. Different projects can be configured independently."
-      },
-      "codeReview": {
-        "comingSoon": "Coming Soon",
-        "label": "Code Review AI Additional Prompt",
-        "placeholder": "This feature is under development, stay tuned...",
-        "hint": "Code Review AI will help you automatically review code, identify potential issues, and provide improvement suggestions. You can configure review preferences and focus areas here."
-      }
-    },
     "agents": "Agents",
     "agentsDesc": "Manage and configure AI agents",
     "skills": "Skills",
@@ -863,25 +540,23 @@
           "minutesAgo_other": "{{count}} minutes ago",
           "justNow": "just now"
         }
-      },
-      "aiTitleGeneration": {
-        "label": "AI session title generation",
-        "enabled": "Enabled",
-        "disabled": "Disabled",
-        "hint": "When enabled, a short Haiku-generated title is created after the first turn of a new session. When disabled, sessions keep using the first user message as the title."
       }
     },
-    "codexFeatureUnavailable": "This settings section is not available in Codex yet. Please switch to Claude Code.",
     "sidebar": {
       "expand": "Expand Sidebar",
       "collapse": "Collapse Sidebar"
     },
-    "community": "Community",
-    "communityDesc": "Scan the QR code below to join the official WeChat group for the latest news and technical support",
+    "community": "Sponsor",
+    "communityDesc": "Scan the QR code below to sponsor the author and support ongoing maintenance",
     "versionHistory": "Version History",
     "versionHistoryDesc": "View all version update records",
-    "communityQrTip": "Scan with WeChat to join the community",
-    "communityQrAlt": "Official WeChat community QR code",
+    "communityQrTipWechat": "WeChat Sponsor",
+    "communityQrTipAlipay": "Alipay Sponsor",
+    "communityQrTipPayPal": "PayPal Sponsor",
+    "communityQrAlt": "Sponsor QR code",
+    "communityQrAltAlipay": "Alipay sponsor QR code",
+    "communityQrAltPayPal": "PayPal sponsor QR code",
+    "projectDesc": "This project is the OpenCode Buddy VS Code extension (https://github.com/SenjuObito/opencode-vscode-plugin)",
     "githubTitle": "GitHub Repository",
     "githubDesc": "This project is open source on GitHub. Star us to show your support!",
     "githubCopyBtn": "Copy Repository URL",
@@ -893,10 +568,8 @@
     "wechatPay": "WeChat Pay",
     "paypal": "PayPal",
     "provider": {
-      "currentConfig": "Current ClaudeCode Configuration",
       "loading": "Loading...",
       "noConfig": "No local configuration found",
-      "noConfigDescription": "No readable API key or endpoint was found in the authorized local Claude configuration.",
       "emptyProvider": "No provider configured",
       "notConfigured": "Not configured",
       "apiKey": "API Key",
@@ -925,7 +598,6 @@
       "importFromCcSwitchUpdate": "Import/Update from cc-switch",
       "importFromCcSwitchFile": "Select cc-switch.db File to Import",
       "importFromCcSwitchCli": "Import/Update from cc-switch CLI",
-      "importFromClaudeRouter": "Import/Update from Claude Code Router",
       "featureComingSoon": "Feature not yet implemented, coming soon",
       "readingCcSwitch": "Reading cc-switch configuration...",
       "editCcSwitchTitle": "Edit cc-switch Configuration",
@@ -941,75 +613,10 @@
       "authorizeAndEnable": "Authorize and Enable",
       "authorizeLoadConfig": "Authorize and Load Current Config",
       "refreshConfig": "Refresh Current Config",
-      "configHiddenTitle": "Local Claude configuration is hidden by default",
-      "configHiddenDescription": "To protect local credentials and settings, the plugin will not read ~/.claude/settings.json until you explicitly authorize a one-time load.",
       "officialRouteNotice": "Requests are configured to go directly to the official Anthropic API.",
       "proxyRouteNotice": "Requests are routed through a third-party or proxy endpoint instead of directly to the official Anthropic API.",
-      "localProviderName": "Authorized local settings.json",
-      "localProviderDescription": "Explicitly authorize reading ~/.claude/settings.json",
-      "localProviderAuthorizeTitle": "Authorize local settings.json access",
-      "localProviderAuthorizeMessage": "This will allow the plugin to read ~/.claude/settings.json for Claude requests.",
-      "localProviderAuthorizeDetail": "You can revoke this authorization at any time. The plugin will not modify your local file.",
-      "localProviderDisableTitle": "Cancel local settings.json authorization",
-      "localProviderDisableMessage": "This will stop using ~/.claude/settings.json and leave Claude with no active provider until you explicitly enable another one.",
       "revokeAuthorization": "Revoke Authorization",
-      "localProviderHelp": "When using local provider mode:\n• The plugin will not modify your ~/.claude/settings.json file\n• You need to manually manage your configurations\n• Make sure the file exists and contains valid JSON\n• Suitable for advanced users who prefer manual control",
-      "cliLoginProviderName": "CLI Login State",
-      "cliLoginProviderDescription": "Reuse your existing Claude CLI login state completed in the terminal",
-      "cliLoginAuthorizeTitle": "Authorize CLI Login State",
-      "cliLoginAuthorizeMessage": "This will allow the plugin to use your Claude CLI login session for API requests. You must have already logged in via the Claude CLI in your terminal.",
-      "cliLoginAuthorizeDetail": "The plugin delegates authentication to the Claude SDK's native OAuth flow. You can revoke this authorization at any time.",
-      "cliLoginDisableTitle": "Revoke CLI Login Authorization",
-      "cliLoginDisableMessage": "This will stop using CLI login state and leave Claude with no active provider until you explicitly enable another one.",
-      "cliLoginAccountInfo": "Logged in as: {{email}}",
       "whatIsThis": "What does this do?",
-      "localProviderHelpTitle": "What is “Use Local settings.json”?",
-      "localProviderHelpBody": "Lets the plugin read your existing ~/.claude/settings.json to make Claude requests — perfect if you already configure Claude through the CLI and want to reuse that exact setup.\n\n• The plugin only reads the file; it never modifies it.\n• You can revoke this authorization at any time.\n• Best for advanced users who manage config manually.\n• Ideal if you manage providers with a third-party tool like cc-switch.",
-      "cliLoginHelpTitle": "What is “Use CLI Login Information”?",
-      "cliLoginHelpBody": "Reuses the login you already completed in the terminal via the Claude CLI. Authentication is delegated to the Claude SDK's native OAuth flow, so you don't need to paste an API key.\n\n• You must have run claude and logged in from your terminal first.\n• Great for Claude Pro/Max subscription accounts.\n• You can revoke this authorization at any time.",
-      "subscriptionTutorial": {
-        "entry": "Subscription Account Guide",
-        "dialogTitle": "How to use a subscription account",
-        "tabAriaLabel": "Subscription account guide tabs",
-        "tabs": {
-          "claude": "Claude Subscription",
-          "codex": "Codex Subscription"
-        },
-        "code": {
-          "copy": "Copy Code",
-          "copied": "Copied"
-        },
-        "providers": {
-          "claude": {
-            "title": "How to use Claude Code Subscription Account",
-            "item1": "Log in to your Claude Code subscription account via claude code CLI in the terminal, then you can chat normally in the terminal",
-            "item2": "Make sure the ~/.claude/settings.json file and .env file are empty",
-            "item3": "Restart IDEA, and you can chat normally",
-            "emptyConfigCodeLabel": "~/.claude/settings.json",
-            "emptyConfigCode": "{\n  \"env\": {\n  }\n}",
-            "noteTitle": "Special Case Notes:",
-            "note1": "If you have done the above but the plugin still does not respond, try setting ~/.claude/settings.json .env to:",
-            "proxyConfigCodeLabel": "~/.claude/settings.json",
-            "proxyConfigCode": "{\n  \"env\": {\n    \"HTTP_PROXY\": \"http://127.0.0.1:7897\",\n    \"HTTPS_PROXY\": \"http://127.0.0.1:7897\"\n  }\n}",
-            "issuePrefix": "If it still doesn't work, please report an issue on GitHub: ",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          },
-          "codex": {
-            "title": "Codex Subscription Account Setup",
-            "item1": "Run codex login in the terminal Codex CLI and log in successfully, then you can chat in the terminal",
-            "item2": "Restart IDEA",
-            "item3": "You can now chat normally",
-            "emptyConfigCodeLabel": "",
-            "emptyConfigCode": "",
-            "noteTitle": "",
-            "note1": "",
-            "proxyConfigCodeLabel": "",
-            "proxyConfigCode": "",
-            "issuePrefix": "If it still doesn't work, please report an issue on GitHub: ",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          }
-        }
-      },
       "importDialog": {
         "title": "Import cc-switch Configuration",
         "summary": "Found {{total}} configurations, including",
@@ -1024,57 +631,6 @@
         "confirmImport": "Confirm Import"
       },
       "deleteProviderMessage": "Are you sure you want to delete provider \"{{name}}\"?\n\nThis action cannot be undone.",
-      "dialog": {
-        "addTitle": "Add Provider",
-        "editTitle": "Edit Provider: {{name}}",
-        "addDescription": "Configure a Claude-compatible provider. Official direct mode is the default.",
-        "securityNotice": "Notice: All settings are stored locally on your computer. This project is 100% open source. Please feel free to use it.",
-        "editDescription": "Changes will be applied immediately to the current provider.",
-        "officialSectionTitle": "Official Direct API",
-        "officialPreset": "Anthropic Official Direct",
-        "officialSectionHint": "Use your manually entered credentials with the official endpoint https://api.anthropic.com.",
-        "proxySectionTitle": "Third-Party / Proxy Presets",
-        "proxySectionHint": "These presets route requests through a third-party or proxy provider endpoint instead of the official Anthropic API.",
-        "providerName": "Provider Name",
-        "providerNamePlaceholder": "e.g., Claude Official",
-        "remark": "Remark",
-        "remarkPlaceholder": "Optional",
-        "apiKey": "API Key",
-        "apiKeyPlaceholder": "sk-ant-...",
-        "apiKeyHint": "Please enter your API Key",
-        "apiUrl": "API Endpoint",
-        "apiUrlPlaceholder": "https://api.anthropic.com",
-        "apiUrlHint": "Enter a Claude-compatible service endpoint. Official direct mode should use https://api.anthropic.com.",
-        "apiUrlLockedHint": "Official direct mode always uses the fixed Anthropic endpoint https://api.anthropic.com.",
-        "proxyEndpointWarning": "Requests will be routed through that endpoint instead of directly to the official Anthropic API.",
-        "modelMapping": "Model Mapping (will be injected into JSON env)",
-        "mainModel": "Main Model",
-        "mainModelPlaceholder": "e.g., claude-sonnet-4-6",
-        "fableModel": "Fable Default Model",
-        "fableModelPlaceholder": "e.g., claude-fable-5",
-        "haikuModel": "Haiku Default Model",
-        "haikuModelPlaceholder": "e.g., claude-haiku-4-5",
-        "sonnetModel": "Sonnet Default Model",
-        "sonnetModelPlaceholder": "e.g., claude-sonnet-4-6",
-        "opusModel": "Opus Default Model",
-        "opusModelPlaceholder": "e.g., claude-opus-4-6",
-        "modelMappingHint": "Optional: Specify default Claude models to use. Leave empty for system defaults.",
-        "customModels": "Custom Models",
-        "customModelsHint": "Add extra models supported by this provider. Custom models will appear at the top of the model selector list",
-        "jsonConfig": "JSON Configuration",
-        "jsonConfigDescription": "Configure complete settings.json content here, supporting all fields (e.g., model, alwaysThinkingEnabled, ccSwitchProviderId, codemossProviderId, etc.)",
-        "jsonError": "Invalid JSON format",
-        "required": "*",
-        "showApiKey": "Show",
-        "hideApiKey": "Hide",
-        "confirmAdd": "Confirm Add",
-        "saveChanges": "Save Changes",
-        "codeView": "Code",
-        "visualView": "Visual",
-        "formatJson": "Format",
-        "invalidJson": "Invalid JSON format, please switch to code view to fix",
-        "presetGroup": "Quick Presets"
-      },
       "presets": {
         "custom": "Custom",
         "zhipu": "Zhipu GLM",
@@ -1093,7 +649,6 @@
       }
     },
     "comingSoon": "Coming soon...",
-    "permissionsComingSoon": "Permissions configuration coming soon...",
     "agentsComingSoon": "Agents configuration coming soon...",
     "skillsComingSoon": "Skills configuration coming soon...",
     "codexProvider": {
@@ -1109,7 +664,7 @@
         "editDescription": "Changes will be applied immediately to ~/.codex/ directory",
         "officialPreset": "OpenAI Official Direct",
         "officialSectionHint": "Use your manually entered OPENAI_API_KEY with the official endpoint https://api.openai.com/v1.",
-        "presetHint": "These presets include only third-party or proxy endpoints that match the Claude Code provider set.",
+        "presetHint": "These presets include only third-party or proxy endpoints that match the OpenCode provider set.",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Codex Official",
         "configJson": "Config",
@@ -1222,88 +777,33 @@
         "confirmExport": "Confirm Export"
       }
     },
-    "prompts": "Prompt Library",
-    "promptsDesc": "Manage common prompt templates for quick insertion during chat",
-    "prompt": {
-      "title": "Prompt Library",
-      "create": "Create",
-      "export": "Export",
+    "commands": {
+      "title": "Commands (Prompts)",
+      "description": "Manage opencode command markdown files. Global: ~/.config/opencode/command, project: .opencode/command. Run them in chat with /name.",
+      "library": "Prompt Library",
+      "libraryTitle": "Prompt Library — import a built-in template",
+      "new": "New",
+      "newName": "new-command",
       "import": "Import",
-      "createPrompt": "Create Prompt",
-      "createPromptHint": "Click to go to prompt settings page to create",
-      "customPrompts": "Custom Prompts",
-      "noPrompts": "No custom prompts",
-      "noPromptsDropdown": "No prompts",
-      "loadFailed": "Load failed",
-      "loading": "Loading...",
-      "menu": "Menu",
-      "addSuccess": "Prompt created successfully",
-      "updateSuccess": "Prompt updated successfully",
-      "deleteSuccess": "Prompt deleted successfully",
-      "operationSuccess": "Operation successful",
-      "operationFailed": "Operation failed",
-      "deleteConfirmTitle": "Confirm Delete",
-      "deleteConfirmMessage": "Are you sure you want to delete prompt \"{{name}}\"? This action cannot be undone.",
-      "description": "Create common prompt templates. Type ! in the chat input to quickly select and insert",
-      "global": "Global Prompts",
-      "project": "Project Prompts",
-      "projectScope": "Project Prompts - {{projectName}}",
-      "noProject": "No Active Project",
-      "copyToGlobal": "Copy to Global",
-      "scopeLabel": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "empty": "No commands in this scope yet.",
+      "confirmDelete": "Delete command \"{{name}}\"?",
+      "editorTitle": "Command file",
+      "namePlaceholder": "command name",
+      "scope": {
         "global": "Global",
         "project": "Project"
       },
-      "copyToGlobalSuccess": "Copied to global prompts",
-      "projectPromptsUnavailable": "Project prompts unavailable in current project",
-      "dialog": {
-        "addTitle": "Create Prompt",
-        "editTitle": "Edit Prompt",
-        "name": "Name",
-        "namePlaceholder": "Enter prompt name",
-        "nameRequired": "Please enter prompt name",
-        "content": "Content",
-        "contentPlaceholder": "Enter prompt content, you can include variables like {{variable}}",
-        "contentHint": "Prompt content will be inserted directly into the input box when selected",
-        "confirmAdd": "Create",
-        "saveChanges": "Save"
-      },
-      "importDialog": {
-        "title": "Import Prompts",
-        "selectItems": "Select prompts to import",
-        "summary": "Total {{total}} prompts:",
-        "newCount": "{{count}} new",
-        "updateCount": "{{count}} updates",
-        "selectedCount": "{{count}} items selected",
-        "conflictStrategy": "Conflict Resolution Strategy",
-        "strategySkip": "Skip",
-        "strategySkipDesc": "Skip existing prompts",
-        "strategyOverwrite": "Overwrite",
-        "strategyOverwriteDesc": "Overwrite existing prompts",
-        "strategyDuplicate": "Duplicate",
-        "strategyDuplicateDesc": "Create duplicates (generate new IDs)",
-        "conflictWarning": "{{count}} conflicts detected",
-        "columnName": "Name",
-        "columnId": "ID",
-        "columnStatus": "Status",
-        "statusNew": "New",
-        "statusUpdate": "Update",
-        "importSuccess": "Successfully imported {{count}} prompts",
-        "importFailed": "Import failed",
-        "importPartialSuccess": "Imported {{imported}}, skipped {{skipped}}, updated {{updated}}",
-        "noItemsSelected": "Please select at least one prompt",
-        "confirmImport": "Confirm Import",
-        "exportSuccess": "Prompts exported successfully",
-        "exportFailed": "Export failed",
-        "importFileError": "Failed to read file",
-        "invalidFileFormat": "Invalid file format"
-      },
-      "exportDialog": {
-        "title": "Export Prompts",
-        "selectHint": "Select prompts to export",
-        "confirmExport": "Confirm Export"
+      "templates": {
+        "review": "Review current changes for bugs and style issues",
+        "explain": "Explain a file or symbol in plain language",
+        "tests": "Generate unit tests for the target code",
+        "refactor": "Refactor code without changing behaviour",
+        "commit": "Generate a conventional commit message"
       }
-    }
+    },
+    "prompts": "Commands (Prompts)"
   },
   "history": {
     "title": "History",
@@ -1331,7 +831,7 @@
     "loading": "Loading history...",
     "loadFailed": "Load failed",
     "noSessions": "No history sessions",
-    "noSessionsDesc": "No session records found in current project",
+    "noSessionsDesc": "No OpenCode session records found in current project",
     "totalSessions": "{{count}} sessions · {{total}} messages",
     "messageCount": "{{count}} messages",
     "searchPlaceholder": "Search session titles...",
@@ -1349,19 +849,21 @@
     "entrypointLabel": {
       "sdk-cli": "SDK Session",
       "claude-vscode": "VS Code",
-      "remote": "Remote"
+      "remote": "Remote",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "This session was created by the plugin via SDK and is not shown in CLI by default. Click 'Convert to CLI' to make it appear in terminal CLI's /resume list",
       "claude-vscode": "This session was created by VS Code extension and is not shown in CLI by default. Click 'Convert to CLI' to make it appear in terminal CLI's /resume list",
-      "remote": "This session was created by a remote Claude Code instance"
+      "remote": "This session was created by a remote OpenCode instance",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     },
     "convertToCliSession": "Convert to CLI-recognizable session",
     "convertButton": "Convert to CLI",
     "convertSuccess": "Session converted, now visible in CLI /resume",
     "convertFailed": "Conversion failed",
     "confirmConvert": "Convert to CLI Session?",
-    "convertConfirmMessage": "This will modify the session's entrypoint to make it visible in Claude Code CLI's /resume list.",
+    "convertConfirmMessage": "This will modify the session's entrypoint to make it visible in OpenCode CLI's /resume list.",
     "conversionErrors": {
       "INVALID_SESSION_ID": "Invalid session ID",
       "SESSION_ACTIVE": "Cannot convert the currently active session. Start a new session first, then convert this one",
@@ -1399,32 +901,37 @@
       "WebSearch": "Web Search",
       "WebFetch": "Fetch Web",
       "execute": "Execute {{toolName}}",
-      "readDirectory": "Read Directory",
-      "timeoutWarning": "Please answer soon, dialog will close in {{seconds}} seconds"
-    }
+      "readDirectory": "Read Directory"
+    },
+    "approvedStatus": "Allowed",
+    "approvedAlwaysStatus": "Always allowed",
+    "deniedStatus": "Denied",
+    "timeoutWarning": "Please answer soon, the card will close in {{seconds}} seconds"
   },
   "askUserQuestion": {
-    "title": "Claude has some questions for you",
-    "progress": "Question {{current}} / {{total}}",
+    "title": "OpenCode has some questions for you",
+    "skip": "Skip",
+    "answeredStatus": "Answered",
+    "skippedStatus": "Skipped",
+    "fallbackHeader": "Question",
     "multiSelectHint": "You can select multiple options",
-    "cancel": "Cancel",
-    "back": "Back",
-    "next": "Next",
     "submit": "Submit",
     "otherOption": "Other",
     "otherOptionDesc": "Enter a custom answer",
     "customInputPlaceholder": "Enter your answer...",
-    "timeoutWarning": "Please answer soon, dialog will close in {{seconds}} seconds",
-    "expand": "Expand",
-    "collapse": "Collapse",
-    "clickToAnswer": "Click to answer"
+    "timeoutWarning": "Please answer soon, the question will be skipped in {{seconds}} seconds",
+    "progress": "Question {{current}} / {{total}}",
+    "prev": "Previous",
+    "next": "Next",
+    "unansweredStatus": "Unanswered",
+    "cancelledStatus": "Cancelled"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
-    "subtitle": "Claude has finished planning and is ready to execute.",
+    "subtitle": "OpenCode has finished planning and is ready to execute.",
     "requestedPermissions": "Requested Permissions",
     "executionMode": "Execution Mode",
-    "executionModeDescription": "Select how Claude should execute the plan:",
+    "executionModeDescription": "Select how OpenCode should execute the plan:",
     "approve": "Approve & Execute",
     "reject": "Reject",
     "toApprove": "to approve",
@@ -1437,7 +944,6 @@
     "thinkingDisabled": "Thinking disabled",
     "configLoading": "Configuration loading, please try again",
     "saveSuccess": "Saved successfully",
-    "restartRequired": "Please restart IDEA for this setting to take effect",
     "saveFailed": "Save failed",
     "deleteSuccess": "Deleted successfully",
     "operationFailed": "Operation failed",
@@ -1455,7 +961,6 @@
   },
   "config": {
     "clickToCopy": "Click to copy",
-    "officialDocs": "Official Docs",
     "switch": "Switch",
     "switchProvider": "Switch provider",
     "runtimeProvider": {
@@ -1669,7 +1174,7 @@
         "title": "Key Features",
         "toolExtension": {
           "label": "Tool Extension",
-          "description": "Add capabilities like file system and network access to Claude"
+          "description": "Add capabilities like file system and network access to OpenCode"
         },
         "dataConnection": {
           "label": "Data Connection",
@@ -1757,9 +1262,9 @@
     "todoList": "Todo List",
     "editFileTitle": "Edit File",
     "clickToOpen": "Click to open {{filePath}}",
-    "refreshFileInIdea": "Refresh file in IDEA",
-    "refreshFileInIdeaSuccess": "Manually refreshed this file in IDEA",
-    "showDiffInIdea": "Show changes in IDEA",
+    "refreshFileInEditor": "Refresh file in editor",
+    "refreshFileInEditorSuccess": "Manually refreshed this file in editor",
+    "showDiffInEditor": "Show changes in editor",
     "diffButton": "Diff",
     "editBatchTitle": "Batch Edit Files",
     "searchBatchTitle": "Batch Search",
@@ -1812,13 +1317,14 @@
     "noSubagents": "No subagents running",
     "noFileChanges": "No file changes",
     "blockedBy": "Blocked by: {{ids}}",
+    "editsPending": "Editing in progress…",
     "showDiff": "Show Diff",
     "expand": "Expand status panel",
     "collapse": "Collapse status panel",
     "undoChanges": "Undo Changes",
     "undoConfirmTitle": "Undo File Changes",
     "undoWillDelete": "This file was newly created. Undo will delete this file.",
-    "undoWillRestore": "This will restore the file to its state before Claude's modifications.",
+    "undoWillRestore": "This will restore the file to its state before OpenCode's modifications.",
     "undoCannotUndo": "This action cannot be undone.",
     "confirmUndo": "Confirm Undo",
     "undoSuccess": "Undone changes to {{fileName}}",
@@ -1831,9 +1337,9 @@
     "keepAllConfirmMessage": "Accept current changes as baseline. Future changes will be tracked from zero.",
     "discardAllSuccess": "All changes discarded",
     "discardAllFailed": "Discard failed: {{error}}",
+    "discardAllPartial": "Undone {{undone}} files, {{failed}} failed (e.g. {{first}})",
     "keepAllSuccess": "All changes kept, tracking reset",
-    "multiAgentBadge": "Multi-agent",
-    "multiAgentEdited": "{{count}} agents edited this file in this session — review carefully"
+    "loadingSession": "Loading conversation…"
   },
   "skills": {
     "title": "Skills",
@@ -1881,7 +1387,7 @@
       "title": "What are Skills?",
       "overview": {
         "title": "Overview",
-        "description": "Skills are dynamically loaded instruction sets, scripts, and resource folders that enhance Claude's performance for specific tasks. Skills teach Claude how to complete particular tasks in a repeatable way, such as creating documents using company brand guidelines, analyzing data following organization-specific workflows, or automating personal tasks."
+        "description": "Skills are dynamically loaded instruction sets, scripts, and resource folders that enhance OpenCode's performance for specific tasks. Skills teach OpenCode how to complete particular tasks in a repeatable way, such as creating documents using company brand guidelines, analyzing data following organization-specific workflows, or automating personal tasks."
       },
       "structure": {
         "title": "Skill Structure",
@@ -1914,16 +1420,14 @@
         "title": "Usage Tips",
         "item1": "Ensure Skill directory contains a valid SKILL.md file",
         "item2": "Skill names must use lowercase letters, numbers, and hyphens (hyphen-case)",
-        "item3": "Skills automatically take effect in Claude sessions after loading",
+        "item3": "Skills automatically take effect in OpenCode sessions after loading",
         "item4": "Control individual Skill status with enable/disable toggles",
         "item5": "Mention Skill name in chat to use it, e.g., \"Use the pdf skill to extract form fields\""
       },
       "learnMore": {
         "title": "Learn More",
         "description": "More information about Skills:",
-        "link1": "What are Skills?",
-        "link2": "Creating Custom Skills",
-        "link3": "Anthropic Skills Example Repository"
+        "link1": "OpenCode Skills Documentation"
       },
       "codex": {
         "title": "What are Codex Skills?",
@@ -2018,7 +1522,11 @@
       },
       "sonnet5": {
         "label": "Sonnet 5",
-        "description": "Sonnet 5 · Use the default model"
+        "description": "Sonnet 5 · Upgraded Sonnet model"
+      },
+      "sonnet47": {
+        "label": "Sonnet 4.7",
+        "description": "Sonnet 4.7 · Use the default model"
       },
       "opus5": {
         "label": "Opus 5",
@@ -2070,50 +1578,37 @@
       }
     }
   },
-  "modelConfig": {
-    "title": "Model settings",
-    "context": "1M Context",
-    "contextDefault": "Default",
-    "effort": "Effort",
-    "speed": "Speed",
-    "preset": "Preset",
-    "model": "Model"
-  },
   "modes": {
     "default": {
       "label": "Default Mode",
-      "shortLabel": "Default",
       "tooltip": "Standard permission behavior",
       "description": "Requires manual confirmation for each operation, suitable for cautious use"
     },
     "plan": {
       "label": "Plan Mode",
-      "shortLabel": "Plan",
       "tooltip": "Plan mode - read-only analysis",
       "description": "Uses only read-only tools, generates plan for user approval"
     },
     "acceptEdits": {
       "label": "Agent Mode",
-      "shortLabel": "Agent",
       "tooltip": "Automatically accept file edits",
       "description": "Automatically accept file creation/editing, reducing confirmation steps"
     },
     "bypassPermissions": {
       "label": "Auto Mode",
-      "shortLabel": "Auto",
       "tooltip": "Bypass all permission checks",
       "description": "Fully automated, bypassing all permission checks [Use with caution]"
-    }
+    },
+    "switchHint": "to switch modes"
   },
   "codexModes": {
     "default": {
       "label": "Suggest (approval)",
-      "tooltip": "Codex approval_policy=on-request – prompts before editing files or running shell commands.",
+      "tooltip": "Codex approval_policy=untrusted – prompts before editing files or running shell commands.",
       "description": "Safest option. Every write or command requires your approval."
     },
     "plan": {
       "label": "Plan Mode",
-      "shortLabel": "Plan",
       "tooltip": "Plan mode - read-only analysis",
       "description": "Uses only read-only tools, generates plan for user approval"
     },
@@ -2128,60 +1623,17 @@
       "description": "Hands-off mode. Codex executes edits and shell commands immediately."
     }
   },
-  "ompModes": {
-    "default": {
-      "label": "Default",
-      "tooltip": "Use the selected model (or OMP auto)",
-      "description": "Uses the model chosen in the model dropdown, or the OMP CLI default when set to Auto."
-    },
-    "smol": {
-      "label": "Smol",
-      "tooltip": "Fast model role (omp --model smol)",
-      "description": "Runs this conversation with the model configured for omp's smol role. Overrides the model dropdown."
-    },
-    "slow": {
-      "label": "Slow",
-      "tooltip": "Reasoning model role (omp --model slow)",
-      "description": "Runs this conversation with the model configured for omp's slow role. Overrides the model dropdown."
-    },
-    "plan": {
-      "label": "Plan",
-      "tooltip": "Planning model role (omp --model plan)",
-      "description": "Runs this conversation with the model configured for omp's plan role. Overrides the model dropdown."
-    }
-  },
   "providers": {
-    "claude": {
-      "label": "Claude Code"
-    },
-    "codex": {
-      "label": "Codex"
-    },
-    "grok": {
-      "label": "Grok CLI"
-    },
-    "kimi": {
-      "label": "Kimi CLI"
-    },
     "gemini": {
       "label": "Gemini Cli"
     },
     "opencode": {
       "label": "OpenCode"
     },
-    "pi": {
-      "label": "PI CLI"
-    },
-    "omp": {
-      "label": "OMP CLI"
-    },
     "beta": {
       "badge": "Beta",
       "title": "Beta Feature",
       "message": "This feature is still in Beta. If you encounter any bugs, please report them to the author promptly."
-    },
-    "dsh": {
-      "label": "DeepSeek Harness"
     }
   },
   "promptEnhancer": {
@@ -2214,7 +1666,8 @@
     "enableTitle": "Enable File Context?",
     "enableDescription": "When enabled, the currently opened file path in the editor will be sent to AI. Note: only the file path is transmitted, not the file content.",
     "enable": "Enable",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "remove": "Remove file context"
   },
   "contextUsage": {
     "title": "Context Usage",
@@ -2272,6 +1725,7 @@
     "parseError": "Failed to parse result"
   },
   "reasoning": {
+    "cycleHint": "Cycle reasoning effort",
     "title": "Select reasoning depth",
     "low": {
       "label": "Low",
@@ -2309,8 +1763,8 @@
     "helpText": "If the problem persists, please copy the error information and submit it as an issue on GitHub, or share it in the community group."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code was interrupted (possibly response timeout or user cancellation):",
-    "claudeCodeError": "Claude Code error:",
+    "claudeCodeInterrupted": "OpenCode was interrupted (possibly response timeout or user cancellation):",
+    "claudeCodeError": "OpenCode error:",
     "errorMessage": "Error message",
     "currentApiKeySource": "Current API Key source",
     "currentApiKeyPreview": "Current API Key preview",
@@ -2321,7 +1775,7 @@
     "defaultBaseUrl": "Default (https://api.anthropic.com)",
     "configTip": "Tip: CLI can read from environment variables or settings.json; this plugin only supports reading from settings.json to avoid issues. You can configure it in the plugin's top-right Settings > Provider Management",
     "apiError": "API error",
-    "apiErrorCauses": "Possible causes:\n1. API Key is not configured correctly\n2. Third-party proxy service configuration issue\n3. Please check the configuration in ~/.claude/settings.json",
+    "apiErrorCauses": "Possible causes:\n1. API Key is not configured correctly\n2. Third-party proxy service configuration issue\n3. Please check the configuration in ~/.config/opencode/opencode.json",
     "codexAuthError": "Codex authentication error:",
     "codexAuthErrorChecks": "Please check the following:\n1. Is the Codex API Key in plugin settings correct\n2. Does the API Key have sufficient permissions\n3. If using a custom Base URL, please confirm the address is correct",
     "codexAuthTip": "Tip: Codex requires a valid OpenAI API Key",
@@ -2346,7 +1800,11 @@
   "changelog": {
     "title": "What's New",
     "close": "Got it",
-    "page": "{{current}} / {{total}}"
+    "page": "{{current}} / {{total}}",
+    "loading": "Loading release notes…",
+    "loadError": "Could not load release notes",
+    "empty": "No release notes published yet",
+    "emptyContent": "This release has no notes"
   },
   "codexFastMode": {
     "title": "Select Codex speed mode",
@@ -2359,15 +1817,6 @@
       "description": "Codex fast response mode (uses additional credits)"
     }
   },
-  "dshPresets": {
-    "title": "Select DeepSeek Harness agent preset",
-    "none": { "label": "Default", "description": "dsh default headless composition (full toolset)" },
-    "standard": { "label": "Standard", "description": "Full coding agent with the standard toolset" },
-    "code": { "label": "PTC", "description": "Standard capabilities with Code Mode" },
-    "minimal": { "label": "Minimal", "description": "Bash and str_replace_editor only" },
-    "cordis": { "label": "Creator", "description": "Standard capabilities plus composition authoring" },
-    "user": { "description": "Custom preset installed under the DSH home" }
-  },
   "error": {
     "providerNotConfigured": "Provider Not Configured",
     "providerNotConfiguredDesc": "No AI provider is configured yet, or access to the local configuration has not been authorized. Please complete setup in Provider Management settings before starting a conversation.",
@@ -2376,7 +1825,6 @@
   "errorDiagnostic": {
     "copyCommand": "Copy",
     "copied": "Copied",
-    "openDependencySettings": "Open Dependency Settings",
     "recommended": "Recommended",
     "codexThreadResume": {
       "title": "Session thread is no longer valid",
@@ -2391,12 +1839,7 @@
         "switchRegistry": {
           "title": "Option 1: Temporarily switch to the official registry and reinstall",
           "step0": "1. Run this in your terminal (switch to the official npm registry):",
-          "step1": "2. Open the plugin's Dependency Management settings and click Reinstall:",
-          "step2": "3. After the reinstall completes, switch back to the Taobao mirror:"
-        },
-        "downgrade": {
-          "title": "Option 2: Roll back to an older version",
-          "step0": "In Dependency Management, switch the SDK version to v0.2.112 or earlier. Restart IDEA after switching."
+          "step1": "2. Reinstall the SDK:"
         }
       }
     },
@@ -2408,13 +1851,20 @@
         "checkNodeVersion": {
           "title": "Option 1: Check your Node.js version",
           "step0": "Run the command below in a terminal to see your version. Node 22 or the current LTS is recommended — users have reported many issues on Node 24, so prefer Node 20 or 22:"
-        },
-        "reinstallLatestSdk": {
-          "title": "Option 2: Reinstall the latest SDK from the official npm registry",
-          "step0": "1. Switch to the official npm registry (avoid the Taobao mirror — it may not have the latest version):",
-          "step1": "2. Open Dependency Management and reinstall the latest SDK:"
         }
       }
+    }
+  },
+  "openCodeModes": {
+    "default": {
+      "label": "Build",
+      "tooltip": "OpenCode build agent",
+      "description": "Full-access development agent (opencode default)"
+    },
+    "plan": {
+      "label": "Plan",
+      "tooltip": "OpenCode plan agent",
+      "description": "Read-only analysis, plans before writing code"
     }
   }
 }

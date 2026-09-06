@@ -59,7 +59,7 @@ final class AdditionalDirectoryResolver {
         int depth = 0;
 
         while (current != null && !current.equals(fsRoot) && depth < MAX_UPWARD_TRAVERSAL_DEPTH) {
-            Path candidate = current.resolve(".claude").resolve(type);
+            Path candidate = current.resolve(".opencode").resolve(type);
             String normalizedCandidate = SlashCommandPathPolicy.normalizePath(candidate.toString());
             if (Files.isDirectory(candidate) && seen.add(normalizedCandidate)) {
                 dirs.add(new SlashCommandRegistry.SkillScanDir(candidate.toString(), "project"));

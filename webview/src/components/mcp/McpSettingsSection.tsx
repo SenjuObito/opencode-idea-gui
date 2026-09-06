@@ -1,9 +1,9 @@
 /**
  * MCP Server Settings Component
- * Supports both Claude and Codex modes
+ * Unified for opencode
  */
 
-import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { McpServer, McpPreset } from '../../types/mcp';
 import { sendToJava } from '../../utils/bridge';
@@ -28,69 +28,29 @@ import { useToolsUpdate } from './hooks/useToolsUpdate';
 
 // Sub-components
 import { ServerCard } from './ServerCard';
-import { getMcpMessagePrefix, resolveInitialMcpProvider, type McpProvider } from './providerSelection';
+import { getMcpMessagePrefix, resolveInitialMcpProvider } from './providerSelection';
 
 /**
  * MCP Server Settings Component
  */
-export function McpSettingsSection({ currentProvider = 'claude' }: McpSettingsSectionProps) {
-  const [selectedProvider, setSelectedProvider] = useState<McpProvider>(() => {
-    let savedProvider: string | null = null;
-    try {
-      savedProvider = localStorage.getItem('mcp.selectedProvider');
-    } catch {
-      // Fall back to the active chat provider when storage is unavailable.
-    }
-    return resolveInitialMcpProvider(currentProvider, savedProvider);
-  });
-
-  const selectProvider = useCallback((provider: McpProvider) => {
-    setSelectedProvider(provider);
-    try {
-      localStorage.setItem('mcp.selectedProvider', provider);
-    } catch {
-      // The selection remains valid for this settings session.
-    }
-  }, []);
+export function McpSettingsSection({ currentProvider: _currentProvider = 'opencode' }: McpSettingsSectionProps) {
+  const selectedProvider = resolveInitialMcpProvider();
 
   return (
     <div className="mcp-settings-shell">
-      <div className="mcp-provider-tabs" role="tablist" aria-label="MCP provider">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={selectedProvider === 'claude'}
-          className={selectedProvider === 'claude' ? 'active' : ''}
-          onClick={() => selectProvider('claude')}
-        >
-          <span className="codicon codicon-hubot" aria-hidden="true" />
-          Claude
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={selectedProvider === 'codex'}
-          className={selectedProvider === 'codex' ? 'active' : ''}
-          onClick={() => selectProvider('codex')}
-        >
-          <span className="codicon codicon-terminal" aria-hidden="true" />
-          Codex
-        </button>
-      </div>
-      <McpProviderPanel key={selectedProvider} currentProvider={selectedProvider} />
+      <McpProviderPanel currentProvider={selectedProvider} />
     </div>
   );
 }
 
-function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider }) {
+function McpProviderPanel({ currentProvider: _currentProvider }: { currentProvider: string }) {
   const { t } = useTranslation();
-  const isCodexMode = currentProvider === 'codex';
 
   // Generate message type prefix based on provider
-  const messagePrefix = useMemo(() => getMcpMessagePrefix(currentProvider), [currentProvider]);
+  const messagePrefix = useMemo(() => getMcpMessagePrefix(), []);
 
   // Get provider-specific cache keys
-  const cacheKeys = useMemo(() => getCacheKeys(isCodexMode ? 'codex' : 'claude'), [isCodexMode]);
+  const cacheKeys = useMemo(() => getCacheKeys(), []);
 
   // Dropdown menu state
   const [showDropdown, setShowDropdown] = useState(false);
@@ -169,7 +129,6 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
     loadServerStatus,
     loadServerTools,
   } = useServerData({
-    isCodexMode,
     messagePrefix,
     cacheKeys,
     t,
@@ -183,7 +142,6 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
     handleRefreshSingleServer,
     handleToggleServer,
   } = useServerManagement({
-    isCodexMode,
     messagePrefix,
     cacheKeys,
     setServerTools,
@@ -197,52 +155,10 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
 
   // Use tools list update hook
   useToolsUpdate({
-    isCodexMode,
     cacheKeys,
     setServerTools,
     onLog: addLog,
   });
-
-  // Codex mutations report success only after config.toml was written.
-  useEffect(() => {
-    if (!isCodexMode) {
-      return;
-    }
-    const readServer = (json: string): McpServer | null => {
-      try {
-        return JSON.parse(json) as McpServer;
-      } catch {
-        return null;
-      }
-    };
-    window.codexMcpServerAdded = (json) => {
-      const server = readServer(json);
-      addToast(`${t('mcp.added')} ${server?.name || server?.id || ''}`, 'success');
-      loadServers();
-    };
-    window.codexMcpServerUpdated = (json) => {
-      const server = readServer(json);
-      addToast(`${t('mcp.saved')} ${server?.name || server?.id || ''}`, 'success');
-      loadServers();
-    };
-    window.codexMcpServerDeleted = (serverId) => {
-      addToast(`${t('mcp.deleted')} ${serverId}`, 'success');
-      loadServers();
-    };
-    window.codexMcpServerToggled = (json) => {
-      const server = readServer(json);
-      const enabled = server?.enabled !== false;
-      addToast(`${enabled ? t('mcp.enabled') : t('mcp.disabled')} ${server?.name || server?.id || ''}`, 'success');
-      loadServers();
-      loadServerStatus();
-    };
-    return () => {
-      window.codexMcpServerAdded = undefined;
-      window.codexMcpServerUpdated = undefined;
-      window.codexMcpServerDeleted = undefined;
-      window.codexMcpServerToggled = undefined;
-    };
-  }, [isCodexMode, addToast, loadServers, loadServerStatus, t]);
 
   // Toggle server expand/collapse
   const toggleExpand = useCallback((serverId: string) => {
@@ -285,14 +201,15 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
   const confirmDelete = useCallback(() => {
     if (deletingServer) {
       sendToJava(`delete_${messagePrefix}mcp_server`, { id: deletingServer.id });
-      if (!isCodexMode) {
-        addToast(`${t('mcp.deleted')} ${deletingServer.name || deletingServer.id}`, 'success');
-        setTimeout(() => loadServers(), 100);
-      }
+      addToast(`${t('mcp.deleted')} ${deletingServer.name || deletingServer.id}`, 'success');
+
+      setTimeout(() => {
+        loadServers();
+      }, 100);
     }
     setShowConfirmDialog(false);
     setDeletingServer(null);
-  }, [deletingServer, messagePrefix, isCodexMode, addToast, t, loadServers]);
+  }, [deletingServer, messagePrefix, addToast, t, loadServers]);
 
   // Cancel deletion
   const cancelDelete = useCallback(() => {
@@ -324,43 +241,35 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
     importedServers.forEach((server) => {
       sendToJava(`add_${messagePrefix}mcp_server`, server);
     });
-    if (!isCodexMode) {
-      addToast(`${t('mcp.added')} ${importedServers.length}`, 'success');
-      setTimeout(() => loadServers(), 100);
-    }
-  }, [messagePrefix, isCodexMode, addToast, t, loadServers]);
+    addToast(`${t('mcp.added')} ${importedServers.length}`, 'success');
+    setTimeout(() => {
+      loadServers();
+    }, 100);
+  }, [messagePrefix, addToast, t, loadServers]);
 
   // Save server
   const handleSaveServer = useCallback((server: McpServer) => {
     if (editingServer) {
       if (editingServer.id !== server.id) {
-        if (isCodexMode) {
-          sendToJava('update_codex_mcp_server', { ...server, oldId: editingServer.id });
-        } else {
-          sendToJava(`delete_${messagePrefix}mcp_server`, { id: editingServer.id });
-          sendToJava(`add_${messagePrefix}mcp_server`, server);
-          addToast(`${t('mcp.updated')} ${server.name || server.id}`, 'success');
-        }
+        sendToJava(`delete_${messagePrefix}mcp_server`, { id: editingServer.id });
+        sendToJava(`add_${messagePrefix}mcp_server`, server);
+        addToast(`${t('mcp.updated')} ${server.name || server.id}`, 'success');
       } else {
         sendToJava(`update_${messagePrefix}mcp_server`, server);
-        if (!isCodexMode) {
-          addToast(`${t('mcp.saved')} ${server.name || server.id}`, 'success');
-        }
+        addToast(`${t('mcp.saved')} ${server.name || server.id}`, 'success');
       }
     } else {
       sendToJava(`add_${messagePrefix}mcp_server`, server);
-      if (!isCodexMode) {
-        addToast(`${t('mcp.added')} ${server.name || server.id}`, 'success');
-      }
+      addToast(`${t('mcp.added')} ${server.name || server.id}`, 'success');
     }
 
-    if (!isCodexMode) {
-      setTimeout(() => loadServers(), 100);
-    }
+    setTimeout(() => {
+      loadServers();
+    }, 100);
 
     setShowServerDialog(false);
     setEditingServer(null);
-  }, [editingServer, messagePrefix, isCodexMode, addToast, t, loadServers]);
+  }, [editingServer, messagePrefix, addToast, t, loadServers]);
 
   // Select preset
   const handleSelectPreset = useCallback((preset: McpPreset) => {
@@ -370,23 +279,17 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
       description: preset.description,
       tags: preset.tags,
       server: { ...preset.server },
-      apps: {
-        claude: !isCodexMode,
-        codex: isCodexMode,
-        gemini: false,
-      },
-      homepage: preset.homepage,
-      docs: preset.docs,
       enabled: true,
     };
     sendToJava(`add_${messagePrefix}mcp_server`, server);
-    if (!isCodexMode) {
-      addToast(`${t('mcp.added')} ${preset.name}`, 'success');
-      setTimeout(() => loadServers(), 100);
-    }
+    addToast(`${t('mcp.added')} ${preset.name}`, 'success');
+
+    setTimeout(() => {
+      loadServers();
+    }, 100);
 
     setShowPresetDialog(false);
-  }, [isCodexMode, messagePrefix, addToast, t, loadServers]);
+  }, [messagePrefix, addToast, t, loadServers]);
 
   // Copy URL
   const handleCopyUrl = useCallback(async (url: string) => {
@@ -413,7 +316,7 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
       );
     }
     const config = {
-      mcpServers: {
+      mcp: {
         [server.id]: serverConfig,
       },
     };
@@ -505,7 +408,6 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
                   key={server.id}
                   server={server}
                   isExpanded={expandedServers.has(server.id)}
-                  isCodexMode={isCodexMode}
                   serverStatus={serverStatus}
                   refreshState={serverRefreshStates[server.id]}
                   toolsInfo={serverTools[server.id]}
@@ -548,7 +450,6 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
         <McpServerDialog
           server={editingServer}
           existingIds={servers.map(s => s.id)}
-          currentProvider={currentProvider}
           onClose={() => {
             setShowServerDialog(false);
             setEditingServer(null);
@@ -566,7 +467,6 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
 
       {showMarketplaceDialog && (
         <McpMarketplaceDialog
-          currentProvider={currentProvider}
           existingIds={servers.map(s => s.id)}
           onClose={() => setShowMarketplaceDialog(false)}
           onSelect={handleSaveServer}
@@ -575,7 +475,6 @@ function McpProviderPanel({ currentProvider }: { currentProvider: McpProvider })
 
       {showImportDialog && (
         <McpImportDialog
-          currentProvider={currentProvider}
           existingIds={servers.map(s => s.id)}
           onClose={() => setShowImportDialog(false)}
           onImport={handleImportServers}

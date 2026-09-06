@@ -9,7 +9,6 @@ import { useTokenFormat } from "../../../hooks/useTokenFormat.js";
 import { formatTokenCount } from "../../../lib/token-format.js";
 import { formatUsdCurrency } from "../../../lib/format";
 import { useTrendData } from "../../../hooks/use-trend-data";
-import { useDashboardPortalContainer } from "../../../hooks/useDashboardPortalContainer.js";
 import { getLocalDayKey } from "../../../lib/timezone";
 import { computeZoomStats, getTrendInsightKey } from "../../../lib/trend-stats";
 
@@ -110,7 +109,6 @@ export function TrendMonitorZoomModal({
 }) {
   const { currency, rate } = useCurrency();
   const { formatTokensTooltip } = useTokenFormat();
-  const portalContainer = useDashboardPortalContainer();
   // The left summary panel always uses compact figures (9.7B / 686.1M) — full
   // numbers break the narrow panel layout. Exact values stay on hover titles.
   const formatStatTokens = (v) => formatTokenCount(v);
@@ -359,7 +357,7 @@ export function TrendMonitorZoomModal({
                   >
                     {selectedDay || "—"}
                   </Popover.Trigger>
-                  <Popover.Portal container={portalContainer}>
+                  <Popover.Portal>
                     <Popover.Positioner sideOffset={8} side="bottom" align="center" className="!z-[9999]">
                       <Popover.Popup className="bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded-xl shadow-lg">
                         <DateRangePopover
@@ -397,7 +395,7 @@ export function TrendMonitorZoomModal({
                       : `${rangeSel.from} → ${rangeSel.to}`
                     : "—"}
                 </Popover.Trigger>
-                <Popover.Portal container={portalContainer}>
+                <Popover.Portal>
                   <Popover.Positioner sideOffset={8} side="bottom" align="end" className="!z-[9999]">
                     <Popover.Popup className="bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded-xl shadow-lg">
                       <DateRangePopover

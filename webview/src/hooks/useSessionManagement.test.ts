@@ -18,6 +18,7 @@ describe('useSessionManagement', () => {
     setLoading: vi.fn(),
     setIsThinking: vi.fn(),
     setStreamingActive: vi.fn(),
+    setSessionLoading: vi.fn(),
     clearToasts: vi.fn(),
     addToast: vi.fn(),
     setBackgroundTasks: vi.fn(),
@@ -66,52 +67,6 @@ describe('useSessionManagement', () => {
     expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
   });
 
-  it('clears stale ui state before loading history', () => {
-    const historyData = {
-      success: true,
-      sessions: [
-        {
-          sessionId: 'history-1',
-          title: 'History Title',
-          provider: 'claude',
-          model: 'claude-sonnet-4-6',
-          messageCount: 3,
-          lastTimestamp: Date.now(),
-        },
-      ],
-      total: 3,
-    } as unknown as HistoryData;
-
-    const mocks = createMocks();
-
-    const { result } = renderHook(() =>
-      useSessionManagement({
-        messages: [{ type: 'assistant', content: 'old', timestamp: new Date().toISOString() }],
-        loading: true,
-        historyData,
-        currentSessionId: 'old-session',
-        ...mocks,
-        t,
-      })
-    );
-
-    act(() => {
-      result.current.loadHistorySession('history-1');
-    });
-
-    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'interrupt_session:');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(
-      2,
-      'load_session:{"sessionId":"history-1","provider":"claude","model":"claude-sonnet-4-6"}'
-    );
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
-    expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith('history-1');
-    expect(mocks.setCustomSessionTitle).toHaveBeenCalledWith('History Title');
-    expect(mocks.setCurrentView).toHaveBeenCalledWith('chat');
-  });
 
   it('applies repeated history deletes against the latest state', () => {
     let historyData = {
@@ -319,30 +274,6 @@ describe('useSessionManagement', () => {
     expect(mocks.setUsageUsedTokens).toHaveBeenCalledWith(undefined);
   });
 
-  it('forceCreateNewSessionWithProvider resets session and applies target provider before recreating', () => {
-    const mocks = createMocks();
-
-    const { result } = renderHook(() =>
-      useSessionManagement({
-        messages: [{ type: 'assistant', content: 'old', timestamp: new Date().toISOString() }],
-        loading: false,
-        historyData: null,
-        currentSessionId: 'active-session',
-        ...mocks,
-        t,
-      })
-    );
-
-    act(() => {
-      result.current.forceCreateNewSessionWithProvider('codex');
-    });
-
-    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'set_provider:codex');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(2, 'create_new_session:');
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith(null);
-  });
 
   it('shows confirm dialog when creating new session with existing messages', () => {
     const mocks = createMocks();
@@ -572,7 +503,7 @@ describe('useSessionManagement', () => {
     const calls = (window.sendToJava as any).mock.calls.map((c: any) => c[0]);
     expect(calls).not.toContain('interrupt_session:');
     expect(calls).toContain(
-      'load_session:{"sessionId":"hist-2","provider":"claude","model":"claude-sonnet-4-6"}',
+      'load_session:{"sessionId":"hist-2"}',
     );
 
     // But should still set transition guard
@@ -584,7 +515,47 @@ describe('useSessionManagement', () => {
     expect(mocks.setCustomSessionTitle).toHaveBeenCalledWith(null);
   });
 
-  it('loadHistorySession sends explicit provider when provided by history item', () => {
+  it('loadHistorySession sends sessionId only (model/mode restored by daemon)', () => {
+    const historyData = {
+      success: true,
+      sessions: [
+        {
+          sessionId: 'hist-opencode',
+          title: 'OpenCode Session',
+          provider: 'opencode',
+          model: 'anthropic/claude-sonnet-4-5',
+          messageCount: 2,
+          lastTimestamp: Date.now(),
+        },
+      ],
+      total: 2,
+    } as unknown as HistoryData;
+
+    const mocks = createMocks();
+
+    const { result } = renderHook(() =>
+      useSessionManagement({
+        messages: [],
+        loading: false,
+        historyData,
+        currentSessionId: null,
+        ...mocks,
+        t,
+      })
+    );
+
+    act(() => {
+      result.current.loadHistorySession('hist-opencode');
+    });
+
+    // 历史快照的行内 provider/model 从不更新，不再随 load_session 下发；
+    // 会话级状态由宿主从 daemon session.get 权威恢复。
+    expect(window.sendToJava).toHaveBeenCalledWith(
+      'load_session:{"sessionId":"hist-opencode"}'
+    );
+  });
+
+  it('loadHistorySession ignores stale row provider/model', () => {
     const historyData = {
       success: true,
       sessions: [
@@ -614,48 +585,11 @@ describe('useSessionManagement', () => {
     );
 
     act(() => {
-      result.current.loadHistorySession('hist-codex', 'codex');
+      result.current.loadHistorySession('hist-codex');
     });
 
     expect(window.sendToJava).toHaveBeenCalledWith(
-      'load_session:{"sessionId":"hist-codex","provider":"codex","model":"gpt-5.4"}'
-    );
-  });
-
-  it('loadHistorySession falls back to current provider when history item has no provider', () => {
-    const historyData = {
-      success: true,
-      sessions: [
-        {
-          sessionId: 'hist-codex-missing-provider',
-          title: 'Codex Session',
-          messageCount: 2,
-          lastTimestamp: Date.now(),
-        },
-      ],
-      total: 2,
-    } as unknown as HistoryData;
-
-    const mocks = createMocks();
-
-    const { result } = renderHook(() =>
-      useSessionManagement({
-        messages: [],
-        loading: false,
-        historyData,
-        currentSessionId: null,
-        currentProvider: 'codex',
-        ...mocks,
-        t,
-      })
-    );
-
-    act(() => {
-      result.current.loadHistorySession('hist-codex-missing-provider');
-    });
-
-    expect(window.sendToJava).toHaveBeenCalledWith(
-      'load_session:{"sessionId":"hist-codex-missing-provider","provider":"codex"}'
+      'load_session:{"sessionId":"hist-codex"}'
     );
   });
 

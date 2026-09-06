@@ -1,4 +1,4 @@
-/* Aligns with ProviderList / DependencySection card language */
+/* Aligns with the shared settings card language (styles/sharedCard.module.less) */
 
 .cliSection {
   min-width: 0;
@@ -576,12 +576,23 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
   color: var(--button-primary-background, #0078d4);
-  text-decoration: none;
   font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
 
   &:hover {
     text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--button-primary-background, #0078d4);
+    outline-offset: 2px;
+    border-radius: 3px;
   }
 }
 
@@ -617,172 +628,5 @@
   /* Hide meta on very narrow panels so name + actions stay one line */
   .cliMeta {
     display: none;
-  }
-}
-
-.dshGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  border: 1px solid var(--border-primary, var(--border-secondary));
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  overflow: visible;
-  transition: border-color 0.15s ease;
-
-  &.installed {
-    border-color: color-mix(in srgb, #4caf50 22%, var(--border-primary, var(--border-secondary)));
-  }
-}
-
-.dshGroupHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 10px 14px 6px;
-}
-
-.dshGroupTitle {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.nestedCard {
-  margin: 0 8px 8px;
-  background: var(--bg-primary, var(--bg-tertiary));
-
-  &:last-child {
-    margin-bottom: 8px;
-  }
-
-  .cliName {
-    font-weight: 500;
-  }
-}
-
-.dshGroup .nestedCard {
-  margin: 0 8px 8px;
-}
-
-.dshCard {
-  border-color: var(--border-primary, var(--border-secondary));
-}
-
-.moreMenu {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.menuButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-
-  &:hover,
-  &[aria-expanded='true'] {
-    background: var(--bg-hover);
-    border-color: var(--border-secondary);
-    color: var(--text-primary);
-  }
-
-  :global(.codicon) {
-    font-size: 15px;
-  }
-}
-
-.dropdownMenu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 100;
-  min-width: 220px;
-  padding: 4px 0;
-  background: var(--bg-elevated, var(--bg-primary));
-  border: 1px solid var(--border-secondary);
-  border-radius: 8px;
-  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.2));
-  overflow: hidden;
-}
-
-.menuItem {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.3;
-  cursor: pointer;
-  text-align: left;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-
-  &:hover:not(:disabled) {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  &:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  &.danger {
-    color: var(--error-color, #f44336);
-
-    &:hover:not(:disabled) {
-      background: rgba(244, 67, 54, 0.1);
-    }
-  }
-
-  :global(.codicon) {
-    font-size: 14px;
-  }
-}
-
-.menuDivider {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--border-secondary);
-  opacity: 0.85;
-}
-
-.menuCheckItem {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.3;
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-
-  &:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  input {
-    margin: 0;
-    accent-color: var(--interactive-primary, #4f8ef7);
   }
 }

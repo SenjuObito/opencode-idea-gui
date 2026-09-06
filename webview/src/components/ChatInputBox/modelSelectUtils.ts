@@ -40,14 +40,12 @@ export function shouldShowModelSearch(modelCount: number, searchQuery: string): 
 
 /**
  * Whether the list should render provider section headers.
- * Only when at least two distinct non-empty provider prefixes exist.
+ * When any model has a provider prefix (e.g. "opencode/xxx"), all models are
+ * grouped — even if they all share the same prefix.
  */
 export function shouldGroupModels(models: ModelInfo[]): boolean {
-  const groups = new Set<string>();
   for (const model of models) {
-    const group = getModelProviderGroup(model.id);
-    if (group) groups.add(group);
-    if (groups.size >= 2) return true;
+    if (getModelProviderGroup(model.id)) return true;
   }
   return false;
 }

@@ -16,7 +16,6 @@ interface SkillHelpDialogProps {
 /**
  * Skills Help Dialog
  * Explains what Skills are and how to use them
- * Shows provider-specific content for Claude vs Codex
  */
 export function SkillHelpDialog({ onClose, currentProvider = 'claude' }: SkillHelpDialogProps) {
   const { t } = useTranslation();
@@ -160,34 +159,12 @@ export function SkillHelpDialog({ onClose, currentProvider = 'claude' }: SkillHe
               <ul>
                 <li>
                   <a
-                    href="https://support.claude.com/en/articles/12512176-what-are-skills"
-                    onClick={(e) => handleLinkClick(e, 'https://support.claude.com/en/articles/12512176-what-are-skills')}
+                    href="https://opencode.ai/docs/skills/"
+                    onClick={(e) => handleLinkClick(e, 'https://opencode.ai/docs/skills/')}
                   >
                     {t(`${hp}.learnMore.link1`)}
                   </a>
-                  {copiedUrl === 'https://support.claude.com/en/articles/12512176-what-are-skills' && (
-                    <span style={COPIED_INDICATOR_STYLE}>✓ {t('mcp.linkCopied')}</span>
-                  )}
-                </li>
-                <li>
-                  <a
-                    href="https://support.claude.com/en/articles/12512198-creating-custom-skills"
-                    onClick={(e) => handleLinkClick(e, 'https://support.claude.com/en/articles/12512198-creating-custom-skills')}
-                  >
-                    {t(`${hp}.learnMore.link2`)}
-                  </a>
-                  {copiedUrl === 'https://support.claude.com/en/articles/12512198-creating-custom-skills' && (
-                    <span style={COPIED_INDICATOR_STYLE}>✓ {t('mcp.linkCopied')}</span>
-                  )}
-                </li>
-                <li>
-                  <a
-                    href="https://github.com/anthropics/skills"
-                    onClick={(e) => handleLinkClick(e, 'https://github.com/anthropics/skills')}
-                  >
-                    {t(`${hp}.learnMore.link3`)}
-                  </a>
-                  {copiedUrl === 'https://github.com/anthropics/skills' && (
+                  {copiedUrl === 'https://opencode.ai/docs/skills/' && (
                     <span style={COPIED_INDICATOR_STYLE}>✓ {t('mcp.linkCopied')}</span>
                   )}
                 </li>

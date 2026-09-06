@@ -369,6 +369,14 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       if (timeoutRef.current != null) return;
       timeoutRef.current = requestAnimationFrame(() => {
         timeoutRef.current = null;
+        // Guard: the turn may have ended (or been interrupted by the user)
+        // while this frame was queued. patchAssistantForStreaming reads the
+        // delta buffers unconditionally and force-sets isStreaming: true, so a
+        // stale frame would flush buffered content into whichever assistant
+        // message streamingMessageIndexRef still points at — leaking one turn's
+        // text into another's bubble. Bail out; the authoritative onStreamEnd
+        // updater owns the final write for that message.
+        if (!isStreamingRef.current) return;
         const now = Date.now();
         const elapsed = now - lastUpdateRef.current;
         if (elapsed < THROTTLE_INTERVAL) {
@@ -403,9 +411,28 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   const scheduleContentRaf = createStreamingRafScheduler(contentUpdateTimeoutRef, lastContentUpdateRef);
   const scheduleThinkingRaf = createStreamingRafScheduler(thinkingUpdateTimeoutRef, lastThinkingUpdateRef);
 
+  /**
+   * Recover streaming state when stream content arrives but we believe we are
+   * idle.  `onStreamStart` is the authoritative start signal, but it can be
+   * dropped (delivered before `window.onStreamStart` was registered, or lost on
+   * a transient channel).  Because the coalescer also pushes message snapshots
+   * via `updateMessages` independent of `streamingActive`, content would still
+   * render while `streamingActive` stayed false — so the host looked busy but
+   * the StatusPanel (and `finalizeTodosForSettledTurn`) behaved as if the turn
+   * had settled, wrongly flipping `in_progress` todos to `completed`.  An
+   * incoming content/thinking delta is undeniable proof the backend is
+   * mid-stream, so we recover the streaming state here.
+   */
+  const ensureStreamingActive = (): void => {
+    if (isStreamingRef.current) return;
+    isStreamingRef.current = true;
+    setStreamingActive(true);
+    startStallWatchdog();
+  };
+
   window.onContentDelta = (delta: string) => {
     if (window.__sessionTransitioning) return;
-    if (!isStreamingRef.current) return;
+    ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
     streamingContentRef.current += delta;
     scheduleContentRaf();
@@ -413,7 +440,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   window.onThinkingDelta = (delta: string) => {
     if (window.__sessionTransitioning) return;
-    if (!isStreamingRef.current) return;
+    ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
     streamingThinkingRef.current += delta;
     scheduleThinkingRaf();

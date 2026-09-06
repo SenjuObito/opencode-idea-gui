@@ -1,17 +1,16 @@
 import type { PermissionMode } from '../../components/ChatInputBox/types';
 
-/** OpenCode is the only CLI-backed provider in the opencode-only build. */
+/**
+ * Headless CLI providers that share opencode-style marker streaming (no npm SDK).
+ * opencode is the only remaining CLI in this fork; grok / kimi / pi were removed.
+ */
 export const CLI_ONLY_PROVIDERS = new Set(['opencode']);
 
 export function isCliOnlyProvider(providerId: string | null | undefined): boolean {
   return !!providerId && CLI_ONLY_PROVIDERS.has(providerId);
 }
 
-/**
- * Plan mode is coerced to default for headless CLI providers unless the host
- * accepts it; OpenCode supports plan natively so the mode is passed through.
- */
-export function normalizeCliPermissionMode(mode: PermissionMode, _provider?: string | null): PermissionMode {
-  void _provider;
-  return mode;
+/** Plan mode is not exposed for CLI providers (always-approve / auto permission). */
+export function normalizeCliPermissionMode(mode: PermissionMode): PermissionMode {
+  return mode === 'plan' ? 'default' : mode;
 }

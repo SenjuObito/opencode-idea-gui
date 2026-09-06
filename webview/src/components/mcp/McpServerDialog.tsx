@@ -5,53 +5,48 @@ import type { McpServer, McpServerSpec } from '../../types/mcp';
 interface McpServerDialogProps {
   server?: McpServer | null;
   existingIds?: string[];
-  currentProvider?: 'claude' | 'codex' | string;
   onClose: () => void;
   onSave: (server: McpServer) => void;
 }
 
 /**
  * MCP Server Configuration Dialog (Add/Edit)
- * Supports both Claude and Codex providers
  */
-export function McpServerDialog({ server, existingIds = [], currentProvider = 'claude', onClose, onSave }: McpServerDialogProps) {
+export function McpServerDialog({ server, existingIds = [], onClose, onSave }: McpServerDialogProps) {
   const { t } = useTranslation();
-  const isCodexMode = currentProvider === 'codex';
   const [saving, setSaving] = useState(false);
   const [jsonContent, setJsonContent] = useState('');
   const [parseError, setParseError] = useState('');
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
-  // Placeholder examples based on provider
-  const claudePlaceholder = `// demo:
+  // Placeholder examples
+  const placeholder = `// OpenCode MCP Server Example (local):
 // {
-//   "mcpServers": {
+//   "mcp": {
 //     "example-server": {
-//       "command": "npx",
-//       "args": [
-//         "-y",
-//         "mcp-server-example"
-//       ]
+//       "type": "local",
+//       "command": ["npx", "-y", "mcp-server-example"],
+//       "enabled": true,
+//       "environment": {
+//         "API_KEY": "{env:MY_API_KEY}"
+//       }
 //     }
 //   }
-// }`;
-
-  const codexPlaceholder = `// Codex MCP Server Example:
+// }
+//
+// OpenCode MCP Server Example (remote):
 // {
-//   "mcpServers": {
-//     "context7": {
-//       "command": "npx",
-//       "args": ["-y", "@upstash/context7-mcp"],
-//       "env": {
-//         "CONTEXT7_API_KEY": "your-api-key"
-//       },
-//       "startup_timeout_sec": 20,
-//       "tool_timeout_sec": 60
+//   "mcp": {
+//     "remote-server": {
+//       "type": "remote",
+//       "url": "https://mcp.example.com/mcp",
+//       "enabled": true,
+//       "headers": {
+//         "Authorization": "Bearer {env:MY_TOKEN}"
+//       }
 //     }
 //   }
 // }`;
-
-  const placeholder = isCodexMode ? codexPlaceholder : claudePlaceholder;
 
   // Calculate line count
   const lineCount = Math.max((jsonContent || placeholder).split('\n').length, 12);
@@ -121,8 +116,33 @@ export function McpServerDialog({ server, existingIds = [], currentProvider = 'c
       const parsed = JSON.parse(cleanedContent);
       const servers: McpServer[] = [];
 
-      // mcpServers format
-      if (parsed.mcpServers && typeof parsed.mcpServers === 'object') {
+      // opencode mcp format: { "mcp": { "server-name": { ... } } }
+      if (parsed.mcp && typeof parsed.mcp === 'object') {
+        for (const [id, config] of Object.entries(parsed.mcp)) {
+          // Check if ID already exists (except in edit mode)
+          if (!server && existingIds.includes(id)) {
+            setParseError(t('mcp.serverDialog.errors.idExists', { id }));
+            return null;
+          }
+
+          const serverConfig = config as any;
+          // Ensure type field exists
+          const serverSpec: McpServerSpec = {
+            ...serverConfig,
+            type: serverConfig.type || 'local',
+          };
+
+          const newServer: McpServer = {
+            id,
+            name: serverConfig.name || id,
+            server: serverSpec,
+            enabled: serverConfig.enabled !== false,
+          };
+          servers.push(newServer);
+        }
+      }
+      // Legacy mcpServers format: { "mcpServers": { "server-name": { ... } } }
+      else if (parsed.mcpServers && typeof parsed.mcpServers === 'object') {
         for (const [id, config] of Object.entries(parsed.mcpServers)) {
           // Check if ID already exists (except in edit mode)
           if (!server && existingIds.includes(id)) {
@@ -132,7 +152,7 @@ export function McpServerDialog({ server, existingIds = [], currentProvider = 'c
 
           const serverConfig = config as any;
           // Preserve all original fields, only set default type
-          const serverSpec = {
+          const serverSpec: McpServerSpec = {
             ...serverConfig,
             type: serverConfig.type || (serverConfig.command ? 'stdio' : serverConfig.url ? 'http' : 'stdio'),
           };
@@ -142,12 +162,7 @@ export function McpServerDialog({ server, existingIds = [], currentProvider = 'c
           const newServer: McpServer = {
             id,
             name: serverConfig.name || id,
-            server: serverSpec as McpServerSpec,
-            apps: {
-              claude: !isCodexMode,
-              codex: isCodexMode,
-              gemini: false,
-            },
+            server: serverSpec,
             enabled: true,
           };
           servers.push(newServer);
@@ -157,7 +172,7 @@ export function McpServerDialog({ server, existingIds = [], currentProvider = 'c
       else if (parsed.command || parsed.url) {
         const id = `server-${Date.now()}`;
         // Preserve all original fields
-        const serverSpec = {
+        const serverSpec: McpServerSpec = {
           ...parsed,
           type: parsed.type || (parsed.command ? 'stdio' : 'http'),
         };
@@ -167,12 +182,7 @@ export function McpServerDialog({ server, existingIds = [], currentProvider = 'c
         const newServer: McpServer = {
           id,
           name: parsed.name || id,
-          server: serverSpec as McpServerSpec,
-          apps: {
-            claude: !isCodexMode,
-            codex: isCodexMode,
-            gemini: false,
-          },
+          server: serverSpec,
           enabled: true,
         };
         servers.push(newServer);

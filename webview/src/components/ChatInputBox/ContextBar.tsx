@@ -2,11 +2,9 @@ import React, { useRef, useState, useEffect, useCallback, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getFileIcon } from '../../utils/fileIcons';
 import { TokenIndicator } from './TokenIndicator';
-import type { SelectedAgent } from './types';
 
 const HIDDEN_INPUT_STYLE: React.CSSProperties = { display: 'none' };
 const CURSOR_DEFAULT_STYLE: React.CSSProperties = { cursor: 'default' };
-const ROBOT_ICON_STYLE: React.CSSProperties = { marginRight: 4 };
 const FILE_ICON_STYLE: React.CSSProperties = {
   marginRight: 4,
   display: 'inline-flex',
@@ -24,14 +22,9 @@ interface ContextBarProps {
   showUsage?: boolean;
   onClearFile?: () => void;
   onAddAttachment?: (files: FileList) => void;
-  selectedAgent?: SelectedAgent | null;
-  onClearAgent?: () => void;
   /** Current provider (for conditional rendering) */
-  currentProvider?: string;
   /** Whether there are messages (for rewind button visibility) */
-  hasMessages?: boolean;
   /** Rewind callback */
-  onRewind?: () => void;
   /** Whether StatusPanel is expanded */
   statusPanelExpanded?: boolean;
   /** Toggle StatusPanel expand/collapse */
@@ -40,6 +33,8 @@ interface ContextBarProps {
   autoOpenFileEnabled?: boolean;
   /** Callback to enable file context (called from placeholder click) */
   onRequestEnableFileContext?: () => void;
+  /** Callback to trigger compact command */
+  onCompactClick?: () => void;
 }
 
 export const ContextBar: React.FC<ContextBarProps> = memo(({
@@ -51,15 +46,11 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
   showUsage = true,
   onClearFile,
   onAddAttachment,
-  selectedAgent,
-  onClearAgent,
-  currentProvider = 'claude',
-  hasMessages = false,
-  onRewind,
   statusPanelExpanded = true,
   onToggleStatusPanel,
   autoOpenFileEnabled = false,
   onRequestEnableFileContext,
+  onCompactClick,
 }) => {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -156,7 +147,12 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
 
         {/* Token Indicator */}
         {showUsage && (
-          <div className="context-token-indicator">
+          <div 
+            className="context-token-indicator"
+            onClick={onCompactClick}
+            style={{ cursor: 'pointer' }}
+            title={t('chat.compactTooltip')}
+          >
             <TokenIndicator
               percentage={percentage}
               usedTokens={usedTokens}
@@ -179,31 +175,6 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
         <div className="context-tool-divider" />
       </div>
 
-      {/* Selected Agent Chip */}
-      {selectedAgent && (
-        <div
-          className="context-item has-tooltip"
-          data-tooltip={selectedAgent.name}
-          style={CURSOR_DEFAULT_STYLE}
-        >
-          <span
-            className="codicon codicon-robot"
-            style={ROBOT_ICON_STYLE}
-          />
-          <span className="context-text">
-            <span dir="ltr">
-              {selectedAgent.name.length > 3 
-                ? `${selectedAgent.name.slice(0, 3)}...` 
-                : selectedAgent.name}
-            </span>
-          </span>
-          <span 
-            className="codicon codicon-close context-close" 
-            onClick={onClearAgent}
-            title="Remove agent"
-          />
-        </div>
-      )}
 
       {/* Active Context Chip or Empty Placeholder */}
       {displayText ? (
@@ -276,17 +247,6 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
           </button>
         )}
 
-        {/* Rewind button */}
-        {currentProvider === 'claude' && onRewind && (
-          <button
-            className="context-tool-btn has-tooltip"
-            onClick={onRewind}
-            disabled={!hasMessages}
-            data-tooltip={t('rewind.tooltip')}
-          >
-            <span className="codicon codicon-discard" />
-          </button>
-        )}
       </div>
     </div>
   );

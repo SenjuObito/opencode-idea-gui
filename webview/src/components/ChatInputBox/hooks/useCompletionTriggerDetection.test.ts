@@ -30,8 +30,6 @@ describe('useCompletionTriggerDetection', () => {
           getTextContent: () => editable.textContent ?? '',
           fileCompletion: completions.file,
           commandCompletion: completions.command,
-          agentCompletion: completions.agent,
-          promptCompletion: completions.prompt,
           dollarCommandCompletion: completions.dollar,
         }),
       {

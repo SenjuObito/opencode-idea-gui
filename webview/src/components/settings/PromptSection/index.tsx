@@ -1,295 +1,317 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { PromptConfig, PromptProvider, PromptScope } from '../../../types/prompt';
-import { usePromptManagement } from '../hooks/usePromptManagement';
-import { updateGlobalPromptsCache, updateProjectPromptsCache } from '../../ChatInputBox/providers';
-import PromptScopeSection from './PromptScopeSection';
-import PromptDialog from '../../PromptDialog';
-import ConfirmDialog from '../../ConfirmDialog';
-import PromptExportDialog from './PromptExportDialog';
-import PromptImportConfirmDialog from './PromptImportConfirmDialog';
+import { sendBridgeEvent } from '../../../utils/bridge';
 import styles from './style.module.less';
 
-type PromptCallbackPayload = { provider: PromptProvider; prompts: PromptConfig[] };
+/**
+ * Opencode-native command ("prompt") management.
+ *
+ * Commands are markdown files in the official opencode layout:
+ *   global:  ~/.config/opencode/command/<name>.md
+ *   project: <projectRoot>/.opencode/command/<name>.md
+ * Frontmatter carries description / agent / model / subtask; $ARGUMENTS is
+ * substituted by opencode at run time. The Java CommandsHandler owns the
+ * filesystem; this component only talks bridge messages.
+ */
 
-interface PromptSectionProps {
-  onSuccess?: (message: string) => void;
-  currentProvider?: 'claude' | 'codex' | string;
+
+declare global {
+  interface Window {
+    __onCommandsList?: (json: string) => void;
+    __onCommandsRead?: (json: string) => void;
+    __onCommandsSaved?: (json: string) => void;
+    __onCommandsDeleted?: (json: string) => void;
+  }
 }
 
-function normalizePromptProvider(provider?: string | null): PromptProvider {
-  return provider === 'codex' ? 'codex' : 'claude';
+type Scope = 'global' | 'project';
+
+interface CommandEntry {
+  name: string;
+  fileName: string;
+  description?: string;
+  agent?: string;
+  model?: string;
+  lastModified?: number;
 }
 
-function parsePromptCallbackPayload(json: string, fallbackProvider: PromptProvider): PromptCallbackPayload | null {
-  const parsed: unknown = JSON.parse(json);
-  // Legacy payloads predate provider routing and belong to Claude by default.
-  if (Array.isArray(parsed)) return { provider: 'claude', prompts: parsed as PromptConfig[] };
-  if (!parsed || typeof parsed !== 'object') return null;
-  const value = parsed as { provider?: unknown; prompts?: unknown };
-  if (!Array.isArray(value.prompts)) return null;
-  return {
-    provider: normalizePromptProvider(typeof value.provider === 'string' ? value.provider : fallbackProvider),
-    prompts: value.prompts as PromptConfig[],
-  };
+interface CommandTemplate {
+  id: string;
+  descriptionKey: string;
+  content: string;
 }
 
-export default function PromptSection({
-  onSuccess,
-  currentProvider = 'claude',
-}: PromptSectionProps) {
+const COMMAND_TEMPLATES: CommandTemplate[] = [
+  {
+    id: 'review',
+    descriptionKey: 'settings.commands.templates.review',
+    content: `---
+description: Review the current changes for bugs and style issues
+agent: build
+---
+
+Review the current git diff. Focus on:
+1. Correctness and edge cases
+2. Security issues
+3. Readability and naming
+
+Report findings as a numbered list with file references. $ARGUMENTS`,
+  },
+  {
+    id: 'explain',
+    descriptionKey: 'settings.commands.templates.explain',
+    content: `---
+description: Explain a file or symbol in plain language
+agent: build
+---
+
+Explain the following code in plain language, including its responsibility,
+inputs/outputs and edge cases. $ARGUMENTS`,
+  },
+  {
+    id: 'tests',
+    descriptionKey: 'settings.commands.templates.tests',
+    content: `---
+description: Generate unit tests for the target code
+agent: build
+---
+
+Write thorough unit tests for $ARGUMENTS. Cover happy paths, boundary values
+and error handling. Follow the existing test style of this project.`,
+  },
+  {
+    id: 'refactor',
+    descriptionKey: 'settings.commands.templates.refactor',
+    content: `---
+description: Refactor the target code without changing behaviour
+agent: build
+---
+
+Refactor $ARGUMENTS to improve readability and structure while keeping
+behaviour identical. Explain the motivation for each change.`,
+  },
+  {
+    id: 'commit',
+    descriptionKey: 'settings.commands.templates.commit',
+    content: `---
+description: Generate a conventional commit message for staged changes
+agent: build
+---
+
+Look at the staged diff and write a single conventional-commit message
+(type(scope): subject) followed by an optional body. Output the message only.`,
+  },
+];
+
+const ListRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+  borderBottom: '1px solid var(--border-color, rgba(128,128,128,0.2))',
+};
+const NameStyle: React.CSSProperties = { fontWeight: 600, minWidth: 140 };
+const DescStyle: React.CSSProperties = { flex: 1, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+const TagStyle: React.CSSProperties = {
+  fontSize: 11, padding: '1px 6px', borderRadius: 8,
+  background: 'rgba(128,128,128,0.15)',
+};
+const LinkButtonStyle: React.CSSProperties = {
+  background: 'none', border: 'none', color: 'var(--link-color, #4c8dff)',
+  cursor: 'pointer', padding: '2px 6px', fontSize: 12,
+};
+const AreaStyle: React.CSSProperties = {
+  width: '100%', minHeight: 320, fontFamily: 'monospace', fontSize: 12,
+  padding: 8, resize: 'vertical',
+};
+
+const PromptSection = () => {
   const { t } = useTranslation();
-  const promptProvider: PromptProvider = normalizePromptProvider(currentProvider);
+  const [scope, setScope] = useState<Scope>('global');
+  const [commands, setCommands] = useState<CommandEntry[]>([]);
+  const [dir, setDir] = useState('');
+  const [editor, setEditor] = useState<{ open: boolean; name: string; original: string; content: string }>({
+    open: false, name: '', original: '', content: '',
+  });
+  const [showLibrary, setShowLibrary] = useState(false);
 
-  // Use prompt management hook
-  const {
-    globalPrompts,
-    projectPrompts,
-    projectInfo,
-    promptsLoading,
-    promptDialog,
-    deletePromptConfirm,
-    importPreviewDialog,
-    exportDialog,
-    loadAllPrompts,
-    updateGlobalPrompts,
-    updateProjectPrompts,
-    updateProjectInfo,
-    handleAddPrompt,
-    handleEditPrompt,
-    handleClosePromptDialog,
-    handleDeletePrompt,
-    handleSavePrompt,
-    confirmDeletePrompt,
-    cancelDeletePrompt,
-    handlePromptOperationResult,
-    handleExportPrompts,
-    handleCloseExportDialog,
-    handleConfirmExport,
-    handleImportPromptsFile,
-    handlePromptImportPreviewResult,
-    handleCloseImportPreview,
-    handleSaveImportedPrompts,
-    handlePromptImportResult,
-    cleanupPromptsTimeout,
-  } = usePromptManagement({ onSuccess, provider: promptProvider });
+  const refresh = useCallback((targetScope: Scope) => {
+    sendBridgeEvent('commands_list', JSON.stringify({ scope: targetScope }));
+  }, []);
 
-  // Load project info and prompts on mount
   useEffect(() => {
-    // Load project info first
-    if (window.sendToJava) {
-      window.sendToJava('get_project_info:{}');
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      try {
+        const data = JSON.parse(detail);
+        if (data.scope && data.scope !== scope) {
+          return;
+        }
+        if (Array.isArray(data.commands)) {
+          setCommands(data.commands);
+          setDir(data.dir || '');
+        }
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('on-commands-list', handler as EventListener);
+    window.__onCommandsList = (json: string) => {
+      window.dispatchEvent(new CustomEvent('on-commands-list', { detail: json }));
+    };
+    window.__onCommandsSaved = (json: string) => {
+      const data = JSON.parse(json);
+      sendBridgeEvent('commands_list', JSON.stringify({ scope: data.scope || scope }));
+    };
+    window.__onCommandsDeleted = (json: string) => {
+      const data = JSON.parse(json);
+      sendBridgeEvent('commands_list', JSON.stringify({ scope: data.scope || scope }));
+    };
+    return () => window.removeEventListener('on-commands-list', handler as EventListener);
+  }, [scope]);
+
+  useEffect(() => {
+    refresh(scope);
+  }, [scope, refresh]);
+
+  const openEditor = (name: string) => {
+    const handler = (event: Event) => {
+      window.removeEventListener('on-commands-read', handler as EventListener);
+      const data = JSON.parse((event as CustomEvent<string>).detail);
+      setEditor({ open: true, name, original: data.exists ? name : '', content: data.content || '' });
+    };
+    window.addEventListener('on-commands-read', handler as EventListener);
+    window.__onCommandsRead = (json: string) => {
+      window.dispatchEvent(new CustomEvent('on-commands-read', { detail: json }));
+    };
+    sendBridgeEvent('commands_read', JSON.stringify({ scope, name }));
+  };
+
+  const save = () => {
+    sendBridgeEvent('commands_save', JSON.stringify({
+      scope, name: editor.name, originalName: editor.original, content: editor.content,
+    }));
+    setEditor({ open: false, name: '', original: '', content: '' });
+  };
+
+  const remove = (name: string) => {
+    if (!window.confirm(t('settings.commands.confirmDelete', { name }))) {
+      return;
     }
-    // Then load prompts
-    loadAllPrompts();
-    return () => cleanupPromptsTimeout();
-  }, [loadAllPrompts, cleanupPromptsTimeout, promptProvider]);
+    sendBridgeEvent('commands_delete', JSON.stringify({ scope, name }));
+  };
 
-  // Setup window callbacks
-  useEffect(() => {
-    // Save original callbacks to restore on unmount
-    const originalUpdateGlobalPrompts = window.updateGlobalPrompts;
-    const originalUpdateProjectPrompts = window.updateProjectPrompts;
-    const originalUpdateProjectInfo = window.updateProjectInfo;
-    const originalPromptOperationResult = window.promptOperationResult;
-    const originalPromptImportPreviewResult = window.promptImportPreviewResult;
-    const originalPromptImportResult = window.promptImportResult;
-
-    // Chain our handlers with existing ones
-    window.updateGlobalPrompts = (json: string) => {
-      try {
-        const payload = parsePromptCallbackPayload(json, promptProvider);
-        if (!payload || payload.provider !== promptProvider) {
-          originalUpdateGlobalPrompts?.(json);
-          return;
-        }
-        const promptsList = payload.prompts;
-        updateGlobalPrompts(promptsList);
-
-        // ✅ Sync update promptProvider cache
-        const promptItems = promptsList.map((prompt) => ({
-          id: prompt.id,
-          name: prompt.name,
-          content: prompt.content,
-          scope: 'global' as PromptScope,
-          provider: promptProvider,
-        }));
-        updateGlobalPromptsCache(promptItems, promptProvider);
-      } catch (error) {
-        console.error('[PromptSection] Failed to parse global prompts:', error);
-      }
-      // Call original handler if exists
-      originalUpdateGlobalPrompts?.(json);
-    };
-
-    window.updateProjectPrompts = (json: string) => {
-      try {
-        const payload = parsePromptCallbackPayload(json, promptProvider);
-        if (!payload || payload.provider !== promptProvider) {
-          originalUpdateProjectPrompts?.(json);
-          return;
-        }
-        const promptsList = payload.prompts;
-        updateProjectPrompts(promptsList);
-
-        // ✅ Sync update promptProvider cache
-        const promptItems = promptsList.map((prompt) => ({
-          id: prompt.id,
-          name: prompt.name,
-          content: prompt.content,
-          scope: 'project' as PromptScope,
-          provider: promptProvider,
-        }));
-        updateProjectPromptsCache(promptItems, promptProvider);
-      } catch (error) {
-        console.error('[PromptSection] Failed to parse project prompts:', error);
-      }
-      // Call original handler if exists
-      originalUpdateProjectPrompts?.(json);
-    };
-
-    window.updateProjectInfo = (json: string) => {
-      try {
-        const info = JSON.parse(json);
-        updateProjectInfo(info);
-      } catch (error) {
-        console.error('[PromptSection] Failed to parse project info:', error);
-      }
-      // Call original handler if exists
-      originalUpdateProjectInfo?.(json);
-    };
-
-    window.promptOperationResult = (json: string) => {
-      try {
-        const result = JSON.parse(json);
-        handlePromptOperationResult(result);
-      } catch (error) {
-        console.error('[PromptSection] Failed to parse prompt operation result:', error);
-      }
-      // Call original handler if exists
-      originalPromptOperationResult?.(json);
-    };
-
-    window.promptImportPreviewResult = (json: string) => {
-      try {
-        const previewData = JSON.parse(json);
-        handlePromptImportPreviewResult(previewData);
-      } catch (error) {
-        console.error('[PromptSection] Failed to parse prompt import preview result:', error);
-      }
-      // Call original handler if exists
-      originalPromptImportPreviewResult?.(json);
-    };
-
-    window.promptImportResult = (json: string) => {
-      try {
-        const result = JSON.parse(json);
-        handlePromptImportResult(result);
-      } catch (error) {
-        console.error('[PromptSection] Failed to parse prompt import result:', error);
-      }
-      // Call original handler if exists
-      originalPromptImportResult?.(json);
-    };
-
-    return () => {
-      // Restore original callbacks instead of deleting them
-      // This ensures other components (like promptProvider) continue to receive updates
-      window.updateGlobalPrompts = originalUpdateGlobalPrompts;
-      window.updateProjectPrompts = originalUpdateProjectPrompts;
-      window.updateProjectInfo = originalUpdateProjectInfo;
-      window.promptOperationResult = originalPromptOperationResult;
-      window.promptImportPreviewResult = originalPromptImportPreviewResult;
-      window.promptImportResult = originalPromptImportResult;
-    };
-  }, [
-    updateGlobalPrompts,
-    updateProjectPrompts,
-    updateProjectInfo,
-    handlePromptOperationResult,
-    handlePromptImportPreviewResult,
-    handlePromptImportResult,
-    promptProvider,
-  ]);
-
-  // Get all prompts for export dialog (combining global and project based on export scope)
-  const getPromptsForExport = (scope: PromptScope) => {
-    return scope === 'global' ? globalPrompts : projectPrompts;
+  const importTemplate = (tpl: CommandTemplate) => {
+    setEditor({ open: true, name: tpl.id, original: '', content: tpl.content });
+    setShowLibrary(false);
   };
 
   return (
-    <div className={styles.promptLibrary}>
-      <h3>{t('settings.prompt.title')}</h3>
-      <p className={styles.description}>{t('settings.prompt.description')}</p>
+    <div className={styles.promptSection}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <h3 style={{ margin: 0, flex: 1 }}>{t('settings.commands.title')}</h3>
+        <button style={LinkButtonStyle} onClick={() => setShowLibrary((v) => !v)}>
+          {t('settings.commands.library')}
+        </button>
+        <button style={LinkButtonStyle} onClick={() => openEditor(t('settings.commands.newName'))}>
+          + {t('settings.commands.new')}
+        </button>
+      </div>
 
-      {/* Global Prompts Section */}
-      <PromptScopeSection
-        title={t('settings.prompt.global')}
-        scope="global"
-        prompts={globalPrompts}
-        loading={promptsLoading}
-        onAdd={() => handleAddPrompt('global')}
-        onEdit={(prompt) => handleEditPrompt(prompt, 'global')}
-        onDelete={(prompt) => handleDeletePrompt(prompt, 'global')}
-        onExport={() => handleExportPrompts('global')}
-        onImport={() => handleImportPromptsFile('global')}
-      />
+      <p style={{ marginTop: 0, opacity: 0.7, fontSize: 12 }}>
+        {t('settings.commands.description')}
+      </p>
 
-      {/* Project Prompts Section */}
-      {projectInfo?.available ? (
-        <PromptScopeSection
-          title={t('settings.prompt.projectScope', { projectName: projectInfo.name })}
-          scope="project"
-          prompts={projectPrompts}
-          loading={promptsLoading}
-          onAdd={() => handleAddPrompt('project')}
-          onEdit={(prompt) => handleEditPrompt(prompt, 'project')}
-          onDelete={(prompt) => handleDeletePrompt(prompt, 'project')}
-          onExport={() => handleExportPrompts('project')}
-          onImport={() => handleImportPromptsFile('project')}
-        />
-      ) : (
-        <div className={styles.noProject}>
-          <p>{t('settings.prompt.noProject')}</p>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {(['global', 'project'] as Scope[]).map((s) => (
+          <button
+            key={s}
+            style={{
+              ...TagStyle,
+              cursor: 'pointer',
+              outline: s === scope ? '1px solid var(--link-color, #4c8dff)' : 'none',
+            }}
+            onClick={() => setScope(s)}
+          >
+            {t(`settings.commands.scope.${s}`)}
+            {s === 'project' ? ' (.opencode/command)' : ' (~/.config/opencode/command)'}
+          </button>
+        ))}
+      </div>
+
+      {showLibrary && (
+        <div style={{ border: '1px solid rgba(128,128,128,0.3)', borderRadius: 6, padding: 10, marginBottom: 12 }}>
+          <strong>{t('settings.commands.libraryTitle')}</strong>
+          {COMMAND_TEMPLATES.map((tpl) => (
+            <div key={tpl.id} style={ListRowStyle}>
+              <span style={NameStyle}>{tpl.id}</span>
+              <span style={DescStyle}>{t(tpl.descriptionKey)}</span>
+              <button style={LinkButtonStyle} onClick={() => importTemplate(tpl)}>
+                {t('settings.commands.import')}
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Prompt add/edit dialog */}
-      <PromptDialog
-        isOpen={promptDialog.isOpen}
-        prompt={promptDialog.prompt}
-        onClose={handleClosePromptDialog}
-        onSave={handleSavePrompt}
-      />
+      <div style={{ border: '1px solid rgba(128,128,128,0.3)', borderRadius: 6 }}>
+        {commands.length === 0 && (
+          <div style={{ padding: 16, opacity: 0.6 }}>{t('settings.commands.empty')}</div>
+        )}
+        {commands.map((cmd) => (
+          <div key={cmd.name} style={ListRowStyle}>
+            <span style={NameStyle}>{cmd.name}</span>
+            {cmd.agent && <span style={TagStyle}>{cmd.agent}</span>}
+            <span style={DescStyle}>{cmd.description}</span>
+            <button style={LinkButtonStyle} onClick={() => openEditor(cmd.name)}>
+              {t('settings.commands.edit')}
+            </button>
+            <button style={LinkButtonStyle} onClick={() => remove(cmd.name)}>
+              {t('settings.commands.delete')}
+            </button>
+          </div>
+        ))}
+      </div>
 
-      {/* Prompt delete confirmation dialog */}
-      <ConfirmDialog
-        isOpen={deletePromptConfirm.isOpen}
-        title={t('settings.prompt.deleteConfirmTitle')}
-        message={t('settings.prompt.deleteConfirmMessage', { name: deletePromptConfirm.prompt?.name || '' })}
-        confirmText={t('common.delete')}
-        cancelText={t('common.cancel')}
-        onConfirm={confirmDeletePrompt}
-        onCancel={cancelDeletePrompt}
-      />
-
-      {/* Prompt export dialog */}
-      {exportDialog.isOpen && (
-        <PromptExportDialog
-          prompts={getPromptsForExport(exportDialog.scope)}
-          onConfirm={handleConfirmExport}
-          onCancel={handleCloseExportDialog}
-        />
+      {dir && (
+        <p style={{ fontSize: 11, opacity: 0.5 }}>{dir}</p>
       )}
 
-      {/* Prompt import preview dialog */}
-      {importPreviewDialog.isOpen && importPreviewDialog.previewData && (
-        <PromptImportConfirmDialog
-          previewData={importPreviewDialog.previewData}
-          onConfirm={(selectedIds, strategy) => handleSaveImportedPrompts(selectedIds, strategy, importPreviewDialog.scope)}
-          onCancel={handleCloseImportPreview}
-        />
+      {editor.open && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20000,
+        }}>
+          <div style={{
+            background: 'var(--bg-color, #1e1e1e)', color: 'inherit', borderRadius: 8,
+            padding: 16, width: 'min(760px, 90vw)', maxHeight: '85vh', overflow: 'auto',
+          }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+              <strong>{t('settings.commands.editorTitle')}</strong>
+              <input
+                value={editor.name}
+                onChange={(e) => setEditor((s) => ({ ...s, name: e.target.value }))}
+                placeholder={t('settings.commands.namePlaceholder')}
+                style={{ flex: 1, padding: '4px 8px' }}
+              />
+            </div>
+            <textarea
+              style={AreaStyle}
+              value={editor.content}
+              onChange={(e) => setEditor((s) => ({ ...s, content: e.target.value }))}
+              spellCheck={false}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+              <button onClick={() => setEditor({ open: false, name: '', original: '', content: '' })}>
+                {t('common.cancel')}
+              </button>
+              <button
+                style={{ background: '#4c8dff', color: '#fff', border: 'none', padding: '4px 14px', borderRadius: 4 }}
+                onClick={save}
+              >
+                {t('common.save')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
-}
+};
+
+export default PromptSection;

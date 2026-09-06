@@ -10,6 +10,8 @@ export interface ToastMessage {
   message: string;
   type?: 'info' | 'success' | 'warning' | 'error';
   action?: ToastAction;
+  /** Optional per-toast display duration (ms); overrides the type-based default. */
+  duration?: number;
 }
 
 interface ToastProps {
@@ -92,7 +94,7 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ messages, onDism
           key={msg.id}
           message={msg}
           onDismiss={onDismiss}
-          duration={getDuration(msg.type)}
+          duration={msg.duration ?? getDuration(msg.type)}
         />
       ))}
     </div>

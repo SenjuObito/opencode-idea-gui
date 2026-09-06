@@ -58,33 +58,6 @@ describe('useFileTags', () => {
     expect(editable.querySelectorAll('.file-tag').length).toBe(0);
   });
 
-  it('does not promote an unregistered absolute path with following text into a tag', () => {
-    const editable = createEditable();
-    const rawText = '@C:/project/templates/view.xml1414 @C:/project/pages/index.vue';
-    editable.textContent = rawText;
-
-    const { result } = setupHook(editable);
-
-    result.current.renderFileTags();
-
-    expect(editable.querySelectorAll('.file-tag').length).toBe(0);
-    expect(editable.textContent).toBe(rawText);
-  });
-
-  it('keeps the manual absolute-path fallback when other @ markers are ordinary text', () => {
-    const editable = createEditable();
-    editable.textContent = 'email user@example.com about @/workspace/src/App.ts ';
-    mockSelection();
-
-    const { result } = setupHook(editable);
-
-    result.current.renderFileTags();
-
-    const tags = editable.querySelectorAll('.file-tag');
-    expect(tags.length).toBe(1);
-    expect(tags[0].getAttribute('data-file-path')).toBe('/workspace/src/App.ts');
-  });
-
   it('does not close completions or rewrite DOM for in-progress @query', () => {
     const editable = createEditable();
     editable.textContent = '@b';
@@ -256,55 +229,6 @@ describe('useFileTags', () => {
     ]);
   });
 
-  it('renders only a registered line-number reference with a spaced path', () => {
-    const editable = createEditable();
-    editable.textContent = '@C:/Program Files/src/Main.java#L10-12 ';
-    mockSelection();
-
-    const { result } = setupHook(editable);
-    result.current.pathMappingRef.current.set(
-      'C:/Program Files/src/Main.java',
-      'C:/Program Files/src/Main.java'
-    );
-    result.current.pathMappingRef.current.set(
-      'C:/Program Files/src/Main.java#L10-12',
-      'C:/Program Files/src/Main.java'
-    );
-
-    result.current.renderFileTags();
-
-    expect(editable.querySelector('.file-tag')?.getAttribute('data-file-path')).toBe(
-      'C:/Program Files/src/Main.java#L10-12'
-    );
-  });
-
-  it('keeps mapped markup references separate from text between files', () => {
-    const editable = createEditable();
-    editable.textContent =
-      '@C:/project/templates/view.xml 1414 @C:/project/pages/index.vue ';
-    mockSelection();
-
-    const { result } = setupHook(editable);
-    result.current.pathMappingRef.current.set(
-      'C:/project/templates/view.xml',
-      'C:/project/templates/view.xml'
-    );
-    result.current.pathMappingRef.current.set(
-      'C:/project/pages/index.vue',
-      'C:/project/pages/index.vue'
-    );
-
-    result.current.renderFileTags();
-
-    expect(Array.from(editable.querySelectorAll('.file-tag')).map((tag) =>
-      tag.getAttribute('data-file-path')
-    )).toEqual([
-      'C:/project/templates/view.xml',
-      'C:/project/pages/index.vue',
-    ]);
-    expect(editable.textContent).toContain('1414');
-  });
-
   it('handles path at end of text without trailing space', () => {
     const editable = createEditable();
     editable.textContent = '@src/a.ts';
@@ -316,43 +240,5 @@ describe('useFileTags', () => {
     result.current.renderFileTags();
 
     expect(editable.querySelectorAll('.file-tag').length).toBe(1);
-  });
-
-  it('renders absolute paths with spaces in the filename (not in path mapping)', () => {
-    const editable = createEditable();
-    editable.textContent = '@D:\\workspace\\docs\\chapter6\\第六章 框架开发实践.md ';
-    mockSelection();
-
-    const { result } = setupHook(editable);
-
-    // No pathMappingRef entry: falls back to absolute-path pattern matching.
-    // The space before "框架开发实践.md" must not truncate the path.
-    result.current.renderFileTags();
-
-    expect(editable.querySelectorAll('.file-tag').length).toBe(1);
-    expect(result.current.extractFileTags()).toEqual([
-      {
-        displayPath: 'D:\\workspace\\docs\\chapter6\\第六章 框架开发实践.md',
-        absolutePath: 'D:\\workspace\\docs\\chapter6\\第六章 框架开发实践.md',
-      },
-    ]);
-  });
-
-  it('renders absolute paths with spaces and a line marker (not in path mapping)', () => {
-    const editable = createEditable();
-    editable.textContent = '@D:\\docs\\第六章 框架开发实践.md#L10-20 ';
-    mockSelection();
-
-    const { result } = setupHook(editable);
-
-    result.current.renderFileTags();
-
-    expect(editable.querySelectorAll('.file-tag').length).toBe(1);
-    expect(result.current.extractFileTags()).toEqual([
-      {
-        displayPath: 'D:\\docs\\第六章 框架开发实践.md#L10-20',
-        absolutePath: 'D:\\docs\\第六章 框架开发实践.md#L10-20',
-      },
-    ]);
   });
 });

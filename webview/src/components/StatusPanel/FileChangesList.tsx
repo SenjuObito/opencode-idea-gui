@@ -26,7 +26,10 @@ interface FileChangeRowProps {
 
 const FileChangeRow = memo(({ fileChange, isUndoing, onOpen, onShowDiff, onUndo, t }: FileChangeRowProps) => {
   const status = String(fileChange.status || 'M');
-  const statusClass = status === 'A' ? 'added' : 'modified';
+  const statusClass = status === 'A' ? 'added' : status === 'D' ? 'deleted' : 'modified';
+  // 编辑仍在进行中（tool_use 已发出、tool_result 未到达）：显示 pending 指示，
+  // 并禁用撤销/对比——此时没有可撤销/可对比的确定内容。
+  const isPending = fileChange.pending === true;
 
   const handleOpen = useCallback(() => {
     onOpen(fileChange);
@@ -53,6 +56,12 @@ const FileChangeRow = memo(({ fileChange, isUndoing, onOpen, onShowDiff, onUndo,
       <span className={`file-change-status status-${statusClass}`}>
         {status}
       </span>
+      {isPending && (
+        <span
+          className="file-change-status status-pending codicon codicon-loading codicon-modifier-spin"
+          title={t('statusPanel.editsPending')}
+        />
+      )}
 
       {/* File icon */}
       <FileIcon filePath={fileChange.filePath} />
@@ -69,22 +78,7 @@ const FileChangeRow = memo(({ fileChange, isUndoing, onOpen, onShowDiff, onUndo,
         {fileChange.fileName}
       </span>
 
-      {/* Multiple agents in this session edited the same file */}
-      {fileChange.multiAgent === true && (
-        <span
-          className="file-change-multi-agent"
-          title={t('statusPanel.multiAgentEdited', {
-            count: fileChange.agentIds?.length ?? 2,
-          })}
-        >
-          <span className="codicon codicon-organization" aria-hidden />
-          <span className="file-change-multi-agent-label">
-            {t('statusPanel.multiAgentBadge')}
-          </span>
-        </span>
-      )}
-
-      {/* Stats — net session baseline→current, not sum of ops */}
+      {/* Stats */}
       {(fileChange.additions > 0 || fileChange.deletions > 0) && (
         <span className="file-change-stats">
           {fileChange.additions > 0 && <span className="additions">+{fileChange.additions}</span>}
@@ -98,6 +92,7 @@ const FileChangeRow = memo(({ fileChange, isUndoing, onOpen, onShowDiff, onUndo,
           className="file-change-action-btn diff-btn"
           onClick={handleShowDiff}
           title={t('statusPanel.showDiff')}
+          disabled={isPending}
         >
           <span className="codicon codicon-diff" />
         </button>
@@ -105,7 +100,7 @@ const FileChangeRow = memo(({ fileChange, isUndoing, onOpen, onShowDiff, onUndo,
           className="file-change-action-btn undo-btn"
           onClick={handleUndo}
           title={t('statusPanel.undoChanges')}
-          disabled={isUndoing}
+          disabled={isUndoing || isPending}
         >
           {isUndoing ? (
             <span className="codicon codicon-loading codicon-modifier-spin" />

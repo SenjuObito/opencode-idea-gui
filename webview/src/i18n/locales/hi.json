@@ -11,7 +11,6 @@
     "back": "वापस",
     "close": "बंद करें",
     "newSession": "नया सत्र",
-    "newTab": "नया टैब",
     "dontAskAgain": "फिर से न पूछें",
     "history": "इतिहास",
     "settings": "सेटिंग्स",
@@ -35,9 +34,9 @@
     "emptyMessage": "खाली संदेश",
     "clickToPreview": "पूर्वावलोकन के लिए क्लिक करें",
     "userUploadedImage": "उपयोगकर्ता द्वारा अपलोड की गई छवि",
-    "inputPlaceholder": "@फाइल संदर्भ, #एजेंट बुलाएं, Enter भेजने के लिए",
-    "inputPlaceholderEnter": "@फाइल संदर्भ, #एजेंट बुलाएं, Enter भेजने के लिए",
-    "inputPlaceholderCmdEnter": "@फाइल संदर्भ, #एजेंट बुलाएं, ⌘Enter भेजने के लिए",
+    "inputPlaceholder": "@फाइल संदर्भ, !bash कमांड, /opencode कमांड, Enter भेजने के लिए",
+    "inputPlaceholderEnter": "@फाइल संदर्भ, !bash कमांड, /opencode कमांड, Enter भेजने के लिए",
+    "inputPlaceholderCmdEnter": "@फाइल संदर्भ, !bash कमांड, /opencode कमांड, ⌘Enter भेजने के लिए",
     "noThinkingContent": "कोई सोच सामग्री नहीं",
     "parseError": "सामग्री पार्स करने में विफल",
     "sendMessageEnter": "संदेश भेजें (Enter)",
@@ -80,21 +79,34 @@
     "global": "वैश्विक",
     "localProject": "स्थानीय",
     "disabled": "अक्षम",
-    "sdkNotInstalled": "{{provider}} SDK इंस्टॉल नहीं है। चैट शुरू करने के लिए कृपया SDK इंस्टॉल करें।",
-    "sdkStatusLoading": "Checking SDK status...",
-    "sdkStatusUnavailable": "SDK स्थिति की जांच नहीं हो सकी।",
-    "retrySdkStatus": "पुनः प्रयास करें",
-    "openSourceBanner": "यह प्रोजेक्ट 100% ओपन सोर्स और मुफ़्त है (नकली प्रोजेक्ट से सावधान रहें)",
-    "openSourceBannerStar": "Star",
-    "openSourceBannerStarToast": "रिपॉजिटरी लिंक क्लिपबोर्ड पर कॉपी हो गया — ब्राउज़र में पेस्ट करके खोलें ⭐",
-    "openSourceBannerStarAria": "रिपॉजिटरी लिंक कॉपी करें और GitHub पर स्टार करें",
-    "goInstallSdk": "इंस्टॉल करने जाएं",
     "commandNotImplemented": "`{{command}}` सुविधा अभी तक लागू नहीं की गई है।",
+    "daemonStatusLoading": "OpenCode सेवा प्रारंभ हो रही है, कृपया प्रतीक्षा करें",
     "clearCommandDescription": "बातचीत इतिहास साफ़ करें और नया सत्र शुरू करें",
+    "builtinCommands": {
+      "compact": "संदर्भ आकार कम करने के लिए सत्र का सारांश बनाएं",
+      "undo": "अंतिम संदेश पूर्ववत करें",
+      "redo": "पूर्ववत किया गया अंतिम संदेश फिर से करें",
+      "fork": "पूरे सत्र को नई शाखा में कॉपी करें",
+      "share": "सत्र लिंक साझा करें",
+      "unshare": "सत्र साझा करना बंद करें"
+    },
+    "compactTooltip": "सत्र संकुचित करने के लिए क्लिक करें",
+    "compactStarted": "सत्र संकुचित हो रहा है…",
+    "compactSuccess": "सत्र संकुचित कर दिया गया",
+    "compactFailed": "सत्र संकुचित करने में विफल",
+    "compactConfirmTitle": "सत्र संकुचित करें",
+    "compactConfirmMessage": "संकुचन करने पर opencode मौजूदा बातचीत का सारांश बनाएगा और पुराने संदेश हटाकर संदर्भ स्थान खाली करेगा। यह क्रिया वापस नहीं ली जा सकती — क्या आप जारी रखना चाहते हैं?",
+    "compactConfirmAction": "संकुचित करें",
+    "undoTooltip": "यह संदेश पूर्ववत करें",
+    "redoTooltip": "यह संदेश फिर से करें",
+    "forkTooltip": "नए सत्र में फ़ोर्क करें",
+    "shareTooltip": "सत्र साझा करें",
+    "unshareTooltip": "सत्र साझा करना बंद करें",
+    "shareSuccess": "लिंक क्लिपबोर्ड पर कॉपी किया गया",
     "attachmentFile": "[अटैचमेंट: {{fileName}}]",
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[अटैचमेंट अपलोड हो गए]",
-    "streamingConnected": "{{provider}} कनेक्ट हो गया, आपके प्रश्न को समझ रहा है",
+    "streamingConnected": "आपके प्रश्न को समझ रहा है…",
     "showEarlierMessages": "{{count}} पुराने संदेश दिखाएं",
     "showEarlierTurns": "पहले के {{count}} संवाद दौर दिखाएं ({{remaining}} लोड किए हुए शेष)",
     "loadEarlierTurns": "डिस्क से पहले के {{count}} दौर लोड करें ({{total}} में से {{remaining}} शेष)",
@@ -127,7 +139,29 @@
       "userContext": "संदर्भ: \"{{context}}\"",
       "expand": "सारांश विस्तृत करें",
       "collapse": "सारांश संक्षिप्त करें"
-    }
+    },
+    "shareFailed": "कॉपी विफल — सत्र साझा नहीं किया गया",
+    "shareDisabledHint": "शेयरिंग opencode.json में अक्षम हो सकती है (\"share\": \"disabled\") या opencode लॉगिन आवश्यक हो सकता है। कॉन्फ़िगरेशन जाँचें और पुनः प्रयास करें",
+    "sharePendingTooltip": "साझा किया जा रहा है…",
+    "copyShareLinkTooltip": "साझा लिंक कॉपी करें",
+    "revertPlaceholderTitle": "यह संदेश और उसके बाद के उत्तर पूर्वत में ले लिए गए",
+    "revertPlaceholderCount": "{{count}} संदेश पूर्वत में लिए गए",
+    "revertExpand": "देखें",
+    "revertCollapse": "छिपाएँ",
+    "revertRestore": "पुनर्स्थापित करें",
+    "revertBusyConfirmMessage": "उत्तर जनरेट हो रहा है। पूर्वत में लेना वर्तमान कार्य को बाधित करेगा और इस संदेश पर वापस जाएगा। जारी रखें?",
+    "restoreBusyConfirmMessage": "उत्तर जनरेट हो रहा है। पुनर्स्थापना वर्तमान कार्य को बाधित करेगी और पूर्वत में लिए गए संदेश वापस लाएगी। जारी रखें?",
+    "revertFailed": "पूर्वत में लेने में विफल",
+    "restoreFailed": "पुनर्स्थापित करने में विफल",
+    "forkDisabledTooltip": "वर्तमान उत्तर पूरा होने के बाद उपलब्ध",
+    "forkCreatedToast": "फ़ोर्क सत्र बनाया गया",
+    "forkSwitchAction": "नए सत्र पर जाएँ",
+    "forkFailed": "फ़ोर्क सत्र बनाने में विफल",
+    "forkAllTooltip": "पूरे सत्र को नए सत्र में फ़ोर्क करें",
+    "shareLinkCreated": "साझा लिंक बनाया गया",
+    "retryCopy": "फिर से कॉपी करें",
+    "subagentsSection": "सबएजेंट",
+    "filesSection": "फ़ाइलें"
   },
   "settings": {
     "title": "सेटिंग्स",
@@ -141,8 +175,8 @@
       },
       "theme": {
         "label": "इंटरफ़ेस थीम",
-        "system": "Follow IDE",
-        "systemDesc": "Automatically follow IDE theme",
+        "system": "Follow VS Code",
+        "systemDesc": "Automatically follow the VS Code theme",
         "light": "लाइट",
         "lightDesc": "ताज़ा और उज्ज्वल, दिन के उपयोग के लिए उपयुक्त",
         "dark": "डार्क",
@@ -150,7 +184,7 @@
       },
       "language": {
         "label": "इंटरफ़ेस भाषा",
-        "followIde": "IDE का अनुसरण करें",
+        "followIde": "Follow VS Code",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -170,15 +204,10 @@
         "hintText": "वास्तविक Node.js निष्पादन योग्य फ़ाइल पथ प्राप्त करें। खाली होने पर प्लगइन स्वचालित रूप से Node.js का पता लगाने का प्रयास करेगा।",
         "versionTooLow": "Node.js संस्करण बहुत पुराना है। प्लगइन को ठीक से चलाने के लिए v{{minVersion}} या उच्चतर की आवश्यकता है"
       },
-      "claudeCliPath": {
-        "label": "Claude CLI पथ (ओवरराइड)",
-        "placeholder": "उदा. /usr/local/bin/claude — अंतर्निहित SDK का उपयोग करने के लिए खाली छोड़ें",
-        "hint": "वैकल्पिक। सेट करने पर, प्लगइन अंतर्निहित @anthropic-ai/claude-agent-sdk के बजाय इस बाइनरी को चलाता है। सहेजने पर डेमॉन पुनः आरंभ होता है।"
-      },
       "workingDirectory": {
         "label": "Working Directory",
         "placeholder": "e.g. project1 or leave empty to use project root",
-        "hint": "Specify the directory where Claude works. Can use relative path (relative to project root) or absolute path. Leave empty to use project root."
+        "hint": "वह निर्देशिका निर्दिष्ट करें जहाँ opencode काम करता है। सापेक्ष पथ (प्रोजेक्ट रूट के सापेक्ष) या पूर्ण पथ उपयोग कर सकते हैं। खाली छोड़ने पर प्रोजेक्ट रूट उपयोग होगा।"
       },
       "fontSize": {
         "label": "फ़ॉन्ट आकार",
@@ -192,25 +221,29 @@
       "editorFont": {
         "label": "UI फ़ॉन्ट",
         "hint": "यहाँ प्लगइन UI का फ़ॉन्ट बदला जाता है; कोड के लिए अलग फ़ॉन्ट चुना जा सकता है।",
-        "followOption": "IDEA UI फ़ॉन्ट का पालन करें ({{font}})",
+        "followOption": "VS Code UI फ़ॉन्ट का पालन करें ({{font}})",
         "customOption": "कस्टम UI फ़ॉन्ट फ़ाइल",
         "customPathLabel": "UI फ़ॉन्ट फ़ाइल पथ",
         "customPathPlaceholder": ".ttf / .otf UI फ़ॉन्ट फ़ाइल का पथ चुनें या दर्ज करें",
         "browse": "ब्राउज़ करें",
-        "warningUnavailable": "UI फ़ॉन्ट उपलब्ध नहीं है, अभी IDEA UI फ़ॉन्ट उपयोग में है",
-        "statusFollowEditor": "अभी IDEA UI फ़ॉन्ट उपयोग में है: {{font}}",
-        "statusCustom": "अभी कस्टम UI फ़ॉन्ट उपयोग में है: {{font}}"
+        "warningUnavailable": "UI फ़ॉन्ट उपलब्ध नहीं है, अभी VS Code UI फ़ॉन्ट उपयोग में है",
+        "statusFollowEditor": "अभी VS Code UI फ़ॉन्ट उपयोग में है: {{font}}",
+        "statusCustom": "अभी कस्टम UI फ़ॉन्ट उपयोग में है: {{font}}",
+        "systemFontGroup": "सिस्टम फ़ॉन्ट",
+        "systemFontLoading": "सिस्टम फ़ॉन्ट लोड हो रहे हैं…",
+        "systemFontFailed": "सिस्टम फ़ॉन्ट लोड करने में विफल।",
+        "systemFontRetry": "पुनः प्रयास"
       },
       "codeFont": {
         "label": "कोड फ़ॉन्ट",
         "hint": "Markdown कोड और कमांड ब्लॉक इस फ़ॉन्ट का उपयोग करते हैं।",
-        "followOption": "एडिटर फ़ॉन्ट का पालन करें ({{font}})",
+        "followOption": "VS Code एडिटर फ़ॉन्ट का पालन करें ({{font}})",
         "customOption": "कस्टम कोड फ़ॉन्ट फ़ाइल",
         "customPathLabel": "कोड फ़ॉन्ट फ़ाइल पथ",
         "customPathPlaceholder": ".ttf / .otf कोड फ़ॉन्ट फ़ाइल का पथ चुनें या दर्ज करें",
         "browse": "ब्राउज़ करें",
         "warningUnavailable": "कोड फ़ॉन्ट उपलब्ध नहीं है, अभी एडिटर फ़ॉन्ट उपयोग में है",
-        "statusFollowEditor": "अभी एडिटर फ़ॉन्ट उपयोग में है: {{font}}",
+        "statusFollowEditor": "अभी VS Code एडिटर फ़ॉन्ट उपयोग में है: {{font}}",
         "statusCustom": "अभी कस्टम कोड फ़ॉन्ट उपयोग में है: {{font}}"
       },
       "streaming": {
@@ -232,13 +265,7 @@
         "providerAvailable": "Available",
         "providerUnavailable": "Currently unavailable",
         "provider": {
-          "claude": "Claude Code",
-          "codex": "Codex",
-          "grok": "Grok CLI",
-          "kimi": "Kimi CLI",
-          "opencode": "OpenCode",
-          "pi": "PI CLI",
-          "omp": "OMP CLI"
+          "opencode": "OpenCode"
         },
         "currentProviderAuto": "Currently using automatic selection: {{provider}}",
         "currentProviderManual": "Currently using manually selected provider: {{provider}}",
@@ -265,7 +292,7 @@
         "label": "प्रश्न सिस्टम सूचना",
         "enabled": "सक्षम",
         "disabled": "अक्षम",
-        "hint": "सक्षम होने पर, Claude द्वारा प्रश्न पूछने पर सिस्टम सूचना दिखाता है ताकि आप इसे मिस न करें। अक्षम होने पर, कोई सूचना नहीं दिखती।"
+        "hint": "सक्षम होने पर, OpenCode द्वारा प्रश्न पूछने पर सिस्टम सूचना दिखाता है ताकि आप इसे मिस न करें। अक्षम होने पर, कोई सूचना नहीं दिखती।"
       },
       "detailedOutput": {
         "label": "विस्तृत आउटपुट जानकारी",
@@ -277,7 +304,7 @@
         "label": "प्रश्न चेतावनी ध्वनि",
         "enabled": "सक्षम",
         "disabled": "अक्षम",
-        "hint": "सक्षम होने पर, Claude द्वारा प्रश्न पूछने पर कॉन्फ़िगर की गई चेतावनी ध्वनि चलती है। नीचे दिए गए ध्वनि चयन और फोकस नियमों का उपयोग करता है."
+        "hint": "सक्षम होने पर, OpenCode द्वारा प्रश्न पूछने पर कॉन्फ़िगर की गई चेतावनी ध्वनि चलती है। नीचे दिए गए ध्वनि चयन और फोकस नियमों का उपयोग करता है."
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "सिस्टम सूचनाएं केवल तब दिखाएं जब IDE फोकस में न हो",
@@ -317,7 +344,7 @@
       "permissionDialogTimeout": {
         "label": "अनुमति और प्रश्न संवाद टाइमआउट",
         "unit": "सेकंड",
-        "hint": "Claude प्रश्न संवाद और अनुमति अनुरोध संवाद के लिए टाइमआउट सेट करें (30~3600 सेकंड)। टाइमआउट के बाद, संवाद स्वचालित रूप से बंद हो जाएगा और Claude जारी रहेगा।"
+        "hint": "OpenCode प्रश्न संवाद और अनुमति अनुरोध संवाद के लिए टाइमआउट सेट करें (30~3600 सेकंड)। टाइमआउट के बाद, संवाद स्वचालित रूप से बंद हो जाएगा और OpenCode जारी रहेगा।"
       },
       "chatBgColor": {
         "label": "चैट पृष्ठभूमि रंग",
@@ -342,13 +369,16 @@
         "enabled": "सक्षम",
         "disabled": "अक्षम",
         "hint": "अक्षम होने पर, मौजूदा संदेशों वाले सत्र में नया बनाने पर पुष्टि संवाद नहीं दिखेगा।"
+      },
+      "opencodeCliPath": {
+        "label": "Opencode TUI पथ",
+        "placeholder": "जैसे /usr/local/bin/opencode — खाली छोड़ें तो स्वतः पहचान",
+        "hint": "वैकल्पिक कस्टम opencode बाइनरी, जो opencode सेवा शुरू करने के लिए उपयोग होती है। खाली छोड़ने पर PATH और डिफ़ॉल्ट इंस्टॉल स्थान (~/.opencode/bin) में खोजा जाएगा। सहेजने पर डेमन पुनः आरंभ होने के बाद लागू होगा।"
       }
     },
     "providers": "प्रदाता प्रबंधन",
-    "providersDesc": "Claude और Codex API प्रदाता कॉन्फ़िगरेशन प्रबंधित करें, विभिन्न API सेवा प्रदाताओं के बीच स्विच करें",
+    "providersDesc": "opencode CLI एकीकरण प्रबंधित करें और स्थानीय CLI टूल की स्थापना स्थिति जांचें",
     "providerTab": {
-      "claude": "Claude Code",
-      "codex": "Codex",
       "cli": "CLI"
     },
     "pluginModels": {
@@ -378,83 +408,19 @@
         "invalidValue": "अधिकतम कॉन्टेक्स्ट K इकाइयों में एक धनात्मक पूर्णांक होना चाहिए",
         "summary": "कॉन्टेक्स्ट: {{value}} टोकन"
       },
-      "configuredSectionTitle": "कॉन्फ़िगर किए गए Claude मॉडल",
-      "configuredSectionDesc": "सक्रिय Claude प्रदाता या settings.json के मॉडल पहले से ही चयनकर्ता में दिखते हैं। यहाँ केवल मूल्य बदला जा सकता है।",
-      "configuredEditHint": "यह मॉडल सक्रिय Claude प्रदाता या settings.json द्वारा प्रबंधित है। यहाँ केवल मूल्य बदला जा सकता है।",
+      "configuredSectionTitle": "कॉन्फ़िगर किए गए OpenCode मॉडल",
+      "configuredSectionDesc": "सक्रिय OpenCode प्रदाता या settings.json के मॉडल पहले से ही चयनकर्ता में दिखते हैं। यहाँ केवल मूल्य बदला जा सकता है।",
+      "configuredEditHint": "यह मॉडल सक्रिय OpenCode प्रदाता या settings.json द्वारा प्रबंधित है। यहाँ केवल मूल्य बदला जा सकता है।",
       "customSectionTitle": "कस्टम मॉडल",
       "editPricing": "मूल्य संपादित करें"
-    },
-    "dependencies": "SDK निर्भरताएं",
-    "dependenciesDesc": "AI SDK निर्भरताओं की इंस्टॉलेशन और अपडेट प्रबंधित करें",
-    "dependency": {
-      "title": "SDK निर्भरता प्रबंधन",
-      "description": "AI SDK निर्भरताएं प्रबंधित करें। पहली बार उपयोग करने से पहले आवश्यक SDK इंस्टॉल करें।",
-      "installPolicyTip": "इंस्टॉलेशन में समस्या? त्रुटि को टर्मिनल CLI AI में कॉपी करके हल करें",
-      "claudeSdkName": "Claude Code SDK",
-      "claudeSdkDescription": "Claude AI सुविधाओं के लिए आवश्यक। Claude Code SDK और संबंधित निर्भरताएं शामिल हैं।",
-      "codexSdkName": "Codex SDK",
-      "codexSdkDescription": "Codex AI सुविधाओं के लिए आवश्यक। OpenAI Codex SDK शामिल है।",
-      "loading": "निर्भरता स्थिति लोड हो रही है...",
-      "install": "इंस्टॉल करें",
-      "installing": "इंस्टॉल हो रहा है...",
-      "uninstall": "अनइंस्टॉल करें",
-      "uninstalling": "अनइंस्टॉल हो रहा है...",
-      "update": "अपडेट करें",
-      "updateAvailable": "अपडेट उपलब्ध",
-      "installLogs": "इंस्टॉलेशन लॉग",
-      "waitingForLogs": "लॉग आउटपुट की प्रतीक्षा कर रहा है...",
-      "nodeNotConfigured": "Node.js कॉन्फ़िगर नहीं है। कृपया पहले बुनियादी सेटिंग्स में Node.js पथ सेट करें।",
-      "installSuccess": "{{name}} सफलतापूर्वक इंस्टॉल हो गया",
-      "installFailed": "इंस्टॉलेशन विफल: {{error}}",
-      "uninstallSuccess": "{{name}} अनइंस्टॉल हो गया",
-      "uninstallFailed": "अनइंस्टॉल विफल: {{error}}",
-      "updating": "अपडेट हो रहा है...",
-      "updateSuccess": "{{name}} सफलतापूर्वक अपडेट हो गया"
     },
     "usage": "उपयोग सांख्यिकी",
     "usageDesc": "अपनी Token खपत, लागत सांख्यिकी और उपयोग प्रवृत्ति विश्लेषण देखें",
     "mcp": "MCP सर्वर",
     "mcpDesc": "Model Context Protocol सर्वर कॉन्फ़िगर और प्रबंधित करें",
-    "permissions": "अनुमति कॉन्फ़िगरेशन",
-    "permissionsDesc": "Claude Code की फ़ाइल एक्सेस और ऑपरेशन अनुमतियां प्रबंधित करें",
     "promptEnhancer": {
       "title": "Prompt Enhancer",
       "description": "Choose which provider and model should be used when enhancing prompts before sending them."
-    },
-    "commit": {
-      "title": "Commit AI",
-      "description": "Configure AI-generated Git commit message behavior",
-      "providerModel": {
-        "label": "कमिट मॉडल प्रदाता",
-        "modelLabel": "कमिट मॉडल",
-        "resetToDefault": "रीसेट",
-        "providerAvailable": "उपलब्ध",
-        "providerUnavailable": "अनुपलब्ध",
-        "currentProviderAuto": "वर्तमान में स्वचालित चयन का उपयोग: {{provider}}",
-        "currentProviderManual": "वर्तमान में मैन्युअल रूप से चयनित प्रदाता का उपयोग: {{provider}}",
-        "currentProviderUnavailable": "चयनित प्रदाता वर्तमान में अनुपलब्ध है: {{provider}}",
-        "modeLabel": "चयन मोड",
-        "modeAuto": "स्वचालित",
-        "modeManual": "मैनुअल",
-        "autoSummary": "वर्तमान चैट CLI का अनुसरण · वर्तमान में {{provider}}",
-        "autoUnavailable": "कोई CLI उपलब्ध नहीं। मैन्युअल चुनें।"
-      },
-      "prompt": {
-        "label": "Additional Prompt",
-        "placeholder": "Add your extra requirements here, e.g., generate commit in English, include issue number, etc...",
-        "hint": "The plugin has built-in CCG Commits specification prompts. Content you add here will be used as additional requirements, and AI will prioritize your instructions."
-      },
-      "projectPrompt": {
-        "label": "प्रोजेक्ट-विशिष्ट अतिरिक्त प्रॉम्प्ट",
-        "placeholder": "यहाँ प्रोजेक्ट-विशिष्ट आवश्यकताएँ जोड़ें, जैसे: scope में मॉड्यूल नाम का उपयोग करें, commit body में प्रभाव क्षेत्र शामिल करें, आदि...",
-        "hint": "यह प्रॉम्प्ट केवल वर्तमान प्रोजेक्ट पर लागू होता है और वैश्विक अतिरिक्त प्रॉम्प्ट के साथ मिलकर जोड़ा जाता है। जब दोनों में विरोध हो, तो प्रोजेक्ट प्रॉम्प्ट को प्राथमिकता दी जाती है। विभिन्न प्रोजेक्ट्स को स्वतंत्र रूप से कॉन्फ़िगर किया जा सकता है।"
-      },
-      "codeReview": {
-        "comingSoon": "Coming Soon",
-        "label": "Code Review AI Additional Prompt",
-        "placeholder": "This feature is under development, stay tuned...",
-        "hint": "Code Review AI will help you automatically review code, identify potential issues, and provide improvement suggestions. You can configure review preferences and focus areas here."
-      }
     },
     "agents": "Agents",
     "agentsDesc": "AI एजेंट प्रबंधित और कॉन्फ़िगर करें",
@@ -498,23 +464,21 @@
           "minutesAgo_other": "{{count}} मिनट पहले",
           "justNow": "अभी"
         }
-      },
-      "aiTitleGeneration": {
-        "label": "AI सत्र शीर्षक स्वतः निर्माण",
-        "enabled": "सक्षम",
-        "disabled": "अक्षम",
-        "hint": "सक्षम होने पर, नए सत्र की पहली प्रतिक्रिया के बाद Haiku मॉडल छोटा शीर्षक स्वतः बनाएगा। अक्षम होने पर सत्र पहले उपयोगकर्ता संदेश को शीर्षक के रूप में रखेगा।"
       }
     },
-    "codexFeatureUnavailable": "यह सेटिंग अनुभाग अभी Codex में उपलब्ध नहीं है। कृपया Claude Code पर स्विच करें।",
     "sidebar": {
       "expand": "Expand Sidebar",
       "collapse": "Collapse Sidebar"
     },
-    "community": "आधिकारिक समुदाय",
-    "communityDesc": "नवीनतम जानकारी और तकनीकी सहायता के लिए आधिकारिक WeChat समूह में शामिल होने के लिए नीचे QR कोड स्कैन करें",
-    "communityQrTip": "WeChat से स्कैन करके समुदाय में शामिल हों",
-    "communityQrAlt": "आधिकारिक WeChat समुदाय QR कोड",
+    "community": "सहायता",
+    "communityDesc": "लेखक की सहायता करने और परियोजना के निरंतर रखरखाव का समर्थन करने के लिए नीचे QR कोड स्कैन करें",
+    "communityQrTipWechat": "WeChat सहायता",
+    "communityQrTipAlipay": "Alipay सहायता",
+    "communityQrTipPayPal": "PayPal सहायता",
+    "communityQrAlt": "सहायता QR कोड",
+    "communityQrAltAlipay": "Alipay सहायता QR कोड",
+    "communityQrAltPayPal": "PayPal सहायता QR कोड",
+    "projectDesc": "यह प्रोजेक्ट OpenCode Buddy VS Code एक्सटेंशन है (https://github.com/SenjuObito/opencode-vscode-plugin)",
     "githubTitle": "GitHub रिपॉजिटरी",
     "githubDesc": "यह प्रोजेक्ट GitHub पर ओपन सोर्स है। सपोर्ट के लिए Star करें!",
     "githubCopyBtn": "रिपॉजिटरी URL कॉपी करें",
@@ -526,7 +490,6 @@
     "wechatPay": "WeChat Pay",
     "paypal": "PayPal",
     "provider": {
-      "currentConfig": "वर्तमान ClaudeCode कॉन्फ़िगरेशन",
       "loading": "लोड हो रहा है...",
       "noConfig": "कोई कॉन्फ़िगरेशन जानकारी नहीं",
       "emptyProvider": "कोई प्रदाता कॉन्फ़िगर नहीं",
@@ -556,7 +519,6 @@
       "importFromCcSwitchUpdate": "cc-switch से आयात/अपडेट करें",
       "importFromCcSwitchFile": "Select cc-switch.db File to Import",
       "importFromCcSwitchCli": "cc-switch CLI से आयात/अपडेट करें",
-      "importFromClaudeRouter": "Claude Code Router से आयात/अपडेट करें",
       "featureComingSoon": "सुविधा अभी तक लागू नहीं की गई है, कृपया प्रतीक्षा करें",
       "readingCcSwitch": "cc-switch कॉन्फ़िगरेशन पढ़ रहा है...",
       "editCcSwitchTitle": "cc-switch कॉन्फ़िगरेशन संपादित करें",
@@ -569,62 +531,8 @@
       "confirmConvert": "रूपांतरण की पुष्टि करें",
       "inUse": "उपयोग में",
       "enable": "सक्षम करें",
-      "localProviderName": "Local settings.json",
-      "localProviderDescription": "Use configuration directly from ~/.claude/settings.json",
-      "localProviderHelp": "When using local provider mode:\n• The plugin will not modify your ~/.claude/settings.json file\n• You need to manually manage your configurations\n• Make sure the file exists and contains valid JSON\n• Suitable for advanced users who prefer manual control",
       "authorizeAndEnable": "अधिकृत करें और सक्षम करें",
       "revokeAuthorization": "प्राधिकरण रद्द करें",
-      "cliLoginProviderName": "CLI लॉगिन स्थिति",
-      "cliLoginProviderDescription": "टर्मिनल में पहले से पूर्ण की गई आपकी Claude CLI लॉगिन स्थिति का पुन: उपयोग करें",
-      "cliLoginAuthorizeTitle": "CLI लॉगिन स्थिति को अधिकृत करें",
-      "cliLoginAuthorizeMessage": "यह प्लगइन को API अनुरोधों के लिए आपके Claude CLI लॉगिन सत्र का उपयोग करने की अनुमति देगा। आपको पहले टर्मिनल में Claude CLI के माध्यम से लॉग इन होना चाहिए।",
-      "cliLoginAuthorizeDetail": "प्लगइन प्रमाणीकरण को Claude SDK के मूल OAuth प्रवाह को सौंपता है। आप किसी भी समय इस प्राधिकरण को रद्द कर सकते हैं।",
-      "cliLoginDisableTitle": "CLI लॉगिन प्राधिकरण रद्द करें",
-      "cliLoginDisableMessage": "यह CLI लॉगिन स्थिति का उपयोग बंद कर देगा और जब तक आप स्पष्ट रूप से कोई अन्य प्रदाता सक्षम नहीं करते, Claude को बिना किसी सक्रिय प्रदाता के छोड़ देगा।",
-      "cliLoginAccountInfo": "के रूप में लॉग इन: {{email}}",
-      "subscriptionTutorial": {
-        "entry": "सदस्यता खाता गाइड",
-        "dialogTitle": "सदस्यता खाता कैसे उपयोग करें",
-        "tabAriaLabel": "सदस्यता खाता गाइड टैब",
-        "tabs": {
-          "claude": "Claude सदस्यता",
-          "codex": "Codex सदस्यता"
-        },
-        "code": {
-          "copy": "कोड कॉपी करें",
-          "copied": "कॉपी किया"
-        },
-        "providers": {
-          "claude": {
-            "title": "Claude Code सदस्यता खाता कैसे उपयोग करें",
-            "item1": "टर्मिनल में Claude Code CLI के माध्यम से सदस्यता खाते में लॉगिन करें, फिर टर्मिनल में सामान्य रूप से चैट कर सकते हैं",
-            "item2": "सुनिश्चित करें कि ~/.claude/settings.json फ़ाइल और .env फ़ाइल खाली हैं",
-            "item3": "IDEA को रीस्टार्ट करें, और आप सामान्य रूप से चैट कर सकते हैं",
-            "emptyConfigCodeLabel": "~/.claude/settings.json",
-            "emptyConfigCode": "{\n  \"env\": {\n  }\n}",
-            "noteTitle": "विशेष मामले की टिप्पणी:",
-            "note1": "यदि आपने उपरोक्त चरण किए हैं लेकिन प्लगइन अभी भी प्रतिसाद नहीं दे रहा, तो ~/.claude/settings.json .env को इस पर सेट करें:",
-            "proxyConfigCodeLabel": "~/.claude/settings.json",
-            "proxyConfigCode": "{\n  \"env\": {\n    \"HTTP_PROXY\": \"http://127.0.0.1:7897\",\n    \"HTTPS_PROXY\": \"http://127.0.0.1:7897\"\n  }\n}",
-            "issuePrefix": "यदि यह अभी भी काम नहीं करता, तो GitHub पर समस्या रिपोर्ट करें: ",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          },
-          "codex": {
-            "title": "Codex सदस्यता खाता सेटअप",
-            "item1": "टर्मिनल Codex CLI में codex login चलाएं और लॉगिन करें, फिर टर्मिनल में चैट कर सकते हैं",
-            "item2": "IDEA रीस्टार्ट करें",
-            "item3": "अब आप सामान्य रूप से चैट कर सकते हैं",
-            "emptyConfigCodeLabel": "",
-            "emptyConfigCode": "",
-            "noteTitle": "",
-            "note1": "",
-            "proxyConfigCodeLabel": "",
-            "proxyConfigCode": "",
-            "issuePrefix": "यदि यह अभी भी काम नहीं करता, तो GitHub पर समस्या रिपोर्ट करें: ",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          }
-        }
-      },
       "importDialog": {
         "title": "cc-switch कॉन्फ़िगरेशन आयात करें",
         "summary": "कुल {{total}} कॉन्फ़िगरेशन पहचाने गए, जिनमें",
@@ -639,50 +547,6 @@
         "confirmImport": "आयात की पुष्टि करें"
       },
       "deleteProviderMessage": "Are you sure you want to delete provider \"{{name}}\"?\n\nThis action cannot be undone.",
-      "dialog": {
-        "addTitle": "प्रदाता जोड़ें",
-        "editTitle": "प्रदाता संपादित करें: {{name}}",
-        "addDescription": "नए प्रदाता की जानकारी कॉन्फ़िगर करें",
-        "securityNotice": "सूचना: सभी सेटिंग्स आपके कंप्यूटर पर स्थानीय रूप से संग्रहीत हैं। यह प्रोजेक्ट 100% ओपन सोर्स है। कृपया निश्चिंत होकर उपयोग करें।",
-        "editDescription": "परिवर्तन तुरंत वर्तमान प्रदाता पर लागू होंगे।",
-        "providerName": "प्रदाता का नाम",
-        "providerNamePlaceholder": "उदाहरण: Claude आधिकारिक",
-        "remark": "टिप्पणी",
-        "remarkPlaceholder": "वैकल्पिक",
-        "apiKey": "API Key",
-        "apiKeyPlaceholder": "sk-ant-...",
-        "apiKeyHint": "कृपया अपनी API Key दर्ज करें",
-        "apiUrl": "अनुरोध पता (API Endpoint)",
-        "apiUrlPlaceholder": "https://api.anthropic.com",
-        "apiUrlHint": "Claude API संगत सेवा endpoint पता भरें",
-        "modelMapping": "मॉडल मैपिंग (JSON के env में इंजेक्ट किया जाएगा)",
-        "mainModel": "मुख्य मॉडल",
-        "mainModelPlaceholder": "उदाहरण: claude-sonnet-4-6",
-        "fableModel": "Fable डिफ़ॉल्ट मॉडल",
-        "fableModelPlaceholder": "उदाहरण: claude-fable-5",
-        "haikuModel": "Haiku डिफ़ॉल्ट मॉडल",
-        "haikuModelPlaceholder": "उदाहरण: claude-haiku-4-5",
-        "sonnetModel": "Sonnet डिफ़ॉल्ट मॉडल",
-        "sonnetModelPlaceholder": "उदाहरण: claude-sonnet-4-6",
-        "opusModel": "Opus डिफ़ॉल्ट मॉडल",
-        "opusModelPlaceholder": "उदाहरण: claude-opus-4-6",
-        "modelMappingHint": "वैकल्पिक: उपयोग करने के लिए डिफ़ॉल्ट Claude मॉडल निर्दिष्ट करें। सिस्टम डिफ़ॉल्ट के लिए खाली छोड़ें।",
-        "customModels": "कस्टम मॉडल",
-        "customModelsHint": "इस प्रदाता द्वारा समर्थित अतिरिक्त मॉडल जोड़ें। कस्टम मॉडल मॉडल चयन सूची के शीर्ष पर दिखाई देंगे",
-        "jsonConfig": "JSON कॉन्फ़िगरेशन",
-        "jsonConfigDescription": "यहाँ पूर्ण settings.json सामग्री कॉन्फ़िगर करें, सभी फ़ील्ड का समर्थन करता है (जैसे model, alwaysThinkingEnabled, ccSwitchProviderId, codemossProviderId, आदि)",
-        "jsonError": "अमान्य JSON प्रारूप",
-        "required": "*",
-        "showApiKey": "दिखाएं",
-        "hideApiKey": "छुपाएं",
-        "confirmAdd": "जोड़ने की पुष्टि करें",
-        "saveChanges": "परिवर्तन सहेजें",
-        "codeView": "Code",
-        "visualView": "Visual",
-        "formatJson": "Format",
-        "invalidJson": "Invalid JSON format, please switch to code view to fix",
-        "presetGroup": "Quick Presets"
-      },
       "presets": {
         "custom": "Custom",
         "zhipu": "Zhipu GLM",
@@ -701,7 +565,6 @@
       }
     },
     "comingSoon": "सुविधा जल्द आ रही है...",
-    "permissionsComingSoon": "अनुमति कॉन्फ़िगरेशन सुविधा जल्द आ रही है...",
     "agentsComingSoon": "Agents कॉन्फ़िगरेशन सुविधा जल्द आ रही है...",
     "skillsComingSoon": "Skills कॉन्फ़िगरेशन सुविधा जल्द आ रही है...",
     "codexProvider": {
@@ -717,7 +580,7 @@
         "editDescription": "Changes will be applied immediately to ~/.codex/ directory",
         "officialPreset": "OpenAI Official Direct",
         "officialSectionHint": "Use your manually entered OPENAI_API_KEY with the official endpoint https://api.openai.com/v1.",
-        "presetHint": "These presets include only third-party or proxy endpoints that match the Claude Code provider set.",
+        "presetHint": "These presets include only third-party or proxy endpoints that match the OpenCode provider set.",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Codex Official",
         "configJson": "Config",
@@ -793,40 +656,6 @@
         "saveChanges": "सहेजें"
       }
     },
-    "prompts": "Prompt Library",
-    "promptsDesc": "Manage common prompt templates for quick insertion during chat",
-    "prompt": {
-      "title": "Prompt Library",
-      "create": "Create",
-      "createPrompt": "Create Prompt",
-      "createPromptHint": "Click to go to prompt settings page to create",
-      "customPrompts": "Custom Prompts",
-      "noPrompts": "No custom prompts",
-      "noPromptsDropdown": "No prompts",
-      "loadFailed": "Load failed",
-      "loading": "Loading...",
-      "menu": "Menu",
-      "addSuccess": "Prompt created successfully",
-      "updateSuccess": "Prompt updated successfully",
-      "deleteSuccess": "Prompt deleted successfully",
-      "operationSuccess": "Operation successful",
-      "operationFailed": "Operation failed",
-      "deleteConfirmTitle": "Confirm Delete",
-      "deleteConfirmMessage": "Are you sure you want to delete prompt \"{{name}}\"? This action cannot be undone.",
-      "description": "Create common prompt templates. Type ! in the chat input to quickly select and insert",
-      "dialog": {
-        "addTitle": "Create Prompt",
-        "editTitle": "Edit Prompt",
-        "name": "Name",
-        "namePlaceholder": "Enter prompt name",
-        "nameRequired": "Please enter prompt name",
-        "content": "Content",
-        "contentPlaceholder": "Enter prompt content, you can include variables like {{variable}}",
-        "contentHint": "Prompt content will be inserted directly into the input box when selected",
-        "confirmAdd": "Create",
-        "saveChanges": "Save"
-      }
-    },
     "cli": {
       "hint": "These CLIs must be installed and configured in your system terminal. The plugin only detects installation status and version — it will never install them for you. Confirm each CLI works in the terminal before coming back here to use it.",
       "refresh": "Re-check",
@@ -843,14 +672,6 @@
       "copied": "Copied to clipboard",
       "copyFailed": "Failed to copy",
       "tools": {
-        "grok": {
-          "name": "Grok CLI",
-          "description": "xAI Grok terminal coding agent"
-        },
-        "kimi": {
-          "name": "Kimi CLI",
-          "description": "Moonshot Kimi Code CLI"
-        },
         "opencode": {
           "name": "OpenCode",
           "description": "Open-source terminal AI coding agent"
@@ -858,10 +679,6 @@
         "pi": {
           "name": "PI CLI",
           "description": "मल्टी-प्रोवाइडर मॉडल सपोर्ट वाला मिनिमल टर्मिनल कोडिंग एजेंट"
-        },
-        "omp": {
-          "name": "OMP CLI",
-          "description": "मल्टी-प्रोवाइडर मॉडल सपोर्ट वाला Oh My Pi टर्मिनल कोडिंग एजेंट"
         }
       },
       "installDialog": {
@@ -908,7 +725,7 @@
     "loading": "इतिहास लोड हो रहा है...",
     "loadFailed": "लोड विफल",
     "noSessions": "कोई इतिहास सत्र नहीं",
-    "noSessionsDesc": "वर्तमान परियोजना में सत्र रिकॉर्ड नहीं मिले",
+    "noSessionsDesc": "वर्तमान परियोजना में OpenCode सत्र रिकॉर्ड नहीं मिले",
     "totalSessions": "कुल {{count}} सत्र · {{total}} संदेश",
     "messageCount": "{{count}} संदेश",
     "searchPlaceholder": "सत्र शीर्षक खोजें...",
@@ -928,7 +745,7 @@
     "convertSuccess": "सेशन CLI पहचान में बदल दिया गया",
     "convertFailed": "रूपांतरण विफल",
     "confirmConvert": "CLI सेशन में बदलें?",
-    "convertConfirmMessage": "यह सत्र का entrypoint संशोधित करेगा ताकि यह Claude Code CLI की /resume सूची में दिखाई दे।",
+    "convertConfirmMessage": "यह सत्र का entrypoint संशोधित करेगा ताकि यह OpenCode CLI की /resume सूची में दिखाई दे।",
     "timeAgo": {
       "yearsAgo": "साल पहले",
       "monthsAgo": "महीने पहले",
@@ -950,12 +767,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDK सत्र",
       "claude-vscode": "VS Code",
-      "remote": "रिमोट"
+      "remote": "रिमोट",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "यह सत्र प्लगइन द्वारा SDK के माध्यम से बनाया गया था और CLI में डिफ़ॉल्ट रूप से नहीं दिखाया गया है। टर्मिनल CLI की /resume सूची में इसे दिखाने के लिए 'CLI में कनवर्ट करें' पर क्लिक करें",
       "claude-vscode": "यह सत्र VS Code एक्सटेंशन द्वारा बनाया गया था और CLI में डिफ़ॉल्ट रूप से नहीं दिखाया गया है। टर्मिनल CLI की /resume सूची में इसे दिखाने के लिए 'CLI में कनवर्ट करें' पर क्लिक करें",
-      "remote": "यह सत्र Claude Code के रिमोट इंस्टेंस द्वारा बनाया गया था"
+      "remote": "यह सत्र OpenCode के रिमोट इंस्टेंस द्वारा बनाया गया था",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -976,32 +795,37 @@
       "WebSearch": "वेब खोज",
       "WebFetch": "वेब प्राप्त करें",
       "execute": "{{toolName}} निष्पादित करें",
-      "readDirectory": "निर्देशिका पढ़ें",
-      "timeoutWarning": "कृपया जल्द उत्तर दें, डायलॉग {{seconds}} सेकंड में स्वचालित रूप से बंद हो जाएगा"
-    }
+      "readDirectory": "निर्देशिका पढ़ें"
+    },
+    "approvedStatus": "अनुमति दी गई",
+    "approvedAlwaysStatus": "हमेशा अनुमति",
+    "deniedStatus": "अस्वीकृत",
+    "timeoutWarning": "कृपया जल्द उत्तर दें, डायलॉग {{seconds}} सेकंड में स्वचालित रूप से बंद हो जाएगा"
   },
   "askUserQuestion": {
-    "title": "Claude के पास आपके लिए कुछ प्रश्न हैं",
-    "progress": "प्रश्न {{current}} / {{total}}",
-    "multiSelectHint": "आप एकाधिक विकल्प चुन सकते हैं",
-    "cancel": "रद्द करें",
-    "back": "पीछे",
-    "next": "आगे",
+    "title": "OpenCode के आपसे कुछ सवाल हैं",
+    "skip": "छोड़ें",
+    "answeredStatus": "उत्तर दिया गया",
+    "skippedStatus": "छोड़ा गया",
+    "fallbackHeader": "प्रश्न",
+    "multiSelectHint": "आप कई विकल्प चुन सकते हैं",
     "submit": "सबमिट करें",
     "otherOption": "अन्य",
     "otherOptionDesc": "कस्टम उत्तर दर्ज करें",
     "customInputPlaceholder": "अपना उत्तर दर्ज करें...",
-    "timeoutWarning": "कृपया जल्द उत्तर दें, डायलॉग {{seconds}} सेकंड में स्वचालित रूप से बंद हो जाएगा",
-    "expand": "विस्तार करें",
-    "collapse": "संक्षिप्त करें",
-    "clickToAnswer": "उत्तर देने के लिए क्लिक करें"
+    "timeoutWarning": "जल्दी उत्तर दें, प्रश्न {{seconds}} सेकंड में छोड़ दिया जाएगा",
+    "progress": "प्रश्न {{current}} / {{total}}",
+    "prev": "पिछला",
+    "next": "अगला",
+    "unansweredStatus": "बिना उत्तर",
+    "cancelledStatus": "रद्द किया गया"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
-    "subtitle": "Claude has finished planning and is ready to execute.",
+    "subtitle": "OpenCode has finished planning and is ready to execute.",
     "requestedPermissions": "Requested Permissions",
     "executionMode": "Execution Mode",
-    "executionModeDescription": "Select how Claude should execute the plan:",
+    "executionModeDescription": "Select how OpenCode should execute the plan:",
     "approve": "Approve & Execute",
     "reject": "Reject",
     "toApprove": "to approve",
@@ -1031,7 +855,6 @@
   },
   "config": {
     "clickToCopy": "कॉपी करने के लिए क्लिक करें",
-    "officialDocs": "आधिकारिक दस्तावेज़",
     "switch": "स्विच",
     "switchProvider": "प्रदाता स्विच करें",
     "runtimeProvider": {
@@ -1232,7 +1055,7 @@
         "title": "मुख्य विशेषताएं",
         "toolExtension": {
           "label": "उपकरण विस्तार",
-          "description": "Claude में फ़ाइल सिस्टम, नेटवर्क एक्सेस जैसी क्षमताएं जोड़ें"
+          "description": "OpenCode में फ़ाइल सिस्टम, नेटवर्क एक्सेस जैसी क्षमताएं जोड़ें"
         },
         "dataConnection": {
           "label": "डेटा कनेक्शन",
@@ -1319,9 +1142,9 @@
     "todoList": "कार्य सूची",
     "editFileTitle": "फ़ाइल संपादित करें",
     "clickToOpen": "{{filePath}} खोलने के लिए क्लिक करें",
-    "refreshFileInIdea": "IDEA में फ़ाइल रीफ्रेश करें",
-    "refreshFileInIdeaSuccess": "इस फ़ाइल की सामग्री को IDEA में मैन्युअली रीफ्रेश किया गया",
-    "showDiffInIdea": "IDEA में परिवर्तन दिखाएं",
+    "refreshFileInEditor": "एडिटर में फ़ाइल रीफ्रेश करें",
+    "refreshFileInEditorSuccess": "इस फ़ाइल की सामग्री को एडिटर में मैन्युअली रीफ्रेश किया गया",
+    "showDiffInEditor": "एडिटर में परिवर्तन दिखाएं",
     "diffButton": "Diff",
     "editBatchTitle": "बैच फ़ाइल संपादन",
     "searchBatchTitle": "बैच खोज",
@@ -1375,7 +1198,7 @@
     "undoChanges": "परिवर्तन पूर्ववत करें",
     "undoConfirmTitle": "फ़ाइल परिवर्तन पूर्ववत करें",
     "undoWillDelete": "यह फ़ाइल नई बनाई गई थी। पूर्ववत करने से यह फ़ाइल हटा दी जाएगी।",
-    "undoWillRestore": "यह फ़ाइल को Claude के संशोधनों से पहले की स्थिति में वापस लाएगा।",
+    "undoWillRestore": "यह फ़ाइल को OpenCode के संशोधनों से पहले की स्थिति में वापस लाएगा।",
     "undoCannotUndo": "यह कार्रवाई पूर्ववत नहीं की जा सकती।",
     "confirmUndo": "पूर्ववत की पुष्टि करें",
     "undoSuccess": "{{fileName}} के परिवर्तन पूर्ववत किए गए",
@@ -1388,9 +1211,9 @@
     "keepAllConfirmMessage": "वर्तमान परिवर्तनों को आधार के रूप में स्वीकार करें। भविष्य के परिवर्तन शून्य से ट्रैक किए जाएंगे।",
     "discardAllSuccess": "सभी परिवर्तन हटा दिए गए",
     "discardAllFailed": "हटाना विफल: {{error}}",
+    "discardAllPartial": "{{undone}} फ़ाइलें पूर्वत में ली गईं, {{failed}} विफल (जैसे {{first}})",
     "keepAllSuccess": "सभी परिवर्तन रखे गए, ट्रैकिंग रीसेट",
-    "multiAgentBadge": "मल्टी-एजेंट",
-    "multiAgentEdited": "इस सत्र में {{count}} एजेंटों ने इस फ़ाइल को संपादित किया — सावधानी से देखें"
+    "loadingSession": "बातचीत लोड हो रही है…"
   },
   "skills": {
     "title": "Skills",
@@ -1438,7 +1261,7 @@
       "title": "Skills क्या हैं?",
       "overview": {
         "title": "अवलोकन",
-        "description": "Skills गतिशील रूप से लोड किए गए निर्देश सेट, स्क्रिप्ट और संसाधन फ़ोल्डर हैं जो विशिष्ट कार्यों के लिए Claude के प्रदर्शन को बढ़ाते हैं। Skills Claude को विशेष कार्यों को दोहराने योग्य तरीके से पूरा करना सिखाते हैं, जैसे कंपनी ब्रांड दिशानिर्देशों का उपयोग करके दस्तावेज़ बनाना, संगठन-विशिष्ट वर्कफ़्लो के अनुसार डेटा का विश्लेषण करना, या व्यक्तिगत कार्यों को स्वचालित करना।"
+        "description": "Skills गतिशील रूप से लोड किए गए निर्देश सेट, स्क्रिप्ट और संसाधन फ़ोल्डर हैं जो विशिष्ट कार्यों के लिए OpenCode के प्रदर्शन को बढ़ाते हैं। Skills OpenCode को विशेष कार्यों को दोहराने योग्य तरीके से पूरा करना सिखाते हैं, जैसे कंपनी ब्रांड दिशानिर्देशों का उपयोग करके दस्तावेज़ बनाना, संगठन-विशिष्ट वर्कफ़्लो के अनुसार डेटा का विश्लेषण करना, या व्यक्तिगत कार्यों को स्वचालित करना।"
       },
       "structure": {
         "title": "Skill संरचना",
@@ -1471,7 +1294,7 @@
         "title": "उपयोग युक्तियाँ",
         "item1": "सुनिश्चित करें कि Skill निर्देशिका में एक वैध SKILL.md फ़ाइल है",
         "item2": "Skill नामों में लोअरकेस अक्षर, संख्याएं और हाइफ़न (hyphen-case) का उपयोग करना चाहिए",
-        "item3": "लोड होने के बाद Skills स्वचालित रूप से Claude सत्रों में प्रभावी हो जाते हैं",
+        "item3": "लोड होने के बाद Skills स्वचालित रूप से OpenCode सत्रों में प्रभावी हो जाते हैं",
         "item4": "सक्षम/अक्षम टॉगल के साथ व्यक्तिगत Skill स्थिति को नियंत्रित करें",
         "item5": "इसका उपयोग करने के लिए चैट में Skill नाम का उल्लेख करें, जैसे, \"pdf skill का उपयोग करके फॉर्म फ़ील्ड निकालें\""
       },
@@ -1546,7 +1369,11 @@
       },
       "sonnet5": {
         "label": "Sonnet 5",
-        "description": "Sonnet 5 · डिफ़ॉल्ट अनुशंसित मॉडल"
+        "description": "Sonnet 5 · Sonnet 4.6 का अपग्रेड मॉडल"
+      },
+      "sonnet47": {
+        "label": "Sonnet 4.7",
+        "description": "Sonnet 4.7 · डिफ़ॉल्ट अनुशंसित मॉडल"
       },
       "opus5": {
         "label": "Opus 5",
@@ -1618,12 +1445,13 @@
       "label": "Auto Mode",
       "tooltip": "Bypass all permission checks",
       "description": "Fully automated, bypassing all permission checks [Use with caution]"
-    }
+    },
+    "switchHint": "मोड बदलें"
   },
   "codexModes": {
     "default": {
       "label": "Suggest (approval)",
-      "tooltip": "Codex approval_policy=on-request – prompts before editing files or running shell commands.",
+      "tooltip": "Codex approval_policy=untrusted – prompts before editing files or running shell commands.",
       "description": "Safest option. Every write or command requires your approval."
     },
     "plan": {
@@ -1642,46 +1470,12 @@
       "description": "Hands-off mode. Codex executes edits and shell commands immediately."
     }
   },
-  "ompModes": {
-    "default": {
-      "label": "डिफ़ॉल्ट",
-      "tooltip": "चयनित मॉडल का उपयोग करें (या OMP auto)",
-      "description": "मॉडल ड्रॉपडाउन में चुने गए मॉडल का उपयोग करता है, या Auto पर सेट होने पर OMP CLI डिफ़ॉल्ट का उपयोग करता है।"
-    },
-    "smol": {
-      "label": "Smol",
-      "tooltip": "तेज़ मॉडल रोल (omp --model smol)",
-      "description": "इस वार्तालाप को omp की smol भूमिका के लिए कॉन्फ़िगर किए गए मॉडल के साथ चलाता है। मॉडल ड्रॉपडाउन को ओवरराइड करता है।"
-    },
-    "slow": {
-      "label": "Slow",
-      "tooltip": "रीज़निंग मॉडल रोल (omp --model slow)",
-      "description": "इस वार्तालाप को omp की slow भूमिका के लिए कॉन्फ़िगर किए गए मॉडल के साथ चलाता है। मॉडल ड्रॉपडाउन को ओवरराइड करता है।"
-    },
-    "plan": {
-      "label": "Plan",
-      "tooltip": "प्लानिंग मॉडल रोल (omp --model plan)",
-      "description": "इस वार्तालाप को omp की plan भूमिका के लिए कॉन्फ़िगर किए गए मॉडल के साथ चलाता है। मॉडल ड्रॉपडाउन को ओवरराइड करता है।"
-    }
-  },
   "providers": {
-    "claude": {
-      "label": "Claude Code"
-    },
-    "codex": {
-      "label": "Codex"
-    },
     "gemini": {
       "label": "Gemini Cli"
     },
     "opencode": {
       "label": "OpenCode"
-    },
-    "pi": {
-      "label": "PI CLI"
-    },
-    "omp": {
-      "label": "OMP CLI"
     }
   },
   "promptEnhancer": {
@@ -1738,6 +1532,7 @@
     "parseError": "परिणाम पार्स करने में विफल"
   },
   "reasoning": {
+    "cycleHint": "तर्क स्तर बदलें",
     "title": "तर्क गहराई चुनें",
     "low": {
       "label": "कम",
@@ -1771,8 +1566,8 @@
     "helpText": "If the problem persists, please copy the error information and submit it as an issue on GitHub, or share it in the community group."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code बाधित हुआ (संभवतः प्रतिक्रिया समय समाप्त या उपयोगकर्ता रद्दीकरण):",
-    "claudeCodeError": "Claude Code त्रुटि:",
+    "claudeCodeInterrupted": "OpenCode बाधित हुआ (संभवतः प्रतिक्रिया समय समाप्त या उपयोगकर्ता रद्दीकरण):",
+    "claudeCodeError": "OpenCode त्रुटि:",
     "errorMessage": "त्रुटि संदेश",
     "currentApiKeySource": "वर्तमान API Key स्रोत",
     "currentApiKeyPreview": "वर्तमान API Key पूर्वावलोकन",
@@ -1783,7 +1578,7 @@
     "defaultBaseUrl": "डिफ़ॉल्ट (https://api.anthropic.com)",
     "configTip": "सुझाव: CLI पर्यावरण चर या settings.json से पढ़ सकता है; यह प्लगइन समस्याओं से बचने के लिए केवल settings.json से पढ़ने का समर्थन करता है। आप इसे प्लगइन के ऊपरी दाएं कोने में सेटिंग्स > प्रदाता प्रबंधन में कॉन्फ़िगर कर सकते हैं",
     "apiError": "API त्रुटि",
-    "apiErrorCauses": "संभावित कारण:\n1. API Key सही ढंग से कॉन्फ़िगर नहीं है\n2. तृतीय-पक्ष प्रॉक्सी सेवा कॉन्फ़िगरेशन समस्या\n3. कृपया ~/.claude/settings.json में कॉन्फ़िगरेशन जांचें",
+    "apiErrorCauses": "संभावित कारण:\n1. API Key सही ढंग से कॉन्फ़िगर नहीं है\n2. तृतीय-पक्ष प्रॉक्सी सेवा कॉन्फ़िगरेशन समस्या\n3. कृपया ~/.config/opencode/opencode.json में कॉन्फ़िगरेशन जांचें",
     "codexAuthError": "Codex प्रमाणीकरण त्रुटि:",
     "codexAuthErrorChecks": "कृपया निम्नलिखित जांचें:\n1. क्या प्लगइन सेटिंग्स में Codex API Key सही है\n2. क्या API Key के पास पर्याप्त अनुमतियां हैं\n3. यदि कस्टम Base URL का उपयोग कर रहे हैं, तो कृपया पता सही होने की पुष्टि करें",
     "codexAuthTip": "सुझाव: Codex को एक वैध OpenAI API Key की आवश्यकता है",
@@ -1818,7 +1613,6 @@
   "errorDiagnostic": {
     "copyCommand": "कॉपी करें",
     "copied": "कॉपी किया गया",
-    "openDependencySettings": "निर्भरता प्रबंधन खोलें",
     "recommended": "अनुशंसित",
     "codexThreadResume": {
       "title": "सत्र थ्रेड अब मान्य नहीं है",
@@ -1835,10 +1629,6 @@
           "step0": "1. अपने टर्मिनल में चलाएं (आधिकारिक npm रजिस्ट्री पर स्विच करें):",
           "step1": "2. प्लगइन की निर्भरता प्रबंधन सेटिंग्स खोलें और पुनः इंस्टॉल पर क्लिक करें:",
           "step2": "3. पुनः इंस्टॉलेशन पूरा होने के बाद, Taobao मिरर पर वापस स्विच करें:"
-        },
-        "downgrade": {
-          "title": "विकल्प 2: पुराने संस्करण पर वापस जाएं",
-          "step0": "निर्भरता प्रबंधन में SDK संस्करण को v0.2.112 या उससे पहले के संस्करण पर स्विच करें। स्विच करने के बाद IDEA को पुनरारंभ करें।"
         }
       }
     },
@@ -1850,13 +1640,20 @@
         "checkNodeVersion": {
           "title": "विकल्प 1: अपना Node.js संस्करण जाँचें",
           "step0": "अपना संस्करण देखने के लिए टर्मिनल में नीचे दिया गया कमांड चलाएँ। Node 22 या वर्तमान LTS की अनुशंसा की जाती है — उपयोगकर्ताओं ने Node 24 पर कई समस्याएँ बताई हैं, इसलिए Node 20 या 22 को प्राथमिकता दें:"
-        },
-        "reinstallLatestSdk": {
-          "title": "विकल्प 2: आधिकारिक npm रजिस्ट्री से नवीनतम SDK पुनः इंस्टॉल करें",
-          "step0": "1. आधिकारिक npm रजिस्ट्री पर स्विच करें (Taobao मिरर का उपयोग न करें — हो सकता है उसके पास नवीनतम संस्करण न हो):",
-          "step1": "2. निर्भरता प्रबंधन खोलें और नवीनतम SDK पुनः इंस्टॉल करें:"
         }
       }
+    }
+  },
+  "openCodeModes": {
+    "default": {
+      "label": "Build",
+      "tooltip": "OpenCode build एजेंट",
+      "description": "पूर्ण अधिकार वाला डेवलपमेंट एजेंट (opencode डिफ़ॉल्ट)"
+    },
+    "plan": {
+      "label": "Plan",
+      "tooltip": "OpenCode plan एजेंट",
+      "description": "केवल पढ़ने के लिए विश्लेषण, कोड लिखने से पहले योजना"
     }
   }
 }

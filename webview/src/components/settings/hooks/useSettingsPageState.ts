@@ -1,6 +1,5 @@
 // hooks/useSettingsPageState.ts
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 import type { SettingsTab } from '../SettingsSidebar';
 import type { AlertType } from '../../AlertDialog';
 import type { ToastMessage } from '../../Toast';
@@ -35,15 +34,7 @@ interface UseSettingsPageStateProps {
 export function useSettingsPageState({
   initialTab,
 }: UseSettingsPageStateProps): UseSettingsPageStateReturn {
-  const { t } = useTranslation();
-
-  const [currentTab, setCurrentTab] = useState<SettingsTab>(() => {
-    const initial = initialTab || 'basic';
-    if (false) {
-      return 'basic';
-    }
-    return initial;
-  });
+  const [currentTab, setCurrentTab] = useState<SettingsTab>(initialTab || 'basic');
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -81,29 +72,11 @@ export function useSettingsPageState({
     };
   }, [manualCollapsed]);
 
-  // Sync tab when codex mode changes
-  useEffect(() => {
-    if (false) {
-      setCurrentTab('basic');
-    }
-  }, [currentTab]);
-
   const handleTabChange = useCallback(
     (tab: SettingsTab) => {
-      if (false) {
-        setToasts((prev) => [
-          ...prev,
-          {
-            id: `toast-${Date.now()}-${Math.random()}`,
-            message: t('settings.codexFeatureUnavailable'),
-            type: 'warning' as ToastMessage['type'],
-          },
-        ]);
-        return;
-      }
       setCurrentTab(tab);
     },
-    [t]
+    []
   );
 
   const toggleManualCollapse = useCallback(() => {

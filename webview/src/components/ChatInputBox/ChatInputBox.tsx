@@ -14,7 +14,6 @@ import type {
   ChatInputBoxProps,
   PermissionMode,
 } from './types.js';
-import { OPENCODE_DEFAULT_MODEL_ID } from './types.js';
 import { ChatInputBoxHeader } from './ChatInputBoxHeader.js';
 import { ChatInputBoxFooter } from './ChatInputBoxFooter.js';
 import { ResizeHandles } from './ResizeHandles.js';
@@ -35,7 +34,6 @@ import {
   useChatInputAttachmentsCoordinator,
   useChatInputCompletionsCoordinator,
   useChatInputSelectionController,
-  useOpenSourceBannerState,
   useResetAttachmentsOnSessionChange,
   useSpaceKeyListener,
   useCompositionSafeTagRendering,
@@ -75,9 +73,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
   (
     {
       isLoading = false,
-      selectedModel = OPENCODE_DEFAULT_MODEL_ID,
+      selectedModel = 'claude-sonnet-4-7',
       permissionMode = 'default',
-      currentProvider = 'opencode',
+      currentProvider = 'claude',
       usagePercentage = 0,
       usageUsedTokens,
       usageMaxTokens,
@@ -93,41 +91,37 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onRemoveAttachment,
       onModeSelect,
       onModelSelect,
+      onProviderSelect,
       reasoningEffort = 'high',
       onReasoningChange,
+      codexFastMode = 'normal',
+      onCodexFastModeChange,
       activeFile,
       selectedLines,
       onClearContext,
       alwaysThinkingEnabled,
       onToggleThinking,
-      streamingEnabled,
-      onStreamingEnabledChange,
       sendShortcut = 'enter',
-      selectedAgent,
-      onAgentSelect,
-      onOpenAgentSettings,
-      onOpenPromptSettings,
       onOpenModelSettings,
-      hasMessages = false,
-      onRewind,
       statusPanelExpanded = true,
       onToggleStatusPanel,
-      sdkInstalled = true, // Default to true to avoid disabling input box on initial state
-      sdkStatusLoading = false, // SDK status loading state
-      sdkStatusError = false,
-      onRetrySdkStatus,
-      onInstallSdk,
+      sdkInstalled = true,
+      daemonStatusLoaded = false,
+      onRetryDaemonStatus,
+      sessionLoading,
       addToast,
       messageQueue,
       onRemoveFromQueue,
       autoOpenFileEnabled,
       onAutoOpenFileEnabledChange,
+      longContextEnabled = true,
+      onLongContextChange,
+      onCompactClick,
     }: ChatInputBoxProps,
     ref: React.ForwardedRef<ChatInputBoxHandle>
   ) => {
     const { t } = useTranslation();
 
-    const { showOpenSourceBanner, handleDismissOpenSourceBanner } = useOpenSourceBannerState();
     const {
       attachments,
       setInternalAttachments,
@@ -197,9 +191,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     }, [renderFileTags, renderQuoteTags]);
 
     // Tooltip hook
-    const { tooltip, handleMouseOver, handleMouseLeave } = useTooltip({
-      containerRef: editableRef,
-    });
+    const { tooltip, handleMouseOver, handleMouseLeave } = useTooltip();
 
     // Context menu hook
     const ctxMenu = useContextMenu();
@@ -246,8 +238,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     const {
       fileCompletion,
       commandCompletion,
-      agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       inlineCompletion,
       debouncedDetectCompletion,
@@ -263,9 +253,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       closeAllCompletionsRef,
       handleInputRef,
       currentProvider,
-      onAgentSelect,
-      onOpenAgentSettings,
-      onOpenPromptSettings,
     });
 
     // Performance optimization: Debounced onInput callback
@@ -440,7 +427,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       invalidateCache,
       attachments,
       isLoading,
-      sdkStatusLoading,
+      daemonStatusLoaded,
       sdkInstalled,
       currentProvider,
       clearInput,
@@ -452,12 +439,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       clearAttachmentsDraft,
       fileCompletion,
       commandCompletion,
-      agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       recordInputHistory,
       onSubmit,
-      onInstallSdk,
       addToast,
       t,
     });
@@ -490,12 +474,10 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       isComposingRef,
       lastCompositionEndTimeRef,
       sendShortcut,
-      sdkStatusLoading,
+      daemonStatusLoaded,
       sdkInstalled,
       fileCompletion,
       commandCompletion,
-      agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       handleMacCursorMovement,
       handleHistoryKeyDown,
@@ -506,6 +488,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       completionSelectedRef,
       submittedOnEnterRef,
       handleSubmit,
+      // Shift+Tab toggles Build/Plan mode (cc-gui parity)
+      onModeSelect,
+      permissionMode,
     });
 
     useControlledValueSync({
@@ -526,8 +511,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       sendShortcut,
       fileCompletion,
       commandCompletion,
-      agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       completionSelectedRef,
       submittedOnEnterRef,
@@ -612,6 +595,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     return (
       <div
         className={`chat-input-box ${isResizingInputBox ? 'is-resizing' : ''}`}
+        data-mode={permissionMode}
         onClick={focusInput}
         ref={containerRef}
         style={containerStyle}
@@ -621,12 +605,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         <ResizeHandles getHandleProps={getHandleProps} nudge={nudge} />
 
         <ChatInputBoxHeader
-          sdkStatusLoading={sdkStatusLoading}
-          sdkStatusError={sdkStatusError}
-          sdkInstalled={sdkInstalled}
-          currentProvider={currentProvider}
-          onRetrySdkStatus={onRetrySdkStatus}
-          onInstallSdk={onInstallSdk}
+          daemonStatusLoaded={daemonStatusLoaded}
+          daemonAlive={sdkInstalled}
+          onRetryDaemonStatus={onRetryDaemonStatus}
           t={t}
           attachments={attachments}
           onRemoveAttachment={handleRemoveAttachment}
@@ -638,18 +619,14 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           showUsage={showUsage}
           onClearContext={handleClearFileContext}
           onAddAttachment={handleAddAttachment}
-          selectedAgent={selectedAgent}
-          onClearAgent={() => onAgentSelect?.(null)}
-          hasMessages={hasMessages}
-          onRewind={onRewind}
           statusPanelExpanded={statusPanelExpanded}
           onToggleStatusPanel={onToggleStatusPanel}
           messageQueue={messageQueue}
           onRemoveFromQueue={onRemoveFromQueue}
-          showOpenSourceBanner={showOpenSourceBanner}
-          onDismissOpenSourceBanner={handleDismissOpenSourceBanner}
           autoOpenFileEnabled={autoOpenFileEnabled}
           onRequestEnableFileContext={handleRequestEnableFileContext}
+          onCompactClick={onCompactClick}
+          sessionLoading={sessionLoading}
         />
 
         {/* Input area */}
@@ -694,8 +671,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
                 if (
                   fileCompletion.isOpen ||
                   commandCompletion.isOpen ||
-                  agentCompletion.isOpen ||
-                  promptCompletion.isOpen ||
                   dollarCommandCompletion.isOpen
                 ) {
                   return;
@@ -740,24 +715,21 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           permissionMode={permissionMode}
           currentProvider={currentProvider}
           reasoningEffort={reasoningEffort}
+          codexFastMode={codexFastMode}
           onSubmit={handleSubmit}
           onStop={onStop}
           onModeSelect={handleModeSelect}
           onModelSelect={handleModelSelect}
+          onProviderSelect={onProviderSelect}
           onReasoningChange={onReasoningChange}
+          onCodexFastModeChange={onCodexFastModeChange}
           alwaysThinkingEnabled={alwaysThinkingEnabled}
           onToggleThinking={onToggleThinking}
-          streamingEnabled={streamingEnabled}
-          onStreamingEnabledChange={onStreamingEnabledChange}
-          selectedAgent={selectedAgent}
-          onAgentSelect={(agent) => onAgentSelect?.(agent)}
-          onOpenAgentSettings={onOpenAgentSettings}
           onAddModel={onOpenModelSettings}
-          onClearAgent={() => onAgentSelect?.(null)}
+          longContextEnabled={longContextEnabled}
+          onLongContextChange={onLongContextChange}
           fileCompletion={fileCompletion}
           commandCompletion={commandCompletion}
-          agentCompletion={agentCompletion}
-          promptCompletion={promptCompletion}
           dollarCommandCompletion={dollarCommandCompletion}
           tooltip={tooltip}
           t={t}

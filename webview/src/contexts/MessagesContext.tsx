@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import type { ClaudeMessage, SubagentHistoryResponse } from '../types';
+import type { ClaudeMessage, SubagentHistoryResponse, TodoItem } from '../types';
 
 export const DEFAULT_STATUS = 'ready';
 
@@ -18,6 +18,15 @@ export interface MessagesContextValue {
   setIsThinking: React.Dispatch<React.SetStateAction<boolean>>;
   streamingActive: boolean;
   setStreamingActive: React.Dispatch<React.SetStateAction<boolean>>;
+  sessionLoading: boolean;
+  setSessionLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Authoritative todo list from opencode's `todo.updated` SSE event. */
+  sseTodos: TodoItem[] | null;
+  setSseTodos: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
+  isCompacting: boolean;
+  setIsCompacting: React.Dispatch<React.SetStateAction<boolean>>;
+  compactingStartTime: number | null;
+  setCompactingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
 const MessagesContext = createContext<MessagesContextValue | null>(null);
@@ -42,6 +51,10 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
   const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null);
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [streamingActive, setStreamingActive] = useState<boolean>(false);
+  const [sessionLoading, setSessionLoading] = useState<boolean>(false);
+  const [sseTodos, setSseTodos] = useState<TodoItem[] | null>(null);
+  const [isCompacting, setIsCompacting] = useState<boolean>(false);
+  const [compactingStartTime, setCompactingStartTime] = useState<number | null>(null);
 
   const value = useMemo<MessagesContextValue>(
     () => ({
@@ -59,8 +72,16 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       setIsThinking,
       streamingActive,
       setStreamingActive,
+      sessionLoading,
+      setSessionLoading,
+      sseTodos,
+      setSseTodos,
+      isCompacting,
+      setIsCompacting,
+      compactingStartTime,
+      setCompactingStartTime,
     }),
-    [messages, subagentHistories, status, loading, loadingStartTime, isThinking, streamingActive],
+    [messages, subagentHistories, status, loading, loadingStartTime, isThinking, streamingActive, sessionLoading, sseTodos, isCompacting, compactingStartTime],
   );
 
   return <MessagesContext.Provider value={value}>{children}</MessagesContext.Provider>;

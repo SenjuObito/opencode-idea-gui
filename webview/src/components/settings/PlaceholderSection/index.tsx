@@ -3,7 +3,7 @@ import { McpSettingsSection } from '../../mcp/McpSettingsSection';
 import styles from './style.module.less';
 
 interface PlaceholderSectionProps {
-  type: 'permissions' | 'mcp' | 'agents' | 'skills';
+  type: 'mcp' | 'agents' | 'skills';
   currentProvider?: 'claude' | 'codex' | string;
 }
 
@@ -11,12 +11,6 @@ const PlaceholderSection = ({ type, currentProvider }: PlaceholderSectionProps) 
   const { t } = useTranslation();
 
   const sectionConfig = {
-    permissions: {
-      title: t('settings.permissions'),
-      desc: t('settings.permissionsDesc'),
-      icon: 'codicon-shield',
-      message: t('settings.permissionsComingSoon'),
-    },
     mcp: {
       title: t('settings.mcp'),
       desc: t('settings.mcpDesc'),

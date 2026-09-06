@@ -1,16 +1,58 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { applyChatBarThemeColor, isValidHexColor } from '../utils/chatBarTheme';
+import { applyFontScale } from '../utils/fontScale';
 import {
-  applyChatBarThemeColor,
-  CHAT_BAR_COLOR_STORAGE_KEY,
-  isValidHexColor,
-} from '../utils/chatBarTheme';
+  getUiPreferences,
+  UI_PREFERENCES_CHANGED_EVENT,
+  type UiPreferences,
+  type UiPreferencesChangedDetail,
+} from '../utils/uiPreferences';
+
+/** 字号档位 → 缩放比（与设置页保持一致的唯一映射）。 */
+const FONT_SIZE_SCALE: Record<number, number> = {
+  1: 0.8,   // 80%
+  2: 0.9,   // 90% (default)
+  3: 1.0,   // 100%
+  4: 1.1,   // 110%
+  5: 1.2,   // 120%
+  6: 1.4,   // 140%
+};
+
+function applyAppearance(prefs: UiPreferences, ideTheme: 'light' | 'dark' | null): void {
+  // 显式 light/dark 立即生效；跟随 IDE 时等 ideTheme 到达再切换。
+  // 旧实现无条件等 ideTheme，导致「选了浅色却先闪一帧暗色」。
+  if (prefs.theme === 'light' || prefs.theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', prefs.theme);
+  } else if (ideTheme !== null) {
+    document.documentElement.setAttribute('data-theme', ideTheme);
+  }
+
+  applyFontScale(String(FONT_SIZE_SCALE[prefs.fontSizeLevel] ?? 1.0));
+
+  if (prefs.chatBgColor && isValidHexColor(prefs.chatBgColor)) {
+    document.documentElement.style.setProperty('--bg-chat', prefs.chatBgColor);
+  } else {
+    document.documentElement.style.removeProperty('--bg-chat');
+  }
+
+  if (prefs.userMsgColor && isValidHexColor(prefs.userMsgColor)) {
+    document.documentElement.style.setProperty('--color-message-user-bg', prefs.userMsgColor);
+  } else {
+    document.documentElement.style.removeProperty('--color-message-user-bg');
+  }
+
+  applyChatBarThemeColor(prefs.chatBarColor);
+}
 
 /**
  * Manages IDE theme initialization and synchronization.
  * Handles font scaling, background color, and theme mode detection.
+ *
+ * Theme source of truth is the shared uiPreferences store (host globalState +
+ * localStorage mirror), so the very first render already uses the persisted
+ * choice instead of the CSS default (dark).
  */
 export function useThemeInit() {
-  // IDE theme state - prefer initial theme injected by Java
   const [ideTheme, setIdeTheme] = useState<'light' | 'dark' | null>(() => {
     const injectedTheme = window.__INITIAL_IDE_THEME__;
     if (injectedTheme === 'light' || injectedTheme === 'dark') {
@@ -19,108 +61,90 @@ export function useThemeInit() {
     return null;
   });
 
+  // 最新主题 / IDE 主题保存在 ref 里，供偏好变更事件复用（避免每次重渲染都重建监听）。
+  const ideThemeRef = useRef(ideTheme);
+  ideThemeRef.current = ideTheme;
+
   // Initialize theme and font scaling
   useEffect(() => {
-    // Register IDE theme received callback
-    window.onIdeThemeReceived = (jsonStr: string) => {
+    // 设置页（useSettingsWindowCallbacks）会在这两个回调上再包一层来同步自己的
+    // ideTheme state；卸载时只回收自己装的那一层，绝不误删别人的包装器。
+    const onReceived = (jsonStr: string): void => {
       try {
         const themeData = JSON.parse(jsonStr);
-        const theme = themeData.isDark ? 'dark' : 'light';
-        setIdeTheme(theme);
+        setIdeTheme(themeData.isDark ? 'dark' : 'light');
       } catch {
         // Failed to parse IDE theme response
       }
     };
-
-    // Listen for IDE theme changes (when user switches theme in the IDE)
-    window.onIdeThemeChanged = (jsonStr: string) => {
+    const onChanged = (jsonStr: string): void => {
       try {
         const themeData = JSON.parse(jsonStr);
-        const theme = themeData.isDark ? 'dark' : 'light';
-        setIdeTheme(theme);
+        setIdeTheme(themeData.isDark ? 'dark' : 'light');
       } catch {
         // Failed to parse IDE theme change
       }
     };
 
-    // Initialize font scaling
-    const savedLevel = localStorage.getItem('fontSizeLevel');
-    const level = savedLevel ? parseInt(savedLevel, 10) : 2; // Default level 2 (90%)
-    const fontSizeLevel = (level >= 1 && level <= 6) ? level : 2;
+    window.onIdeThemeReceived = onReceived;
+    window.onIdeThemeChanged = onChanged;
 
-    // Map level to scale ratio
-    const fontSizeMap: Record<number, number> = {
-      1: 0.8,   // 80%
-      2: 0.9,   // 90% (default)
-      3: 1.0,   // 100%
-      4: 1.1,   // 110%
-      5: 1.2,   // 120%
-      6: 1.4,   // 140%
+    return () => {
+      if (window.onIdeThemeReceived === onReceived) delete window.onIdeThemeReceived;
+      if (window.onIdeThemeChanged === onChanged) delete window.onIdeThemeChanged;
     };
-    const scale = fontSizeMap[fontSizeLevel] || 1.0;
-    document.documentElement.style.setProperty('--font-scale', scale.toString());
+  }, []);
 
-    // Initialize chat background color (validate hex format before applying)
-    const savedChatBgColor = localStorage.getItem('chatBgColor');
-    if (savedChatBgColor && isValidHexColor(savedChatBgColor)) {
-      document.documentElement.style.setProperty('--bg-chat', savedChatBgColor);
-    }
+  // Apply appearance whenever the persisted preferences or the IDE theme change.
+  useEffect(() => {
+    applyAppearance(getUiPreferences(), ideTheme);
+  }, [ideTheme]);
 
-    // Initialize user message bubble color
-    const savedUserMsgColor = localStorage.getItem('userMsgColor');
-    if (savedUserMsgColor && isValidHexColor(savedUserMsgColor)) {
-      document.documentElement.style.setProperty('--color-message-user-bg', savedUserMsgColor);
-    }
+  useEffect(() => {
+    const onPreferencesChanged = (event: Event) => {
+      const detail = (event as CustomEvent<UiPreferencesChangedDetail>).detail;
+      if (detail?.preferences) {
+        applyAppearance(detail.preferences, ideThemeRef.current);
+      }
+    };
+    window.addEventListener(UI_PREFERENCES_CHANGED_EVENT, onPreferencesChanged);
+    return () => window.removeEventListener(UI_PREFERENCES_CHANGED_EVENT, onPreferencesChanged);
+  }, []);
 
-    // Initialize the shared chat header and status bar theme color
-    const savedChatBarColor = localStorage.getItem(CHAT_BAR_COLOR_STORAGE_KEY) || '';
-    applyChatBarThemeColor(savedChatBarColor);
-
-    // Apply the user's explicit theme choice (light/dark) first
-    const savedTheme = localStorage.getItem('theme');
+  // Request IDE theme (with retry mechanism)
+  useEffect(() => {
+    const savedTheme = getUiPreferences().theme;
 
     // Check if there's an initial theme injected by Java
     const injectedTheme = window.__INITIAL_IDE_THEME__;
 
-    // Request IDE theme (with retry mechanism)
     let retryCount = 0;
     const MAX_RETRIES = 20; // Max 20 retries (2 seconds)
+    let cancelled = false;
 
     const requestIdeTheme = () => {
+      if (cancelled) return;
       if (window.sendToJava) {
         window.sendToJava('get_ide_theme:');
       } else {
         retryCount++;
         if (retryCount < MAX_RETRIES) {
           setTimeout(requestIdeTheme, 100);
-        } else {
+        } else if (savedTheme === null || savedTheme === 'system') {
           // If in Follow IDE mode and unable to get IDE theme, use injected theme or dark as fallback
-          if (savedTheme === null || savedTheme === 'system') {
-            const fallback = injectedTheme || 'dark';
-            setIdeTheme(fallback as 'light' | 'dark');
-          }
+          const fallback = injectedTheme || 'dark';
+          setIdeTheme(fallback as 'light' | 'dark');
         }
       }
     };
 
     // Delay 100ms before requesting, giving the bridge time to initialize
-    setTimeout(requestIdeTheme, 100);
+    const timer = setTimeout(requestIdeTheme, 100);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, []);
-
-  // Re-apply theme when IDE theme changes (if user chose "Follow IDE")
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-
-    // Only process after ideTheme has been loaded
-    if (ideTheme === null) {
-      return;
-    }
-
-    // If user selected "Follow IDE" mode
-    if (savedTheme === null || savedTheme === 'system') {
-      document.documentElement.setAttribute('data-theme', ideTheme);
-    }
-  }, [ideTheme]);
 
   return { ideTheme };
 }

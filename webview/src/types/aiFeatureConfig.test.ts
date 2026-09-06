@@ -2,18 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   AI_FEATURE_PROVIDERS,
   DEFAULT_AI_FEATURE_MODELS,
-  DEFAULT_COMMIT_AI_CONFIG,
   normalizeAiFeatureConfig,
   pickAutoAiFeatureProvider,
 } from './aiFeatureConfig';
-import {
-  DEFAULT_PROMPT_ENHANCER_CONFIG,
-  normalizePromptEnhancerConfig,
-} from './promptEnhancer';
 
 describe('normalizeAiFeatureConfig', () => {
-  it('fills missing availability/models for all CLI providers', () => {
-    const normalized = normalizeAiFeatureConfig({}, DEFAULT_COMMIT_AI_CONFIG);
+  it('fills missing availability/models for every CLI provider', () => {
+    const normalized = normalizeAiFeatureConfig({});
     for (const provider of AI_FEATURE_PROVIDERS) {
       expect(normalized.availability[provider]).toBe(false);
       expect(normalized.models[provider]).toBe(DEFAULT_AI_FEATURE_MODELS[provider]);
@@ -21,23 +16,28 @@ describe('normalizeAiFeatureConfig', () => {
     expect(normalized.provider).toBeNull();
   });
 
-  it('preserves valid multi-CLI provider and availability flags', () => {
+  it('preserves a valid provider and its availability flag', () => {
     const normalized = normalizeAiFeatureConfig({
-      provider: 'grok',
-      effectiveProvider: 'grok',
+      provider: 'opencode',
+      effectiveProvider: 'opencode',
       resolutionSource: 'manual',
-      // Partial payload from the backend: only three providers configured,
-      // the rest must be filled from defaults by normalize.
-      models: { claude: 'claude-opus-4-8', codex: 'gpt-5.4', grok: 'grok' },
-      availability: { claude: true, codex: false, grok: true },
+      models: { opencode: 'openai/gpt-5' },
+      availability: { opencode: true },
     });
-    expect(normalized.provider).toBe('grok');
-    expect(normalized.availability.claude).toBe(true);
-    expect(normalized.availability.codex).toBe(false);
-    expect(normalized.availability.grok).toBe(true);
-    expect(normalized.models.claude).toBe('claude-opus-4-8');
-    expect(normalized.models.grok).toBe('grok');
-    expect(normalized.models.kimi).toBe(DEFAULT_AI_FEATURE_MODELS.kimi);
+    expect(normalized.provider).toBe('opencode');
+    expect(normalized.effectiveProvider).toBe('opencode');
+    expect(normalized.availability.opencode).toBe(true);
+    expect(normalized.models.opencode).toBe('openai/gpt-5');
+  });
+
+  it('fills defaults for providers missing from a partial payload', () => {
+    const normalized = normalizeAiFeatureConfig({
+      provider: 'opencode',
+      models: {},
+      availability: {},
+    });
+    expect(normalized.models.opencode).toBe(DEFAULT_AI_FEATURE_MODELS.opencode);
+    expect(normalized.availability.opencode).toBe(false);
   });
 
   it('rejects unknown provider ids', () => {
@@ -51,72 +51,15 @@ describe('normalizeAiFeatureConfig', () => {
 });
 
 describe('pickAutoAiFeatureProvider', () => {
-  it('prefers codex then claude before beta CLIs', () => {
-    expect(pickAutoAiFeatureProvider({
-      claude: true,
-      codex: true,
-      grok: true,
-      kimi: true,
-      opencode: true,
-      pi: true,
-      omp: true,
-    })).toBe('codex');
-    expect(pickAutoAiFeatureProvider({
-      claude: true,
-      codex: false,
-      grok: true,
-      kimi: false,
-      opencode: false,
-      pi: false,
-      omp: false,
-    })).toBe('claude');
-    expect(pickAutoAiFeatureProvider({
-      claude: false,
-      codex: false,
-      grok: true,
-      kimi: true,
-      opencode: false,
-      pi: false,
-      omp: false,
-    })).toBe('grok');
+  it('returns opencode when it is available', () => {
+    expect(pickAutoAiFeatureProvider({ opencode: true })).toBe('opencode');
+    expect(pickAutoAiFeatureProvider({ opencode: false })).toBeNull();
   });
 
   it('prefers the current chat provider when available (prompt enhancer auto)', () => {
-    expect(pickAutoAiFeatureProvider({
-      claude: true,
-      codex: true,
-      grok: true,
-      kimi: false,
-      opencode: false,
-      pi: false,
-      omp: false,
-    }, 'grok')).toBe('grok');
-    expect(pickAutoAiFeatureProvider({
-      claude: true,
-      codex: true,
-      grok: false,
-      kimi: false,
-      opencode: false,
-      pi: false,
-      omp: false,
-    }, 'grok')).toBe('codex');
-    expect(pickAutoAiFeatureProvider({
-      claude: true,
-      codex: true,
-      grok: true,
-      kimi: false,
-      opencode: false,
-      pi: false,
-      omp: false,
-    }, 'unknown-cli')).toBe('codex');
-  });
-});
-
-describe('normalizePromptEnhancerConfig', () => {
-  it('uses prompt enhancer defaults including CLI models', () => {
-    const normalized = normalizePromptEnhancerConfig(null);
-    expect(normalized.effectiveProvider).toBe(DEFAULT_PROMPT_ENHANCER_CONFIG.effectiveProvider);
-    expect(normalized.models).toEqual(DEFAULT_PROMPT_ENHANCER_CONFIG.models);
-    expect(normalized.models.opencode).toBe('opencode-default');
+    expect(pickAutoAiFeatureProvider({ opencode: true }, 'opencode')).toBe('opencode');
+    // An unknown preferred id falls back to opencode while it is available.
+    expect(pickAutoAiFeatureProvider({ opencode: true }, 'unknown-cli')).toBe('opencode');
+    expect(pickAutoAiFeatureProvider({ opencode: false }, 'unknown-cli')).toBeNull();
   });
 });

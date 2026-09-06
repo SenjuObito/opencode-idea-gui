@@ -18,7 +18,7 @@ import com.opencodebuddy.handler.importer.McpServerImportHandler;
 import com.opencodebuddy.handler.core.MessageDispatcher;
 import com.opencodebuddy.handler.NodeProcessHandler;
 import com.opencodebuddy.handler.PermissionHandler;
-import com.opencodebuddy.handler.PromptHandler;
+import com.opencodebuddy.handler.CommandsHandler;
 import com.opencodebuddy.handler.RewindHandler;
 import com.opencodebuddy.handler.SessionHandler;
 import com.opencodebuddy.handler.SettingsHandler;
@@ -253,7 +253,7 @@ public class ChatWindowDelegate {
         messageDispatcher.registerHandler(new FileExportHandler(handlerContext));
         messageDispatcher.registerHandler(new DiffHandler(handlerContext));
         messageDispatcher.registerHandler(new AgentHandler(handlerContext));
-        messageDispatcher.registerHandler(new PromptHandler(handlerContext));
+        messageDispatcher.registerHandler(new CommandsHandler(handlerContext));
         messageDispatcher.registerHandler(new TabHandler(handlerContext));
         messageDispatcher.registerHandler(new RewindHandler(handlerContext));
         messageDispatcher.registerHandler(new UndoFileHandler(handlerContext));

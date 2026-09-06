@@ -8,7 +8,6 @@ vi.mock('react-i18next', () => ({
 
 describe('StatusPanel', () => {
   it.each([
-    ['codex', 'statusPanel.todoTab'],
     ['claude', 'statusPanel.tasksTab'],
   ])('uses the provider-specific todo label for %s', (currentProvider, expectedLabel) => {
     render(

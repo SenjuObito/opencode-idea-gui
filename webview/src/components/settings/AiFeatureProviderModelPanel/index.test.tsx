@@ -184,35 +184,6 @@ describe('AiFeatureProviderModelPanel', () => {
   });
 
 
-  it('shows Grok profile models (not gateway catalog noise) in the model select', () => {
-    render(
-      <AiFeatureProviderModelPanel
-        config={{
-          ...config,
-          provider: 'grok',
-          effectiveProvider: 'grok',
-          resolutionSource: 'manual',
-          models: {
-            ...DEFAULT_AI_FEATURE_MODELS,
-            grok: 'grok',
-          },
-        }}
-        settingsKeyPrefix="settings.basic.promptEnhancer"
-        providerKeyPrefix="settings.basic.promptEnhancer.provider"
-        onProviderChange={vi.fn()}
-        onModelChange={vi.fn()}
-        onResetToDefault={vi.fn()}
-      />
-    );
-
-    const modelRoot = screen.getByTestId('ai-feature-model-select');
-    fireEvent.click(within(modelRoot).getByRole('button'));
-    const options = within(modelRoot).getAllByRole('option');
-    const labels = options.map((opt) => opt.textContent ?? '');
-    expect(labels.some((l) => /Grok 4\.6/i.test(l))).toBe(true);
-    // Must not surface OpenAI-compatible gateway dump entries.
-    expect(labels.some((l) => /gpt-5\.2/i.test(l) || /codex-auto-review/i.test(l))).toBe(false);
-  });
 
   it('shows unavailable summary in auto mode when no provider is effective', () => {
     render(

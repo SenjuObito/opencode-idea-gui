@@ -24,8 +24,8 @@ import java.util.regex.Pattern;
  * Manages skill import, deletion, enabling, and disabling.
  * <p>
  * Active skills storage locations:
- * - Global: ~/.claude/skills
- * - Local: {workspace}/.claude/skills
+ * - Global: ~/.config/opencode/skill
+ * - Local: {workspace}/.opencode/skill
  * <p>
  * Management directories (disabled skills):
  * - Global: ~/.codemoss/skills/global
@@ -59,7 +59,7 @@ public class SkillService {
      */
     public static String getGlobalSkillsDir() {
         String homeDir = NodeDetector.resolveHomeForFileOps();
-        return Paths.get(homeDir, ".claude", "skills").toString();
+        return Paths.get(homeDir, ".config", "opencode", "skill").toString();
     }
 
     /**
@@ -69,7 +69,7 @@ public class SkillService {
         if (workspaceRoot == null || workspaceRoot.isEmpty()) {
             return null;
         }
-        return Paths.get(workspaceRoot, ".claude", "skills").toString();
+        return Paths.get(workspaceRoot, ".opencode", "skill").toString();
     }
 
     // ==================== Management Directories (storage for disabled skills) ====================

@@ -2,7 +2,6 @@
  * Pure storage functions for chat input history (localStorage I/O).
  * No React dependency — safe to import from any context.
  */
-import { sendToJava } from '../../../utils/bridge.js';
 
 /** localStorage key for chat input history */
 export const HISTORY_STORAGE_KEY = 'chat-input-history';
@@ -307,8 +306,6 @@ export function deleteHistoryItem(item: string): void {
     }
   }
 
-  // Also sync to .codemoss (async)
-  sendToJava('delete_input_history_item', item);
 }
 
 /**
@@ -327,8 +324,6 @@ export function clearAllHistory(): void {
     }
   }
 
-  // Also sync to .codemoss (async)
-  sendToJava('clear_input_history', {});
 }
 
 /**
@@ -386,8 +381,6 @@ export function addHistoryItem(text: string, importance: number = 1): void {
     // Ignore errors
   }
 
-  // Sync to backend
-  sendToJava('record_input_history', JSON.stringify([sanitized]));
 }
 
 /**
@@ -458,8 +451,6 @@ export function updateHistoryItem(
 
   // Sync deletion of old item and addition of new
   if (oldText !== sanitizedNew) {
-    sendToJava('delete_input_history_item', oldText);
-    sendToJava('record_input_history', JSON.stringify([sanitizedNew]));
   }
 }
 
@@ -497,9 +488,7 @@ export function clearLowImportanceHistory(threshold: number = 1): number {
     window.localStorage.setItem(HISTORY_TIMESTAMPS_KEY, JSON.stringify(timestamps));
 
     // Sync deletions to backend
-    for (const item of itemsToDelete) {
-      sendToJava('delete_input_history_item', item);
-    }
+    void itemsToDelete;
 
     return deletedCount;
   } catch {

@@ -11,7 +11,6 @@
     "back": "뒤로",
     "close": "닫기",
     "newSession": "새 세션",
-    "newTab": "새 탭",
     "dontAskAgain": "다시 묻지 않음",
     "history": "히스토리",
     "settings": "설정",
@@ -35,9 +34,9 @@
     "emptyMessage": "빈 메시지",
     "clickToPreview": "클릭하여 미리보기",
     "userUploadedImage": "사용자가 이미지를 업로드했습니다",
-    "inputPlaceholder": "@파일 참조, #에이전트 호출, !프롬프트 삽입, Enter로 전송",
-    "inputPlaceholderEnter": "@파일 참조, #에이전트 호출, !프롬프트 삽입, Enter로 전송",
-    "inputPlaceholderCmdEnter": "@파일 참조, #에이전트 호출, !프롬프트 삽입, ⌘Enter로 전송",
+    "inputPlaceholder": "@파일 참조, !bash 명령 실행, /opencode 명령, Enter로 전송",
+    "inputPlaceholderEnter": "@파일 참조, !bash 명령 실행, /opencode 명령, Enter로 전송",
+    "inputPlaceholderCmdEnter": "@파일 참조, !bash 명령 실행, /opencode 명령, ⌘Enter로 전송",
     "noThinkingContent": "사고 내용 없음",
     "parseError": "콘텐츠 분석에 실패했습니다",
     "sendMessageEnter": "메시지 보내기 (Enter)",
@@ -80,21 +79,34 @@
     "global": "전역",
     "localProject": "로컬",
     "disabled": "비활성화됨",
-    "sdkNotInstalled": "{{provider}} SDK가 설치되어 있지 않습니다. 채팅을 시작하려면 SDK를 설치해주세요.",
-    "sdkStatusLoading": "SDK 상태 확인 중...",
-    "sdkStatusUnavailable": "SDK 상태를 확인할 수 없습니다.",
-    "retrySdkStatus": "다시 시도",
-    "openSourceBanner": "이 프로젝트는 100% 오픈소스이며 무료입니다 (유사품에 주의하세요)",
-    "openSourceBannerStar": "Star",
-    "openSourceBannerStarToast": "저장소 주소를 클립보드에 복사했습니다. 브라우저에 붙여넣어 방문하세요 ⭐",
-    "openSourceBannerStarAria": "저장소 주소 복사 후 GitHub에서 Star",
-    "goInstallSdk": "설치하러 가기",
     "commandNotImplemented": "`{{command}}` 기능은 아직 구현되지 않았습니다.",
+    "daemonStatusLoading": "OpenCode 서비스를 시작하는 중입니다. 잠시만 기다려 주세요",
     "clearCommandDescription": "대화 기록을 지우고 새 세션을 시작합니다",
+    "builtinCommands": {
+      "compact": "컨텍스트 크기를 줄이기 위해 세션 요약",
+      "undo": "마지막 메시지 실행 취소",
+      "redo": "실행 취소한 메시지 다시 실행",
+      "fork": "전체 세션을 새 포크로 복사",
+      "share": "세션 링크 공유",
+      "unshare": "세션 공유 해제"
+    },
+    "compactTooltip": "클릭하여 세션 압축",
+    "compactStarted": "세션 압축 중…",
+    "compactSuccess": "세션이 압축되었습니다",
+    "compactFailed": "세션 압축에 실패했습니다",
+    "compactConfirmTitle": "세션 압축",
+    "compactConfirmMessage": "압축을 실행하면 opencode가 현재 대화를 요약하고 오래된 메시지를 잘라내어 컨텍스트 공간을 확보합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?",
+    "compactConfirmAction": "압축 실행",
+    "undoTooltip": "이 메시지 실행 취소",
+    "redoTooltip": "이 메시지 다시 실행",
+    "forkTooltip": "새 세션으로 포크",
+    "shareTooltip": "세션 공유",
+    "unshareTooltip": "세션 공유 해제",
+    "shareSuccess": "링크가 클립보드에 복사되었습니다",
     "attachmentFile": "[첨부파일: {{fileName}}]",
     "unknownFile": "알 수 없는 파일",
     "attachmentsUploaded": "[첨부파일 업로드됨]",
-    "streamingConnected": "{{provider}} 연결됨, 질문을 이해하는 중",
+    "streamingConnected": "질문을 이해하는 중…",
     "showEarlierMessages": "이전 메시지 {{count}}개 보기",
     "showEarlierTurns": "이전 {{count}}개 대화 턴 표시 (로드된 턴 {{remaining}}개 남음)",
     "loadEarlierTurns": "디스크에서 이전 {{count}}개 턴 불러오기 (전체 {{total}}개 중 {{remaining}}개 남음)",
@@ -127,7 +139,29 @@
       "userContext": "컨텍스트: \"{{context}}\"",
       "expand": "요약 펼치기",
       "collapse": "요약 접기"
-    }
+    },
+    "shareFailed": "복사에 실패하여 공유가 완료되지 않았습니다",
+    "shareDisabledHint": "공유 기능이 opencode.json에서 비활성화되었거나(\"share\": \"disabled\") opencode 로그인이 필요할 수 있습니다. 설정을 확인 후 다시 시도하세요",
+    "sharePendingTooltip": "공유 중…",
+    "copyShareLinkTooltip": "공유 링크 복사",
+    "revertPlaceholderTitle": "이 메시지와 이후의 답변이 취소되었습니다",
+    "revertPlaceholderCount": "{{count}}개의 메시지가 취소되었습니다",
+    "revertExpand": "보기",
+    "revertCollapse": "숨기기",
+    "revertRestore": "복원",
+    "revertBusyConfirmMessage": "답변을 생성 중입니다. 실행 취소하면 현재 작업이 중단되고 이 메시지로 되돌아갑니다. 계속하시겠습니까?",
+    "restoreBusyConfirmMessage": "답변을 생성 중입니다. 복원하면 현재 작업이 중단되고 취소된 메시지가 다시 나타납니다. 계속하시겠습니까?",
+    "revertFailed": "실행 취소 실패",
+    "restoreFailed": "복원 실패",
+    "forkDisabledTooltip": "현재 답변이 완료되면 사용할 수 있습니다",
+    "forkCreatedToast": "포크 세션이 생성되었습니다",
+    "forkSwitchAction": "새 세션으로 이동",
+    "forkFailed": "포크 세션 생성 실패",
+    "forkAllTooltip": "전체 세션을 새 세션으로 포크",
+    "shareLinkCreated": "공유 링크가 생성되었습니다",
+    "retryCopy": "다시 복사",
+    "subagentsSection": "하위 에이전트",
+    "filesSection": "파일"
   },
   "settings": {
     "title": "설정",
@@ -141,8 +175,8 @@
       },
       "theme": {
         "label": "테마",
-        "system": "IDE 따라가기",
-        "systemDesc": "IDE 테마를 자동으로 따라갑니다",
+        "system": "VS Code 테마 따라가기",
+        "systemDesc": "VS Code 테마를 자동으로 따라갑니다",
         "light": "라이트",
         "lightDesc": "밝고 깔끔하며 낮에 사용하기 적합합니다",
         "dark": "다크",
@@ -150,7 +184,7 @@
       },
       "language": {
         "label": "언어",
-        "followIde": "IDE 따르기",
+        "followIde": "VS Code 따르기",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -170,15 +204,10 @@
         "hintText": "을 실행하여 실제 Node.js 실행 파일 경로를 확인하세요. 비워두면 자동 감지합니다.",
         "versionTooLow": "Node.js 버전이 너무 낮습니다. 플러그인을 정상적으로 실행하려면 v{{minVersion}} 이상이 필요합니다"
       },
-      "claudeCliPath": {
-        "label": "Claude CLI 경로 (재정의)",
-        "placeholder": "예: /usr/local/bin/claude — 비워 두면 내장 SDK 사용",
-        "hint": "선택 사항. 설정하면 플러그인이 내장된 @anthropic-ai/claude-agent-sdk 대신 이 바이너리를 실행합니다. 저장 시 데몬이 다시 시작됩니다."
-      },
       "workingDirectory": {
         "label": "작업 디렉토리",
         "placeholder": "예: project1 또는 프로젝트 루트를 사용하려면 비워두세요",
-        "hint": "Claude가 작업하는 디렉토리를 지정합니다. 상대 경로(프로젝트 루트 기준) 또는 절대 경로를 사용할 수 있습니다. 비워두면 프로젝트 루트를 사용합니다."
+        "hint": "opencode가 작업할 디렉터리를 지정합니다. 프로젝트 루트 기준 상대 경로 또는 절대 경로를 사용할 수 있습니다. 비워두면 프로젝트 루트를 사용합니다."
       },
       "fontSize": {
         "label": "글꼴 크기",
@@ -192,25 +221,29 @@
       "editorFont": {
         "label": "UI 글꼴",
         "hint": "여기서는 플러그인 UI 글꼴을 변경합니다. 코드용 글꼴은 별도로 설정할 수 있습니다.",
-        "followOption": "IDEA UI 글꼴 따르기 ({{font}})",
+        "followOption": "VS Code UI 글꼴 따르기 ({{font}})",
         "customOption": "사용자 지정 UI 글꼴 파일",
         "customPathLabel": "UI 글꼴 파일 경로",
         "customPathPlaceholder": ".ttf / .otf UI 글꼴 파일 경로를 선택하거나 입력하세요",
         "browse": "찾아보기",
-        "warningUnavailable": "UI 글꼴을 사용할 수 없어 현재 IDEA UI 글꼴을 사용 중입니다",
-        "statusFollowEditor": "현재 IDEA UI 글꼴 사용 중: {{font}}",
-        "statusCustom": "현재 사용자 지정 UI 글꼴 사용 중: {{font}}"
+        "warningUnavailable": "UI 글꼴을 사용할 수 없어 현재 VS Code UI 글꼴을 사용 중입니다",
+        "statusFollowEditor": "현재 VS Code UI 글꼴 사용 중: {{font}}",
+        "statusCustom": "현재 사용자 지정 UI 글꼴 사용 중: {{font}}",
+        "systemFontGroup": "시스템 글꼴",
+        "systemFontLoading": "시스템 글꼴 로드 중…",
+        "systemFontFailed": "시스템 글꼴을 로드하지 못했습니다.",
+        "systemFontRetry": "재시도"
       },
       "codeFont": {
         "label": "코드 글꼴",
         "hint": "Markdown 코드와 명령 블록에 사용됩니다.",
-        "followOption": "에디터 글꼴 따르기 ({{font}})",
+        "followOption": "VS Code 에디터 글꼴 따르기 ({{font}})",
         "customOption": "사용자 지정 코드 글꼴 파일",
         "customPathLabel": "코드 글꼴 파일 경로",
         "customPathPlaceholder": ".ttf / .otf 코드 글꼴 파일 경로를 선택하거나 입력하세요",
         "browse": "찾아보기",
         "warningUnavailable": "코드 글꼴을 사용할 수 없어 현재 에디터 글꼴을 사용 중입니다",
-        "statusFollowEditor": "현재 에디터 글꼴 사용 중: {{font}}",
+        "statusFollowEditor": "현재 VS Code 에디터 글꼴 사용 중: {{font}}",
         "statusCustom": "현재 사용자 지정 코드 글꼴 사용 중: {{font}}"
       },
       "streaming": {
@@ -232,13 +265,7 @@
         "providerAvailable": "Available",
         "providerUnavailable": "Currently unavailable",
         "provider": {
-          "claude": "Claude Code",
-          "codex": "Codex",
-          "grok": "Grok CLI",
-          "kimi": "Kimi CLI",
-          "opencode": "OpenCode",
-          "pi": "PI CLI",
-          "omp": "OMP CLI"
+          "opencode": "OpenCode"
         },
         "currentProviderAuto": "Currently using automatic selection: {{provider}}",
         "currentProviderManual": "Currently using manually selected provider: {{provider}}",
@@ -265,7 +292,7 @@
         "label": "질문 시스템 알림",
         "enabled": "활성화",
         "disabled": "비활성화",
-        "hint": "활성화하면 Claude가 질문할 때 시스템 알림을 표시하여 놓치지 않도록 합니다. 비활성화하면 알림이 표시되지 않습니다."
+        "hint": "활성화하면 OpenCode가 질문할 때 시스템 알림을 표시하여 놓치지 않도록 합니다. 비활성화하면 알림이 표시되지 않습니다."
       },
       "detailedOutput": {
         "label": "자세한 출력 정보",
@@ -277,7 +304,7 @@
         "label": "질문 알림음",
         "enabled": "활성화",
         "disabled": "비활성화",
-        "hint": "활성화하면 Claude가 질문할 때 설정된 알림음을 재생합니다. 아래의 사운드 선택과 포커스 규칙을 사용합니다."
+        "hint": "활성화하면 OpenCode가 질문할 때 설정된 알림음을 재생합니다. 아래의 사운드 선택과 포커스 규칙을 사용합니다."
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "IDE가 포커스되지 않았을 때만 시스템 알림 표시",
@@ -295,7 +322,7 @@
       "permissionDialogTimeout": {
         "label": "권한 및 질문 대화 상자 제한 시간",
         "unit": "초",
-        "hint": "Claude 질문 대화 상자와 권한 요청 대화 상자의 제한 시간을 설정합니다(30~3600초). 제한 시간이 지나면 대화 상자가 자동으로 닫히고 Claude가 계속 진행합니다."
+        "hint": "OpenCode 질문 대화 상자와 권한 요청 대화 상자의 제한 시간을 설정합니다(30~3600초). 제한 시간이 지나면 대화 상자가 자동으로 닫히고 OpenCode가 계속 진행합니다."
       },
       "chatBgColor": {
         "label": "채팅 배경",
@@ -342,13 +369,16 @@
         "enabled": "활성화",
         "disabled": "비활성화",
         "hint": "비활성화하면 메시지가 있는 세션에서 새로 만들기를 선택할 때 확인 대화 상자 없이 바로 새 세션을 만듭니다."
+      },
+      "opencodeCliPath": {
+        "label": "Opencode TUI 경로",
+        "placeholder": "예: /usr/local/bin/opencode — 비워두면 자동 감지",
+        "hint": "opencode 서비스를 시작하는 데 사용되는 사용자 지정 opencode 바이너리(선택 사항). 비워두면 PATH 및 기본 설치 위치(~/.opencode/bin)를 자동으로 탐색합니다. 저장 후 데몬이 재시작되면 적용됩니다."
       }
     },
     "providers": "제공자 관리",
-    "providersDesc": "Claude와 Codex API 제공자 설정을 관리하고 다른 API 서비스 제공자 간 전환",
+    "providersDesc": "opencode CLI 통합을 관리하고 로컬 CLI 도구 설치 상태를 확인",
     "providerTab": {
-      "claude": "Claude Code",
-      "codex": "Codex",
       "cli": "CLI"
     },
     "pluginModels": {
@@ -378,89 +408,19 @@
         "invalidValue": "최대 컨텍스트는 K 단위의 양의 정수여야 합니다",
         "summary": "컨텍스트: {{value}} 토큰"
       },
-      "configuredSectionTitle": "구성된 Claude 모델",
-      "configuredSectionDesc": "현재 Claude 제공자 또는 settings.json의 모델은 이미 모델 선택기에 표시됩니다. 여기서는 가격만 변경할 수 있습니다.",
-      "configuredEditHint": "이 모델은 현재 Claude 제공자 또는 settings.json에서 관리됩니다. 여기서는 가격만 변경할 수 있습니다.",
+      "configuredSectionTitle": "구성된 OpenCode 모델",
+      "configuredSectionDesc": "현재 OpenCode 제공자 또는 settings.json의 모델은 이미 모델 선택기에 표시됩니다. 여기서는 가격만 변경할 수 있습니다.",
+      "configuredEditHint": "이 모델은 현재 OpenCode 제공자 또는 settings.json에서 관리됩니다. 여기서는 가격만 변경할 수 있습니다.",
       "customSectionTitle": "사용자 지정 모델",
       "editPricing": "가격 편집"
-    },
-    "dependencies": "SDK 의존성",
-    "dependenciesDesc": "AI SDK 의존성 설치 및 업데이트 관리",
-    "dependency": {
-      "title": "SDK 의존성 관리",
-      "description": "AI SDK 의존성을 관리합니다. 처음 사용하기 전에 필요한 SDK를 설치하세요.",
-      "installPolicyTip": "설치 문제가 있으시면 오류를 터미널 CLI AI에 복사하여 해결하세요",
-      "claudeSdkName": "Claude Code SDK",
-      "claudeSdkDescription": "Claude AI 기능에 필요합니다. Claude Code SDK 및 관련 의존성을 포함합니다.",
-      "codexSdkName": "Codex SDK",
-      "codexSdkDescription": "Codex AI 기능에 필요합니다. OpenAI Codex SDK를 포함합니다.",
-      "loading": "의존성 상태 로딩 중...",
-      "install": "설치",
-      "installing": "설치 중...",
-      "uninstall": "제거",
-      "uninstalling": "제거 중...",
-      "update": "업데이트",
-      "updateAvailable": "업데이트 가능",
-      "installLogs": "설치 로그",
-      "waitingForLogs": "로그 출력 대기 중...",
-      "nodeNotConfigured": "Node.js가 설정되지 않았습니다. 먼저 기본 설정에서 Node.js 경로를 설정해주세요.",
-      "installSuccess": "{{name}} 설치 완료",
-      "installFailed": "설치 실패: {{error}}",
-      "uninstallSuccess": "{{name}}이(가) 제거되었습니다",
-      "uninstallFailed": "제거 실패: {{error}}",
-      "updating": "업데이트 중...",
-      "updateSuccess": "{{name}} 업데이트 완료"
     },
     "usage": "사용 통계",
     "usageDesc": "토큰 소비량, 비용 통계 및 사용 추이 분석 보기",
     "mcp": "MCP 서버",
     "mcpDesc": "Model Context Protocol 서버 설정 및 관리",
-    "permissions": "권한",
-    "permissionsDesc": "Claude Code 파일 접근 및 작업 권한 관리",
-    "codexPermissionsDesc": "Codex 권한 및 샌드박스 정책 관리",
     "promptEnhancer": {
       "title": "Prompt Enhancer",
       "description": "Choose which provider and model should be used when enhancing prompts before sending them."
-    },
-    "permissionsPanel": {
-      "codexSandboxTitle": "Codex 샌드박스 모드",
-      "codexSandboxDesc": "Codex가 명령을 실행할 때의 시스템 접근 범위를 제어합니다. 기본값은 더 안전한 workspace-write(작업 영역 내 읽기/쓰기만 허용)입니다. adb, docker 등 시스템 수준 명령이 필요하면 danger-full-access로 전환하세요.",
-      "workspaceWriteTitle": "workspace-write",
-      "workspaceWriteDesc": "읽기/쓰기가 워크스페이스로 제한됩니다. 안전을 위해 시스템 수준 작업이 제한됩니다.",
-      "fullAccessTitle": "danger-full-access",
-      "fullAccessDesc": "더 높은 시스템 접근을 허용하며, adb나 docker 같은 추가 권한이 필요한 명령에 적합합니다.",
-      "hint": "이 설정은 Codex 프로세스 샌드박스에만 영향을 미치며 Claude Code 권한 동작은 변경하지 않습니다.",
-      "claudeTip": "Claude Code 승인 모드는 채팅 입력의 모드 선택기에서 설정합니다."
-    },
-    "commit": {
-      "title": "Commit AI",
-      "description": "AI 생성 Git 커밋 메시지 동작 설정",
-      "providerModel": {
-        "label": "커밋 모델 제공자",
-        "modelLabel": "커밋 모델",
-        "resetToDefault": "재설정",
-        "providerAvailable": "사용 가능",
-        "providerUnavailable": "사용 불가",
-        "currentProviderAuto": "현재 자동 선택 사용 중: {{provider}}",
-        "currentProviderManual": "현재 수동 선택된 제공자 사용 중: {{provider}}",
-        "currentProviderUnavailable": "선택된 제공자를 현재 사용할 수 없습니다: {{provider}}",
-        "modeLabel": "선택 방식",
-        "modeAuto": "자동",
-        "modeManual": "수동",
-        "autoSummary": "현재 채팅 CLI를 따름 · 현재 {{provider}}",
-        "autoUnavailable": "사용 가능한 CLI가 없습니다. 수동으로 전환해 선택하세요."
-      },
-      "prompt": {
-        "label": "추가 프롬프트",
-        "placeholder": "추가 요구사항을 입력하세요. 예: 영어로 커밋 생성, 이슈 번호 포함 등...",
-        "hint": "플러그인에는 CCG Commits 사양 프롬프트가 내장되어 있습니다. 여기에 추가하는 내용은 추가 요구사항으로 사용되며, AI가 사용자의 지시를 우선합니다."
-      },
-      "codeReview": {
-        "comingSoon": "곧 출시 예정",
-        "label": "Code Review AI 추가 프롬프트",
-        "placeholder": "이 기능은 개발 중입니다. 기대해주세요...",
-        "hint": "Code Review AI가 자동으로 코드를 리뷰하여 잠재적 문제를 식별하고 개선 제안을 합니다. 여기서 리뷰 기본설정 및 중점 영역을 설정할 수 있습니다."
-      }
     },
     "agents": "에이전트",
     "agentsDesc": "AI 에이전트 관리 및 설정",
@@ -504,25 +464,23 @@
           "minutesAgo_other": "{{count}}분 전",
           "justNow": "방금 전"
         }
-      },
-      "aiTitleGeneration": {
-        "label": "AI 세션 제목 자동 생성",
-        "enabled": "사용",
-        "disabled": "사용 안 함",
-        "hint": "활성화하면 새 세션의 첫 응답이 끝난 후 Haiku 모델이 짧은 제목을 자동 생성합니다. 비활성화하면 첫 사용자 메시지가 제목으로 표시됩니다."
       }
     },
-    "codexFeatureUnavailable": "이 설정 섹션은 Codex에서 아직 사용할 수 없습니다. Claude Code로 전환해주세요.",
     "sidebar": {
       "expand": "사이드바 펼치기",
       "collapse": "사이드바 접기"
     },
-    "community": "커뮤니티",
-    "communityDesc": "아래 QR 코드를 스캔하여 공식 WeChat 그룹에 참여하고 최신 소식과 기술 지원을 받으세요",
+    "community": "후원",
+    "communityDesc": "아래 QR 코드를 스캔하여 저자를 후원하고 프로젝트의 지속적인 유지보수를 지원하세요",
     "versionHistory": "버전 히스토리",
     "versionHistoryDesc": "모든 버전 업데이트 기록 보기",
-    "communityQrTip": "WeChat으로 스캔하여 커뮤니티에 참여하세요",
-    "communityQrAlt": "공식 WeChat 커뮤니티 QR 코드",
+    "communityQrTipWechat": "WeChat 후원",
+    "communityQrTipAlipay": "Alipay 후원",
+    "communityQrTipPayPal": "PayPal 후원",
+    "communityQrAlt": "후원 QR 코드",
+    "communityQrAltAlipay": "Alipay 후원 QR 코드",
+    "communityQrAltPayPal": "PayPal 후원 QR 코드",
+    "projectDesc": "이 프로젝트는 OpenCode Buddy VS Code 확장입니다 (https://github.com/SenjuObito/opencode-vscode-plugin)",
     "githubTitle": "GitHub 저장소",
     "githubDesc": "이 프로젝트는 GitHub에서 오픈소스로 공개되어 있습니다. Star를 눌러 응원해주세요!",
     "githubCopyBtn": "저장소 URL 복사",
@@ -534,7 +492,6 @@
     "wechatPay": "WeChat Pay",
     "paypal": "PayPal",
     "provider": {
-      "currentConfig": "현재 ClaudeCode 설정",
       "loading": "로딩 중...",
       "noConfig": "설정 없음",
       "emptyProvider": "설정된 제공자 없음",
@@ -565,7 +522,6 @@
       "importFromCcSwitchUpdate": "cc-switch에서 가져오기/업데이트",
       "importFromCcSwitchFile": "가져올 cc-switch.db 파일 선택",
       "importFromCcSwitchCli": "cc-switch CLI에서 가져오기/업데이트",
-      "importFromClaudeRouter": "Claude Code Router에서 가져오기/업데이트",
       "featureComingSoon": "기능이 아직 구현되지 않았습니다. 곧 출시 예정",
       "readingCcSwitch": "cc-switch 설정을 읽는 중...",
       "editCcSwitchTitle": "cc-switch 설정 편집",
@@ -578,62 +534,8 @@
       "confirmConvert": "변환 확인",
       "inUse": "사용 중",
       "enable": "활성화",
-      "localProviderName": "로컬 settings.json",
-      "localProviderDescription": "~/.claude/settings.json의 설정을 직접 사용",
-      "localProviderHelp": "로컬 제공자 모드 사용 시:\n• 플러그인이 ~/.claude/settings.json 파일을 수정하지 않습니다\n• 설정을 수동으로 관리해야 합니다\n• 파일이 존재하고 유효한 JSON을 포함하는지 확인하세요\n• 수동 제어를 선호하는 고급 사용자에게 적합합니다",
       "authorizeAndEnable": "승인 및 활성화",
       "revokeAuthorization": "승인 취소",
-      "cliLoginProviderName": "CLI 로그인 상태",
-      "cliLoginProviderDescription": "터미널에서 이미 완료한 Claude CLI 로그인 상태를 재사용합니다",
-      "cliLoginAuthorizeTitle": "CLI 로그인 상태 승인",
-      "cliLoginAuthorizeMessage": "플러그인이 Claude CLI 로그인 세션을 API 요청에 사용할 수 있도록 합니다. 터미널에서 Claude CLI로 먼저 로그인해야 합니다.",
-      "cliLoginAuthorizeDetail": "플러그인은 인증을 Claude SDK의 기본 OAuth 흐름에 위임합니다. 언제든지 이 승인을 취소할 수 있습니다.",
-      "cliLoginDisableTitle": "CLI 로그인 승인 취소",
-      "cliLoginDisableMessage": "CLI 로그인 상태 사용을 중단하고 다른 공급자를 명시적으로 활성화할 때까지 Claude에 활성 공급자가 없는 상태가 됩니다.",
-      "cliLoginAccountInfo": "로그인됨: {{email}}",
-      "subscriptionTutorial": {
-        "entry": "구독 계정 가이드",
-        "dialogTitle": "구독 계정 사용 방법",
-        "tabAriaLabel": "구독 계정 가이드 탭",
-        "tabs": {
-          "claude": "Claude 구독",
-          "codex": "Codex 구독"
-        },
-        "code": {
-          "copy": "코드 복사",
-          "copied": "복사됨"
-        },
-        "providers": {
-          "claude": {
-            "title": "Claude Code 구독 계정 사용 방법",
-            "item1": "터미널에서 claude code CLI를 통해 Claude Code 구독 계정에 로그인하면 터미널에서 정상적으로 채팅할 수 있습니다",
-            "item2": "~/.claude/settings.json 파일과 .env 파일이 비어있는지 확인하세요",
-            "item3": "IDEA를 재시작하면 정상적으로 채팅할 수 있습니다",
-            "emptyConfigCodeLabel": "~/.claude/settings.json",
-            "emptyConfigCode": "{\n  \"env\": {\n  }\n}",
-            "noteTitle": "특수 사례 참고:",
-            "note1": "위 설정을 했는데도 플러그인이 응답하지 않으면 ~/.claude/settings.json .env를 다음과 같이 설정해보세요:",
-            "proxyConfigCodeLabel": "~/.claude/settings.json",
-            "proxyConfigCode": "{\n  \"env\": {\n    \"HTTP_PROXY\": \"http://127.0.0.1:7897\",\n    \"HTTPS_PROXY\": \"http://127.0.0.1:7897\"\n  }\n}",
-            "issuePrefix": "그래도 작동하지 않으면 GitHub에 이슈를 보고해주세요: ",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          },
-          "codex": {
-            "title": "Codex 구독 계정 설정",
-            "item1": "터미널 Codex CLI에서 codex login을 실행하여 로그인에 성공하면 터미널에서 채팅할 수 있습니다",
-            "item2": "IDEA를 재시작합니다",
-            "item3": "이제 정상적으로 채팅할 수 있습니다",
-            "emptyConfigCodeLabel": "",
-            "emptyConfigCode": "",
-            "noteTitle": "",
-            "note1": "",
-            "proxyConfigCodeLabel": "",
-            "proxyConfigCode": "",
-            "issuePrefix": "그래도 작동하지 않으면 GitHub에 이슈를 보고해주세요: ",
-            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
-          }
-        }
-      },
       "importDialog": {
         "title": "cc-switch 설정 가져오기",
         "summary": "{{total}}개 설정 발견, 포함:",
@@ -648,50 +550,6 @@
         "confirmImport": "가져오기 확인"
       },
       "deleteProviderMessage": "제공자 \"{{name}}\"을(를) 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.",
-      "dialog": {
-        "addTitle": "제공자 추가",
-        "editTitle": "제공자 편집: {{name}}",
-        "addDescription": "새 제공자 정보 설정",
-        "securityNotice": "안내: 모든 설정은 사용자 컴퓨터에 로컬로 저장됩니다. 이 프로젝트는 100% 오픈소스입니다. 안심하고 사용하세요.",
-        "editDescription": "변경 사항은 즉시 현재 제공자에 적용됩니다.",
-        "providerName": "제공자 이름",
-        "providerNamePlaceholder": "예: Claude 공식",
-        "remark": "비고",
-        "remarkPlaceholder": "선택사항",
-        "apiKey": "API 키",
-        "apiKeyPlaceholder": "sk-ant-...",
-        "apiKeyHint": "API 키를 입력해주세요",
-        "apiUrl": "API 엔드포인트",
-        "apiUrlPlaceholder": "https://api.anthropic.com",
-        "apiUrlHint": "Claude API 호환 서비스 엔드포인트 주소를 입력하세요",
-        "modelMapping": "모델 매핑 (JSON env에 주입됨)",
-        "mainModel": "기본 모델",
-        "mainModelPlaceholder": "예: claude-sonnet-4-6",
-        "fableModel": "Fable 기본 모델",
-        "fableModelPlaceholder": "예: claude-fable-5",
-        "haikuModel": "Haiku 기본 모델",
-        "haikuModelPlaceholder": "예: claude-haiku-4-5",
-        "sonnetModel": "Sonnet 기본 모델",
-        "sonnetModelPlaceholder": "예: claude-sonnet-4-6",
-        "opusModel": "Opus 기본 모델",
-        "opusModelPlaceholder": "예: claude-opus-4-6",
-        "modelMappingHint": "선택사항: 사용할 기본 Claude 모델을 지정합니다. 비워두면 시스템 기본값을 사용합니다.",
-        "customModels": "사용자 지정 모델",
-        "customModelsHint": "이 제공자가 지원하는 추가 모델을 추가합니다. 사용자 지정 모델은 모델 선택기 목록 상단에 표시됩니다",
-        "jsonConfig": "JSON 설정",
-        "jsonConfigDescription": "여기에서 완전한 settings.json 내용을 설정할 수 있습니다. 모든 필드를 지원합니다 (예: model, alwaysThinkingEnabled, ccSwitchProviderId, codemossProviderId 등)",
-        "jsonError": "잘못된 JSON 형식",
-        "required": "*",
-        "showApiKey": "표시",
-        "hideApiKey": "숨기기",
-        "confirmAdd": "추가 확인",
-        "saveChanges": "변경 사항 저장",
-        "codeView": "코드",
-        "visualView": "비주얼",
-        "formatJson": "포맷",
-        "invalidJson": "잘못된 JSON 형식입니다. 코드 뷰로 전환하여 수정해주세요",
-        "presetGroup": "빠른 프리셋"
-      },
       "presets": {
         "custom": "사용자 지정",
         "zhipu": "Zhipu GLM",
@@ -710,7 +568,6 @@
       }
     },
     "comingSoon": "곧 출시 예정...",
-    "permissionsComingSoon": "권한 설정이 곧 출시됩니다...",
     "agentsComingSoon": "에이전트 설정이 곧 출시됩니다...",
     "skillsComingSoon": "스킬 설정이 곧 출시됩니다...",
     "codexProvider": {
@@ -726,7 +583,7 @@
         "editDescription": "변경 사항은 즉시 ~/.codex/ 디렉토리에 적용됩니다",
         "officialPreset": "OpenAI 공식 직접 연결",
         "officialSectionHint": "직접 입력한 OPENAI_API_KEY를 사용하고 공식 엔드포인트 https://api.openai.com/v1에 연결합니다.",
-        "presetHint": "아래 프리셋은 Claude Code 제공자 세트와 일치하는 타사 또는 프록시 엔드포인트만 포함합니다.",
+        "presetHint": "아래 프리셋은 OpenCode 제공자 세트와 일치하는 타사 또는 프록시 엔드포인트만 포함합니다.",
         "providerName": "제공자 이름",
         "providerNamePlaceholder": "예: Codex 공식",
         "configJson": "설정",
@@ -839,88 +696,6 @@
         "confirmExport": "내보내기 확인"
       }
     },
-    "prompts": "프롬프트 라이브러리",
-    "promptsDesc": "자주 사용하는 프롬프트 템플릿을 관리하여 채팅 중 빠르게 삽입",
-    "prompt": {
-      "title": "프롬프트 라이브러리",
-      "create": "생성",
-      "export": "내보내기",
-      "import": "가져오기",
-      "createPrompt": "프롬프트 생성",
-      "createPromptHint": "클릭하여 프롬프트 설정 페이지에서 생성",
-      "customPrompts": "사용자 지정 프롬프트",
-      "noPrompts": "사용자 지정 프롬프트 없음",
-      "noPromptsDropdown": "프롬프트 없음",
-      "loadFailed": "로딩 실패",
-      "loading": "로딩 중...",
-      "menu": "메뉴",
-      "addSuccess": "프롬프트 생성 완료",
-      "updateSuccess": "프롬프트 업데이트 완료",
-      "deleteSuccess": "프롬프트 삭제 완료",
-      "operationSuccess": "작업 성공",
-      "operationFailed": "작업 실패",
-      "deleteConfirmTitle": "삭제 확인",
-      "deleteConfirmMessage": "프롬프트 \"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
-      "description": "자주 사용하는 프롬프트 템플릿을 만드세요. 채팅 입력창에서 !를 입력하면 빠르게 선택하여 삽입할 수 있습니다",
-      "global": "전역 프롬프트",
-      "project": "프로젝트 프롬프트",
-      "projectScope": "프로젝트 프롬프트 - {{projectName}}",
-      "noProject": "활성 프로젝트 없음",
-      "copyToGlobal": "전역으로 복사",
-      "scopeLabel": {
-        "global": "전역",
-        "project": "프로젝트"
-      },
-      "copyToGlobalSuccess": "전역 프롬프트로 복사됨",
-      "projectPromptsUnavailable": "현재 프로젝트에서 프로젝트 프롬프트를 사용할 수 없습니다",
-      "dialog": {
-        "addTitle": "프롬프트 생성",
-        "editTitle": "프롬프트 편집",
-        "name": "이름",
-        "namePlaceholder": "프롬프트 이름을 입력하세요",
-        "nameRequired": "프롬프트 이름을 입력해주세요",
-        "content": "내용",
-        "contentPlaceholder": "프롬프트 내용을 입력하세요. {{variable}}과 같은 변수를 포함할 수 있습니다",
-        "contentHint": "프롬프트 내용은 선택 시 입력창에 직접 삽입됩니다",
-        "confirmAdd": "생성",
-        "saveChanges": "저장"
-      },
-      "importDialog": {
-        "title": "프롬프트 가져오기",
-        "selectItems": "가져올 프롬프트를 선택하세요",
-        "summary": "총 {{total}}개 프롬프트:",
-        "newCount": "{{count}}개 신규",
-        "updateCount": "{{count}}개 업데이트",
-        "selectedCount": "{{count}}개 선택됨",
-        "conflictStrategy": "충돌 해결 전략",
-        "strategySkip": "건너뛰기",
-        "strategySkipDesc": "기존 프롬프트 건너뛰기",
-        "strategyOverwrite": "덮어쓰기",
-        "strategyOverwriteDesc": "기존 프롬프트 덮어쓰기",
-        "strategyDuplicate": "복제",
-        "strategyDuplicateDesc": "복제본 생성 (새 ID 생성)",
-        "conflictWarning": "{{count}}개 충돌 감지됨",
-        "columnName": "이름",
-        "columnId": "ID",
-        "columnStatus": "상태",
-        "statusNew": "신규",
-        "statusUpdate": "업데이트",
-        "importSuccess": "{{count}}개 프롬프트를 성공적으로 가져왔습니다",
-        "importFailed": "가져오기 실패",
-        "importPartialSuccess": "{{imported}}개 가져옴, {{skipped}}개 건너뜀, {{updated}}개 업데이트됨",
-        "noItemsSelected": "프롬프트를 하나 이상 선택해주세요",
-        "confirmImport": "가져오기 확인",
-        "exportSuccess": "프롬프트 내보내기 완료",
-        "exportFailed": "내보내기 실패",
-        "importFileError": "파일 읽기 실패",
-        "invalidFileFormat": "잘못된 파일 형식"
-      },
-      "exportDialog": {
-        "title": "프롬프트 내보내기",
-        "selectHint": "내보낼 프롬프트를 선택하세요",
-        "confirmExport": "내보내기 확인"
-      }
-    },
     "cli": {
       "hint": "These CLIs must be installed and configured in your system terminal. The plugin only detects installation status and version — it will never install them for you. Confirm each CLI works in the terminal before coming back here to use it.",
       "refresh": "Re-check",
@@ -937,14 +712,6 @@
       "copied": "Copied to clipboard",
       "copyFailed": "Failed to copy",
       "tools": {
-        "grok": {
-          "name": "Grok CLI",
-          "description": "xAI Grok terminal coding agent"
-        },
-        "kimi": {
-          "name": "Kimi CLI",
-          "description": "Moonshot Kimi Code CLI"
-        },
         "opencode": {
           "name": "OpenCode",
           "description": "Open-source terminal AI coding agent"
@@ -952,10 +719,6 @@
         "pi": {
           "name": "PI CLI",
           "description": "멀티 프로바이더 모델을 지원하는 미니멀 터미널 코딩 에이전트"
-        },
-        "omp": {
-          "name": "OMP CLI",
-          "description": "멀티 프로바이더 모델을 지원하는 Oh My Pi 터미널 코딩 에이전트"
         }
       },
       "installDialog": {
@@ -1002,7 +765,7 @@
     "loading": "히스토리 로딩 중...",
     "loadFailed": "로딩 실패",
     "noSessions": "히스토리 세션 없음",
-    "noSessionsDesc": "현재 프로젝트에서 세션 기록을 찾을 수 없습니다",
+    "noSessionsDesc": "현재 프로젝트에서 OpenCode 세션 기록을 찾을 수 없습니다",
     "totalSessions": "{{count}}개 세션 · {{total}}개 메시지",
     "messageCount": "{{count}}개 메시지",
     "searchPlaceholder": "세션 제목 검색...",
@@ -1022,7 +785,7 @@
     "convertSuccess": "세션이 CLI 인식 가능으로 변환되었습니다",
     "convertFailed": "변환 실패",
     "confirmConvert": "CLI 세션으로 변환하시겠습니까?",
-    "convertConfirmMessage": "세션의 entrypoint를 수정하여 Claude Code CLI의 /resume 목록에 표시되도록 합니다.",
+    "convertConfirmMessage": "세션의 entrypoint를 수정하여 OpenCode CLI의 /resume 목록에 표시되도록 합니다.",
     "timeAgo": {
       "yearsAgo": "년 전",
       "monthsAgo": "개월 전",
@@ -1044,12 +807,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDK 세션",
       "claude-vscode": "VS Code",
-      "remote": "원격"
+      "remote": "원격",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "이 세션은 SDK를 통해 플러그인에서 생성되었으며 CLI에 기본적으로 표시되지 않습니다. 터미널 CLI의 /resume 목록에 표시하려면 'CLI로 변환'을 클릭하세요",
       "claude-vscode": "이 세션은 VS Code 확장에서 생성되었으며 CLI에 기본적으로 표시되지 않습니다. 터미널 CLI의 /resume 목록에 표시하려면 'CLI로 변환'을 클릭하세요",
-      "remote": "이 세션은 원격 Claude Code 인스턴스에서 생성되었습니다"
+      "remote": "이 세션은 원격 OpenCode 인스턴스에서 생성되었습니다",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -1070,32 +835,37 @@
       "WebSearch": "웹 검색",
       "WebFetch": "웹 가져오기",
       "execute": "{{toolName}} 실행",
-      "readDirectory": "디렉토리 읽기",
-      "timeoutWarning": "곧 답변해주세요, {{seconds}}초 후 대화상자가 닫힙니다"
-    }
+      "readDirectory": "디렉토리 읽기"
+    },
+    "approvedStatus": "허용됨",
+    "approvedAlwaysStatus": "항상 허용",
+    "deniedStatus": "거부됨",
+    "timeoutWarning": "곧 답변해주세요, {{seconds}}초 후 대화상자가 닫힙니다"
   },
   "askUserQuestion": {
-    "title": "Claude가 질문이 있습니다",
-    "progress": "질문 {{current}} / {{total}}",
+    "title": "OpenCode의 몇 가지 질문입니다",
+    "skip": "건너뛰기",
+    "answeredStatus": "답변됨",
+    "skippedStatus": "건너뜀",
+    "fallbackHeader": "질문",
     "multiSelectHint": "여러 옵션을 선택할 수 있습니다",
-    "cancel": "취소",
-    "back": "뒤로",
-    "next": "다음",
     "submit": "제출",
     "otherOption": "기타",
     "otherOptionDesc": "사용자 지정 답변 입력",
     "customInputPlaceholder": "답변을 입력하세요...",
-    "timeoutWarning": "곧 답변해주세요, {{seconds}}초 후 대화상자가 닫힙니다",
-    "expand": "펼치기",
-    "collapse": "접기",
-    "clickToAnswer": "클릭하여 답변하기"
+    "timeoutWarning": "곧 답변해 주세요. {{seconds}}초 후 자동으로 건너뜁니다",
+    "progress": "질문 {{current}} / {{total}}",
+    "prev": "이전",
+    "next": "다음",
+    "unansweredStatus": "미답변",
+    "cancelledStatus": "취소됨"
   },
   "planApproval": {
     "title": "계획 승인 대기 중",
-    "subtitle": "Claude가 계획을 완료했으며 실행할 준비가 되었습니다.",
+    "subtitle": "OpenCode가 계획을 완료했으며 실행할 준비가 되었습니다.",
     "requestedPermissions": "요청된 권한",
     "executionMode": "실행 모드",
-    "executionModeDescription": "Claude가 계획을 실행하는 방식을 선택하세요:",
+    "executionModeDescription": "OpenCode가 계획을 실행하는 방식을 선택하세요:",
     "approve": "승인 및 실행",
     "reject": "거부",
     "toApprove": "승인하려면",
@@ -1125,7 +895,6 @@
   },
   "config": {
     "clickToCopy": "클릭하여 복사",
-    "officialDocs": "공식 문서",
     "switch": "전환",
     "switchProvider": "제공자 전환",
     "runtimeProvider": {
@@ -1326,7 +1095,7 @@
         "title": "주요 기능",
         "toolExtension": {
           "label": "도구 확장",
-          "description": "파일 시스템 및 네트워크 접근과 같은 기능을 Claude에 추가"
+          "description": "파일 시스템 및 네트워크 접근과 같은 기능을 OpenCode에 추가"
         },
         "dataConnection": {
           "label": "데이터 연결",
@@ -1413,9 +1182,9 @@
     "todoList": "할 일 목록",
     "editFileTitle": "파일 편집",
     "clickToOpen": "{{filePath}} 열기",
-    "refreshFileInIdea": "IDEA에서 파일 새로고침",
-    "refreshFileInIdeaSuccess": "IDEA에서 이 파일을 수동으로 새로고침했습니다",
-    "showDiffInIdea": "IDEA에서 변경 사항 보기",
+    "refreshFileInEditor": "편집기에서 파일 새로고침",
+    "refreshFileInEditorSuccess": "편집기에서 이 파일을 수동으로 새로고침했습니다",
+    "showDiffInEditor": "편집기에서 변경 사항 보기",
     "diffButton": "Diff",
     "editBatchTitle": "파일 일괄 편집",
     "searchBatchTitle": "일괄 검색",
@@ -1471,7 +1240,7 @@
     "undoChanges": "변경 취소",
     "undoConfirmTitle": "파일 변경 취소",
     "undoWillDelete": "이 파일은 새로 생성되었습니다. 취소하면 이 파일이 삭제됩니다.",
-    "undoWillRestore": "Claude의 수정 이전 상태로 파일을 복원합니다.",
+    "undoWillRestore": "OpenCode의 수정 이전 상태로 파일을 복원합니다.",
     "undoCannotUndo": "이 작업은 되돌릴 수 없습니다.",
     "confirmUndo": "취소 확인",
     "undoSuccess": "{{fileName}}의 변경 사항이 취소되었습니다",
@@ -1484,9 +1253,9 @@
     "keepAllConfirmMessage": "현재 변경 사항을 기준선으로 수락합니다. 이후 변경 사항은 처음부터 추적됩니다.",
     "discardAllSuccess": "모든 변경 사항이 버려졌습니다",
     "discardAllFailed": "버리기 실패: {{error}}",
+    "discardAllPartial": "{{undone}}개 파일을 되돌렸고 {{failed}}개가 실패했습니다 (예: {{first}})",
     "keepAllSuccess": "모든 변경 사항이 유지되었으며, 추적이 초기화되었습니다",
-    "multiAgentBadge": "다중 Agent",
-    "multiAgentEdited": "이 세션에서 {{count}}개 Agent가 이 파일을 수정했습니다. 주의해서 확인하세요"
+    "loadingSession": "대화를 불러오는 중…"
   },
   "skills": {
     "title": "스킬",
@@ -1534,7 +1303,7 @@
       "title": "스킬이란?",
       "overview": {
         "title": "개요",
-        "description": "스킬은 동적으로 로드되는 지시사항, 스크립트 및 리소스 폴더로, 특정 작업에 대한 Claude의 성능을 향상시킵니다. 스킬은 Claude에게 회사 브랜드 가이드라인에 따른 문서 작성, 조직 특화 워크플로우에 따른 데이터 분석, 개인 작업 자동화 등 특정 작업을 반복 가능한 방식으로 완료하는 방법을 가르칩니다."
+        "description": "스킬은 동적으로 로드되는 지시사항, 스크립트 및 리소스 폴더로, 특정 작업에 대한 OpenCode의 성능을 향상시킵니다. 스킬은 OpenCode에게 회사 브랜드 가이드라인에 따른 문서 작성, 조직 특화 워크플로우에 따른 데이터 분석, 개인 작업 자동화 등 특정 작업을 반복 가능한 방식으로 완료하는 방법을 가르칩니다."
       },
       "structure": {
         "title": "스킬 구조",
@@ -1567,7 +1336,7 @@
         "title": "사용 팁",
         "item1": "스킬 디렉토리에 유효한 SKILL.md 파일이 포함되어 있는지 확인하세요",
         "item2": "스킬 이름은 소문자, 숫자, 하이픈만 사용해야 합니다 (hyphen-case)",
-        "item3": "스킬은 로드 후 Claude 세션에서 자동으로 적용됩니다",
+        "item3": "스킬은 로드 후 OpenCode 세션에서 자동으로 적용됩니다",
         "item4": "활성화/비활성화 토글로 개별 스킬 상태를 제어합니다",
         "item5": "채팅에서 스킬 이름을 언급하여 사용하세요. 예: \"pdf 스킬을 사용하여 양식 필드를 추출해줘\""
       },
@@ -1642,7 +1411,11 @@
       },
       "sonnet5": {
         "label": "Sonnet 5",
-        "description": "Sonnet 5 · 기본 모델 사용"
+        "description": "Sonnet 5 · Sonnet 4.6 업그레이드 모델"
+      },
+      "sonnet47": {
+        "label": "Sonnet 4.7",
+        "description": "Sonnet 4.7 · 기본 모델 사용"
       },
       "opus5": {
         "label": "Opus 5",
@@ -1714,12 +1487,13 @@
       "label": "자동 모드",
       "tooltip": "모든 권한 검사 우회",
       "description": "완전 자동화, 모든 권한 검사를 우회합니다 [주의하여 사용]"
-    }
+    },
+    "switchHint": "모드 전환"
   },
   "codexModes": {
     "default": {
       "label": "제안 (승인 필요)",
-      "tooltip": "Codex approval_policy=on-request – 파일 편집이나 셸 명령 실행 전에 확인합니다.",
+      "tooltip": "Codex approval_policy=untrusted – 파일 편집이나 셸 명령 실행 전에 확인합니다.",
       "description": "가장 안전한 옵션. 모든 쓰기 또는 명령에 승인이 필요합니다."
     },
     "plan": {
@@ -1738,52 +1512,12 @@
       "description": "자율 모드. Codex가 편집과 셸 명령을 즉시 실행합니다."
     }
   },
-  "ompModes": {
-    "default": {
-      "label": "기본",
-      "tooltip": "선택한 모델 사용 (또는 OMP auto)",
-      "description": "모델 드롭다운에서 선택한 모델을 사용하며, Auto로 설정된 경우 OMP CLI 기본값을 사용합니다."
-    },
-    "smol": {
-      "label": "Smol",
-      "tooltip": "빠른 모델 역할 (omp --model smol)",
-      "description": "omp의 smol 역할에 구성된 모델로 이 대화를 실행합니다. 모델 드롭다운을 재정의합니다."
-    },
-    "slow": {
-      "label": "Slow",
-      "tooltip": "추론 모델 역할 (omp --model slow)",
-      "description": "omp의 slow 역할에 구성된 모델로 이 대화를 실행합니다. 모델 드롭다운을 재정의합니다."
-    },
-    "plan": {
-      "label": "Plan",
-      "tooltip": "계획 모델 역할 (omp --model plan)",
-      "description": "omp의 plan 역할에 구성된 모델로 이 대화를 실행합니다. 모델 드롭다운을 재정의합니다."
-    }
-  },
   "providers": {
-    "claude": {
-      "label": "Claude Code"
-    },
-    "codex": {
-      "label": "Codex"
-    },
-    "grok": {
-      "label": "Grok CLI"
-    },
-    "kimi": {
-      "label": "Kimi CLI"
-    },
     "gemini": {
       "label": "Gemini Cli"
     },
     "opencode": {
       "label": "OpenCode"
-    },
-    "pi": {
-      "label": "PI CLI"
-    },
-    "omp": {
-      "label": "OMP CLI"
     }
   },
   "promptEnhancer": {
@@ -1840,6 +1574,7 @@
     "parseError": "결과 분석 실패"
   },
   "reasoning": {
+    "cycleHint": "추론 강도 전환",
     "title": "추론 깊이 선택",
     "low": {
       "label": "낮음",
@@ -1873,8 +1608,8 @@
     "helpText": "문제가 지속되면 오류 정보를 복사하여 GitHub에 이슈로 제출하거나 커뮤니티 그룹에서 공유해주세요."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code가 중단되었습니다 (응답 시간 초과 또는 사용자 취소일 수 있음):",
-    "claudeCodeError": "Claude Code 오류:",
+    "claudeCodeInterrupted": "OpenCode가 중단되었습니다 (응답 시간 초과 또는 사용자 취소일 수 있음):",
+    "claudeCodeError": "OpenCode 오류:",
     "errorMessage": "오류 메시지",
     "currentApiKeySource": "현재 API 키 소스",
     "currentApiKeyPreview": "현재 API 키 미리보기",
@@ -1885,7 +1620,7 @@
     "defaultBaseUrl": "기본값 (https://api.anthropic.com)",
     "configTip": "팁: CLI는 환경 변수 또는 settings.json에서 읽을 수 있지만, 이 플러그인은 문제 방지를 위해 settings.json에서만 읽도록 지원합니다. 플러그인 우측 상단 설정 > 제공자 관리에서 설정할 수 있습니다",
     "apiError": "API 오류",
-    "apiErrorCauses": "가능한 원인:\n1. API 키가 올바르게 설정되지 않았습니다\n2. 타사 프록시 서비스 설정 문제\n3. ~/.claude/settings.json의 설정을 확인해주세요",
+    "apiErrorCauses": "가능한 원인:\n1. API 키가 올바르게 설정되지 않았습니다\n2. 타사 프록시 서비스 설정 문제\n3. ~/.config/opencode/opencode.json의 설정을 확인해주세요",
     "codexAuthError": "Codex 인증 오류:",
     "codexAuthErrorChecks": "다음을 확인해주세요:\n1. 플러그인 설정의 Codex API 키가 올바른지\n2. API 키에 충분한 권한이 있는지\n3. 사용자 지정 Base URL을 사용하는 경우 주소가 올바른지",
     "codexAuthTip": "팁: Codex에는 유효한 OpenAI API 키가 필요합니다",
@@ -1920,7 +1655,6 @@
   "errorDiagnostic": {
     "copyCommand": "복사",
     "copied": "복사됨",
-    "openDependencySettings": "종속성 관리 열기",
     "recommended": "권장",
     "codexThreadResume": {
       "title": "세션 스레드가 더 이상 유효하지 않습니다",
@@ -1937,10 +1671,6 @@
           "step0": "1. 터미널에서 실행 (npm 공식 레지스트리로 전환):",
           "step1": "2. 플러그인 설정의 '종속성 관리'를 열고 재설치 클릭:",
           "step2": "3. 재설치 완료 후 Taobao 미러로 복원:"
-        },
-        "downgrade": {
-          "title": "방법 2: 버전 롤백",
-          "step0": "'종속성 관리'에서 SDK 버전을 v0.2.112 또는 그 이전으로 전환하세요. 전환 후 IDEA를 재시작해야 합니다."
         }
       }
     },
@@ -1952,13 +1682,20 @@
         "checkNodeVersion": {
           "title": "방법 1: Node.js 버전 확인",
           "step0": "터미널에서 아래 명령어를 실행하여 버전을 확인하세요. Node 22 또는 현재 LTS를 권장합니다 — Node 24에서 많은 오류가 보고되었으므로 Node 20 또는 22를 우선 사용하세요:"
-        },
-        "reinstallLatestSdk": {
-          "title": "방법 2: npm 공식 레지스트리에서 최신 SDK 재설치",
-          "step0": "1. npm 공식 레지스트리로 전환 (Taobao 미러는 최신 버전이 없을 수 있으므로 사용하지 마세요):",
-          "step1": "2. '종속성 관리'를 열고 최신 SDK를 재설치:"
         }
       }
+    }
+  },
+  "openCodeModes": {
+    "default": {
+      "label": "Build",
+      "tooltip": "OpenCode build 에이전트",
+      "description": "전체 권한 개발 에이전트 (opencode 기본값)"
+    },
+    "plan": {
+      "label": "Plan",
+      "tooltip": "OpenCode plan 에이전트",
+      "description": "읽기 전용 분석, 코드 작성 전 계획 수립"
     }
   }
 }

@@ -1,18 +1,18 @@
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ConfirmDialog from './ConfirmDialog';
-import PermissionDialog from './PermissionDialog';
-import AskUserQuestionDialog from './AskUserQuestionDialog';
 import PlanApprovalDialog from './PlanApprovalDialog';
-import RewindDialog from './RewindDialog';
-import RewindSelectDialog, { type RewindableMessage } from './RewindSelectDialog';
 import ChangelogDialog from './ChangelogDialog';
 import CustomModelDialog from './settings/CustomModelDialog';
 import { usePluginModels } from './settings/hooks/usePluginModels';
-import { CHANGELOG_DATA } from '../version/changelog';
+import { STORAGE_KEYS } from '../types/provider';
+import { fetchGithubReleases, clearReleasesCache } from '../version/githubReleases';
+import type { ChangelogEntry } from '../version/changelog';
 import { useDialogs } from '../contexts/DialogContext';
 import { useUIState } from '../contexts/UIStateContext';
 import ContextUsageDialog from './ContextUsageDialog';
+import PermissionDialog from './PermissionDialog';
+import AskUserQuestionDialog from './AskUserQuestionDialog';
 import { DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from '../utils/permissionDialogTimeout';
 import { setSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
 
@@ -23,21 +23,20 @@ import { setSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
 const AddModelDialogWrapper = ({
   isOpen,
   onClose,
-  currentProvider,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  currentProvider: string;
 }) => {
-  const storageKey = 'opencode-custom-models';
-  const { models, updateModels } = usePluginModels(storageKey);
+  // opencode-only: custom models always live under a single storage key. The
+  // previous Codex branch (CODEX_CUSTOM_MODELS + context window toggle) is gone.
+  const { models, updateModels } = usePluginModels(STORAGE_KEYS.CLAUDE_CUSTOM_MODELS);
   return (
     <CustomModelDialog
       isOpen={isOpen}
       models={models}
       onModelsChange={updateModels}
       onClose={onClose}
-      contextWindowEnabled={currentProvider === 'codex'}
+      contextWindowEnabled={false}
       initialAddMode
     />
   );
@@ -51,21 +50,13 @@ export interface AppDialogsProps {
   showInterruptConfirm: boolean;
   onConfirmInterrupt: () => void;
   onCancelInterrupt: () => void;
-  /** Rewind selection list is computed in App.tsx from messages, still a prop. */
-  rewindableMessages: RewindableMessage[];
-  onRewindSelect: ComponentProps<typeof RewindSelectDialog>['onSelect'];
-  onRewindSelectCancel: ComponentProps<typeof RewindSelectDialog>['onCancel'];
-  onRewindConfirm: ComponentProps<typeof RewindDialog>['onConfirm'];
-  onRewindCancel: ComponentProps<typeof RewindDialog>['onCancel'];
-  /** Provider id for the add-model dialog (lives in useModelProviderState). */
-  currentProvider: string;
   /** Permission dialog timeout in seconds (from backend config). */
   permissionDialogTimeoutSeconds?: number;
 }
 
 /**
  * Renders all top-level dialogs.
- * Permission / ask-user / plan / rewind / changelog / add-model state is read
+ * Permission / ask-user / plan / changelog / add-model state is read
  * from DialogContext and UIStateContext directly to avoid prop drilling 25+
  * fields from App.tsx (stage 4-5 of TASK-P1-01).
  */
@@ -76,24 +67,17 @@ export const AppDialogs = ({
   showInterruptConfirm,
   onConfirmInterrupt,
   onCancelInterrupt,
-  rewindableMessages,
-  onRewindSelect,
-  onRewindSelectCancel,
-  onRewindConfirm,
-  onRewindCancel,
-  currentProvider,
   permissionDialogTimeoutSeconds = DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS,
 }: AppDialogsProps) => {
   const { t } = useTranslation();
   const {
+    planApprovalDialogOpen, currentPlanApprovalRequest,
+    handlePlanApprovalApprove, handlePlanApprovalReject,
+    contextUsageDialogOpen, contextUsageIsLoading, contextUsageData, closeContextUsageDialog,
     permissionDialogOpen, currentPermissionRequest,
     handlePermissionApprove, handlePermissionApproveAlways, handlePermissionSkip,
     askUserQuestionDialogOpen, currentAskUserQuestionRequest,
-    handleAskUserQuestionSubmit, handleAskUserQuestionCancel,
-    planApprovalDialogOpen, currentPlanApprovalRequest,
-    handlePlanApprovalApprove, handlePlanApprovalReject,
-    rewindSelectDialogOpen, rewindDialogOpen, currentRewindRequest, isRewinding,
-    contextUsageDialogOpen, contextUsageIsLoading, contextUsageData, closeContextUsageDialog,
+    handleAskUserQuestionSubmit, handleAskUserQuestionSkip,
   } = useDialogs();
   const {
     showChangelogDialog, closeChangelogDialog,
@@ -109,6 +93,37 @@ export const AppDialogs = ({
       setSkipNewSessionAgain(false);
     }
   }, [showNewSessionConfirm]);
+
+  // First-start / version-update changelog: fetch from the configured GitHub
+  // repository instead of showing the bundled cc-gui changelog history.
+  // Start empty: the repo may legitimately have no releases, and the dialog
+  // must never index into a list we have not loaded yet.
+  const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
+  // Seed loading from the dialog's initial visibility so the first paint shows
+  // the spinner rather than a flash of the empty state.
+  const [changelogLoading, setChangelogLoading] = useState(() => showChangelogDialog);
+  const [changelogError, setChangelogError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showChangelogDialog) return;
+    // The cached list may be stale after an update; clear it once per dialog
+    // open so the user sees the latest releases.
+    clearReleasesCache();
+    setChangelogLoading(true);
+    setChangelogError(null);
+    fetchGithubReleases()
+      .then((result) => {
+        setChangelogEntries(result.entries);
+        // A repo with no releases is a normal empty state, not a load failure —
+        // only surface real fetch errors in the dialog's error banner.
+        setChangelogError(result.empty ? null : result.error ?? null);
+      })
+      .catch((err) => {
+        setChangelogError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        setChangelogLoading(false);
+      });
+  }, [showChangelogDialog]);
 
   const handleConfirmNewSessionWithSkip = () => {
     if (skipNewSessionAgain) {
@@ -151,19 +166,20 @@ export const AppDialogs = ({
         onConfirm={onConfirmInterrupt}
         onCancel={onCancelInterrupt}
       />
+      {/* Permission + AskUserQuestion now render as top-level popups (mirrors cc-gui). */}
       <PermissionDialog
         isOpen={permissionDialogOpen}
         request={currentPermissionRequest}
         onApprove={handlePermissionApprove}
-        onSkip={handlePermissionSkip}
         onApproveAlways={handlePermissionApproveAlways}
+        onSkip={handlePermissionSkip}
         timeoutSeconds={permissionDialogTimeoutSeconds}
       />
       <AskUserQuestionDialog
         isOpen={askUserQuestionDialogOpen}
         request={currentAskUserQuestionRequest}
         onSubmit={handleAskUserQuestionSubmit}
-        onCancel={handleAskUserQuestionCancel}
+        onCancel={handleAskUserQuestionSkip}
         timeoutSeconds={permissionDialogTimeoutSeconds}
       />
       <PlanApprovalDialog
@@ -173,28 +189,16 @@ export const AppDialogs = ({
         onReject={handlePlanApprovalReject}
         timeoutSeconds={permissionDialogTimeoutSeconds}
       />
-      <RewindSelectDialog
-        isOpen={rewindSelectDialogOpen}
-        rewindableMessages={rewindableMessages}
-        onSelect={onRewindSelect}
-        onCancel={onRewindSelectCancel}
-      />
-      <RewindDialog
-        isOpen={rewindDialogOpen}
-        request={currentRewindRequest}
-        isLoading={isRewinding}
-        onConfirm={onRewindConfirm}
-        onCancel={onRewindCancel}
-      />
       <ChangelogDialog
         isOpen={showChangelogDialog}
         onClose={closeChangelogDialog}
-        entries={CHANGELOG_DATA}
+        entries={changelogEntries}
+        loading={changelogLoading}
+        error={changelogError ?? undefined}
       />
       <AddModelDialogWrapper
         isOpen={addModelDialogOpen}
         onClose={() => setAddModelDialogOpen(false)}
-        currentProvider={currentProvider}
       />
       {contextUsageDialogOpen ? (
         <ContextUsageDialog

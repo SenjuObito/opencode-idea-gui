@@ -17,7 +17,7 @@ import org.jetbrains.annotations.NotNull;
 
 
 /**
- * Action to create a new chat tab in the CC GUI tool window
+ * Action to create a new chat tab in the OpenCode Buddy tool window
  */
 public class CreateNewTabAction extends AnAction {
 

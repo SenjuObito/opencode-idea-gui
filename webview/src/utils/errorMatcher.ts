@@ -1,18 +1,11 @@
 import patternsData from '../data/errorPatterns.json';
 
-export type DiagnosticNavigationAction = 'openDependencySettings';
-
 interface DiagnosticCommandStep {
   kind: 'command';
   command: string;
 }
 
-interface DiagnosticNavigationStep {
-  kind: 'navigation';
-  action: DiagnosticNavigationAction;
-}
-
-export type DiagnosticStep = DiagnosticCommandStep | DiagnosticNavigationStep;
+export type DiagnosticStep = DiagnosticCommandStep;
 
 export interface DiagnosticSolution {
   key: string;

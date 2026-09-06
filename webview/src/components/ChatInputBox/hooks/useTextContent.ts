@@ -4,8 +4,7 @@ import { makeQuoteToken } from '../utils/quoteRegistry.js';
 
 interface TextContentCache {
   content: string;
-  htmlSnapshot: string;
-  valid: boolean;
+  htmlLength: number;
   timestamp: number;
 }
 
@@ -25,7 +24,7 @@ interface UseTextContentReturn {
  *
  * Performance optimization:
  * - Uses cache to avoid repeated DOM traversal
- * - Cache is invalidated when the exact innerHTML snapshot changes
+ * - Cache is invalidated when innerHTML length changes
  * - Properly handles file tags by reading data-file-path attribute
  */
 export function useTextContent({
@@ -33,8 +32,7 @@ export function useTextContent({
 }: UseTextContentOptions): UseTextContentReturn {
   const textCacheRef = useRef<TextContentCache>({
     content: '',
-    htmlSnapshot: '',
-    valid: false,
+    htmlLength: 0,
     timestamp: 0,
   });
 
@@ -42,7 +40,7 @@ export function useTextContent({
    * Invalidate cache to force fresh content read
    */
   const invalidateCache = useCallback(() => {
-    textCacheRef.current = { content: '', htmlSnapshot: '', valid: false, timestamp: 0 };
+    textCacheRef.current = { content: '', htmlLength: 0, timestamp: 0 };
   }, []);
 
   /**
@@ -58,14 +56,11 @@ export function useTextContent({
     if (!editableRef.current) return '';
 
     // Performance optimization: Check cache validity
-    // Comparing only innerHTML.length allows different DOM states with the same
-    // size to reuse stale text. File icon SVG sizes make that collision depend
-    // on the referenced extension, which is especially confusing for users.
-    const currentHtml = editableRef.current.innerHTML;
+    const currentHtmlLength = editableRef.current.innerHTML.length;
     const cache = textCacheRef.current;
 
-    // Return cached content only when the exact DOM snapshot is unchanged.
-    if (cache.valid && currentHtml === cache.htmlSnapshot) {
+    // Return cached content if HTML hasn't changed (simple dirty check)
+    if (currentHtmlLength === cache.htmlLength && cache.content !== '') {
       timer.mark('cache-hit');
       timer.end();
       return cache.content;
@@ -140,8 +135,7 @@ export function useTextContent({
     // Update cache
     textCacheRef.current = {
       content: text,
-      htmlSnapshot: currentHtml,
-      valid: true,
+      htmlLength: currentHtmlLength,
       timestamp: Date.now(),
     };
 

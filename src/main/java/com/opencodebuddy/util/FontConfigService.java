@@ -25,8 +25,8 @@ public class FontConfigService {
     public static final String UI_FONT_MODE_CUSTOM_FILE = "customFile";
     public static final String UI_FONT_WARNING_CUSTOM_UNAVAILABLE = "fontUnavailable";
 
-    private static final String UI_FONT_CUSTOM_FAMILY = "CC GUI UI Custom";
-    private static final String CODE_FONT_CUSTOM_FAMILY = "CC GUI Code Custom";
+    private static final String UI_FONT_CUSTOM_FAMILY = "OpenCode Buddy UI Custom";
+    private static final String CODE_FONT_CUSTOM_FAMILY = "OpenCode Buddy Code Custom";
 
     /**
      * Get the IDEA editor font configuration.

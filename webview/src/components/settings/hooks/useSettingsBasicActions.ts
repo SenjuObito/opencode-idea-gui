@@ -2,26 +2,26 @@
 import { useState, useEffect, useCallback } from 'react';
 export type { UiFontConfig, CodeFontConfig } from '../../../types/uiFontConfig';
 import type { UiFontConfig, CodeFontConfig } from '../../../types/uiFontConfig';
-import type { CommitAiConfig, CommitAiProvider } from '../../../types/aiFeatureConfig';
-import {
-  DEFAULT_COMMIT_AI_CONFIG,
-  pickAutoAiFeatureProvider,
-} from '../../../types/aiFeatureConfig';
 import {
   DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS,
   clampPermissionDialogTimeoutSeconds,
 } from '../../../utils/permissionDialogTimeout';
 import {
-  getSkipNewSessionConfirm,
   SKIP_NEW_SESSION_CONFIRM_EVENT,
   type SkipNewSessionConfirmChangedDetail,
 } from '../../../utils/skipNewSessionConfirm';
 import {
   DETAILED_OUTPUT_ENABLED_EVENT,
-  getDetailedOutputEnabled,
   setDetailedOutputEnabled,
   type DetailedOutputEnabledChangedDetail,
 } from '../../../utils/detailedOutputPreference';
+import {
+  getUiPreferences,
+  updateUiPreferences,
+  UI_PREFERENCES_CHANGED_EVENT,
+  type UiPreferences,
+  type UiPreferencesChangedDetail,
+} from '../../../utils/uiPreferences';
 
 const sendToJava = (message: string) => {
   if (window.sendToJava) {
@@ -30,8 +30,6 @@ const sendToJava = (message: string) => {
 };
 
 export interface UseSettingsBasicActionsProps {
-  streamingEnabledProp?: boolean;
-  onStreamingEnabledChangeProp?: (enabled: boolean) => void;
   sendShortcutProp?: 'enter' | 'cmdEnter';
   onSendShortcutChangeProp?: (shortcut: 'enter' | 'cmdEnter') => void;
   autoOpenFileEnabledProp?: boolean;
@@ -46,10 +44,6 @@ export interface UseSettingsBasicActionsReturn {
   // =========================================================================
   // Public read-only state (safe to read in components)
   // =========================================================================
-  nodePath: string;
-  nodeVersion: string | null;
-  minNodeVersion: number;
-  savingNodePath: boolean;
   opencodeCliPath: string;
   savingOpencodeCliPath: boolean;
   workingDirectory: string;
@@ -61,21 +55,20 @@ export interface UseSettingsBasicActionsReturn {
         lineSpacing: number;
       }
     | undefined;
+  /** Named fonts parsed from the VS Code `editor.fontFamily` setting. */
+  vscodeFontList: string[];
+  /** All installed font families, enumerated host-side (OS font directories). */
+  systemFontList: string[];
+  /** Non-empty when host-side font enumeration failed. */
+  systemFontError: string | null;
   uiFontConfig: UiFontConfig | undefined;
   codeFontConfig: CodeFontConfig | undefined;
-  /** Streaming enabled state (prefers prop over local state) */
-  streamingEnabled: boolean;
-  localStreamingEnabled: boolean;
   /** Send shortcut state (prefers prop over local state) */
   sendShortcut: 'enter' | 'cmdEnter';
   localSendShortcut: 'enter' | 'cmdEnter';
   /** Auto open file state (prefers prop over local state) */
   autoOpenFileEnabled: boolean;
   localAutoOpenFileEnabled: boolean;
-  commitPrompt: string;
-  savingCommitPrompt: boolean;
-  projectCommitPrompt: string;
-  savingProjectCommitPrompt: boolean;
   soundNotificationEnabled: boolean;
   soundOnlyWhenUnfocused: boolean;
   selectedSound: string;
@@ -84,20 +77,15 @@ export interface UseSettingsBasicActionsReturn {
   historyCompletionEnabled: boolean;
   /** Whether to skip the "create new session with existing messages" confirm dialog. */
   skipNewSessionConfirm: boolean;
-  commitGenerationEnabled: boolean;
-  aiTitleGenerationEnabled: boolean;
-  statusBarWidgetEnabled: boolean;
   taskCompletionNotificationEnabled: boolean;
   askUserQuestionNotificationEnabled: boolean;
   detailedOutputEnabled: boolean;
   systemNotificationOnlyWhenUnfocused: boolean;
   askUserQuestionSoundNotificationEnabled: boolean;
-  commitAiConfig: CommitAiConfig;
 
   // =========================================================================
   // Handler functions (public API for components)
   // =========================================================================
-  handleSaveNodePath: () => void;
   handleSaveOpencodeCliPath: () => void;
   handleSaveWorkingDirectory: () => void;
   handleUiFontSelectionChange: (selection: string) => void;
@@ -106,7 +94,6 @@ export interface UseSettingsBasicActionsReturn {
   handleCodeFontSelectionChange: (selection: string) => void;
   handleSaveCodeFontCustomPath: (path: string) => void;
   handleBrowseCodeFontFile: () => void;
-  handleStreamingEnabledChange: (enabled: boolean) => void;
   handleSendShortcutChange: (shortcut: 'enter' | 'cmdEnter') => void;
   handleAutoOpenFileEnabledChange: (enabled: boolean) => void;
   handleSoundNotificationEnabledChange: (enabled: boolean) => void;
@@ -116,11 +103,6 @@ export interface UseSettingsBasicActionsReturn {
   handleSaveCustomSoundPath: () => void;
   handleTestSound: () => void;
   handleBrowseSound: () => void;
-  handleSaveCommitPrompt: () => void;
-  handleSaveProjectCommitPrompt: () => void;
-  handleCommitGenerationEnabledChange: (enabled: boolean) => void;
-  handleAiTitleGenerationEnabledChange: (enabled: boolean) => void;
-  handleStatusBarWidgetEnabledChange: (enabled: boolean) => void;
   handleTaskCompletionNotificationEnabledChange: (enabled: boolean) => void;
   handleAskUserQuestionNotificationEnabledChange: (enabled: boolean) => void;
   handleDetailedOutputEnabledChange: (enabled: boolean) => void;
@@ -128,18 +110,11 @@ export interface UseSettingsBasicActionsReturn {
   handleAskUserQuestionSoundNotificationEnabledChange: (enabled: boolean) => void;
   permissionDialogTimeoutSeconds: number;
   handlePermissionDialogTimeoutChange: (seconds: number) => void;
-  handleCommitAiProviderChange: (provider: CommitAiProvider) => void;
-  handleCommitAiModelChange: (model: string) => void;
-  handleCommitAiResetToDefault: () => void;
 
   // =========================================================================
   // @internal — State setters used only by useSettingsWindowCallbacks.
   // Components should not call these directly; use handlers above instead.
   // =========================================================================
-  /** @internal */ setNodePath: (path: string) => void;
-  /** @internal */ setNodeVersion: (version: string | null) => void;
-  /** @internal */ setMinNodeVersion: (version: number) => void;
-  /** @internal */ setSavingNodePath: (saving: boolean) => void;
   /** @internal */ setOpencodeCliPath: (path: string) => void;
   /** @internal */ setSavingOpencodeCliPath: (saving: boolean) => void;
   /** @internal */ setWorkingDirectory: (dir: string) => void;
@@ -153,15 +128,13 @@ export interface UseSettingsBasicActionsReturn {
       }
       | undefined
   ) => void;
+  /** @internal */ setVscodeFontList: (fonts: string[]) => void;
+  /** @internal */ setSystemFontList: (fonts: string[]) => void;
+  /** @internal */ setSystemFontError: (error: string | null) => void;
   /** @internal */ setUiFontConfig: (config: UiFontConfig | undefined) => void;
   /** @internal */ setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
-  /** @internal */ setLocalStreamingEnabled: (enabled: boolean) => void;
   /** @internal */ setLocalSendShortcut: (shortcut: 'enter' | 'cmdEnter') => void;
   /** @internal */ setLocalAutoOpenFileEnabled: (enabled: boolean) => void;
-  /** @internal */ setCommitPrompt: (prompt: string) => void;
-  /** @internal */ setSavingCommitPrompt: (saving: boolean) => void;
-  /** @internal */ setProjectCommitPrompt: (prompt: string) => void;
-  /** @internal */ setSavingProjectCommitPrompt: (saving: boolean) => void;
   /** @internal */ setSoundNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setSoundOnlyWhenUnfocused: (enabled: boolean) => void;
   /** @internal */ setSelectedSound: (soundId: string) => void;
@@ -169,34 +142,22 @@ export interface UseSettingsBasicActionsReturn {
   /** @internal */ setDiffExpandedByDefault: (expanded: boolean) => void;
   /** @internal */ setHistoryCompletionEnabled: (enabled: boolean) => void;
   /** @internal */ setSkipNewSessionConfirm: (enabled: boolean) => void;
-  /** @internal */ setCommitGenerationEnabled: (enabled: boolean) => void;
-  /** @internal */ setAiTitleGenerationEnabled: (enabled: boolean) => void;
-  /** @internal */ setStatusBarWidgetEnabled: (enabled: boolean) => void;
   /** @internal */ setTaskCompletionNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setAskUserQuestionNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setSystemNotificationOnlyWhenUnfocused: (enabled: boolean) => void;
   /** @internal */ setAskUserQuestionSoundNotificationEnabled: (enabled: boolean) => void;
-  /** @internal */ setCommitAiConfig: (config: CommitAiConfig) => void;
 }
 
 export function useSettingsBasicActions({
-  streamingEnabledProp,
-  onStreamingEnabledChangeProp,
   sendShortcutProp,
   onSendShortcutChangeProp,
   autoOpenFileEnabledProp,
   onAutoOpenFileEnabledChangeProp,
   permissionDialogTimeoutSecondsProp,
   onPermissionDialogTimeoutChangeProp,
-  currentProvider,
+  currentProvider: _currentProvider,
 }: UseSettingsBasicActionsProps): UseSettingsBasicActionsReturn {
-  // Node.js path
-  const [nodePath, setNodePath] = useState('');
-  const [nodeVersion, setNodeVersion] = useState<string | null>(null);
-  const [minNodeVersion, setMinNodeVersion] = useState(18);
-  const [savingNodePath, setSavingNodePath] = useState(false);
-
-  // Custom OpenCode CLI path (overrides PATH lookup when set)
+  // Custom Claude CLI path (overrides bundled SDK when set)
   const [opencodeCliPath, setOpencodeCliPath] = useState('');
   const [savingOpencodeCliPath, setSavingOpencodeCliPath] = useState(false);
 
@@ -213,12 +174,11 @@ export function useSettingsBasicActions({
       }
     | undefined
   >();
+  const [vscodeFontList, setVscodeFontList] = useState<string[]>([]);
+  const [systemFontList, setSystemFontList] = useState<string[]>([]);
+  const [systemFontError, setSystemFontError] = useState<string | null>(null);
   const [uiFontConfig, setUiFontConfig] = useState<UiFontConfig | undefined>();
   const [codeFontConfig, setCodeFontConfig] = useState<CodeFontConfig | undefined>();
-
-  // Streaming configuration - prefer props, fallback to local state
-  const [localStreamingEnabled, setLocalStreamingEnabled] = useState<boolean>(false);
-  const streamingEnabled = streamingEnabledProp ?? localStreamingEnabled;
 
   // Send shortcut configuration - prefer props, fallback to local state
   const [localSendShortcut, setLocalSendShortcut] = useState<'enter' | 'cmdEnter'>('enter');
@@ -228,40 +188,27 @@ export function useSettingsBasicActions({
   const [localAutoOpenFileEnabled, setLocalAutoOpenFileEnabled] = useState<boolean>(false);
   const autoOpenFileEnabled = autoOpenFileEnabledProp ?? localAutoOpenFileEnabled;
 
-  // Commit AI prompt configuration
-  const [commitPrompt, setCommitPrompt] = useState('');
-  const [savingCommitPrompt, setSavingCommitPrompt] = useState(false);
-
-  // Project-level commit AI prompt configuration
-  const [projectCommitPrompt, setProjectCommitPrompt] = useState('');
-  const [savingProjectCommitPrompt, setSavingProjectCommitPrompt] = useState(false);
-
   // Sound notification configuration
   const [soundNotificationEnabled, setSoundNotificationEnabled] = useState<boolean>(false);
   const [soundOnlyWhenUnfocused, setSoundOnlyWhenUnfocused] = useState<boolean>(false);
   const [selectedSound, setSelectedSound] = useState<string>('default');
   const [customSoundPath, setCustomSoundPath] = useState<string>('');
 
-  // Diff expanded by default configuration (localStorage-only)
-  const [diffExpandedByDefault, setDiffExpandedByDefault] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('diffExpandedByDefault') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // Diff expanded by default — 宿主 globalState 持久化（localStorage 仅作镜像）
+  const [diffExpandedByDefault, setDiffExpandedByDefault] = useState<boolean>(
+    () => getUiPreferences().diffExpandedByDefault,
+  );
 
   // History completion toggle configuration
-  const [historyCompletionEnabled, setHistoryCompletionEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('historyCompletionEnabled');
-    return saved !== 'false'; // Enabled by default
-  });
+  const [historyCompletionEnabled, setHistoryCompletionEnabled] = useState<boolean>(
+    () => getUiPreferences().historyCompletionEnabled,
+  );
 
   // "Skip new-session confirm dialog" preference (localStorage-only, default: false).
   // Synced bidirectionally with the dialog checkbox via CustomEvent so toggling
   // either surface (dialog or settings page) updates the other immediately.
-  const [skipNewSessionConfirm, setSkipNewSessionConfirm] = useState<boolean>(() =>
-    getSkipNewSessionConfirm()
+  const [skipNewSessionConfirm, setSkipNewSessionConfirm] = useState<boolean>(
+    () => getUiPreferences().skipNewSessionConfirm,
   );
   useEffect(() => {
     const handler = (event: Event) => {
@@ -274,15 +221,6 @@ export function useSettingsBasicActions({
     return () => window.removeEventListener(SKIP_NEW_SESSION_CONFIRM_EVENT, handler);
   }, []);
 
-  // AI commit generation toggle (default: true)
-  const [commitGenerationEnabled, setCommitGenerationEnabled] = useState<boolean>(true);
-
-  // AI session title generation toggle (default: true)
-  const [aiTitleGenerationEnabled, setAiTitleGenerationEnabled] = useState<boolean>(true);
-
-  // Status bar widget toggle (default: true)
-  const [statusBarWidgetEnabled, setStatusBarWidgetEnabled] = useState<boolean>(true);
-
   // Task completion notification toggle (default: false, opt-in feature)
   const [taskCompletionNotificationEnabled, setTaskCompletionNotificationEnabled] = useState<boolean>(false);
 
@@ -291,10 +229,25 @@ export function useSettingsBasicActions({
   const [systemNotificationOnlyWhenUnfocused, setSystemNotificationOnlyWhenUnfocused] = useState<boolean>(false);
   const [askUserQuestionSoundNotificationEnabled, setAskUserQuestionSoundNotificationEnabled] = useState<boolean>(false);
 
-  // Detailed message footer output (localStorage-only, default: false to preserve original footer style)
-  const [detailedOutputEnabled, setDetailedOutputEnabledState] = useState<boolean>(() =>
-    getDetailedOutputEnabled()
+  // Detailed message footer output (default: false to preserve original footer style)
+  const [detailedOutputEnabled, setDetailedOutputEnabledState] = useState<boolean>(
+    () => getUiPreferences().detailedOutputEnabled,
   );
+
+  // 宿主推送权威偏好时同步本地状态（只认 source==='host'）。
+  useEffect(() => {
+    const onChanged = (event: Event) => {
+      const detail = (event as CustomEvent<UiPreferencesChangedDetail>).detail;
+      if (detail?.source !== 'host' || !detail.preferences) return;
+      const next: UiPreferences = detail.preferences;
+      setDiffExpandedByDefault(next.diffExpandedByDefault);
+      setHistoryCompletionEnabled(next.historyCompletionEnabled);
+      setSkipNewSessionConfirm(next.skipNewSessionConfirm);
+      setDetailedOutputEnabledState(next.detailedOutputEnabled);
+    };
+    window.addEventListener(UI_PREFERENCES_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(UI_PREFERENCES_CHANGED_EVENT, onChanged);
+  }, []);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -314,31 +267,25 @@ export function useSettingsBasicActions({
   const permissionDialogTimeoutSeconds =
     permissionDialogTimeoutSecondsProp ?? DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS;
 
-  const [commitAiConfig, setCommitAiConfig] = useState<CommitAiConfig>(
-    DEFAULT_COMMIT_AI_CONFIG
-  );
-
   // Diff expanded by default handler
   useEffect(() => {
-    try {
-      if (diffExpandedByDefault) {
-        localStorage.setItem('diffExpandedByDefault', 'true');
-      } else {
-        localStorage.removeItem('diffExpandedByDefault');
-      }
-    } catch { /* ignore storage errors */ }
+    updateUiPreferences({ diffExpandedByDefault });
   }, [diffExpandedByDefault]);
 
-  const handleSaveNodePath = useCallback(() => {
-    setSavingNodePath(true);
-    const payload = { path: (nodePath || '').trim() };
-    sendToJava(`set_node_path:${JSON.stringify(payload)}`);
-  }, [nodePath]);
+  // 历史补全开关：写共享偏好仓库 + 广播，供输入框等其它界面同步
+  useEffect(() => {
+    updateUiPreferences({ historyCompletionEnabled });
+  }, [historyCompletionEnabled]);
+
+  // 新建会话确认对话框开关
+  useEffect(() => {
+    updateUiPreferences({ skipNewSessionConfirm });
+  }, [skipNewSessionConfirm]);
 
   const handleSaveOpencodeCliPath = useCallback(() => {
     setSavingOpencodeCliPath(true);
     const payload = { path: (opencodeCliPath || '').trim() };
-    sendToJava(`set_opencode_cli_path:${JSON.stringify(payload)}`);
+    sendToJava(`set_claude_cli_path:${JSON.stringify(payload)}`);
   }, [opencodeCliPath]);
 
   const handleSaveWorkingDirectory = useCallback(() => {
@@ -348,6 +295,14 @@ export function useSettingsBasicActions({
   }, [workingDirectory]);
 
   const handleUiFontSelectionChange = useCallback((selection: string) => {
+    if (selection.startsWith('named:')) {
+      const fontFamily = selection.slice('named:'.length);
+      if (fontFamily) {
+        sendToJava(`set_ui_font_config:${JSON.stringify({ mode: 'named', fontFamily })}`);
+      }
+      return;
+    }
+
     if (selection === 'followEditor') {
       sendToJava(`set_ui_font_config:${JSON.stringify({ mode: 'followEditor' })}`);
       return;
@@ -373,6 +328,14 @@ export function useSettingsBasicActions({
   }, []);
 
   const handleCodeFontSelectionChange = useCallback((selection: string) => {
+    if (selection.startsWith('named:')) {
+      const fontFamily = selection.slice('named:'.length);
+      if (fontFamily) {
+        sendToJava(`set_code_font_config:${JSON.stringify({ mode: 'named', fontFamily })}`);
+      }
+      return;
+    }
+
     if (selection === 'followEditor') {
       sendToJava(`set_code_font_config:${JSON.stringify({ mode: 'followEditor' })}`);
       return;
@@ -396,19 +359,6 @@ export function useSettingsBasicActions({
   const handleBrowseCodeFontFile = useCallback(() => {
     sendToJava('browse_code_font_file:');
   }, []);
-
-  // Streaming toggle change handler
-  const handleStreamingEnabledChange = useCallback((enabled: boolean) => {
-    // If prop callback is provided (from App.tsx), use it for centralized state management
-    if (onStreamingEnabledChangeProp) {
-      onStreamingEnabledChangeProp(enabled);
-    } else {
-      // Fallback to local state if no prop callback provided
-      setLocalStreamingEnabled(enabled);
-      const payload = { streamingEnabled: enabled };
-      sendToJava(`set_streaming_enabled:${JSON.stringify(payload)}`);
-    }
-  }, [onStreamingEnabledChangeProp]);
 
   // Send shortcut change handler
   const handleSendShortcutChange = useCallback((shortcut: 'enter' | 'cmdEnter') => {
@@ -468,36 +418,62 @@ export function useSettingsBasicActions({
     sendToJava(`set_custom_sound_path:${JSON.stringify(payload)}`);
   }, [customSoundPath]);
 
-  // Test sound
+  // Test sound — synthesize via Web Audio API (host-side playback is not
+  // available in VS Code; built-in sounds are generated tones).
   const handleTestSound = useCallback(() => {
-    const payload = { soundId: selectedSound, path: customSoundPath };
-    sendToJava(`test_sound:${JSON.stringify(payload)}`);
-  }, [selectedSound, customSoundPath]);
+    type AudioContextCtor = typeof AudioContext;
+    const w = window as unknown as { AudioContext?: AudioContextCtor; webkitAudioContext?: AudioContextCtor };
+    const Ctor = w.AudioContext ?? w.webkitAudioContext;
+    if (!Ctor) return;
+    try {
+      const ctx = new Ctor();
+      const now = ctx.currentTime;
+      const tone = (freq: number, start: number, duration: number, gainValue = 0.18, type: OscillatorType = 'sine') => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, now + start);
+        gain.gain.linearRampToValueAtTime(gainValue, now + start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + duration);
+      };
+      switch (selectedSound) {
+        case 'chime':
+          tone(523.25, 0, 0.25);
+          tone(659.25, 0.12, 0.25);
+          tone(783.99, 0.24, 0.35);
+          break;
+        case 'bell':
+          tone(880, 0, 0.3, 0.14);
+          tone(1320, 0, 0.3, 0.08);
+          break;
+        case 'ding':
+          tone(1200, 0, 0.15, 0.2);
+          break;
+        case 'success':
+          tone(523.25, 0, 0.12);
+          tone(659.25, 0.1, 0.12);
+          tone(783.99, 0.2, 0.12);
+          tone(1046.5, 0.3, 0.3);
+          break;
+        case 'default':
+        default:
+          tone(800, 0, 0.2);
+          break;
+      }
+      window.setTimeout(() => void ctx.close().catch(() => {}), 1200);
+    } catch {
+      // Audio unavailable — ignore
+    }
+  }, [selectedSound]);
 
   // Browse sound file
   const handleBrowseSound = useCallback(() => {
     sendToJava('browse_sound_file:');
-  }, []);
-
-  // AI commit generation toggle change handler
-  const handleCommitGenerationEnabledChange = useCallback((enabled: boolean) => {
-    setCommitGenerationEnabled(enabled);
-    const payload = { commitGenerationEnabled: enabled };
-    sendToJava(`set_commit_generation_enabled:${JSON.stringify(payload)}`);
-  }, []);
-
-  // AI session title generation toggle change handler
-  const handleAiTitleGenerationEnabledChange = useCallback((enabled: boolean) => {
-    setAiTitleGenerationEnabled(enabled);
-    const payload = { aiTitleGenerationEnabled: enabled };
-    sendToJava(`set_ai_title_generation_enabled:${JSON.stringify(payload)}`);
-  }, []);
-
-  // Status bar widget toggle change handler
-  const handleStatusBarWidgetEnabledChange = useCallback((enabled: boolean) => {
-    setStatusBarWidgetEnabled(enabled);
-    const payload = { statusBarWidgetEnabled: enabled };
-    sendToJava(`set_status_bar_widget_enabled:${JSON.stringify(payload)}`);
   }, []);
 
   // Task completion notification toggle change handler
@@ -516,7 +492,10 @@ export function useSettingsBasicActions({
 
   const handleDetailedOutputEnabledChange = useCallback((enabled: boolean) => {
     setDetailedOutputEnabledState(enabled);
+    // 先写 localStorage 并广播（其它界面订阅 DETAILED_OUTPUT_ENABLED_EVENT），
+    // 再同步到宿主 globalState。
     setDetailedOutputEnabled(enabled);
+    updateUiPreferences({ detailedOutputEnabled: enabled });
   }, []);
 
   const handleSystemNotificationOnlyWhenUnfocusedChange = useCallback((enabled: boolean) => {
@@ -540,112 +519,7 @@ export function useSettingsBasicActions({
     sendToJava(`set_permission_dialog_timeout:${JSON.stringify(payload)}`);
   }, [onPermissionDialogTimeoutChangeProp]);
 
-  const handleCommitAiProviderChange = useCallback((provider: CommitAiProvider) => {
-    const providerAvailable = commitAiConfig.availability[provider];
-    const nextConfig: CommitAiConfig = {
-      ...commitAiConfig,
-      provider,
-      effectiveProvider: providerAvailable ? provider : null,
-      resolutionSource: providerAvailable ? 'manual' : 'unavailable',
-    };
-    setCommitAiConfig(nextConfig);
-    sendToJava(`set_commit_ai_config:${JSON.stringify({
-      provider,
-      models: nextConfig.models,
-    })}`);
-  }, [commitAiConfig]);
-
-  const handleCommitAiModelChange = useCallback((model: string) => {
-    const activeProvider = commitAiConfig.provider ?? commitAiConfig.effectiveProvider ?? 'codex';
-    const nextConfig: CommitAiConfig = {
-      ...commitAiConfig,
-      models: {
-        ...commitAiConfig.models,
-        [activeProvider]: model,
-      },
-    };
-    setCommitAiConfig(nextConfig);
-    sendToJava(`set_commit_ai_config:${JSON.stringify({
-      provider: commitAiConfig.provider,
-      models: nextConfig.models,
-    })}`);
-  }, [commitAiConfig]);
-
-  const handleCommitAiResetToDefault = useCallback(() => {
-    // Auto mode follows the current chat provider when that CLI is available.
-    const autoProvider = pickAutoAiFeatureProvider(
-      commitAiConfig.availability,
-      currentProvider,
-    );
-    const nextConfig: CommitAiConfig = {
-      ...commitAiConfig,
-      provider: null,
-      effectiveProvider: autoProvider,
-      resolutionSource: autoProvider ? 'auto' : 'unavailable',
-    };
-    setCommitAiConfig(nextConfig);
-    sendToJava(`set_commit_ai_config:${JSON.stringify({
-      provider: null,
-      models: nextConfig.models,
-    })}`);
-  }, [commitAiConfig, currentProvider]);
-
-  // Keep commit AI auto-mode effectiveProvider in sync when the chat CLI changes.
-  useEffect(() => {
-    if (commitAiConfig.provider !== null) {
-      return;
-    }
-    const nextEffective = pickAutoAiFeatureProvider(
-      commitAiConfig.availability,
-      currentProvider,
-    );
-    if (nextEffective === commitAiConfig.effectiveProvider) {
-      return;
-    }
-    setCommitAiConfig((prev) => {
-      if (prev.provider !== null) {
-        return prev;
-      }
-      const resolved = pickAutoAiFeatureProvider(prev.availability, currentProvider);
-      if (resolved === prev.effectiveProvider) {
-        return prev;
-      }
-      return {
-        ...prev,
-        effectiveProvider: resolved,
-        resolutionSource: resolved ? 'auto' : 'unavailable',
-      };
-    });
-  }, [
-    currentProvider,
-    commitAiConfig.provider,
-    commitAiConfig.availability,
-    commitAiConfig.effectiveProvider,
-  ]);
-
-  // Commit AI prompt save handler
-  const handleSaveCommitPrompt = useCallback(() => {
-    setSavingCommitPrompt(true);
-    const payload = { prompt: commitPrompt };
-    sendToJava(`set_commit_prompt:${JSON.stringify(payload)}`);
-  }, [commitPrompt]);
-
-  // Project-level commit AI prompt save handler
-  const handleSaveProjectCommitPrompt = useCallback(() => {
-    setSavingProjectCommitPrompt(true);
-    const payload = { prompt: projectCommitPrompt };
-    sendToJava(`set_project_commit_prompt:${JSON.stringify(payload)}`);
-  }, [projectCommitPrompt]);
-
   return {
-    nodePath,
-    setNodePath,
-    nodeVersion,
-    setNodeVersion,
-    minNodeVersion,
-    setMinNodeVersion,
-    savingNodePath,
-    setSavingNodePath,
     opencodeCliPath,
     setOpencodeCliPath,
     savingOpencodeCliPath,
@@ -656,23 +530,22 @@ export function useSettingsBasicActions({
     setSavingWorkingDirectory,
     editorFontConfig,
     setEditorFontConfig,
+    vscodeFontList,
+    setVscodeFontList,
+    systemFontList,
+    setSystemFontList,
+    systemFontError,
+    setSystemFontError,
     uiFontConfig,
     setUiFontConfig,
     codeFontConfig,
     setCodeFontConfig,
-    localStreamingEnabled,
-    setLocalStreamingEnabled,
-    streamingEnabled,
     localSendShortcut,
     setLocalSendShortcut,
     sendShortcut,
     localAutoOpenFileEnabled,
     setLocalAutoOpenFileEnabled,
     autoOpenFileEnabled,
-    commitPrompt,
-    setCommitPrompt,
-    savingCommitPrompt,
-    setSavingCommitPrompt,
     soundNotificationEnabled,
     setSoundNotificationEnabled,
     soundOnlyWhenUnfocused,
@@ -687,7 +560,6 @@ export function useSettingsBasicActions({
     setHistoryCompletionEnabled,
     skipNewSessionConfirm,
     setSkipNewSessionConfirm,
-    handleSaveNodePath,
     handleSaveOpencodeCliPath,
     handleSaveWorkingDirectory,
     handleUiFontSelectionChange,
@@ -696,7 +568,6 @@ export function useSettingsBasicActions({
     handleCodeFontSelectionChange,
     handleSaveCodeFontCustomPath,
     handleBrowseCodeFontFile,
-    handleStreamingEnabledChange,
     handleSendShortcutChange,
     handleAutoOpenFileEnabledChange,
     handleSoundNotificationEnabledChange,
@@ -706,21 +577,6 @@ export function useSettingsBasicActions({
     handleSaveCustomSoundPath,
     handleTestSound,
     handleBrowseSound,
-    handleSaveCommitPrompt,
-    projectCommitPrompt,
-    setProjectCommitPrompt,
-    savingProjectCommitPrompt,
-    setSavingProjectCommitPrompt,
-    handleSaveProjectCommitPrompt,
-    commitGenerationEnabled,
-    setCommitGenerationEnabled,
-    handleCommitGenerationEnabledChange,
-    aiTitleGenerationEnabled,
-    setAiTitleGenerationEnabled,
-    handleAiTitleGenerationEnabledChange,
-    statusBarWidgetEnabled,
-    setStatusBarWidgetEnabled,
-    handleStatusBarWidgetEnabledChange,
     taskCompletionNotificationEnabled,
     setTaskCompletionNotificationEnabled,
     handleTaskCompletionNotificationEnabledChange,
@@ -737,10 +593,5 @@ export function useSettingsBasicActions({
     handleAskUserQuestionSoundNotificationEnabledChange,
     permissionDialogTimeoutSeconds,
     handlePermissionDialogTimeoutChange,
-    commitAiConfig,
-    setCommitAiConfig,
-    handleCommitAiProviderChange,
-    handleCommitAiModelChange,
-    handleCommitAiResetToDefault,
   };
 }

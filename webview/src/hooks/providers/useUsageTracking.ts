@@ -1,89 +1,59 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  DEPENDENCY_STATUS_REQUEST_STARTED_EVENT,
-  retryDependencyStatusRequest,
-} from '../../utils/bridgeStartup';
 
 import { CLI_ONLY_PROVIDERS } from './cliProviders';
 
-const PROVIDER_TO_SDK: Record<string, string> = {
-  claude: 'claude-sdk',
-  anthropic: 'claude-sdk',
-  bedrock: 'claude-sdk',
-  codex: 'codex-sdk',
-  openai: 'codex-sdk',
-  // CLI providers have no npm SDK — markers are only for lookups.
-  grok: 'grok-cli',
-  kimi: 'kimi-cli',
-  opencode: 'opencode-cli',
-  pi: 'pi-cli',
-  omp: 'omp-cli',
-};
-
-type SdkStatus = Record<string, {
-  installed?: boolean;
-  status?: string;
-  installedVersion?: string;
-  meetsMinimumVersion?: boolean;
-  minimumVersion?: string;
-}>;
-
 /**
- * Usage % / token counters and SDK install status. `isSdkInstalled(providerId)`
- * is exposed as a stable callback for callers that need to gate UI on SDK
- * availability. The sdkStatusLoaded flag must be true before queries return
- * meaningful results.
+ * Usage % / token counters and daemon alive status.
+ * `isSdkInstalled(providerId)` now simply checks if the opencode daemon is alive.
  */
 export function useUsageTracking() {
   const [usagePercentage, setUsagePercentage] = useState(0);
   const [usageUsedTokens, setUsageUsedTokens] = useState<number | undefined>(undefined);
   const [usageMaxTokens, setUsageMaxTokens] = useState<number | undefined>(undefined);
-  const [sdkStatus, setSdkStatus] = useState<SdkStatus>({});
-  const [sdkStatusLoaded, setSdkStatusLoaded] = useState(false);
-  const [sdkStatusError, setSdkStatusError] = useState<string | null>(null);
-  const sdkStatusLoading = !sdkStatusLoaded && sdkStatusError === null;
+  const [daemonAlive, setDaemonAlive] = useState(false);
+  const [daemonStatusLoaded, setDaemonStatusLoaded] = useState(false);
 
   useEffect(() => {
-    const handleStatusRequestStarted = () => {
-      setSdkStatusError(null);
-      setSdkStatusLoaded(false);
+    const handler = (event: Event) => {
+      try {
+        const detail = (event as CustomEvent).detail;
+        const data = typeof detail === 'string' ? JSON.parse(detail) : detail;
+        setDaemonAlive(!!data.alive);
+        // 状态栏（"正在检查 opencode serve 状态..."）必须等到 serve 真正就绪
+        // （serveReady=true）才消失；serve 进程都没运行（alive=false）则立即进入
+        // 「未运行」可重试态；alice 为真但 serve 尚未就绪时保持 loading 转圈。
+        if (data.alive === false || data.serveReady === true) {
+          setDaemonStatusLoaded(true);
+        }
+        // 其余情况（alive=true && serveReady=false/缺失）保持 daemonStatusLoaded=false，
+        // 状态栏继续显示加载中，直到宿主发来 serveReady:true。
+      } catch {
+        // 兜底：解析失败也视为状态已知，避免永久卡在 loading。
+        setDaemonStatusLoaded(true);
+      }
     };
-    window.addEventListener(DEPENDENCY_STATUS_REQUEST_STARTED_EVENT, handleStatusRequestStarted);
-    return () => {
-      window.removeEventListener(DEPENDENCY_STATUS_REQUEST_STARTED_EVENT, handleStatusRequestStarted);
-    };
+    window.addEventListener('updateDaemonStatus', handler as EventListener);
+    return () => window.removeEventListener('updateDaemonStatus', handler as EventListener);
   }, []);
 
   const isSdkInstalled = useCallback(
-    (providerId: string): boolean => {
-      // Grok CLI is system-installed; do not gate on Claude/Codex SDK status.
-      if (CLI_ONLY_PROVIDERS.has(providerId)) return true;
-      const sdkId = PROVIDER_TO_SDK[providerId] || 'claude-sdk';
-      const status = sdkStatus[sdkId];
-      if (status?.status === 'installed' || status?.installed === true) return true;
-      if (status?.status === 'not_installed' || status?.installed === false) return false;
-      // A failed query means "unknown", not "not installed". Let chat proceed;
-      // the backend will still report an actionable SDK startup error if needed.
-      if (sdkStatusError !== null) return true;
-      if (!sdkStatusLoaded) return false;
-      return false;
+    (_providerId: string): boolean => {
+      if (CLI_ONLY_PROVIDERS.has(_providerId)) return true;
+      return daemonAlive;
     },
-    [sdkStatusError, sdkStatusLoaded, sdkStatus],
+    [daemonAlive],
   );
 
-  const isSdkStatusKnown = useCallback((providerId: string): boolean => {
-    if (CLI_ONLY_PROVIDERS.has(providerId)) return true;
-    const sdkId = PROVIDER_TO_SDK[providerId] || 'claude-sdk';
-    const status = sdkStatus[sdkId];
-    return status?.status === 'installed'
-      || status?.status === 'not_installed'
-      || typeof status?.installed === 'boolean';
-  }, [sdkStatus]);
+  const isSdkStatusKnown = useCallback((_providerId: string): boolean => {
+    if (CLI_ONLY_PROVIDERS.has(_providerId)) return true;
+    return daemonStatusLoaded;
+  }, [daemonStatusLoaded]);
 
-  const retrySdkStatus = useCallback(() => {
-    setSdkStatusError(null);
-    setSdkStatusLoaded(false);
-    retryDependencyStatusRequest();
+  const retryDaemonStatus = useCallback(() => {
+    setDaemonStatusLoaded(false);
+    if (window.sendToJava) {
+      window.sendToJava('check_daemon_status:');
+    }
   }, []);
 
   return {
@@ -93,14 +63,8 @@ export function useUsageTracking() {
     setUsageUsedTokens,
     usageMaxTokens,
     setUsageMaxTokens,
-    sdkStatus,
-    setSdkStatus,
-    sdkStatusLoaded,
-    setSdkStatusLoaded,
-    sdkStatusLoading,
-    sdkStatusError,
-    setSdkStatusError,
-    retrySdkStatus,
+    daemonStatusLoaded,
+    retryDaemonStatus,
     isSdkInstalled,
     isSdkStatusKnown,
   };

@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
-import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap } from '../types';
-import { sendBridgeEvent } from '../utils/bridge';
+import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
+import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
 import { getSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
@@ -31,18 +31,16 @@ interface UseSessionManagementOptions {
   setLoading: (loading: boolean) => void;
   setIsThinking: (thinking: boolean) => void;
   setStreamingActive: (active: boolean) => void;
+  setSessionLoading: (loading: boolean) => void;
   /** Clears async subagent task events so stale completions cannot leak across sessions. */
   setTaskEvents?: React.Dispatch<React.SetStateAction<TaskEventMap>>;
+  /** Clears SSE todos so stale todo lists cannot leak across sessions. */
+  setSseTodos?: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
   /** Clears polled sidechain histories so stale transcripts cannot leak across sessions. */
   setSubagentHistories?: React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>;
   clearToasts: () => void;
   addToast: (message: string, type?: ToastType) => void;
   t: TFunction;
-  /**
-   * Apply model (and optional agent) from a history row so the input bar
-   * matches the session being opened.
-   */
-  applyHistoryModel?: (provider: string, model: string, agent?: string | null) => void;
 }
 
 interface UseSessionManagementReturn {
@@ -56,7 +54,7 @@ interface UseSessionManagementReturn {
   handleCancelNewSession: () => void;
   handleConfirmInterrupt: () => void;
   handleCancelInterrupt: () => void;
-  loadHistorySession: (sessionId: string, provider?: string, model?: string, agent?: string) => void;
+  loadHistorySession: (sessionId: string) => void;
   deleteHistorySession: (sessionId: string) => void;
   deleteHistorySessions: (sessionIds: string[]) => void;
   exportHistorySession: (sessionId: string, title: string) => void;
@@ -88,18 +86,20 @@ export function useSessionManagement({
   setLoading: setLoadingState,
   setIsThinking,
   setStreamingActive,
+  setSessionLoading,
   setTaskEvents,
+  setSseTodos,
   setSubagentHistories,
   clearToasts,
   addToast,
   t,
-  applyHistoryModel,
 }: UseSessionManagementOptions): UseSessionManagementReturn {
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
   const [showInterruptConfirm, setShowInterruptConfirm] = useState(false);
   const pendingActionRef = useRef<'newSession' | null>(null);
   const suppressNextStatusToastRef = useRef(false);
   const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const softReloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historyDataRef = useRef(historyData);
   historyDataRef.current = historyData;
   const showSessionDeletedToast = useCallback((afterSessionTransition = false) => {
@@ -114,14 +114,18 @@ export function useSessionManagement({
   const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null) => {
     window.__sessionTransitioning = true;
     window.__sessionTransitionToken = createSessionTransitionToken();
-    // Discard any deferred snapshot from a prior transition / outgoing session.
-    window.__deferredTransitionUpdateMessages = null;
+    // 完整会话切换会取代任何在途的同会话软刷新，释放其去抖守卫。
+    if (softReloadTimeoutRef.current !== null) {
+      clearTimeout(softReloadTimeoutRef.current);
+      softReloadTimeoutRef.current = null;
+    }
+    window.__softSessionReloadInFlight = null;
     // Clear expand/collapse cache on session switch to avoid unbounded growth
     clearAllPersistedExpanded();
     // Use the single cleanup entry point exposed by useWindowCallbacks.
     // This clears both React state AND internal streaming refs in one shot.
     if (typeof window.__resetTransientUiState === 'function') {
-      window.__resetTransientUiState();
+      window.__resetTransientUiState(true);
     } else {
       // Fallback if useWindowCallbacks hasn't mounted yet (e.g. during SSR/tests)
       clearToasts();
@@ -131,11 +135,19 @@ export function useSessionManagement({
       setStreamingActive(false);
     }
     setMessages([]);
+    if (nextSessionId !== null) {
+      setSessionLoading(true);
+    }
+    cardDebugLog('[SessionManagement] beginSessionTransition: sessionLoading set to', nextSessionId !== null, 'nextSessionId:', nextSessionId);
     // Drop async subagent events from the prior session: tool_use_ids are
     // globally unique so stale entries cannot mislabel the new session's
     // agents, but leaving them would grow the map without bound.
     if (setTaskEvents) {
       setTaskEvents({});
+    }
+    // Clear SSE todos from the prior session.
+    if (setSseTodos) {
+      setSseTodos(null);
     }
     // Sidechain histories carry full transcript arrays (potentially large).
     // Clear them on session switch for the same unbounded-growth reason; an
@@ -165,16 +177,13 @@ export function useSessionManagement({
     transitionTimeoutRef.current = setTimeout(() => {
       transitionTimeoutRef.current = null;
       if (window.__sessionTransitioning && window.__sessionTransitionToken === token) {
-        console.warn('[SessionManagement] Transition guard timed out — auto-releasing');
+        cardDebugLog('[SessionManagement] Transition guard timed out — auto-releasing');
         window.__sessionTransitioning = false;
         window.__sessionTransitionToken = null;
-        // Apply any history snapshot that arrived while the guard was stuck.
-        if (typeof window.__flushDeferredTransitionUpdateMessages === 'function') {
-          window.__flushDeferredTransitionUpdateMessages();
-        }
+        setSessionLoading(false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
-  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSubagentHistories]);
+  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSubagentHistories]);
 
   // Create new session
   const createNewSession = useCallback(() => {
@@ -259,53 +268,67 @@ export function useSessionManagement({
   }, []);
 
   // Load history session
-  const loadHistorySession = useCallback((
-    sessionId: string,
-    provider?: string,
-    model?: string,
-    agent?: string,
-  ) => {
+  // 会话级模型/模式/推理力度的恢复不在此处做（历史快照的行内值从不更新，
+  // 用它恢复会覆盖用户刚切换的选择）。跨会话加载时由宿主从 daemon
+  // session.get 读 opencode 权威状态后经 onSessionStateRestored 推送恢复。
+  const loadHistorySession = useCallback((sessionId: string) => {
     const session = historyDataRef.current?.sessions?.find(s => s.sessionId === sessionId);
-    const effectiveProvider = provider || session?.provider || currentProvider || 'claude';
-    const effectiveModel = (model || session?.model || '').trim();
-    const effectiveAgent = (agent || session?.agent || '').trim();
+    cardDebugLog('[SessionManagement] loadHistorySession called, sessionId:', sessionId, 'currentSessionId:', currentSessionId, 'isSameSession:', sessionId === currentSessionId);
 
-    // Restore the session's model/agent in the UI before (or with) the load so
-    // the next send continues with the same selection the history used.
-    if (effectiveModel && applyHistoryModel) {
-      applyHistoryModel(effectiveProvider, effectiveModel, effectiveAgent || null);
-    }
-
-    // Re-opening the session already active: soft-reload only — do NOT
-    // beginSessionTransition (which clears messages and holds the transition
-    // guard). Backend routes same-session to reloadActiveSessionMessages.
-    // Codex still uses a full transition: its loadCodexSession path is separate
-    // and mid-stream soft-reload without interrupt can clearMessages under the
-    // live reply.
-    const isSameSession = sessionId === currentSessionId;
-    if (isSameSession && effectiveProvider !== 'codex') {
-      sendBridgeEvent('load_session', JSON.stringify({
-        sessionId,
-        provider: effectiveProvider,
-        ...(effectiveModel ? { model: effectiveModel } : {}),
-      }));
+    // Re-opening the very session already active: don't interrupt the in-flight
+    // turn or wipe the view - just ask the backend to soft-reload the transcript
+    // from the server. The backend sessionLoadCallback detects the same-session
+    // case and routes through reloadActiveSessionMessages (reusing the
+    // session_updated reload path, never interrupting).
+    if (sessionId === currentSessionId) {
+      // 去抖守卫：同会话软刷新已在途时不重复发送。宿主每次恢复消息后都会推送
+      // onRevertStateUpdate 等事件，任何来源的重复触发都会形成
+      // load_session → 恢复消息 → 事件 → load_session 的死循环（表现为消息
+      // 列表持续闪烁）。守卫由 historyLoadComplete 释放，另有超时兜底。
+      if (window.__softSessionReloadInFlight === sessionId) {
+        cardDebugLog('[SessionManagement] same session soft reload in flight, skipping');
+        setCurrentView('chat');
+        return;
+      }
+      cardDebugLog('[SessionManagement] same session soft reload, sending load_session');
+      cardDebugLog('[SessionManagement] BEFORE: __sessionTransitioning=', window.__sessionTransitioning, 'softReload=', window.__softSessionReloadInFlight);
+      // Set transition guard so backend's clearMessages (from restoreMessages)
+      // won't reset sessionLoading to false before messages arrive — prevents
+      // the empty-state flash that occurs when __sessionTransitioning is false.
+      window.__sessionTransitioning = true;
+      window.__sessionTransitionToken = createSessionTransitionToken();
+      window.__softSessionReloadInFlight = sessionId;
+      cardDebugLog('[SessionManagement] AFTER: __sessionTransitioning=', window.__sessionTransitioning, 'token set');
+      if (softReloadTimeoutRef.current !== null) {
+        clearTimeout(softReloadTimeoutRef.current);
+      }
+      softReloadTimeoutRef.current = setTimeout(() => {
+        softReloadTimeoutRef.current = null;
+        if (window.__softSessionReloadInFlight === sessionId) {
+          window.__softSessionReloadInFlight = null;
+        }
+        // Safety: release transition guard if historyLoadComplete never arrived
+        if (window.__sessionTransitioning) {
+          cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
+          window.__sessionTransitioning = false;
+          window.__sessionTransitionToken = null;
+        }
+      }, 5_000);
+      sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
       setCurrentView('chat');
       return;
     }
 
-    // Switching to a different session (or Codex same-session): interrupt first
-    // if the AI is mid-reply, then do a full session swap.
+    // Switching to a different session: interrupt first if the AI is
+    // mid-reply, then do a full session swap.
+    cardDebugLog('[SessionManagement] different session, calling beginSessionTransition');
     if (loading) {
       sendBridgeEvent('interrupt_session');
     }
     beginSessionTransition(sessionId, session?.title ?? null);
-    sendBridgeEvent('load_session', JSON.stringify({
-      sessionId,
-      provider: effectiveProvider,
-      ...(effectiveModel ? { model: effectiveModel } : {}),
-    }));
+    sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
     setCurrentView('chat');
-  }, [applyHistoryModel, beginSessionTransition, currentProvider, loading, setCurrentView, currentSessionId]);
+  }, [beginSessionTransition, loading, setCurrentView, currentSessionId]);
 
   // Delete history session
   const deleteHistorySession = useCallback((sessionId: string) => {
@@ -393,7 +416,7 @@ export function useSessionManagement({
     const exportData = JSON.stringify({
       sessionId,
       title,
-      provider: session?.provider || currentProvider || 'claude',
+      provider: session?.provider || currentProvider || 'opencode',
     });
     sendBridgeEvent('export_session', exportData);
   }, [currentProvider]);

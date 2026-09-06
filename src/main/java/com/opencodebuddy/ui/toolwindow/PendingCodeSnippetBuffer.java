@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Buffers a code snippet that arrives before the webview frontend is ready.
  *
- * <p>External callers (e.g. the editor "Send selection to CC GUI" action) may push a
+ * <p>External callers (e.g. the editor "Send selection to OpenCode Buddy" action) may push a
  * snippet while the JCEF webview is still loading. The snippet is held here and flushed
  * once the frontend signals readiness.
  *

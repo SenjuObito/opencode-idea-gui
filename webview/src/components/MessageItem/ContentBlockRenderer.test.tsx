@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ClaudeContentBlock } from '../../types';
+import type { ClaudeContentBlock, ToolResultBlock } from '../../types';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
 
 // Capture the props MarkdownBlock receives without rendering the real marked
@@ -67,5 +67,95 @@ describe('ContentBlockRenderer block-level streaming', () => {
   it('renders with the full pipeline once the message has stopped streaming', () => {
     renderTextBlock({ isStreaming: false, isLastBlock: true });
     expect(markdownProps.isStreaming).toBe(false);
+  });
+});
+
+describe('ContentBlockRenderer askuserquestion', () => {
+  const askBlock = (): ClaudeContentBlock =>
+    ({
+      type: 'tool_use',
+      name: 'askuserquestion',
+      id: 'tool-1',
+      input: {
+        questions: [
+          { question: 'Pick a color?', header: 'Choice', options: [{ label: 'Red' }, { label: 'Blue' }] },
+        ],
+      },
+    }) as unknown as ClaudeContentBlock;
+
+  const answerResult = (): ToolResultBlock =>
+    ({
+      type: 'tool_result',
+      tool_use_id: 'tool-1',
+      content: 'User has answered your questions: "Pick a color?"="Red". You can now continue with the user\'s answers in mind.',
+    }) as ToolResultBlock;
+
+  it('renders a read-only Q&A summary instead of returning null', () => {
+    const { getByText } = render(
+      <ContentBlockRenderer
+        block={askBlock()}
+        messageIndex={0}
+        messageType="assistant"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={false}
+        isLastBlock={false}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => answerResult()}
+      />,
+    );
+
+    expect(getByText('Pick a color?')).toBeTruthy();
+    expect(getByText('Red')).toBeTruthy();
+  });
+
+  it('renders the question even before a tool_result has arrived', () => {
+    const { getByText, queryByText } = render(
+      <ContentBlockRenderer
+        block={askBlock()}
+        messageIndex={0}
+        messageType="assistant"
+        isStreaming={true}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={true}
+        isLastBlock={true}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('Pick a color?')).toBeTruthy();
+    expect(queryByText('Red')).toBeFalsy();
+  });
+
+  it('keeps permission requests suppressed', () => {
+    const block = ({
+      type: 'tool_use',
+      name: 'requestpermissions',
+      id: 'tool-2',
+      input: {},
+    }) as unknown as ClaudeContentBlock;
+
+    const { container } = render(
+      <ContentBlockRenderer
+        block={block}
+        messageIndex={0}
+        messageType="assistant"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={false}
+        isLastBlock={false}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(container.innerHTML).toBe('');
   });
 });

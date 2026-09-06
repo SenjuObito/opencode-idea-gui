@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  computeStatusScopeMessages,
-  finalizeTodosForSettledTurn,
-  selectLatestSubagentTurn,
-} from './turnScope';
-import type { ClaudeMessage, SubagentInfo, TodoItem } from '../types';
+import { computeStatusScopeMessages, finalizeSubagentsForSettledTurn } from './turnScope';
+import type { ClaudeMessage, SubagentInfo } from '../types';
 
 const userMsg = (content: string): ClaudeMessage => ({ type: 'user', content });
 const assistantMsg = (): ClaudeMessage => ({ type: 'assistant', content: 'ok' });
@@ -52,44 +48,36 @@ const subagent = (overrides: Partial<SubagentInfo>): SubagentInfo => ({
   ...overrides,
 });
 
-describe('finalizeTodosForSettledTurn', () => {
-  const todos: TodoItem[] = [{ content: 'Implement', status: 'in_progress' }];
-
-  it('preserves Codex plan state when the main turn settles', () => {
-    expect(finalizeTodosForSettledTurn(todos, false, 'codex')).toEqual(todos);
+describe('finalizeSubagentsForSettledTurn', () => {
+  it('does not infer async completion from a settled main turn', () => {
+    const result = finalizeSubagentsForSettledTurn([subagent({ isAsync: true })], false);
+    expect(result[0].status).toBe('running');
   });
 
-  it('keeps the existing Claude settled-task behavior', () => {
-    expect(finalizeTodosForSettledTurn(todos, false, 'claude')).toEqual([
-      { content: 'Implement', status: 'completed' },
-    ]);
-  });
-});
-
-describe('selectLatestSubagentTurn', () => {
-  const user = (content: string): ClaudeMessage => ({ type: 'user', content });
-  const assistant = (): ClaudeMessage => ({ type: 'assistant' });
-
-  it('keeps only the most recent turn containing valid extracted subagents', () => {
-    const messages = [user('first'), assistant(), user('second'), assistant()];
-    const first = subagent({ id: 'first', messageIndex: 1 });
-    const second = subagent({ id: 'second', messageIndex: 3 });
-
-    expect(selectLatestSubagentTurn(messages, [first, second])).toEqual([second]);
+  it('preserves terminal status supplied by task_notification or sidechain history', () => {
+    const result = finalizeSubagentsForSettledTurn(
+      [
+        subagent({ isAsync: true, status: 'completed' }),
+        subagent({ isAsync: true, status: 'error' }),
+      ],
+      false,
+    );
+    expect(result.map((item) => item.status)).toEqual(['completed', 'error']);
   });
 
-  it('keeps the previous valid turn when a later turn produced no valid subagent', () => {
-    const messages = [user('first'), assistant(), user('noise-only'), assistant()];
-    const first = subagent({ id: 'first', messageIndex: 1 });
-
-    expect(selectLatestSubagentTurn(messages, [first])).toEqual([first]);
+  it('does not mutate sync extraction results', () => {
+    const running = subagent({ isAsync: false });
+    const completed = subagent({ isAsync: false, status: 'completed' });
+    const result = finalizeSubagentsForSettledTurn([running, completed], false);
+    expect(result).toEqual([running, completed]);
   });
 
-  it('keeps all valid subagents from the selected turn', () => {
-    const messages = [user('first'), assistant(), assistant()];
-    const first = subagent({ id: 'first', messageIndex: 1 });
-    const second = subagent({ id: 'second', messageIndex: 2 });
-
-    expect(selectLatestSubagentTurn(messages, [first, second])).toEqual([first, second]);
+  it('returns the same states while streaming', () => {
+    const result = finalizeSubagentsForSettledTurn(
+      [subagent({ isAsync: false }), subagent({ isAsync: true })],
+      true,
+    );
+    expect(result[0].status).toBe('running');
+    expect(result[1].status).toBe('running');
   });
 });

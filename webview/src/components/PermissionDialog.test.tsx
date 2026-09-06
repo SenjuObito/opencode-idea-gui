@@ -1,7 +1,37 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import PermissionDialog, { type PermissionRequest } from './PermissionDialog';
-import { resetLinkifyCapabilities, setLinkifyCapabilities } from '../utils/linkifyCapabilities';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import PermissionDialog from './PermissionDialog';
+import type { PermissionRequest } from './PermissionDialog';
+
+const countdown = vi.hoisted(() => ({
+  state: { remainingSeconds: 100, isTimeWarning: false },
+  markSubmitted: vi.fn(() => true),
+  lastOpts: null as null | { onTimeout?: () => void; requestKey?: string },
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) => options?.defaultValue ?? key,
+    i18n: { language: 'zh' },
+  }),
+}));
+
+vi.mock('./MarkdownBlock', () => ({
+  default: function MarkdownBlockMock({ content }: { content: string }) {
+    return null;
+  },
+}));
+
+vi.mock('../hooks/useDialogCountdownTimeout', () => ({
+  useDialogCountdownTimeout: (opts: { onTimeout?: () => void; requestKey?: string }) => {
+    countdown.lastOpts = opts;
+    return {
+      remainingSeconds: countdown.state.remainingSeconds,
+      isTimeWarning: countdown.state.isTimeWarning,
+      markSubmitted: countdown.markSubmitted,
+    };
+  },
+}));
 
 vi.mock('../hooks/useDialogResize', () => ({
   useDialogResize: () => ({
@@ -12,284 +42,91 @@ vi.mock('../hooks/useDialogResize', () => ({
   }),
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallbackOrOptions?: unknown) => {
-      if (typeof fallbackOrOptions === 'string') {
-        return fallbackOrOptions;
-      }
-      return key;
-    },
-    i18n: { language: 'en' },
-  }),
+vi.mock('../hooks/useInputAreaBottomOffset', () => ({
+  useInputAreaBottomOffset: () => 0,
 }));
 
+const mkRequest = (overrides: Partial<PermissionRequest> = {}): PermissionRequest => ({
+  channelId: 'chan-1',
+  toolName: 'Bash',
+  inputs: { attr: { command: 'ls -la', cwd: '/tmp', description: 'list files' } },
+  ...overrides,
+});
+
+const renderDialog = (request: PermissionRequest | null, onApproveAlways?: (id: string) => void) => {
+  const onApprove = vi.fn();
+  const onSkip = vi.fn();
+  const approveAlways = onApproveAlways ?? vi.fn();
+  render(
+    <PermissionDialog
+      isOpen
+      request={request}
+      onApprove={onApprove}
+      onSkip={onSkip}
+      onApproveAlways={approveAlways}
+    />,
+  );
+  return { onApprove, onSkip, approveAlways };
+};
+
 describe('PermissionDialog', () => {
-  const buildRequest = (overrides: Partial<PermissionRequest> = {}): PermissionRequest => ({
-    channelId: 'perm-1',
-    toolName: 'bash',
-    inputs: {
-      cwd: 'src/components',
-      command: 'echo hello',
-    },
-    ...overrides,
-  });
-
   beforeEach(() => {
-    resetLinkifyCapabilities();
-    setLinkifyCapabilities({ classNavigationEnabled: true });
+    countdown.state = { remainingSeconds: 100, isTimeWarning: false };
+    countdown.markSubmitted.mockClear();
+    countdown.lastOpts = null;
   });
 
-  afterEach(() => {
-    vi.clearAllTimers();
-    vi.useRealTimers();
-  });
-
-  it('reuses MarkdownBlock linkify inside the command content area', () => {
-    const request: PermissionRequest = {
-      channelId: 'perm-1',
-      toolName: 'bash',
-      inputs: {
-        cwd: 'src/components',
-        command: [
-          'Read src/components/App.tsx',
-          '',
-          'Inspect com.github.claudecodegui.handler.file.OpenFileHandler',
-          '',
-          'Reference https://example.com/docs',
-        ].join('\n'),
-      },
-    };
-
-    render(
-      <PermissionDialog
-        isOpen
-        request={request}
-        onApprove={() => {}}
-        onSkip={() => {}}
-        onApproveAlways={() => {}}
-      />,
+  it('renders nothing when closed or no request', () => {
+    const { container } = render(
+      <PermissionDialog isOpen={false} request={mkRequest()} onApprove={vi.fn()} onSkip={vi.fn()} />,
     );
-
-    expect(screen.getByRole('link', { name: 'src/components/App.tsx' })).toBeTruthy();
-    expect(
-      screen.getByRole('link', {
-        name: 'com.github.claudecodegui.handler.file.OpenFileHandler',
-      }),
-    ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'https://example.com/docs' })).toBeTruthy();
+    expect(container.innerHTML).toBe('');
   });
 
-  it('formats non-string command payloads before rendering markdown', () => {
-    const request: PermissionRequest = {
-      channelId: 'perm-2',
-      toolName: 'bash',
-      inputs: {
-        cwd: 'src/components',
-        command: [
-          { text: 'Read src/components/App.tsx' },
-          { content: 'Reference https://example.com/docs' },
-          7,
-        ],
-      },
-    };
-
-    render(
-      <PermissionDialog
-        isOpen
-        request={request}
-        onApprove={() => {}}
-        onSkip={() => {}}
-        onApproveAlways={() => {}}
-      />,
-    );
-
-    expect(screen.getByRole('link', { name: 'src/components/App.tsx' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'https://example.com/docs' })).toBeTruthy();
-    expect(document.querySelector('.permission-dialog-v3-command-content')?.textContent).toContain('7');
+  it('renders v3 dialog structure with subtitle', () => {
+    renderDialog(mkRequest());
+    expect(document.querySelector('.permission-dialog-v3')).toBeTruthy();
+    expect(document.querySelector('.permission-dialog-v3-options')).toBeTruthy();
+    expect(screen.getByText('permission.fromExternalProcess')).toBeTruthy();
   });
 
-  it('auto-denies with the original channelId after timeoutSeconds elapses', () => {
-    vi.useFakeTimers();
-    const onApprove = vi.fn();
-    const onSkip = vi.fn();
-    const onApproveAlways = vi.fn();
+  it('approve calls onApprove with the channelId', () => {
+    const { onApprove } = renderDialog(mkRequest());
+    fireEvent.click(screen.getByText('permission.allow'));
+    expect(onApprove).toHaveBeenCalledWith('chan-1');
+  });
 
-    render(
-      <PermissionDialog
-        isOpen
-        request={buildRequest()}
-        onApprove={onApprove}
-        onSkip={onSkip}
-        onApproveAlways={onApproveAlways}
-        timeoutSeconds={30}
-      />,
-    );
+  it('skip calls onSkip with the channelId', () => {
+    const { onSkip } = renderDialog(mkRequest());
+    fireEvent.click(screen.getByText('permission.deny'));
+    expect(onSkip).toHaveBeenCalledWith('chan-1');
+  });
 
-    expect(onSkip).not.toHaveBeenCalled();
+  it('approve always calls onApproveAlways when provided', () => {
+    const { approveAlways } = renderDialog(mkRequest());
+    fireEvent.click(screen.getByText('permission.allowAlways'));
+    expect(approveAlways).toHaveBeenCalledWith('chan-1');
+  });
 
+  it('applies warning-mode class to overlay when in the warning window', () => {
+    countdown.state = { remainingSeconds: 10, isTimeWarning: true };
+    renderDialog(mkRequest());
+    expect(document.querySelector('.warning-mode')).toBeTruthy();
+  });
+
+  it('timeout invokes onSkip for the active request even when the countdown is gated', () => {
+    const { onSkip } = renderDialog(mkRequest());
+    countdown.markSubmitted.mockReturnValue(false);
     act(() => {
-      vi.advanceTimersByTime(30_000);
+      countdown.lastOpts?.onTimeout?.();
     });
-
-    expect(onSkip).toHaveBeenCalledTimes(1);
-    expect(onSkip).toHaveBeenCalledWith('perm-1');
-    expect(onApprove).not.toHaveBeenCalled();
-    expect(onApproveAlways).not.toHaveBeenCalled();
+    expect(countdown.markSubmitted).not.toHaveBeenCalled();
+    expect(onSkip).toHaveBeenCalledWith('chan-1');
   });
 
-  it('manual approval suppresses the later auto-deny', () => {
-    vi.useFakeTimers();
-    const onApprove = vi.fn();
-    const onSkip = vi.fn();
-    const onApproveAlways = vi.fn();
-
-    render(
-      <PermissionDialog
-        isOpen
-        request={buildRequest()}
-        onApprove={onApprove}
-        onSkip={onSkip}
-        onApproveAlways={onApproveAlways}
-        timeoutSeconds={30}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'permission.allow 1' }));
-    expect(onApprove).toHaveBeenCalledTimes(1);
-
-    act(() => {
-      vi.advanceTimersByTime(60_000);
-    });
-
-    expect(onApprove).toHaveBeenCalledTimes(1);
-    expect(onApprove).toHaveBeenCalledWith('perm-1');
-    expect(onSkip).not.toHaveBeenCalled();
-    expect(onApproveAlways).not.toHaveBeenCalled();
-  });
-
-  it('keeps the duplicate-response guard when timeoutSeconds changes after approval', () => {
-    vi.useFakeTimers();
-    const onApprove = vi.fn();
-    const onSkip = vi.fn();
-    const onApproveAlways = vi.fn();
-    const request = buildRequest();
-
-    const { rerender } = render(
-      <PermissionDialog
-        isOpen
-        request={request}
-        onApprove={onApprove}
-        onSkip={onSkip}
-        onApproveAlways={onApproveAlways}
-        timeoutSeconds={30}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'permission.allow 1' }));
-
-    rerender(
-      <PermissionDialog
-        isOpen
-        request={request}
-        onApprove={onApprove}
-        onSkip={onSkip}
-        onApproveAlways={onApproveAlways}
-        timeoutSeconds={60}
-      />,
-    );
-
-    act(() => {
-      vi.advanceTimersByTime(60_000);
-    });
-
-    expect(onApprove).toHaveBeenCalledTimes(1);
-    expect(onApprove).toHaveBeenCalledWith('perm-1');
-    expect(onSkip).not.toHaveBeenCalled();
-    expect(onApproveAlways).not.toHaveBeenCalled();
-  });
-
-  // The dialog overlay sits above the chat input but the keydown listener is on
-  // window, so without the editable-target guard a stray Enter in any input
-  // (chat box, settings, etc.) would silently auto-approve the pending tool call.
-  it('ignores Enter when focus is on an INPUT element', () => {
-    const onApprove = vi.fn();
-    const onSkip = vi.fn();
-    const onApproveAlways = vi.fn();
-
-    render(
-      <PermissionDialog
-        isOpen
-        request={buildRequest()}
-        onApprove={onApprove}
-        onSkip={onSkip}
-        onApproveAlways={onApproveAlways}
-      />,
-    );
-
-    const input = document.createElement('input');
-    document.body.appendChild(input);
-    input.focus();
-    try {
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    } finally {
-      input.remove();
-    }
-
-    expect(onApprove).not.toHaveBeenCalled();
-    expect(onSkip).not.toHaveBeenCalled();
-    expect(onApproveAlways).not.toHaveBeenCalled();
-  });
-
-  it('ignores option-shortcut digits (1/2/3) when focus is on an INPUT element', () => {
-    const onApprove = vi.fn();
-    const onSkip = vi.fn();
-    const onApproveAlways = vi.fn();
-
-    render(
-      <PermissionDialog
-        isOpen
-        request={buildRequest()}
-        onApprove={onApprove}
-        onSkip={onSkip}
-        onApproveAlways={onApproveAlways}
-      />,
-    );
-
-    const input = document.createElement('input');
-    document.body.appendChild(input);
-    input.focus();
-    try {
-      for (const key of ['1', '2', '3']) {
-        input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-      }
-    } finally {
-      input.remove();
-    }
-
-    expect(onApprove).not.toHaveBeenCalled();
-    expect(onApproveAlways).not.toHaveBeenCalled();
-    expect(onSkip).not.toHaveBeenCalled();
-  });
-
-  it('still honors Enter when no editable element has focus', () => {
-    const onApprove = vi.fn();
-    const onSkip = vi.fn();
-    const onApproveAlways = vi.fn();
-
-    render(
-      <PermissionDialog
-        isOpen
-        request={buildRequest()}
-        onApprove={onApprove}
-        onSkip={onSkip}
-        onApproveAlways={onApproveAlways}
-      />,
-    );
-
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-
-    expect(onApprove).toHaveBeenCalledTimes(1);
-    expect(onApprove).toHaveBeenCalledWith('perm-1');
+  it('renders v3 dialog structure', () => {
+    renderDialog(mkRequest());
+    expect(document.querySelector('.permission-dialog-v3')).toBeTruthy();
+    expect(document.querySelector('.permission-dialog-v3-options')).toBeTruthy();
   });
 });

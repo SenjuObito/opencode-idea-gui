@@ -30,6 +30,49 @@ function getLocalNewSessionCommands(): CommandItem[] {
   }];
 }
 
+/**
+ * Builtin commands from opencode TUI/Web App
+ * These are frontend-hardcoded commands not returned by the /command API
+ */
+const BUILTIN_COMMANDS: CommandItem[] = [
+  {
+    id: 'compact',
+    label: '/compact',
+    description: i18n.t('chat.builtinCommands.compact'),
+    category: 'builtin',
+  },
+  {
+    id: 'undo',
+    label: '/undo',
+    description: i18n.t('chat.builtinCommands.undo'),
+    category: 'builtin',
+  },
+  {
+    id: 'redo',
+    label: '/redo',
+    description: i18n.t('chat.builtinCommands.redo'),
+    category: 'builtin',
+  },
+  {
+    id: 'fork',
+    label: '/fork',
+    description: i18n.t('chat.builtinCommands.fork'),
+    category: 'builtin',
+  },
+  {
+    id: 'share',
+    label: '/share',
+    description: i18n.t('chat.builtinCommands.share'),
+    category: 'builtin',
+  },
+  {
+    id: 'unshare',
+    label: '/unshare',
+    description: i18n.t('chat.builtinCommands.unshare'),
+    category: 'builtin',
+  },
+];
+
 // ============================================================================
 // State Management
 // ============================================================================
@@ -244,7 +287,8 @@ function formatCommandDescription(description: string, source?: string): string 
 function filterCommands(commands: CommandItem[], query: string): CommandItem[] {
   const visibleCommands = commands.filter(cmd => !isHiddenCommand(cmd.label));
   const localCommands = getLocalNewSessionCommands();
-  const merged = [...localCommands, ...visibleCommands];
+  // Merge builtin commands, local commands, and API commands
+  const merged = [...BUILTIN_COMMANDS, ...localCommands, ...visibleCommands];
 
   if (!query) return merged;
 

@@ -5,9 +5,6 @@ import {
   useSettingsWindowCallbacks,
   type SettingsWindowCallbacksDeps,
 } from './useSettingsWindowCallbacks';
-import type { CommitAiConfig } from '../../../types/aiFeatureConfig';
-import type { PromptEnhancerConfig } from '../../../types/promptEnhancer';
-
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -16,48 +13,26 @@ vi.mock('react-i18next', () => ({
 
 describe('useSettingsWindowCallbacks', () => {
   const createDeps = (): SettingsWindowCallbacksDeps => ({
-    setNodePath: vi.fn(),
-    setNodeVersion: vi.fn(),
-    setMinNodeVersion: vi.fn(),
-    setSavingNodePath: vi.fn(),
     setClaudeCliPath: vi.fn(),
     setSavingClaudeCliPath: vi.fn(),
     setWorkingDirectory: vi.fn(),
     setSavingWorkingDirectory: vi.fn(),
-    setCommitPrompt: vi.fn(),
-    setSavingCommitPrompt: vi.fn(),
-    setCommitAiConfig: vi.fn(),
-    setPromptEnhancerConfig: vi.fn(),
-    setProjectCommitPrompt: vi.fn(),
-    setSavingProjectCommitPrompt: vi.fn(),
     setEditorFontConfig: vi.fn(),
     setUiFontConfig: vi.fn(),
     setCodeFontConfig: vi.fn(),
     setIdeTheme: vi.fn(),
-    setLocalStreamingEnabled: vi.fn(),
-    setCodexSandboxMode: vi.fn(),
     setLocalSendShortcut: vi.fn(),
-    setLoading: vi.fn(),
-    setCodexLoading: vi.fn(),
-    setCodexConfigLoading: vi.fn(),
     setSoundNotificationEnabled: vi.fn(),
     setSoundOnlyWhenUnfocused: vi.fn(),
     setSelectedSound: vi.fn(),
     setCustomSoundPath: vi.fn(),
     setSystemNotificationOnlyWhenUnfocused: vi.fn(),
     setAskUserQuestionSoundNotificationEnabled: vi.fn(),
-    updateProviders: vi.fn(),
-    updateActiveProvider: vi.fn(),
-    loadProviders: vi.fn(),
-    loadCodexProviders: vi.fn(),
     loadAgents: vi.fn(),
     updateAgents: vi.fn(),
     handleAgentOperationResult: vi.fn(),
     handleAgentImportPreviewResult: vi.fn(),
     handleAgentImportResult: vi.fn(),
-    updateCodexProviders: vi.fn(),
-    updateActiveCodexProvider: vi.fn(),
-    updateCurrentCodexConfig: vi.fn(),
     cleanupAgentsTimeout: vi.fn(),
     showAlert: vi.fn(),
     addToast: vi.fn(),
@@ -85,8 +60,6 @@ describe('useSettingsWindowCallbacks', () => {
     renderHook(() => useSettingsWindowCallbacks(deps));
 
     // Heavy list fetches are deferred until their settings tabs open.
-    expect(deps.loadProviders).not.toHaveBeenCalled();
-    expect(deps.loadCodexProviders).not.toHaveBeenCalled();
     expect(deps.loadAgents).not.toHaveBeenCalled();
     expect(window.sendToJava).not.toHaveBeenCalledWith('get_current_claude_config:');
 
@@ -105,44 +78,7 @@ describe('useSettingsWindowCallbacks', () => {
 
     // CLI availability probes freeze JCEF when done on open — keep off bootstrap.
     expect(allMessages).not.toContain('get_commit_prompt:');
-    expect(allMessages).not.toContain('get_commit_ai_config:');
     expect(allMessages).not.toContain('get_prompt_enhancer_config:');
-  });
-
-
-  it('registers commit AI callback and updates only commit AI state from backend payload', () => {
-    const deps = createDeps();
-
-    renderHook(() => useSettingsWindowCallbacks(deps));
-
-    const payload: CommitAiConfig = {
-      provider: null,
-      effectiveProvider: 'codex',
-      resolutionSource: 'auto',
-      models: {
-        claude: 'claude-sonnet-4-6',
-        codex: 'gpt-5.5',
-        grok: 'grok',
-        kimi: 'auto',
-        opencode: 'opencode-default',
-        pi: 'auto',
-        omp: 'auto',
-      },
-      availability: {
-        claude: true,
-        codex: true,
-        grok: false,
-        kimi: false,
-        opencode: false,
-        pi: false,
-        omp: false,
-      },
-    };
-
-    window.updateCommitAiConfig?.(JSON.stringify(payload));
-
-    expect(deps.setCommitAiConfig).toHaveBeenCalledWith(payload);
-    expect(deps.setPromptEnhancerConfig).not.toHaveBeenCalled();
   });
 
   it('registers ui font callback and updates ui font state from backend payload', () => {

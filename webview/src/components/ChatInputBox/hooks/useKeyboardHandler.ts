@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MutableRefObject } from 'react';
+import type { PermissionMode } from '../types';
 
 interface CompletionWithKeyDown {
   isOpen: boolean;
@@ -14,12 +15,10 @@ export interface UseKeyboardHandlerOptions {
   isComposingRef: MutableRefObject<boolean>;
   lastCompositionEndTimeRef: MutableRefObject<number>;
   sendShortcut: 'enter' | 'cmdEnter';
-  sdkStatusLoading: boolean;
+  daemonStatusLoaded: boolean;
   sdkInstalled: boolean;
   fileCompletion: CompletionWithKeyDown;
   commandCompletion: CompletionWithKeyDown;
-  agentCompletion: CompletionWithKeyDown;
-  promptCompletion: CompletionWithKeyDown;
   dollarCommandCompletion: CompletionWithKeyDown;
   handleMacCursorMovement: (e: ReactKeyboardEvent<HTMLDivElement>) => boolean;
   handleHistoryKeyDown: (e: {
@@ -36,6 +35,9 @@ export interface UseKeyboardHandlerOptions {
   completionSelectedRef: MutableRefObject<boolean>;
   submittedOnEnterRef: MutableRefObject<boolean>;
   handleSubmit: () => void;
+  /** Shift+Tab toggles between default (Build) and plan modes */
+  onModeSelect?: (mode: PermissionMode) => void;
+  permissionMode?: PermissionMode;
 }
 
 /**
@@ -51,12 +53,10 @@ export function useKeyboardHandler({
   isComposingRef,
   lastCompositionEndTimeRef,
   sendShortcut,
-  sdkStatusLoading,
+  daemonStatusLoaded,
   sdkInstalled,
   fileCompletion,
   commandCompletion,
-  agentCompletion,
-  promptCompletion,
   dollarCommandCompletion,
   handleMacCursorMovement,
   handleHistoryKeyDown,
@@ -64,95 +64,48 @@ export function useKeyboardHandler({
   completionSelectedRef,
   submittedOnEnterRef,
   handleSubmit,
+  onModeSelect,
+  permissionMode,
 }: UseKeyboardHandlerOptions) {
   const onKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      const isIMEComposing = isComposingRef.current || e.nativeEvent.isComposing;
+      // Handle Shift+Tab for mode switching
+      if (e.key === 'Tab' && e.shiftKey) {
+        if (onModeSelect) {
+          e.preventDefault();
+          onModeSelect(permissionMode === 'plan' ? 'default' : 'plan');
+        }
+        return;
+      }
 
-      const isEnterKey =
-        e.key === 'Enter' || e.nativeEvent.keyCode === 13;
+      // Handle completion dropdown navigation
+      if (fileCompletion.isOpen && fileCompletion.handleKeyDown(e.nativeEvent)) return;
+      if (commandCompletion.isOpen && commandCompletion.handleKeyDown(e.nativeEvent)) return;
+      if (dollarCommandCompletion.isOpen && dollarCommandCompletion.handleKeyDown(e.nativeEvent)) return;
 
+      // Handle inline completion (Tab to apply)
+      if (e.key === 'Tab' && inlineCompletion?.applySuggestion()) {
+        e.preventDefault();
+        return;
+      }
+
+      // Handle history navigation and cursor movement
       if (handleMacCursorMovement(e)) return;
-
-      const isCursorMovementKey =
-        e.key === 'Home' ||
-        e.key === 'End' ||
-        ((e.key === 'a' || e.key === 'A') && e.ctrlKey && !e.metaKey) ||
-        ((e.key === 'e' || e.key === 'E') && e.ctrlKey && !e.metaKey);
-      if (isCursorMovementKey) return;
-
-      if (fileCompletion.isOpen) {
-        const handled = fileCompletion.handleKeyDown(e.nativeEvent);
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (e.key === 'Enter') completionSelectedRef.current = true;
-          return;
-        }
-      }
-
-      if (commandCompletion.isOpen) {
-        const handled = commandCompletion.handleKeyDown(e.nativeEvent);
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (e.key === 'Enter') completionSelectedRef.current = true;
-          return;
-        }
-      }
-
-      if (agentCompletion.isOpen) {
-        const handled = agentCompletion.handleKeyDown(e.nativeEvent);
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (e.key === 'Enter') completionSelectedRef.current = true;
-          return;
-        }
-      }
-
-      if (promptCompletion.isOpen) {
-        const handled = promptCompletion.handleKeyDown(e.nativeEvent);
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (e.key === 'Enter') completionSelectedRef.current = true;
-          return;
-        }
-      }
-
-      if (dollarCommandCompletion.isOpen) {
-        const handled = dollarCommandCompletion.handleKeyDown(e.nativeEvent);
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (e.key === 'Enter') completionSelectedRef.current = true;
-          return;
-        }
-      }
-
-      // Handle inline history completion (Tab key)
-      if (e.key === 'Tab' && inlineCompletion) {
-        const applied = inlineCompletion.applySuggestion();
-        if (applied) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-      }
-
       if (handleHistoryKeyDown(e)) return;
 
+      // Determine if this is a send key
+      const isIMEComposing = isComposingRef.current;
       const isRecentlyComposing = Date.now() - lastCompositionEndTimeRef.current < 100;
+      const isEnterKey = e.key === 'Enter' || e.nativeEvent.keyCode === 13;
       const isSendKey =
         sendShortcut === 'cmdEnter'
-          ? isEnterKey && (e.metaKey || e.ctrlKey) && !isIMEComposing
+          ? isEnterKey && (e.metaKey || e.ctrlKey)
           : isEnterKey && !e.shiftKey && !isIMEComposing && !isRecentlyComposing;
 
       if (!isSendKey) return;
 
       e.preventDefault();
-      if (sdkStatusLoading || !sdkInstalled) return;
+      if (!daemonStatusLoaded || !sdkInstalled) return;
 
       submittedOnEnterRef.current = true;
       handleSubmit();
@@ -162,18 +115,18 @@ export function useKeyboardHandler({
       handleMacCursorMovement,
       fileCompletion,
       commandCompletion,
-      agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       handleHistoryKeyDown,
       inlineCompletion,
       lastCompositionEndTimeRef,
       sendShortcut,
-      sdkStatusLoading,
+      daemonStatusLoaded,
       sdkInstalled,
       submittedOnEnterRef,
       completionSelectedRef,
       handleSubmit,
+      onModeSelect,
+      permissionMode,
     ]
   );
 

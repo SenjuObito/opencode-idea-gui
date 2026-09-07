@@ -424,7 +424,22 @@ tasks.register('buildWebview', Exec) {
     if (skipWebviewBuild) {
         println "Skipping webview build because -PskipWebview=true"
     }
-    doFirst { println "Building webview..." }
+    doFirst {
+        // Install webview npm dependencies if node_modules doesn't exist
+        if (!new File(webviewDir, 'node_modules').exists()) {
+            println 'Installing webview npm dependencies...'
+            exec {
+                workingDir webviewDir
+                if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+                    commandLine 'cmd', '/c', npmCommand, 'ci'
+                } else {
+                    commandLine npmCommand, 'ci'
+                }
+            }
+            println 'Webview npm dependencies installed.'
+        }
+        println "Building webview..."
+    }
     doLast { println "Webview build completed." }
 }
 

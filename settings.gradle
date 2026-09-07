@@ -6,4 +6,10 @@ pluginManagement {
     }
 }
 
+plugins {
+    // Auto-provision the JDK 21 toolchain required by compileJava when no
+    // matching local installation exists (e.g. machines that only have JDK 17).
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
 rootProject.name = 'opencode-buddy-jetbrains'

@@ -31,47 +31,21 @@ describe('resolveProviderModels', () => {
     expect(result.map((m) => m.id)).toContain(CODEX_MODELS[0].id);
   });
 
-  it('returns cliModels for OpenCode when no customs are configured', () => {
+  it('returns cliModels for OpenCode even when legacy claude customs are configured', () => {
     const models = [{ id: 'auto', label: 'Auto' }];
+    // Legacy `claude-custom-models` storage must not leak into the opencode
+    // picker (OpenCode-only build).
     expect(
       resolveProviderModels({
         provider: 'opencode',
         cliModels: models,
         cliCatalogHasEntries: true,
+        claudeCustomModels: [{ id: 'my-claude', label: 'My Claude' }],
       }),
     ).toEqual(models);
   });
 
-  it('puts opencode customs first and dedupes against cli catalog by id and label', () => {
-    const customs = [
-      { id: 'my-model', label: 'My Model' },
-      { id: 'dup-label', label: 'Auto' },
-    ];
-    const catalog = [
-      { id: 'dup-label', label: 'Auto (catalog)' },
-      { id: 'auto', label: 'OpenCode Auto' },
-      { id: 'my-model', label: 'My Model (catalog)' },
-    ];
-    const result = resolveProviderModels({
-      provider: 'opencode',
-      cliModels: catalog,
-      cliCatalogHasEntries: true,
-      claudeCustomModels: customs,
-    });
-    expect(result.map((m) => m.id)).toEqual(['my-model', 'dup-label', 'auto']);
-  });
-
-  it('collapses opencode catalog entries whose labels match a custom model', () => {
-    const result = resolveProviderModels({
-      provider: 'opencode',
-      cliModels: [{ id: 'auto', label: 'Auto' }],
-      cliCatalogHasEntries: true,
-      claudeCustomModels: [{ id: 'dup-label', label: 'Auto' }],
-    });
-    expect(result.map((m) => m.id)).toEqual(['dup-label']);
-  });
-
-  it('puts Claude customs first and keeps built-ins', () => {
+  it('keeps Claude customs + built-ins for the claude branch (legacy path)', () => {
     const customs = [{ id: 'my-claude', label: 'My Claude' }];
     const result = resolveProviderModels({
       provider: 'claude',

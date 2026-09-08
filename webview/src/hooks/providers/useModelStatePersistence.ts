@@ -1,13 +1,8 @@
 import { useEffect } from 'react';
 import { sendBridgeEvent } from '../../utils/bridge';
 import {
-  CLAUDE_MODELS,
   CODEX_MODELS,
-  DEFAULT_CLAUDE_MODEL_ID,
   OPENCODE_DEFAULT_MODEL_ID,
-  normalizeClaudeModelId,
-  apply1MContextSuffix,
-  strip1MContextSuffix,
 } from '../../components/ChatInputBox/types';
 import type {
   CodexFastMode,
@@ -18,15 +13,6 @@ import { isCliOnlyProvider } from './cliProviders';
 
 const STORAGE_KEY = 'model-selection-state';
 const REASONING_VALUES = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
-
-const getCustomModels = (key: string): { id: string }[] => {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
 
 const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   typeof value === 'string' && (REASONING_VALUES as readonly string[]).includes(value);
@@ -70,9 +56,7 @@ export interface UseModelStatePersistenceOptions {
 export function useModelStatePersistence(options: UseModelStatePersistenceOptions) {
   const {
     setCurrentProvider,
-    setSelectedClaudeModel,
     setSelectedCodexModel,
-    setClaudePermissionMode,
     setCodexPermissionMode,
     setSelectedOpenCodeModel,
     setOpenCodePermissionMode,
@@ -108,31 +92,21 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
       const initialTabModel = typeof window.__INITIAL_TAB_MODEL__ === 'string'
         ? window.__INITIAL_TAB_MODEL__.trim()
         : '';
-      const hasBackendProvider = initialTabProvider === 'claude'
-        || initialTabProvider === 'codex'
+      // OpenCode-only build: 'claude' is a legacy multi-engine value. The
+      // backend session may still carry it (older persisted tab state); treat
+      // it as "no backend preference" so the tab falls back to opencode.
+      const hasBackendProvider = initialTabProvider === 'codex'
         || isCliOnlyProvider(initialTabProvider);
       const hasBackendModel = initialTabModel.length > 0;
 
       let restoredProvider = 'opencode';
-      let restoredClaudeModel = DEFAULT_CLAUDE_MODEL_ID;
       let restoredCodexModel = CODEX_MODELS[0].id;
-      let restoredClaudePermissionMode: PermissionMode = 'default';
       let restoredCodexPermissionMode: PermissionMode = 'default';
       let restoredOpenCodeModel = OPENCODE_DEFAULT_MODEL_ID;
       let restoredOpenCodePermissionMode: PermissionMode = 'build';
-      let restoredLongContextEnabled = true;
 
       // Model validation helpers — close over the restored* lets so both
-      // branches (saved localStorage / fresh backend-only) share the same logic
-      // and each getCustomModels localStorage read happens at most once.
-      const applyClaudeModel = (modelId: string) => {
-        const normalized = normalizeClaudeModelId(strip1MContextSuffix(modelId));
-        const customs = getCustomModels('claude-custom-models');
-        if (CLAUDE_MODELS.find(m => m.id === normalized) || customs.find(m => m.id === normalized)) {
-          restoredClaudeModel = normalized;
-          setSelectedClaudeModel(normalized);
-        }
-      };
+      // branches (saved localStorage / fresh backend-only) share the same logic.
       const applyCodexModel = (modelId: string) => {
         // Codex catalogs are dynamic (config.toml `model` + model_catalog_json),
         // so any non-empty saved id is accepted — same policy as CLI providers.
@@ -160,15 +134,18 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
         // Backend-supplied provider wins. We still fall through the rest of the
         // hydration so non-provider preferences (permission mode, reasoning
         // effort, codex fast mode, …) are restored from localStorage.
+        // OpenCode-only build: a stored 'claude' (legacy multi-engine snapshot)
+        // is NOT a valid provider here — fall back to opencode so the picker
+        // renders the opencode catalog instead of the claude built-ins.
         const providerCandidate = hasBackendProvider ? initialTabProvider : state.provider;
-        if (['claude', 'codex'].includes(providerCandidate) || isCliOnlyProvider(providerCandidate)) {
+        if (providerCandidate === 'codex' || isCliOnlyProvider(providerCandidate)) {
           restoredProvider = providerCandidate;
           setCurrentProvider(providerCandidate);
+        } else {
+          restoredProvider = 'opencode';
+          setCurrentProvider('opencode');
         }
 
-        if (typeof state.claudePermissionMode === 'string' && state.claudePermissionMode.length > 0) {
-          restoredClaudePermissionMode = state.claudePermissionMode;
-        }
         if (typeof state.codexPermissionMode === 'string' && state.codexPermissionMode.length > 0) {
           restoredCodexPermissionMode = state.codexPermissionMode === 'plan'
             ? 'default'
@@ -182,7 +159,6 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
         }
 
         if (typeof state.longContextEnabled === 'boolean') {
-          restoredLongContextEnabled = state.longContextEnabled;
           setLongContextEnabled(state.longContextEnabled);
         }
 
@@ -190,17 +166,17 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
           setReasoningEffort(state.reasoningEffort);
         }
 
-        const claudeModelCandidate = hasBackendModel && restoredProvider === 'claude'
-          ? initialTabModel
-          : state.claudeModel;
-        applyClaudeModel(claudeModelCandidate);
-
-        const codexModelCandidate = hasBackendModel && restoredProvider === 'codex'
+        // A backend model may only override when it came from a valid backend
+        // provider; a legacy claude tab state pairs a claude model with the
+        // opencode fallback provider, and mixing them would sync a claude id
+        // into the opencode session.
+        const backendModelApplies = hasBackendProvider && hasBackendModel;
+        const codexModelCandidate = backendModelApplies && restoredProvider === 'codex'
           ? initialTabModel
           : state.codexModel;
         applyCodexModel(codexModelCandidate);
 
-        const openCodeModelCandidate = hasBackendModel && restoredProvider === 'opencode'
+        const openCodeModelCandidate = backendModelApplies && restoredProvider === 'opencode'
           ? initialTabModel
           : state.openCodeModel;
         applyOpenCodeModel(openCodeModelCandidate);
@@ -210,18 +186,14 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
         restoredProvider = initialTabProvider;
         setCurrentProvider(initialTabProvider);
         if (hasBackendModel) {
-          if (initialTabProvider === 'claude') applyClaudeModel(initialTabModel);
-          else if (initialTabProvider === 'codex') applyCodexModel(initialTabModel);
+          if (initialTabProvider === 'codex') applyCodexModel(initialTabModel);
           else if (initialTabProvider === 'opencode') applyOpenCodeModel(initialTabModel);
         }
       }
 
       const initialPermissionMode: PermissionMode = restoredProvider === 'codex'
         ? restoredCodexPermissionMode
-        : restoredProvider === 'opencode'
-          ? restoredOpenCodePermissionMode
-          : restoredClaudePermissionMode;
-      setClaudePermissionMode(restoredClaudePermissionMode);
+        : restoredOpenCodePermissionMode;
       setCodexPermissionMode(restoredCodexPermissionMode);
       setOpenCodePermissionMode(restoredOpenCodePermissionMode);
       setPermissionMode(initialPermissionMode);
@@ -238,11 +210,10 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
             return;
           }
           sendBridgeEvent('set_provider', restoredProvider);
+          // OpenCode-only build: restoredProvider is always opencode or codex.
           const modelToSync = restoredProvider === 'codex'
             ? restoredCodexModel
-            : restoredProvider === 'opencode'
-              ? restoredOpenCodeModel
-              : apply1MContextSuffix(restoredClaudeModel, restoredLongContextEnabled);
+            : restoredOpenCodeModel;
           sendBridgeEvent('set_model', modelToSync);
           // Do NOT push the permission mode to Java on boot. Java is the source
           // of truth for the mode (persisted app-level in PropertiesComponent,

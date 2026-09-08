@@ -68,7 +68,10 @@ export function resolveProviderModels({
   }
 
   if (provider === 'opencode') {
-    return mergeCustomsFirst(claudeCustomModels, cliModels);
+    // The opencode catalog is authoritative and already grouped by provider.
+    // Legacy claude customs (`claude-custom-models`) belong to the retired
+    // claude engine and must not leak into the opencode picker.
+    return cliModels;
   }
 
   // Claude (default)

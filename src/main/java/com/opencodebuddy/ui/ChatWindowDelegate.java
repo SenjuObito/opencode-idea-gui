@@ -8,6 +8,7 @@ import com.opencodebuddy.handler.ClipboardHandler;
 import com.opencodebuddy.handler.ContextHandler;
 import com.opencodebuddy.handler.CliModelsHandler;
 import com.opencodebuddy.handler.CliStatusHandler;
+import com.opencodebuddy.handler.DaemonStatusHandler;
 import com.opencodebuddy.handler.DiffHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
@@ -121,6 +122,8 @@ public class ChatWindowDelegate {
     private volatile MessageCallback pendingQuickFixCallback = null;
     // Reference to the SettingsHandler for clean theme-callback unregistration on dispose.
     private com.opencodebuddy.handler.SettingsHandler settingsHandler;
+    // Pushes {alive, serveReady} to the webview (check_daemon_status, frontend_ready, daemon lifecycle).
+    private DaemonStatusHandler daemonStatusHandler;
 
     public ChatWindowDelegate(DelegateHost host) {
         this.host = host;
@@ -258,6 +261,21 @@ public class ChatWindowDelegate {
         messageDispatcher.registerHandler(new RewindHandler(handlerContext));
         messageDispatcher.registerHandler(new UndoFileHandler(handlerContext));
         messageDispatcher.registerHandler(new CliModelsHandler(handlerContext));
+        this.daemonStatusHandler = new DaemonStatusHandler(handlerContext);
+        messageDispatcher.registerHandler(this.daemonStatusHandler);
+        // Daemon death/restart flips the webview between the loading and
+        // "not running / retry" states (window.updateDaemonStatus).
+        openCodeSDKBridge.setDaemonLifecycleListener(new com.opencodebuddy.provider.common.DaemonBridge.DaemonLifecycleListener() {
+            @Override
+            public void onDaemonReady() {
+                daemonStatusHandler.onDaemonReady();
+            }
+
+            @Override
+            public void onDaemonDied() {
+                daemonStatusHandler.onDaemonDied();
+            }
+        });
         messageDispatcher.registerHandler(new CliStatusHandler(handlerContext));
         messageDispatcher.registerHandler(new ClipboardHandler(handlerContext));
         messageDispatcher.registerHandler(new NodeProcessHandler(handlerContext));
@@ -487,6 +505,12 @@ public class ChatWindowDelegate {
             "window.updateLinkifyCapabilities",
             JsUtils.escapeJs(OpenClassHandler.buildCapabilitiesJson())
         );
+        // Daemon/serve status: clears the webview's "starting OpenCode service"
+        // spinner as soon as the state is known (serveReady:true) or shows the
+        // retryable "not running" row (alive:false).
+        if (daemonStatusHandler != null) {
+            daemonStatusHandler.checkAndPush();
+        }
         if (runtimeRecovery) {
             pushCurrentTabStateToFrontend();
         }

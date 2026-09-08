@@ -80,6 +80,14 @@ public class OpenCodeSDKBridge {
         daemon.removeEventListener(listener);
     }
 
+    /**
+     * Install the daemon lifecycle listener (ready/died). The bridge hosts a
+     * single slot; the chat window's status pusher owns it.
+     */
+    public void setDaemonLifecycleListener(DaemonBridge.DaemonLifecycleListener listener) {
+        daemon.setLifecycleListener(listener);
+    }
+
     // =========================================================================
     // Generic request helpers
     // =========================================================================

@@ -1,7 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useModelStatePersistence, type UseModelStatePersistenceOptions } from './useModelStatePersistence';
-import { DEFAULT_CLAUDE_MODEL_ID } from '../../components/ChatInputBox/types';
 import type { PermissionMode } from '../../components/ChatInputBox/types';
 
 const sendBridgeEventMock = vi.hoisted(() => vi.fn());
@@ -22,7 +21,7 @@ function makeOptions(overrides: Partial<UseModelStatePersistenceOptions> = {}): 
     setPermissionMode: vi.fn(),
     setLongContextEnabled: vi.fn(),
     setReasoningEffort: vi.fn(),
-    currentProvider: 'claude',
+    currentProvider: 'opencode',
     selectedClaudeModel: 'claude-sonnet-4-5',
     selectedCodexModel: 'gpt-5-codex',
     claudePermissionMode: 'default' as PermissionMode,
@@ -149,11 +148,11 @@ describe('useModelStatePersistence — boot sync does not clobber the persisted 
 
     window.__CCGUI_RECOVERY_STATE_APPLIED__ = true;
     act(() => vi.advanceTimersByTime(100));
-    expect(JSON.parse(localStorage.getItem('model-selection-state') || '{}').provider).toBe('claude');
+    expect(JSON.parse(localStorage.getItem('model-selection-state') || '{}').provider).toBe('opencode');
   });
 });
 
-describe('useModelStatePersistence — retired model migration', () => {
+describe('useModelStatePersistence — legacy claude snapshot migration (opencode-only build)', () => {
   beforeEach(() => {
     localStorage.clear();
     sendBridgeEventMock.mockClear();
@@ -175,28 +174,34 @@ describe('useModelStatePersistence — retired model migration', () => {
     delete (window as unknown as { __INITIAL_TAB_MODEL__?: unknown }).__INITIAL_TAB_MODEL__;
   });
 
-  it('migrates a saved retired model (sonnet-4-6) to its replacement instead of the list head', () => {
-    // Regression: v0.4.8 removed claude-sonnet-4-6 from CLAUDE_MODELS and put
-    // claude-fable-5 first. Saved sonnet-4-6 failed validation and the fallback
-    // CLAUDE_MODELS[0] silently reset users to fable-5, which API relays without
-    // a fable-5 channel rejected ("No available channel for model claude-fable-5").
-    const setSelectedClaudeModel = vi.fn();
+  it('falls back to opencode (not claude) when a legacy claude snapshot is restored', () => {
+    // Regression: the hydration allowlist included 'claude', so a legacy
+    // multi-engine snapshot restored provider=claude and the model picker
+    // rendered the claude built-ins instead of the opencode catalog.
+    const setCurrentProvider = vi.fn();
+    const setSelectedOpenCodeModel = vi.fn();
     localStorage.setItem('model-selection-state', JSON.stringify({
       provider: 'claude',
       claudeModel: 'claude-sonnet-4-6',
       longContextEnabled: false,
     }));
 
-    renderHook(() => useModelStatePersistence(makeOptions({ setSelectedClaudeModel })));
+    renderHook(() => useModelStatePersistence(
+      makeOptions({ setCurrentProvider, setSelectedOpenCodeModel }),
+    ));
     vi.advanceTimersByTime(200);
 
-    expect(setSelectedClaudeModel).toHaveBeenCalledWith('claude-sonnet-4-7');
-    expect(setSelectedClaudeModel).not.toHaveBeenCalledWith('claude-fable-5');
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'claude-sonnet-4-7']]);
+    expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
+    expect(setCurrentProvider).not.toHaveBeenCalledWith('claude');
+    expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
+    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'opencode-default']]);
   });
 
-  it('migrates a backend-supplied retired model via __INITIAL_TAB_MODEL__', () => {
-    const setSelectedClaudeModel = vi.fn();
+  it('treats a backend-supplied legacy claude provider as "no backend preference"', () => {
+    // Older persisted tab state (TabStateService) can still carry provider
+    // 'claude' into __INITIAL_TAB_PROVIDER__; the tab must boot on opencode.
+    const setCurrentProvider = vi.fn();
+    const setSelectedOpenCodeModel = vi.fn();
     (window as unknown as { __INITIAL_TAB_PROVIDER__?: unknown }).__INITIAL_TAB_PROVIDER__ = 'claude';
     (window as unknown as { __INITIAL_TAB_MODEL__?: unknown }).__INITIAL_TAB_MODEL__ = 'claude-sonnet-4-6';
     localStorage.setItem('model-selection-state', JSON.stringify({
@@ -205,25 +210,34 @@ describe('useModelStatePersistence — retired model migration', () => {
       longContextEnabled: false,
     }));
 
-    renderHook(() => useModelStatePersistence(makeOptions({ setSelectedClaudeModel })));
+    renderHook(() => useModelStatePersistence(
+      makeOptions({ setCurrentProvider, setSelectedOpenCodeModel }),
+    ));
     vi.advanceTimersByTime(200);
 
-    expect(setSelectedClaudeModel).toHaveBeenCalledWith('claude-sonnet-4-7');
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'claude-sonnet-4-7']]);
+    expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
+    expect(setCurrentProvider).not.toHaveBeenCalledWith('claude');
+    // The claude-model __INITIAL_TAB_MODEL__ echo is dropped (not a backend
+    // preference for the effective provider); the restored snapshot's
+    // openCodeModel (absent here) leaves the opencode default in place.
+    expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
+    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'opencode-default']]);
   });
 
-  it('falls back to the default model (not the list head) for unrecognized saved models', () => {
+  it('keeps a saved opencode model untouched when the snapshot also carries claude fields', () => {
+    const setSelectedOpenCodeModel = vi.fn();
     localStorage.setItem('model-selection-state', JSON.stringify({
-      provider: 'claude',
+      provider: 'opencode',
       claudeModel: 'claude-no-such-model',
+      openCodeModel: 'anthropic/claude-sonnet-5',
       longContextEnabled: false,
     }));
 
-    renderHook(() => useModelStatePersistence(makeOptions()));
+    renderHook(() => useModelStatePersistence(makeOptions({ setSelectedOpenCodeModel })));
     vi.advanceTimersByTime(200);
 
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', DEFAULT_CLAUDE_MODEL_ID]]);
-    expect(DEFAULT_CLAUDE_MODEL_ID).not.toBe('claude-fable-5');
+    expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('anthropic/claude-sonnet-5');
+    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'anthropic/claude-sonnet-5']]);
   });
 });
 

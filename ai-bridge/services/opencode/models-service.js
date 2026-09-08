@@ -7,7 +7,8 @@
  * unavailable (e.g. serve failed to start).
  *
  * Output contract (listModels): a single JSON object on stdout:
- *   { success: true, provider: 'opencode', models: [{ id, label, description }] }
+ *   { success: true, provider: 'opencode', models: [{ id, label, description, variants? }],
+ *     defaultModel?: 'provider/model' }
  */
 
 import { spawnSync } from 'node:child_process';
@@ -43,6 +44,18 @@ export function formatLabel(fullId) {
 }
 
 /**
+ * A model token is `provider/model`; Windows drive paths, URLs and UNC shares
+ * also contain `/` but are never model ids.
+ */
+function looksLikeModelToken(token) {
+  if (!token || !token.includes('/')) return false;
+  if (/^[a-zA-Z]:[\\/]/.test(token)) return false;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(token)) return false;
+  if (token.startsWith('\\\\') || token.startsWith('//')) return false;
+  return true;
+}
+
+/**
  * Parse `opencode models` stdout into model entries (legacy fallback).
  * @param {string} stdout
  * @returns {{ id: string, label: string, description?: string }[]}
@@ -54,7 +67,7 @@ export function parseOpenCodeModelsOutput(stdout) {
   for (const rawLine of clean.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line) continue;
-    const token = line.split(/\s+/).find((part) => part.includes('/'));
+    const token = line.split(/\s+/).find(looksLikeModelToken);
     if (!token || seen.has(token)) continue;
     seen.add(token);
     models.push({
@@ -64,6 +77,32 @@ export function parseOpenCodeModelsOutput(stdout) {
     });
   }
   return models;
+}
+
+/**
+ * Resolve the default `provider/model` id from the /config/providers defaults
+ * payload. opencode returns a global `{ providerID, modelID }`; tolerate a
+ * per-provider map (`{ [providerId]: 'modelId' | { modelID } }`) as well.
+ * @param {string} providerId
+ * @param {unknown} defaults
+ * @returns {string | null}
+ */
+export function resolveDefaultModelId(providerId, defaults) {
+  if (!defaults || typeof defaults !== 'object') return null;
+  if (
+    typeof defaults.providerID === 'string' && defaults.providerID &&
+    typeof defaults.modelID === 'string' && defaults.modelID
+  ) {
+    return `${defaults.providerID}/${defaults.modelID}`;
+  }
+  const entry = typeof providerId === 'string' ? defaults[providerId] : null;
+  if (typeof entry === 'string' && entry) {
+    return `${providerId}/${entry}`;
+  }
+  if (entry && typeof entry === 'object' && typeof entry.modelID === 'string' && entry.modelID) {
+    return `${providerId}/${entry.modelID}`;
+  }
+  return null;
 }
 
 /**
@@ -77,10 +116,14 @@ async function listModelsFromSdk(directory) {
 
   const models = [];
   const seen = new Set();
+  let defaultModel;
   for (const provider of providers) {
     const providerId = provider?.id;
     const providerName = provider?.name || providerId;
     const modelMap = provider?.models;
+    if (!defaultModel) {
+      defaultModel = resolveDefaultModelId(providerId, provider?._defaults);
+    }
     if (!providerId || !modelMap || typeof modelMap !== 'object') continue;
     for (const [modelId, modelInfo] of Object.entries(modelMap)) {
       if (!modelId) continue;
@@ -102,7 +145,7 @@ async function listModelsFromSdk(directory) {
       models.push({ id: fullId, label: formatLabel(fullId), description, ...(variants ? { variants } : {}) });
     }
   }
-  return models;
+  return { models, defaultModel: defaultModel || null };
 }
 
 /**
@@ -125,9 +168,14 @@ export async function listModels() {
   // Prefer the persistent server + SDK path.
   try {
     await ensureServerReady();
-    const models = await listModelsFromSdk(directory);
+    const { models, defaultModel } = await listModelsFromSdk(directory);
     if (models.length > 0) {
-      console.log(JSON.stringify({ success: true, provider: 'opencode', models }));
+      console.log(JSON.stringify({
+        success: true,
+        provider: 'opencode',
+        models,
+        ...(defaultModel ? { defaultModel } : {}),
+      }));
       return;
     }
   } catch (err) {

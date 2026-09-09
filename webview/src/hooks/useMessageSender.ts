@@ -6,7 +6,7 @@ import {
   EFFORT_SUPPORTED_CLAUDE_MODELS,
   apply1MContextSuffix,
 } from '../components/ChatInputBox/types';
-import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort, CodexFastMode } from '../components/ChatInputBox/types';
+import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
 
 /**
@@ -43,7 +43,6 @@ export interface UseMessageSenderOptions {
   selectedModel: string;
   permissionMode: PermissionMode;
   reasoningEffort: ReasoningEffort;
-  codexFastMode: CodexFastMode;
   daemonStatusLoaded: boolean;
   currentSdkInstalled: boolean;
   sentAttachmentsRef: RefObject<Map<string, Array<{ fileName: string; mediaType: string }>>>;
@@ -83,7 +82,6 @@ export function useMessageSender({
   selectedModel,
   permissionMode,
   reasoningEffort,
-  codexFastMode,
   daemonStatusLoaded,
   currentSdkInstalled,
   sentAttachmentsRef,
@@ -264,9 +262,7 @@ export function useMessageSender({
     requestedPermissionMode: PermissionMode
   ) => {
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
-    const effectivePermissionMode: PermissionMode = currentProvider === 'codex' && requestedPermissionMode === 'plan'
-      ? 'default'
-      : requestedPermissionMode;
+    const effectivePermissionMode: PermissionMode = requestedPermissionMode;
     console.debug('[ModeSync][Frontend] send request mode', {
       provider: currentProvider,
       requestedMode: requestedPermissionMode,
@@ -289,7 +285,6 @@ export function useMessageSender({
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
           ...reasoningEffortPayload,
-          codexFastMode,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
       } catch (error) {
@@ -299,7 +294,6 @@ export function useMessageSender({
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
           ...reasoningEffortPayload,
-          codexFastMode,
         });
         sendBridgeEvent('send_message', fallbackPayload);
       }
@@ -309,11 +303,10 @@ export function useMessageSender({
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
         ...reasoningEffortPayload,
-        codexFastMode,
       });
       sendBridgeEvent('send_message', payload);
     }
-  }, [codexFastMode, currentProvider, selectedModel, reasoningEffort]);
+  }, [currentProvider, selectedModel, reasoningEffort]);
 
   /**
    * Execute message sending (from queue or directly)

@@ -161,21 +161,18 @@ const App = () => {
     daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled,
     currentProviderRef,
     activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
-    reasoningEffort, codexFastMode, sendShortcut, autoOpenFileEnabled,
+    reasoningEffort, sendShortcut, autoOpenFileEnabled,
     longContextEnabled,
     usagePercentage, usageUsedTokens, usageMaxTokens,
     setPermissionMode, setCurrentProvider,
-    setClaudePermissionMode, setCodexPermissionMode, setOpenCodePermissionMode,
-    setSelectedClaudeModel, setSelectedCodexModel,
+    setClaudePermissionMode, setOpenCodePermissionMode,
+    setSelectedClaudeModel,
     setSelectedOpenCodeModel,
-    setLongContextEnabled, setReasoningEffort, setCodexFastMode,
-    setProviderConfigVersion, setActiveProviderConfig,
-    setClaudeSettingsAlwaysThinkingEnabled,
+    setLongContextEnabled, setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    syncActiveProviderModelMapping,
-    handleModeSelect, handleModelSelect, handleProviderSelect,
-    handleReasoningChange, handleCodexFastModeChange, handleToggleThinking,
+    handleModeSelect, handleModelSelect,
+    handleReasoningChange, handleToggleThinking,
     handleSendShortcutChange,
     handleAutoOpenFileEnabledChange, handleLongContextChange,
   } = useModelProviderState({ addToast, t });
@@ -294,7 +291,6 @@ const App = () => {
     showNewSessionConfirm, showInterruptConfirm,
     suppressNextStatusToastRef,
     createNewSession, forceCreateNewSession,
-    forceCreateNewSessionWithProvider,
     handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
@@ -598,12 +594,10 @@ const App = () => {
     setMessages, setStatus, setLoading, setLoadingStartTime,
     setIsThinking, setStreamingActive, setSessionLoading, setHistoryData,
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    setPermissionMode, setCurrentProvider, setClaudePermissionMode, setCodexPermissionMode,
+    setPermissionMode, setCurrentProvider, setClaudePermissionMode,
     setOpenCodePermissionMode,
-    setSelectedClaudeModel, setSelectedCodexModel, setSelectedOpenCodeModel,
-    setLongContextEnabled, setReasoningEffort, setCodexFastMode,
-    setProviderConfigVersion, setActiveProviderConfig,
-    setClaudeSettingsAlwaysThinkingEnabled,
+    setSelectedClaudeModel, setSelectedOpenCodeModel,
+    setLongContextEnabled, setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setContextInfo,
     setSubagentHistories,
@@ -619,7 +613,6 @@ const App = () => {
     lastThinkingUpdateRef, thinkingUpdateTimeoutRef,
     findLastAssistantIndex, extractRawBlocks,
     getOrCreateStreamingAssistantIndex, patchAssistantForStreaming,
-    syncActiveProviderModelMapping,
     openPermissionDialog, openAskUserQuestionDialog, openPlanApprovalDialog,
     forceClosePermissionDialog, forceCloseAskUserQuestionDialog, invalidateQuestionCard, invalidatePermissionCard, forceClosePlanApprovalDialog,
     openContextUsageDialog, updateContextUsageData,
@@ -636,20 +629,13 @@ const App = () => {
   } = useMessageProcessing({ messages, currentSessionId, t });
 
   // ── Message sender ──
-  // Wrap handleProviderSelect to also clear messages and input (like creating a new session)
-  const wrappedHandleProviderSelect = useCallback((providerId: string) => {
-    chatInputRef.current?.clear();
-    handleProviderSelect(providerId);
-    forceCreateNewSessionWithProvider(providerId);
-  }, [forceCreateNewSessionWithProvider, handleProviderSelect]);
-
   const {
     handleSubmit: hookHandleSubmit,
     executeMessage,
     interruptSession,
   } = useMessageSender({
     t, addToast,
-    currentProvider, selectedModel, permissionMode, reasoningEffort, codexFastMode,
+    currentProvider, selectedModel, permissionMode, reasoningEffort,
     daemonStatusLoaded, currentSdkInstalled,
     sentAttachmentsRef, chatInputRef, messagesContainerRef,
     isUserAtBottomRef, userPausedRef, isStreamingRef,
@@ -924,7 +910,6 @@ const App = () => {
               onSubmit={handleSubmit}
               onInterrupt={interruptSession}
               onNavigateToProviderSettings={handleNavigateToProviderSettings}
-              onProviderSelect={wrappedHandleProviderSelect}
               revertBoundaryId={revertBoundaryId}
               onUndo={handleUndoMessage}
               onRestore={handleRedoMessage}
@@ -938,7 +923,6 @@ const App = () => {
               activeProviderConfig={activeProviderConfig}
               claudeSettingsAlwaysThinkingEnabled={claudeSettingsAlwaysThinkingEnabled}
               reasoningEffort={reasoningEffort}
-              codexFastMode={codexFastMode}
               sendShortcut={sendShortcut}
               autoOpenFileEnabled={autoOpenFileEnabled}
               longContextEnabled={longContextEnabled}
@@ -948,7 +932,6 @@ const App = () => {
               onModeSelect={handleModeSelect}
               onModelSelect={handleModelSelect}
               onReasoningChange={handleReasoningChange}
-              onCodexFastModeChange={handleCodexFastModeChange}
               onToggleThinking={handleToggleThinking}
               onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
                onLongContextChange={handleLongContextChange}

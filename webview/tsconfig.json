@@ -7,6 +7,16 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
 
+    // marked-katex-extension@5.x started shipping `types: ./src/index.ts`, so
+    // tsc resolves the import to the package's SOURCE and trips on its own
+    // noUnusedLocals violations. The project ships an intentional ambient shim
+    // in src/types/ — redirect resolution there so we type-check against our
+    // contract, not the dependency's unchecked source.
+    "baseUrl": ".",
+    "paths": {
+      "marked-katex-extension": ["./src/types/marked-katex-extension.d.ts"]
+    },
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

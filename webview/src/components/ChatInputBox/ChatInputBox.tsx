@@ -91,11 +91,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onRemoveAttachment,
       onModeSelect,
       onModelSelect,
-      onProviderSelect,
       reasoningEffort = 'high',
       onReasoningChange,
-      codexFastMode = 'normal',
-      onCodexFastModeChange,
       activeFile,
       selectedLines,
       onClearContext,
@@ -715,14 +712,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           permissionMode={permissionMode}
           currentProvider={currentProvider}
           reasoningEffort={reasoningEffort}
-          codexFastMode={codexFastMode}
           onSubmit={handleSubmit}
           onStop={onStop}
           onModeSelect={handleModeSelect}
           onModelSelect={handleModelSelect}
-          onProviderSelect={onProviderSelect}
           onReasoningChange={onReasoningChange}
-          onCodexFastModeChange={onCodexFastModeChange}
           alwaysThinkingEnabled={alwaysThinkingEnabled}
           onToggleThinking={onToggleThinking}
           onAddModel={onOpenModelSettings}

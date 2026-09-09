@@ -20,8 +20,7 @@ public class WindowEventHandler extends BaseMessageHandler {
         "history_render_complete", "surface_damage_applied",
         "refresh_slash_commands",
         "fork_session", "share_session", "unshare_session",
-        "revert_session", "unrevert_session", "compact_session",
-        "set_thinking_enabled", "set_ui_preferences"
+        "revert_session", "unrevert_session", "compact_session"
     };
 
     /**
@@ -92,10 +91,6 @@ public class WindowEventHandler extends BaseMessageHandler {
                 return true;
             case "compact_session":
                 handleCompactSession();
-                return true;
-            case "set_thinking_enabled":
-            case "set_ui_preferences":
-                // UI preference replays; the webview persists these locally.
                 return true;
             default:
                 return false;

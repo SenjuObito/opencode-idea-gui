@@ -39,6 +39,7 @@ import com.opencodebuddy.session.SessionLifecycleManager;
 import com.opencodebuddy.session.StreamMessageCoalescer;
 import com.opencodebuddy.util.JsUtils;
 import com.opencodebuddy.util.MessageJsonConverter;
+import com.opencodebuddy.utils.PluginFileLogger;
 import com.google.gson.JsonObject;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -497,6 +498,7 @@ public class ChatWindowDelegate {
 
     public void handleFrontendReady() {
         LOG.info("Received frontend_ready signal, frontend is now ready to receive data");
+        PluginFileLogger.info("LIFECYCLE", "frontend_ready received");
         boolean runtimeRecovery = host.isRuntimeRecoveryPage();
         host.setFrontendReady(true);
         host.getWebviewWatchdog().markFrontendReady();

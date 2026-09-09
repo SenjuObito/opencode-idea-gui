@@ -7,13 +7,11 @@ import {
   strip1MContextSuffix,
 } from '../components/ChatInputBox/types';
 import type {
-  CodexFastMode,
   PermissionMode,
   ReasoningEffort,
 } from '../components/ChatInputBox/types';
 import { isSpecialProviderId } from '../types/provider';
 import { useClaudeProvider } from './providers/useClaudeProvider';
-import { useCodexProvider } from './providers/useCodexProvider';
 import { useOpenCodeProvider } from './providers/useOpenCodeProvider';
 import { isCliOnlyProvider, normalizeCliPermissionMode } from './providers/cliProviders';
 import { useUsageTracking } from './providers/useUsageTracking';
@@ -48,6 +46,10 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     () => (localStorage.getItem('opencode.permissionMode') as PermissionMode) || 'default',
   );
 
+  // reasoningEffort is a cross-provider concept (shared by claude / opencode).
+  // It used to live in the now-removed codex stub; re-home it here.
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium');
+
   // External-facing ref so window callbacks can read the latest provider
   // without re-binding. Render-time assignment avoids the useRef + useEffect
   // mirror anti-pattern (rule 5.15).
@@ -60,7 +62,6 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
   // model id echoed back by the Java bridge) are consumed by opencode at
   // runtime — see usageModeCallbacks.ts. Only grok / kimi / pi were removed.
   const claude = useClaudeProvider();
-  const codex = useCodexProvider();
   const openCode = useOpenCodeProvider();
   const { isSdkInstalled, isSdkStatusKnown, ...usage } = useUsageTracking();
   const settings = useProviderSettings({ addToast, t });
@@ -72,12 +73,6 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     setClaudeSettingsAlwaysThinkingEnabled,
   } = claude;
   const {
-    selectedCodexModel, setSelectedCodexModel,
-    codexPermissionMode, setCodexPermissionMode,
-    reasoningEffort, setReasoningEffort,
-    codexFastMode, setCodexFastMode,
-  } = codex;
-  const {
     selectedOpenCodeModel, setSelectedOpenCodeModel,
     openCodePermissionMode, setOpenCodePermissionMode,
   } = openCode;
@@ -86,33 +81,25 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
   useModelStatePersistence({
     setCurrentProvider,
     setSelectedClaudeModel,
-    setSelectedCodexModel,
     setClaudePermissionMode,
-    setCodexPermissionMode,
     setSelectedOpenCodeModel,
     setOpenCodePermissionMode,
     setPermissionMode,
     setLongContextEnabled,
     setReasoningEffort,
-    setCodexFastMode,
     currentProvider,
     selectedClaudeModel,
-    selectedCodexModel,
     claudePermissionMode,
-    codexPermissionMode,
     selectedOpenCodeModel,
     openCodePermissionMode,
     longContextEnabled,
     reasoningEffort,
-    codexFastMode,
   });
 
   // ── Computed values ──
-  const selectedModel = currentProvider === 'codex'
-    ? selectedCodexModel
-    : currentProvider === 'opencode'
-      ? selectedOpenCodeModel
-      : selectedClaudeModel;
+  const selectedModel = currentProvider === 'opencode'
+    ? selectedOpenCodeModel
+    : selectedClaudeModel;
   const currentSdkInstalled = useMemo(
     () => isSdkInstalled(currentProvider),
     [isSdkInstalled, currentProvider],
@@ -120,13 +107,6 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
 
   // ── Cross-provider handlers ──
   const handleModeSelect = useCallback((mode: PermissionMode) => {
-    if (currentProvider === 'codex') {
-      const codexMode: PermissionMode = mode === 'plan' ? 'default' : mode;
-      setPermissionMode(codexMode);
-      setCodexPermissionMode(codexMode);
-      sendBridgeEvent('set_mode', codexMode);
-      return;
-    }
     if (currentProvider === 'opencode') {
       // OpenCode 支持原生 plan agent，模式原样透传。
       setPermissionMode(mode);
@@ -148,7 +128,6 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     sendBridgeEvent('set_mode', mode);
   }, [
     currentProvider,
-    setCodexPermissionMode,
     setClaudePermissionMode,
     setOpenCodePermissionMode,
   ]);
@@ -159,9 +138,6 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
       const normalizedModelId = normalizeClaudeModelId(strippedModelId);
       setSelectedClaudeModel(normalizedModelId);
       sendBridgeEvent('set_model', apply1MContextSuffix(normalizedModelId, longContextEnabled));
-    } else if (currentProvider === 'codex') {
-      setSelectedCodexModel(modelId);
-      sendBridgeEvent('set_model', modelId);
     } else if (currentProvider === 'opencode') {
       setSelectedOpenCodeModel(modelId);
       sendBridgeEvent('set_model', modelId);
@@ -170,7 +146,6 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     currentProvider,
     longContextEnabled,
     setSelectedClaudeModel,
-    setSelectedCodexModel,
     setSelectedOpenCodeModel,
   ]);
 
@@ -179,9 +154,7 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     sendBridgeEvent('set_provider', providerId);
 
     let modeToSet: PermissionMode = claudePermissionMode;
-    if (providerId === 'codex') {
-      modeToSet = normalizeCliPermissionMode(codexPermissionMode);
-    } else if (providerId === 'opencode') {
+    if (providerId === 'opencode') {
       // OpenCode 支持原生 plan agent，不做 CLI 的 plan 屏蔽。
       modeToSet = openCodePermissionMode;
     }
@@ -189,14 +162,11 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     sendBridgeEvent('set_mode', modeToSet);
 
     let newModel = apply1MContextSuffix(selectedClaudeModel, longContextEnabled);
-    if (providerId === 'codex') newModel = selectedCodexModel;
-    else if (providerId === 'opencode') newModel = selectedOpenCodeModel;
+    if (providerId === 'opencode') newModel = selectedOpenCodeModel;
     sendBridgeEvent('set_model', newModel);
   }, [
     claudePermissionMode,
-    codexPermissionMode,
     openCodePermissionMode,
-    selectedCodexModel,
     selectedClaudeModel,
     selectedOpenCodeModel,
     longContextEnabled,
@@ -213,11 +183,6 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     setReasoningEffort(effort);
     sendBridgeEvent('set_reasoning_effort', effort);
   }, [setReasoningEffort]);
-
-  const handleCodexFastModeChange = useCallback((mode: CodexFastMode) => {
-    setCodexFastMode(mode);
-    sendBridgeEvent('set_codex_fast_mode', mode);
-  }, [setCodexFastMode]);
 
   const handleToggleThinking = useCallback((enabled: boolean) => {
     const config = settings.activeProviderConfig;
@@ -260,13 +225,13 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
 
   return {
     ...claude,
-    ...codex,
     ...openCode,
     ...usage,
     ...settings,
     currentProvider, setCurrentProvider,
     permissionMode, setPermissionMode,
     selectedModel,
+    reasoningEffort, setReasoningEffort,
     currentSdkInstalled,
     currentProviderRef,
     handleModeSelect,
@@ -275,6 +240,5 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     handleLongContextChange,
     handleToggleThinking,
     handleReasoningChange,
-    handleCodexFastModeChange,
   };
 }

@@ -26,6 +26,7 @@ import com.opencodebuddy.ui.detached.DetachedWindowManager;
 import com.opencodebuddy.util.HtmlLoader;
 import com.opencodebuddy.util.JsUtils;
 import com.opencodebuddy.util.ThemeConfigService;
+import com.opencodebuddy.utils.PluginFileLogger;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -2097,16 +2098,28 @@ public class ClaudeChatWindow {
         if (this.disposed || targetBrowser == null) {
             LOG.warn("Cannot call JS function " + functionName + ": disposed=" + this.disposed
                     + ", browser=" + (targetBrowser == null ? "null" : "exists"));
+            PluginFileLogger.warn("JS", "DROPPED call " + functionName
+                    + " (disposed=" + this.disposed + ", browser="
+                    + (targetBrowser == null ? "null" : "exists") + ")");
             return;
         }
 
         if (functionName == null || !SAFE_JS_FUNCTION_NAME.matcher(functionName).matches()) {
             LOG.error("Invalid JavaScript function name rejected: " + functionName);
+            PluginFileLogger.error("JS", "INVALID function name rejected: " + functionName);
             return;
         }
 
+        String argsPreview = buildArgsPreview(args);
+        PluginFileLogger.throttled("DEBUG", "JS", functionName,
+                "call " + functionName + "(" + argsPreview + ")", 2000L);
+
         ApplicationManager.getApplication().invokeLater(() -> {
             if (this.disposed || this.browser != targetBrowser) {
+                // Silent drop: the browser instance was replaced between scheduling and
+                // execution. This is the classic reason a status push never reaches the UI.
+                PluginFileLogger.warn("JS", "DROPPED (late) call " + functionName
+                        + " after browser swap, disposed=" + this.disposed);
                 return;
             }
             try {
@@ -2137,10 +2150,31 @@ public class ClaudeChatWindow {
                                 "})();";
 
                 cefBrowser.executeJavaScript(checkAndCall, cefBrowser.getURL(), 0);
+                PluginFileLogger.throttled("DEBUG", "JS", functionName + "#ok",
+                        "executed " + functionName, 2000L);
             } catch (Exception | LinkageError e) {
                 LOG.warn("Failed to call JS function: " + functionName + ", error: " + e.getMessage(), e);
+                PluginFileLogger.error("JS", "FAILED call " + functionName + ": " + e.getMessage(), e);
             }
         });
+    }
+
+    /** Compact preview of JS call arguments for the trace file (never used to build JS). */
+    private static String buildArgsPreview(String... args) {
+        if (args == null || args.length == 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < args.length; i++) {
+            if (i > 0) { sb.append(", "); }
+            String arg = args[i] == null ? "" : args[i];
+            if (arg.length() > 120) {
+                sb.append(arg, 0, 120).append("...");
+            } else {
+                sb.append(arg);
+            }
+        }
+        return sb.toString();
     }
 
     void handleJavaScriptMessage(int pageGeneration, String message) {
@@ -2177,13 +2211,18 @@ public class ClaudeChatWindow {
 
                 if ("console.error".equals(logType)) {
                     LOG.warn(logMessage.toString());
+                    PluginFileLogger.error("WEBVIEW", logMessage.toString());
                 } else if ("console.warn".equals(logType)) {
                     LOG.info(logMessage.toString());
+                    PluginFileLogger.warn("WEBVIEW", logMessage.toString());
                 } else {
                     LOG.debug(logMessage.toString());
+                    PluginFileLogger.throttled("DEBUG", "WEBVIEW", logType,
+                            logMessage.toString(), 1000L);
                 }
             } catch (Exception e) {
                 LOG.warn("Failed to parse console log: " + e.getMessage());
+                PluginFileLogger.error("WEBVIEW", "Failed to parse console log: " + e.getMessage());
             }
             return;
         }
@@ -2191,14 +2230,19 @@ public class ClaudeChatWindow {
         String[] parts = message.split(":", 2);
         if (parts.length < 1) {
             LOG.error("Invalid message format");
+            PluginFileLogger.error("FRONTEND->BACKEND", "Invalid message format: " + message);
             return;
         }
 
         String type = parts[0];
         String content = parts.length > 1 ? parts[1] : "";
 
+        PluginFileLogger.throttled("INFO", "FRONTEND->BACKEND", type,
+                type + " | " + content, 1000L);
+
         MessageDispatcher dispatcher = this.messageDispatcher;
         if (dispatcher == null) {
+            PluginFileLogger.warn("FRONTEND->BACKEND", "No dispatcher, dropped: " + type);
             return;
         }
         if (dispatcher.dispatch(type, content)) {
@@ -2206,6 +2250,7 @@ public class ClaudeChatWindow {
         }
 
         LOG.warn("Unknown message type: " + type);
+        PluginFileLogger.warn("FRONTEND->BACKEND", "UNHANDLED type=" + type + " content=" + content);
     }
 
     // ==================== Session Delegates ====================

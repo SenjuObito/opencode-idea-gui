@@ -138,7 +138,12 @@ public final class SkillFrontmatterParser {
         try {
             LoadSettings settings = LoadSettings.builder()
                     .setMaxAliasesForCollections(0)
-                    .setCodePointLimit(8192)
+                    // Frontmatter descriptions can legitimately exceed 8K code
+                    // points (the Agent Skills spec allows 1024-char descriptions
+                    // plus long allowed-tools lists); cap at 3x that so large
+                    // but well-formed frontmatter still parses instead of
+                    // failing the whole skill.
+                    .setCodePointLimit(3 * 8192)
                     .build();
             Load load = new Load(settings);
             Object parsed = load.loadFromString(yamlText);

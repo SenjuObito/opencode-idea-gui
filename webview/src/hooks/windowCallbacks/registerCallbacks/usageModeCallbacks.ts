@@ -2,13 +2,13 @@
  * usageModeCallbacks.ts
  *
  * Registers window bridge callbacks for usage statistics, permission modes, and
- * model/provider updates: onUsageUpdate, onModeChanged, onModeReceived,
- * onModelChanged, onModelConfirmed, updateActiveProvider, updateThinkingEnabled,
- * updateSendShortcut, updateAutoOpenFileEnabled.
+ * model updates: onUsageUpdate, onModeChanged, onModeReceived,
+ * onModelChanged, onModelConfirmed, updateSendShortcut,
+ * updateAutoOpenFileEnabled.
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
-import type { CodexFastMode, PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
+import type { PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
 import {
   has1MContextSuffix,
   normalizeClaudeModelId,
@@ -25,22 +25,15 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     setPermissionMode,
     setCurrentProvider,
     setClaudePermissionMode,
-    setCodexPermissionMode,
     setOpenCodePermissionMode,
     setSelectedClaudeModel,
-    setSelectedCodexModel,
     setSelectedOpenCodeModel,
     setLongContextEnabled,
     setReasoningEffort,
-    setCodexFastMode,
-    setProviderConfigVersion,
-    setActiveProviderConfig,
-    setClaudeSettingsAlwaysThinkingEnabled,
     setSendShortcut,
     setAutoOpenFileEnabled,
     setPermissionDialogTimeoutSeconds,
     currentProviderRef,
-    syncActiveProviderModelMapping,
   } = options;
 
   window.onUsageUpdate = (json) => {
@@ -85,12 +78,9 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   const updateMode = (mode?: PermissionMode, providerOverride?: string) => {
     const activeProvider = providerOverride || currentProviderRef.current;
     if (typeof mode === 'string' && mode.length > 0) {
-      const nextMode: PermissionMode =
-        activeProvider === 'codex' && mode === 'plan' ? 'default' : mode;
+      const nextMode: PermissionMode = mode;
       setPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
-      if (activeProvider === 'codex') {
-        setCodexPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
-      } else if (activeProvider === 'opencode') {
+      if (activeProvider === 'opencode') {
         setOpenCodePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
       } else {
         setClaudePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
@@ -105,8 +95,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     const provider = currentProviderRef.current;
     if (provider === 'claude') {
       setSelectedClaudeModel(normalizeClaudeModelId(modelId));
-    } else if (provider === 'codex') {
-      setSelectedCodexModel(modelId);
     } else if (provider === 'opencode') {
       setSelectedOpenCodeModel(modelId);
     }
@@ -115,8 +103,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   window.onModelConfirmed = (modelId, provider) => {
     if (provider === 'claude') {
       setSelectedClaudeModel(normalizeClaudeModelId(modelId));
-    } else if (provider === 'codex') {
-      setSelectedCodexModel(modelId);
     } else if (provider === 'opencode') {
       setSelectedOpenCodeModel(modelId);
     }
@@ -154,10 +140,12 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   window.applyBackendTabState = (json: string) => {
     try {
       const state = JSON.parse(json) as Record<string, unknown>;
-      const provider = state.provider;
-      if (provider !== 'claude' && provider !== 'codex' && provider !== 'opencode') {
+      const rawProvider = state.provider;
+      if (rawProvider !== 'claude' && rawProvider !== 'codex' && rawProvider !== 'opencode') {
         throw new Error('invalid provider');
       }
+      // opencode-only fork: a persisted 'codex' tab falls back to opencode.
+      const provider = rawProvider === 'codex' ? 'opencode' : rawProvider;
 
       // This is Java -> UI recovery state, not a user selection. Update the
       // synchronous ref and React state without emitting set_provider/set_model.
@@ -168,10 +156,8 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         if (provider === 'claude') {
           setSelectedClaudeModel(normalizeClaudeModelId(strip1MContextSuffix(state.model)));
           setLongContextEnabled(has1MContextSuffix(state.model));
-        } else if (provider === 'opencode') {
-          setSelectedOpenCodeModel(state.model);
         } else {
-          setSelectedCodexModel(state.model);
+          setSelectedOpenCodeModel(state.model);
         }
       }
 
@@ -180,9 +166,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
       const reasoningValues: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
       if (reasoningValues.includes(state.reasoningEffort as ReasoningEffort)) {
         setReasoningEffort(state.reasoningEffort as ReasoningEffort);
-      }
-      if (state.codexFastMode === 'normal' || state.codexFastMode === 'fast') {
-        setCodexFastMode(state.codexFastMode as CodexFastMode);
       }
       window.__CCGUI_RECOVERY_STATE_APPLIED__ = true;
     } catch (error) {
@@ -195,36 +178,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     delete window.__pendingBackendTabState;
     window.applyBackendTabState(pending);
   }
-
-  window.updateActiveProvider = (jsonStr: string) => {
-    try {
-      const provider = JSON.parse(jsonStr);
-      syncActiveProviderModelMapping(provider);
-      setProviderConfigVersion((prev) => prev + 1);
-      setActiveProviderConfig(provider);
-    } catch (error) {
-      console.error('[Frontend] Failed to parse active provider in App:', error);
-    }
-  };
-
-  window.updateThinkingEnabled = (jsonStr: string) => {
-    const trimmed = (jsonStr || '').trim();
-    try {
-      const data = JSON.parse(trimmed);
-      if (typeof data === 'boolean') {
-        setClaudeSettingsAlwaysThinkingEnabled(data);
-        return;
-      }
-      if (data && typeof data.enabled === 'boolean') {
-        setClaudeSettingsAlwaysThinkingEnabled(data.enabled);
-        return;
-      }
-    } catch {
-      if (trimmed === 'true' || trimmed === 'false') {
-        setClaudeSettingsAlwaysThinkingEnabled(trimmed === 'true');
-      }
-    }
-  };
 
   window.updateSendShortcut = (jsonStr: string) => {
     try {

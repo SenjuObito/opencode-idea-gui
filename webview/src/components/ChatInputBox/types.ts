@@ -361,8 +361,6 @@ export interface ProviderInfo {
   label: string;
   icon: string;
   enabled: boolean;
-  /** When true, show a Beta badge and first-click notice dialog. */
-  beta?: boolean;
 }
 
 /**
@@ -421,12 +419,6 @@ export function codexModelSupportsMaxEffort(modelId: string): boolean {
  * Codex API values: low, medium, high, xhigh; GPT-5.6 also supports max
  */
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-
-/**
- * Codex execution speed mode.
- * Standard uses Codex defaults; Fast maps to service_tier=fast at send time.
- */
-export type CodexFastMode = 'normal' | 'fast';
 
 /**
  * Reasoning level information
@@ -577,6 +569,8 @@ export interface ChatInputBoxProps {
   showUsage?: boolean;
   /** Whether always thinking is enabled */
   alwaysThinkingEnabled?: boolean;
+  /** Toggle thinking mode callback */
+  onToggleThinking?: (enabled: boolean) => void;
   /** Attachment list */
   attachments?: Attachment[];
   /** Placeholder text */
@@ -611,19 +605,10 @@ export interface ChatInputBoxProps {
   onModeSelect?: (mode: PermissionMode) => void;
   /** Switch model */
   onModelSelect?: (modelId: string) => void;
-  /** Switch provider */
-  onProviderSelect?: (providerId: string) => void;
   /** Current reasoning effort */
   reasoningEffort?: ReasoningEffort;
   /** Switch reasoning effort callback */
   onReasoningChange?: (effort: ReasoningEffort) => void;
-  /** Codex speed mode */
-  codexFastMode?: CodexFastMode;
-  /** Switch Codex speed mode callback */
-  onCodexFastModeChange?: (mode: CodexFastMode) => void;
-  /** Toggle thinking mode */
-  onToggleThinking?: (enabled: boolean) => void;
-
   /** Send shortcut setting: 'enter' = Enter sends | 'cmdEnter' = Cmd/Ctrl+Enter sends */
   sendShortcut?: 'enter' | 'cmdEnter';
 
@@ -682,19 +667,14 @@ export interface ButtonAreaProps {
   currentProvider?: string;
   /** Current reasoning effort */
   reasoningEffort?: ReasoningEffort;
-  /** Codex speed mode */
-  codexFastMode?: CodexFastMode;
 
   // Event callbacks
   onSubmit?: () => void;
   onStop?: () => void;
   onModeSelect?: (mode: PermissionMode) => void;
   onModelSelect?: (modelId: string) => void;
-  onProviderSelect?: (providerId: string) => void;
   /** Switch reasoning effort callback */
   onReasoningChange?: (effort: ReasoningEffort) => void;
-  /** Switch Codex speed mode callback */
-  onCodexFastModeChange?: (mode: CodexFastMode) => void;
   /** Whether always thinking enabled */
   alwaysThinkingEnabled?: boolean;
   /** Toggle thinking mode */

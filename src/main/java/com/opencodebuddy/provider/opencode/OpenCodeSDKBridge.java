@@ -9,6 +9,7 @@ import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.common.MessageCallback;
 import com.opencodebuddy.provider.common.SDKResult;
 import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.utils.PluginFileLogger;
 import com.intellij.openapi.diagnostic.Logger;
 
 import java.util.ArrayList;
@@ -248,7 +249,12 @@ public class OpenCodeSDKBridge {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
         params.addProperty("cwd", cwd != null ? cwd : "");
-        return request("opencode.preconnect", params, noopCallback());
+        PluginFileLogger.info("DAEMON", "preconnect request: cwd=" + (cwd != null ? cwd : "")
+                + ", sessionId=" + (sessionId != null ? sessionId : ""));
+        CompletableFuture<Boolean> future = request("opencode.preconnect", params, noopCallback());
+        future.whenComplete((ok, err) -> PluginFileLogger.info("DAEMON",
+                "preconnect result=" + ok + (err != null ? ", error=" + err.getMessage() : "")));
+        return future;
     }
 
     // =========================================================================
@@ -262,45 +268,45 @@ public class OpenCodeSDKBridge {
     public CompletableFuture<JsonElement> listMessages(String sessionId, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.listMessages", params);
     }
 
     public CompletableFuture<JsonElement> getSessionInfo(String sessionId, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.getSessionInfo", params);
     }
 
     public CompletableFuture<JsonElement> findFiles(String query, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("query", query != null ? query : "");
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.findFiles", params);
     }
 
     public CompletableFuture<JsonElement> listAgents(String cwd) {
         JsonObject params = new JsonObject();
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.listAgents", params);
     }
 
     public CompletableFuture<JsonElement> listCommands(String cwd) {
         JsonObject params = new JsonObject();
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.listCommands", params);
     }
 
     public CompletableFuture<JsonElement> listMcpServers(String cwd) {
         JsonObject params = new JsonObject();
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.listMcpServers", params);
     }
 
     public CompletableFuture<JsonElement> getMcpStatus(String cwd) {
         JsonObject params = new JsonObject();
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.getMcpStatus", params);
     }
 
@@ -332,7 +338,7 @@ public class OpenCodeSDKBridge {
     public CompletableFuture<Boolean> summarize(String sessionId, String cwd, String providerId, String modelId) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         params.addProperty("providerID", providerId != null ? providerId : "");
         params.addProperty("modelID", modelId != null ? modelId : "");
         return request("opencode.summarize", params, noopCallback());
@@ -341,7 +347,7 @@ public class OpenCodeSDKBridge {
     public CompletableFuture<Boolean> revert(String sessionId, String cwd, String messageID) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         if (messageID != null) {
             params.addProperty("messageID", messageID);
         }
@@ -351,14 +357,14 @@ public class OpenCodeSDKBridge {
     public CompletableFuture<Boolean> unrevert(String sessionId, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return request("opencode.unrevert", params, noopCallback());
     }
 
     public CompletableFuture<Boolean> fork(String sessionId, String cwd, String messageID) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         if (messageID != null) {
             params.addProperty("messageID", messageID);
         }
@@ -368,7 +374,7 @@ public class OpenCodeSDKBridge {
     public CompletableFuture<JsonElement> getContextUsage(String sessionId, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
-        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.getContextUsage", params);
     }
 

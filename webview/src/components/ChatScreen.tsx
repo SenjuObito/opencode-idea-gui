@@ -78,7 +78,6 @@ export interface ChatScreenProps {
   onSubmit: (content: string, attachments?: Attachment[]) => void;
   onInterrupt: () => void;
   onNavigateToProviderSettings: () => void;
-  onProviderSelect: (providerId: string) => void;
 
   // Undo/Redo/Fork
   /** opencode message id of the revert boundary (drives RevertPlaceholderBar). */
@@ -97,7 +96,6 @@ export interface ChatScreenProps {
   activeProviderConfig: ProviderState['activeProviderConfig'];
   claudeSettingsAlwaysThinkingEnabled: ProviderState['claudeSettingsAlwaysThinkingEnabled'];
   reasoningEffort: ProviderState['reasoningEffort'];
-  codexFastMode: ProviderState['codexFastMode'];
   sendShortcut: ProviderState['sendShortcut'];
   autoOpenFileEnabled: ProviderState['autoOpenFileEnabled'];
   longContextEnabled: ProviderState['longContextEnabled'];
@@ -109,7 +107,6 @@ export interface ChatScreenProps {
   onModeSelect: ProviderState['handleModeSelect'];
   onModelSelect: ProviderState['handleModelSelect'];
   onReasoningChange: ProviderState['handleReasoningChange'];
-  onCodexFastModeChange: ProviderState['handleCodexFastModeChange'];
   onToggleThinking: ProviderState['handleToggleThinking'];
   onAutoOpenFileEnabledChange: ProviderState['handleAutoOpenFileEnabledChange'];
   onLongContextChange: ProviderState['handleLongContextChange'];
@@ -137,7 +134,7 @@ export const ChatScreen = ({
   statusPanelExpanded, forceStatusUpdate,
   onUndoFile, onDiscardAll, onKeepAll,
   onSubmit, onInterrupt,
-  onNavigateToProviderSettings, onProviderSelect,
+  onNavigateToProviderSettings,
   revertBoundaryId,
   onUndo,
   onRestore,
@@ -147,9 +144,9 @@ export const ChatScreen = ({
   daemonStatusLoaded,
   retryDaemonStatus,
   activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
-  reasoningEffort, codexFastMode, sendShortcut, autoOpenFileEnabled,
+  reasoningEffort, sendShortcut, autoOpenFileEnabled,
   longContextEnabled, usagePercentage, usageUsedTokens, usageMaxTokens,
-  onModeSelect, onModelSelect, onReasoningChange, onCodexFastModeChange, onToggleThinking,
+  onModeSelect, onModelSelect, onReasoningChange, onToggleThinking,
   onAutoOpenFileEnabledChange, onLongContextChange,
   messageQueue, onRemoveFromQueue,
 }: ChatScreenProps) => {
@@ -333,11 +330,8 @@ export const ChatScreen = ({
           onStop={onInterrupt}
           onModeSelect={onModeSelect}
           onModelSelect={onModelSelect}
-          onProviderSelect={onProviderSelect}
           reasoningEffort={reasoningEffort}
           onReasoningChange={onReasoningChange}
-          codexFastMode={codexFastMode}
-          onCodexFastModeChange={onCodexFastModeChange}
           onToggleThinking={onToggleThinking}
           sendShortcut={sendShortcut}
           activeFile={contextInfo?.file}

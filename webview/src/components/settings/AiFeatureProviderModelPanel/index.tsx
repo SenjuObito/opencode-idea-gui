@@ -204,7 +204,7 @@ const AiFeatureProviderModelPanel = ({
   const providerOptions = useMemo<SelectOption[]>(
     () => FEATURE_PROVIDER_INFOS.map((provider) => ({
       value: provider.id,
-      label: getProviderLabel(provider.id, provider.beta),
+      label: getProviderLabel(provider.id),
     })),
     [getProviderLabel],
   );

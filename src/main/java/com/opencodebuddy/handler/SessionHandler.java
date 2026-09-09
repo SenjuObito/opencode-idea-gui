@@ -254,7 +254,7 @@ public class SessionHandler extends BaseMessageHandler {
                                               : ("attachment-" + System.currentTimeMillis());
                     String mediaType = a.has("mediaType") && !a.get("mediaType").isJsonNull()
                                                ? a.get("mediaType").getAsString()
-                                               : "application/octet-stream";
+                                               : "";
                     String data = a.has("data") && !a.get("data").isJsonNull()
                                           ? a.get("data").getAsString()
                                           : "";

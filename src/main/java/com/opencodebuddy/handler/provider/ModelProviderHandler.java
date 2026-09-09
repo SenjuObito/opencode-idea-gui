@@ -14,9 +14,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Handles model and provider selection and reasoning effort for the
- * OpenCode-only build. The provider is fixed to {@code opencode}; model ids
- * are {@code provider/model} strings resolved by opencode itself.
+ * Handles model selection and reasoning effort for the OpenCode-only build.
+ * The provider is fixed to {@code opencode}; model ids are
+ * {@code provider/model} strings resolved by opencode itself.
  */
 public class ModelProviderHandler {
 
@@ -96,14 +96,6 @@ public class ModelProviderHandler {
         }
     }
 
-    public void handleSetProvider(String content) {
-        // OpenCode-only build: the provider cannot be changed from the UI.
-        // Echo the fixed provider so the frontend state stays consistent.
-        ApplicationManager.getApplication().invokeLater(() ->
-                context.callJavaScript("window.onProviderConfirmed",
-                        context.escapeJs(FIXED_PROVIDER)));
-    }
-
     public void handleSetReasoningEffort(String content) {
         try {
             String effort = content;
@@ -124,10 +116,6 @@ public class ModelProviderHandler {
         } catch (Exception e) {
             LOG.error("[ModelProviderHandler] Failed to set reasoning effort: " + e.getMessage(), e);
         }
-    }
-
-    public void handleSetCodexFastMode(String content) {
-        // Legacy multi-engine toggle: no-op in the OpenCode-only build.
     }
 
     public static int getModelContextLimit(String model) {

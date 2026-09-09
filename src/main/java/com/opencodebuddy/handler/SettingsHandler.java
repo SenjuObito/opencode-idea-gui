@@ -38,9 +38,7 @@ public class SettingsHandler extends BaseMessageHandler {
         "get_mode",
         "set_mode",
         "set_model",
-        "set_provider",
         "set_reasoning_effort",
-        "set_codex_fast_mode",
         "get_node_path",
         "set_node_path",
         "get_opencode_cli_path",
@@ -164,18 +162,12 @@ public class SettingsHandler extends BaseMessageHandler {
             case "set_mode":
                 permissionModeHandler.handleSetMode(content);
                 return true;
-            // Model and provider
+            // Model
             case "set_model":
                 modelProviderHandler.handleSetModel(content);
                 return true;
-            case "set_provider":
-                modelProviderHandler.handleSetProvider(content);
-                return true;
             case "set_reasoning_effort":
                 modelProviderHandler.handleSetReasoningEffort(content);
-                return true;
-            case "set_codex_fast_mode":
-                modelProviderHandler.handleSetCodexFastMode(content);
                 return true;
             // Node path
             case "get_node_path":

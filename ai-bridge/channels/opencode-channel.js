@@ -25,11 +25,29 @@ import {
 
 /**
  * Execute an OpenCode command.
+ *
+ * Parameter-name compatibility: hosts historically send the working directory
+ * as `cwd` (matching opencode.send / opencode.preconnect), while channel
+ * commands read `directory`. Missing `directory` used to make session-scoped
+ * queries (listMessages / getSessionInfo / revert / …) hit the default
+ * directory instead of the project's, which opencode resolves to an empty
+ * session — surfacing as "history session loads but the transcript is blank".
+ * Backfill `directory` from `cwd` here so both names work.
+ *
  * @param {string} command
  * @param {string[]} args
  * @param {object|null} stdinData
  */
 export async function handleOpenCodeCommand(command, args, stdinData) {
+  if (
+    stdinData
+    && typeof stdinData === 'object'
+    && (stdinData.directory === undefined || stdinData.directory === null || stdinData.directory === '')
+    && typeof stdinData.cwd === 'string'
+    && stdinData.cwd !== ''
+  ) {
+    stdinData.directory = stdinData.cwd;
+  }
   switch (command) {
     case 'send': {
       if (stdinData && stdinData.message !== undefined) {

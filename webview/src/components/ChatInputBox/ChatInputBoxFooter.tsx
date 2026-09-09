@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { CodexFastMode, DropdownItemData, DropdownPosition, PermissionMode, ReasoningEffort } from './types.js';
+import type { DropdownItemData, DropdownPosition, PermissionMode, ReasoningEffort } from './types.js';
 import type { TooltipState } from './hooks/useTooltip.js';
 import { ButtonArea } from './ButtonArea.js';
 import { CompletionDropdown } from './Dropdown/index.js';
@@ -23,14 +23,11 @@ export function ChatInputBoxFooter({
   permissionMode,
   currentProvider,
   reasoningEffort,
-  codexFastMode,
   onSubmit,
   onStop,
   onModeSelect,
   onModelSelect,
-  onProviderSelect,
   onReasoningChange,
-  onCodexFastModeChange,
   alwaysThinkingEnabled,
   onToggleThinking,
   onAddModel,
@@ -49,14 +46,11 @@ export function ChatInputBoxFooter({
   permissionMode: PermissionMode;
   currentProvider: string;
   reasoningEffort: ReasoningEffort;
-  codexFastMode?: CodexFastMode;
   onSubmit: () => void;
   onStop?: () => void;
   onModeSelect?: (mode: PermissionMode) => void;
   onModelSelect?: (modelId: string) => void;
-  onProviderSelect?: (providerId: string) => void;
   onReasoningChange?: (effort: ReasoningEffort) => void;
-  onCodexFastModeChange?: (mode: CodexFastMode) => void;
   alwaysThinkingEnabled?: boolean;
   onToggleThinking?: (enabled: boolean) => void;
   onAddModel?: () => void;
@@ -79,14 +73,11 @@ export function ChatInputBoxFooter({
         permissionMode={permissionMode}
         currentProvider={currentProvider}
         reasoningEffort={reasoningEffort}
-        codexFastMode={codexFastMode}
         onSubmit={onSubmit}
         onStop={onStop}
         onModeSelect={onModeSelect}
         onModelSelect={onModelSelect}
-        onProviderSelect={onProviderSelect}
         onReasoningChange={onReasoningChange}
-        onCodexFastModeChange={onCodexFastModeChange}
         alwaysThinkingEnabled={alwaysThinkingEnabled}
         onToggleThinking={onToggleThinking}
         onAddModel={onAddModel}

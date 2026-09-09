@@ -1012,6 +1012,13 @@ interface Window {
   __pendingModeReceived?: string;
 
   /**
+   * Pending daemon status payload before useUsageTracking listener is mounted.
+   * updateDaemonStatus dispatches a CustomEvent, but events fired before the
+   * listener is attached are lost; this slot preserves the latest payload.
+   */
+  __pendingDaemonStatus?: string;
+
+  /**
    * Execute context action from IDEA shortcut (copy/cut/send)
    */
   execContextAction?: (action: string) => void;

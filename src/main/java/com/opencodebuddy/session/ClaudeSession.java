@@ -805,6 +805,10 @@ public class ClaudeSession {
      * Handle a permission decision.
      */
     public void handlePermissionDecision(String channelId, boolean allow, boolean remember, String rejectMessage) {
+        if (OpencodePermissionRegistry.isOpencodePermissionId(channelId)) {
+            replyOpencodePermission(channelId, allow, remember, rejectMessage);
+            return;
+        }
         permissionManager.handlePermissionDecision(channelId, allow, remember, rejectMessage);
     }
 
@@ -812,6 +816,40 @@ public class ClaudeSession {
      * Handle an "always allow" permission decision.
      */
     public void handlePermissionDecisionAlways(String channelId, boolean allow) {
+        if (OpencodePermissionRegistry.isOpencodePermissionId(channelId)) {
+            replyOpencodePermission(channelId, allow, true, null);
+            return;
+        }
         permissionManager.handlePermissionDecisionAlways(channelId, allow);
+    }
+
+    /**
+     * Forward an opencode permission-dialog decision to the server.
+     *
+     * <p>opencode permission requests ({@code per_...} ids) bypass the local
+     * PermissionManager: the server holds the pending request and the turn
+     * blocks until it is answered. Without this reply the model stream spins
+     * forever ("asking permission, clicked allow, still running"). The reply
+     * goes through the daemon's {@code opencode.replyPermission} command with
+     * the session/directory captured when the request arrived, since the
+     * server's reply endpoint is workspace-scoped.</p>
+     */
+    private void replyOpencodePermission(String permissionId, boolean allow, boolean remember, String rejectMessage) {
+        OpencodePermissionRegistry.PendingPermission pending =
+                OpencodePermissionRegistry.consume(permissionId);
+        String sessionId = pending != null && pending.sessionId != null
+                ? pending.sessionId : state.getSessionId();
+        String directory = pending != null && pending.directory != null
+                ? pending.directory : state.getCwd();
+        // Daemon vocabulary: allow/allowAlways/deny → SDK once/always/reject.
+        String reply = allow ? (remember ? "allowAlways" : "allow") : "deny";
+        String message = allow ? null : (rejectMessage != null ? rejectMessage : null);
+        openCodeSDKBridge.replyPermission(sessionId, permissionId, reply, message, directory)
+                .whenComplete((ok, error) -> {
+                    if (error != null || !Boolean.TRUE.equals(ok)) {
+                        LOG.warn("[OpenCode] permission reply failed: id=" + permissionId
+                                + " error=" + (error != null ? error.getMessage() : "daemon rejected"));
+                    }
+                });
     }
 }

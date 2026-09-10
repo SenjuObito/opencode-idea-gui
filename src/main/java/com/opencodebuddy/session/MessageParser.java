@@ -55,17 +55,22 @@ public class MessageParser {
 
         if ("user".equals(type)) {
             String content = extractMessageContent(msg);
+            // Strip the context sections the send path appended to the text
+            // (## IDE Context, ## Referenced Files, …) so a reloaded message
+            // matches the bubble the user originally saw. Idempotent: history
+            // records converted by OpenCodeMessageConverter are already clean.
+            String sanitized = UserTextSanitizer.sanitize(content);
             // Check if it contains a tool_result
-            if (content == null || content.trim().isEmpty()) {
+            if (sanitized == null || sanitized.trim().isEmpty()) {
                 if (hasToolResult(rawMessage)) {
                     return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "[tool_result]", rawMessage);
                 }
-                if (hasImageContent(rawMessage)) {
+                if (hasImageContent(rawMessage) || hasAttachmentContent(rawMessage)) {
                     return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "", rawMessage);
                 }
                 return null;
             }
-            return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, content, rawMessage);
+            return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, sanitized, rawMessage);
         } else if ("assistant".equals(type)) {
             String content = extractMessageContent(msg);
             return new ClaudeSession.Message(ClaudeSession.Message.Type.ASSISTANT, content, rawMessage);
@@ -153,6 +158,15 @@ public class MessageParser {
 
     public boolean hasImageContent(JsonObject msg) {
         return hasContentBlockType(msg, "image");
+    }
+
+    /**
+     * Whether the message carries attachment chip blocks — a user turn that is
+     * attachments-only (text emptied by sanitizing or never present) must stay
+     * visible instead of being dropped as empty.
+     */
+    public boolean hasAttachmentContent(JsonObject msg) {
+        return hasContentBlockType(msg, "attachment");
     }
 
     private boolean hasContentBlockType(JsonObject msg, String blockType) {

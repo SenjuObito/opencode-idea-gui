@@ -10,12 +10,24 @@ import java.util.List;
 /**
  * Converts opencode SDK message entries ({@code [{info, parts}]}, as returned
  * by daemon {@code opencode.listMessages}) into the Claude-compatible message
- * JSON the Java session/history layer consumes:
+ * JSON the Java session/history layer consumes.
+ *
+ * <p>User messages are restored for display, not replay: server-generated
+ * {@code synthetic} text parts (the "Called the Read tool..." lines plus the
+ * inlined file content the server produced when the prompt was sent) are
+ * dropped, file parts become attachment chips / image previews, and the
+ * plugin-injected context sections appended on send
+ * ({@code ## IDE Context}, {@code ## Referenced Files}, …) are stripped from
+ * the visible text via {@link UserTextSanitizer}. This mirrors the opencode
+ * TUI transcript restore, which filters synthetic parts the same way.</p>
+ *
  * <ul>
- *   <li>text part → {@code {type:'text', text}}</li>
+ *   <li>text part → {@code {type:'text', text}} (synthetic parts skipped)</li>
  *   <li>reasoning part → {@code {type:'thinking', thinking}}</li>
  *   <li>tool part → {@code {type:'tool_use', id, name, input}} plus a separate
  *       {@code [tool_result]} user message for completed/error output</li>
+ *   <li>file part (image mime) → {@code {type:'image', src, mediaType}}</li>
+ *   <li>file part (other mime) → {@code {type:'attachment', fileName, mediaType}}</li>
  * </ul>
  */
 public final class OpenCodeMessageConverter {
@@ -51,7 +63,10 @@ public final class OpenCodeMessageConverter {
 
     private static JsonObject buildUserMessage(JsonArray parts, JsonObject info) {
         JsonArray blocks = new JsonArray();
+        List<JsonObject> attachmentBlocks = new ArrayList<>();
+        List<JsonObject> imageBlocks = new ArrayList<>();
         StringBuilder text = new StringBuilder();
+
         for (JsonElement partElement : parts) {
             if (!partElement.isJsonObject()) {
                 continue;
@@ -59,15 +74,103 @@ public final class OpenCodeMessageConverter {
             JsonObject part = partElement.getAsJsonObject();
             String type = string(part, "type");
             if ("text".equals(type) && part.has("text") && !part.get("text").isJsonNull()) {
-                String value = part.get("text").getAsString();
-                text.append(value);
-                JsonObject block = new JsonObject();
-                block.addProperty("type", "text");
-                block.addProperty("text", value);
-                blocks.add(block);
+                // Server-generated expansions (Read tool call lines + inlined file
+                // content) are context for the model, never user-visible text.
+                if (isSynthetic(part)) {
+                    continue;
+                }
+                text.append(part.get("text").getAsString());
+            } else if ("file".equals(type)) {
+                JsonObject block = filePartToBlock(part);
+                if (block != null) {
+                    if ("image".equals(block.get("type").getAsString())) {
+                        imageBlocks.add(block);
+                    } else {
+                        attachmentBlocks.add(block);
+                    }
+                }
             }
         }
-        return createMessage("user", text.toString(), info, blocks);
+
+        // Drop the context sections the plugin appended on send (## IDE Context,
+        // ## Referenced Files, agent instructions, …) — model-only payload.
+        String displayText = UserTextSanitizer.sanitize(text.toString());
+
+        for (JsonObject block : attachmentBlocks) {
+            blocks.add(block);
+        }
+        for (JsonObject block : imageBlocks) {
+            blocks.add(block);
+        }
+        if (!displayText.isEmpty()) {
+            JsonObject textBlock = new JsonObject();
+            textBlock.addProperty("type", "text");
+            textBlock.addProperty("text", displayText);
+            blocks.add(textBlock);
+        }
+
+        return createMessage("user", displayText, info, blocks);
+    }
+
+    private static boolean isSynthetic(JsonObject part) {
+        return part.has("synthetic") && !part.get("synthetic").isJsonNull()
+                && part.get("synthetic").getAsBoolean();
+    }
+
+    /**
+     * File part → frontend block. Image parts carry a data: URL the renderer
+     * can use directly; everything else renders as an attachment chip.
+     */
+    private static JsonObject filePartToBlock(JsonObject part) {
+        String mime = string(part, "mime");
+        String url = string(part, "url");
+        String filename = string(part, "filename");
+        if (filename.isEmpty()) {
+            filename = urlBasename(url);
+        }
+
+        if (mime.startsWith("image/") && url.startsWith("data:")) {
+            JsonObject block = new JsonObject();
+            block.addProperty("type", "image");
+            block.addProperty("src", url);
+            block.addProperty("mediaType", mime);
+            return block;
+        }
+
+        if (filename.isEmpty() && mime.isEmpty()) {
+            return null;
+        }
+
+        JsonObject block = new JsonObject();
+        block.addProperty("type", "attachment");
+        block.addProperty("fileName", filename);
+        if (!mime.isEmpty()) {
+            block.addProperty("mediaType", mime);
+        }
+        return block;
+    }
+
+    /**
+     * Basename of a file:///data: URL for chip display when the part carries
+     * no filename.
+     */
+    private static String urlBasename(String url) {
+        if (url == null || url.isEmpty()) {
+            return "";
+        }
+        int hash = url.indexOf('#');
+        String path = hash > 0 ? url.substring(0, hash) : url;
+        int query = path.indexOf('?');
+        if (query > 0) {
+            path = path.substring(0, query);
+        }
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        String name = slash >= 0 ? path.substring(slash + 1) : path;
+        try {
+            return java.net.URLDecoder.decode(name, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return name;
+        }
     }
 
     private static List<JsonObject> buildAssistantMessages(JsonArray parts, JsonObject info) {

@@ -66,7 +66,8 @@ writeFileSync(diskFilePath, 'Hello from a disk file!\nline2: file:// part verify
 console.log('✅ 临时磁盘文件:', diskFilePath);
 
 // ── 2. 创建会话 ────────────────────────────────────────────────────────────
-const created = await client.session.create({ body: {} });
+// v2 SDK 用扁平参数（{ sessionID }），不是 v1 的 { path: { id } } 嵌套
+const created = await client.session.create({});
 if (created.error || !created.data?.id) {
   console.error('❌ 创建会话失败:', JSON.stringify(created.error ?? created.data));
   process.exit(1);
@@ -104,8 +105,9 @@ const promptBody = {
 };
 
 const promptResult = await client.session.promptAsync({
-  path: { id: sessionId },
-  body: promptBody,
+  sessionID: sessionId,
+  parts: promptBody.parts,
+  noReply: true,
 });
 console.log('\n── prompt_async 结果 ──');
 if (promptResult.error) {
@@ -117,7 +119,7 @@ if (promptResult.error) {
 // ── 4. 拉取落库消息 ────────────────────────────────────────────────────────
 // noReply 落库是异步的，稍等后拉取
 await new Promise((r) => setTimeout(r, 1500));
-const messages = await client.session.messages({ path: { id: sessionId } });
+const messages = await client.session.messages({ sessionID: sessionId });
 console.log('\n── 落库消息 parts（关键字段） ──');
 if (messages.error) {
   console.error('❌ 拉取消息失败:', JSON.stringify(messages.error));
@@ -134,7 +136,7 @@ if (messages.error) {
 }
 
 // ── 5. 清理 ────────────────────────────────────────────────────────────────
-const del = await client.session.remove({ path: { id: sessionId } });
+const del = await client.session.delete({ sessionID: sessionId });
 console.log('\n── 清理 ──');
 console.log(del.error ? '⚠️ 删除会话失败: ' + JSON.stringify(del.error) : '✅ 测试会话已删除');
 rmSync(tmpDir, { recursive: true, force: true });

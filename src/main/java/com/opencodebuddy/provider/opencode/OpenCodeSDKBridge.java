@@ -310,12 +310,22 @@ public class OpenCodeSDKBridge {
         return requestJson("opencode.getMcpStatus", params);
     }
 
-    public CompletableFuture<Boolean> replyPermission(String requestId, String reply, String message) {
+    public CompletableFuture<Boolean> replyPermission(String sessionId, String requestId, String reply, String message, String directory) {
         JsonObject params = new JsonObject();
-        params.addProperty("requestID", requestId != null ? requestId : "");
-        params.addProperty("reply", reply != null ? reply : "once");
+        // Daemon channel protocol (opencode-channel.js 'replyPermission'):
+        // { sessionId, permissionID, reply: allow|allowAlways|deny, rejectMessage }
+        // — the channel maps this vocabulary to the SDK's once/always/reject
+        // and looks up the workspace directory from the session registry.
+        if (sessionId != null && !sessionId.isBlank()) {
+            params.addProperty("sessionId", sessionId);
+        }
+        if (directory != null && !directory.isBlank()) {
+            params.addProperty("directory", directory);
+        }
+        params.addProperty("permissionID", requestId != null ? requestId : "");
+        params.addProperty("reply", reply != null ? reply : "allow");
         if (message != null && !message.isBlank()) {
-            params.addProperty("message", message);
+            params.addProperty("rejectMessage", message);
         }
         return request("opencode.replyPermission", params, noopCallback());
     }

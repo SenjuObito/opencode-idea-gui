@@ -207,11 +207,14 @@ export async function handleOpenCodeCommand(command, args, stdinData) {
     }
 
     case 'replyPermission': {
-      const { sessionId, permissionID, reply, rejectMessage } = stdinData || {};
-      const directory = getSessionDirectory(sessionId);
+      const { sessionId, permissionID, reply, rejectMessage, directory } = stdinData || {};
+      // Reply endpoint is workspace-scoped; prefer the daemon's session
+      // registry (authoritative), fall back to an explicit `directory` param
+      // from the host (covers daemons restarted mid-turn with an empty registry).
+      const resolvedDirectory = getSessionDirectory(sessionId) || directory;
       // cc-gui vocabulary (allow/allowAlways/deny) → SDK PermissionV2Reply
       const sdkReply = reply === 'allowAlways' ? 'always' : reply === 'deny' ? 'reject' : 'once';
-      await openCodeReplyPermission(sessionId, permissionID, sdkReply, rejectMessage, directory);
+      await openCodeReplyPermission(sessionId, permissionID, sdkReply, rejectMessage, resolvedDirectory);
       break;
     }
 

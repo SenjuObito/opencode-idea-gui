@@ -309,13 +309,65 @@ public class OpenCodeMessageHandler implements MessageCallback {
                     }
                 }
             }
+
+            // opencode permission dialogs: permission ids (per_...) are consumed
+            // by OpencodePermissionRegistry, keyed by the permissionId (channelId)
+            // so the decision funnel in ClaudeSession can resolve the request.
+            String channelId = permissionId != null ? permissionId : "";
+
+            // The daemon maps opencode's {permission, patterns} onto
+            // {tool: action, inputs: {command, patterns}}. The dialog's i18n
+            // titles (permission.tools.*) use capitalized tool names like
+            // "Read"/"Write", while opencode actions are lowercase like
+            // "read"/"write". Without this mapping the title falls back to
+            // "execute read" and the command box shows just the action word.
+            Map<String, Object> dialogInputs = new HashMap<>(inputs);
+            String dialogToolName = toolName;
+            if (toolName != null) {
+                String action = toolName.toLowerCase();
+                if ("read".equals(action)) {
+                    dialogToolName = "Read";
+                } else if ("write".equals(action)) {
+                    dialogToolName = "Write";
+                } else if ("edit".equals(action)) {
+                    dialogToolName = "Edit";
+                } else if ("list".equals(action) || "glob".equals(action)) {
+                    dialogToolName = "Glob";
+                } else if ("grep".equals(action)) {
+                    dialogToolName = "Grep";
+                } else if ("bash".equals(action)) {
+                    dialogToolName = "Bash";
+                }
+            }
+
+            // The command box renders `command` (fallback: content/text); the
+            // daemon put the action word there, which reads as "read". The
+            // normalized payload's `description` is the joined resource
+            // patterns (e.g. ".env" or a bash command) — the thing the user is
+            // actually approving — so show that instead.
+            String description = stringOrNull(payload, "description");
+            if (description != null && !description.isBlank()) {
+                dialogInputs.put("command", description);
+            }
+
             // Route through the shared permission pipeline: the callback adapter
             // forwards to PermissionHandler.showPermissionDialog, and the reply
             // is bridged back to opencode.replyPermission by the window.
             PermissionRequest request = new PermissionRequest(
-                    permissionId != null ? permissionId : "", toolName, inputs, null);
+                    channelId, dialogToolName, dialogInputs, null);
             LOG.info("[OpenCode] permission requested: tool=" + toolName
                     + " permissionId=" + permissionId);
+
+            // Capture the session/directory context for the reply — opencode's
+            // reply endpoint is workspace-scoped, so the decision must be routed
+            // with the directory that was active when the server asked.
+            OpencodePermissionRegistry.register(
+                    channelId,
+                    stringOrNull(payload, "sessionId") != null
+                            ? stringOrNull(payload, "sessionId")
+                            : state.getSessionId(),
+                    state.getCwd());
+
             callbackHandler.notifyPermissionRequested(request);
         } catch (Exception e) {
             LOG.warn("Failed to parse permission request: " + e.getMessage());
@@ -324,6 +376,19 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
     private void handlePermissionClosed(String jsonContent) {
         LOG.info("[OpenCode] permission closed: " + jsonContent);
+        // Server resolved/aborted the request (timeout, session abort, another
+        // client replied). Drop our registration so a late dialog decision
+        // doesn't fire a reply at a dead request id.
+        try {
+            com.google.gson.Gson gson = new com.google.gson.Gson();
+            JsonObject payload = gson.fromJson(jsonContent, JsonObject.class);
+            if (payload != null) {
+                OpencodePermissionRegistry.remove(stringOrNull(payload, "requestID"));
+                OpencodePermissionRegistry.remove(stringOrNull(payload, "permissionId"));
+            }
+        } catch (Exception e) {
+            LOG.warn("[OpenCode] permission closed parse failed: " + e.getMessage());
+        }
     }
 
     private void handleQuestionRequest(String jsonContent) {

@@ -643,6 +643,15 @@ export async function sendMessagePersistent(params = {}) {
     promptText = fallbackText;
   }
 
+  if (!promptText && fileParts.length === 0) {
+    const errorMsg = attachmentErrors.length > 0
+      ? `No supported attachments: ${attachmentErrors.join('; ')}`
+      : 'Message content is empty';
+    console.log(JSON.stringify({ success: false, error: errorMsg, elapsedMs: Date.now() - startedAt }));
+    emitSendError(errorMsg, 'OpenCode');
+    return;
+  }
+
   // ── Register turn + emit stream-start markers ───────────────────────────
   beginStream(sessionId);
   emitSessionId(sessionId);

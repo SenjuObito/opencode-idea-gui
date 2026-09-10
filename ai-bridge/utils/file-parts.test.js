@@ -74,6 +74,31 @@ describe('buildFileParts', () => {
     assert.equal(errors.length, 2);
   });
 
+  it('normalizes json and other text files to text/plain', () => {
+    const { parts, errors } = buildFileParts([
+      { fileName: 'skills-lock.json', mediaType: 'application/json', data: TEXT_B64 },
+      { fileName: 'data.csv', mediaType: 'text/csv', data: TEXT_B64 },
+      { fileName: 'pom.xml', mediaType: 'application/xml', data: TEXT_B64 },
+    ]);
+    assert.equal(errors.length, 0);
+    assert.equal(parts.length, 3);
+    assert.equal(parts[0].mime, 'text/plain');
+    assert.equal(parts[1].mime, 'text/plain');
+    assert.equal(parts[2].mime, 'text/plain');
+  });
+
+  it('rejects unsupported binary files instead of sending corrupt parts', () => {
+    const binaryData = Buffer.from([0x00, 0x01, 0x02, 0x03]).toString('base64');
+    const { parts, errors } = buildFileParts([
+      { fileName: 'archive.zip', mediaType: 'application/zip', data: binaryData },
+      { fileName: 'compiled.class', mediaType: 'application/octet-stream', data: binaryData },
+    ]);
+    assert.equal(parts.length, 0);
+    assert.equal(errors.length, 2);
+    assert.match(errors[0], /binary files are not supported/);
+    assert.match(errors[1], /binary files are not supported/);
+  });
+
   it('returns empty results for no attachments', () => {
     const { parts, errors } = buildFileParts(undefined);
     assert.equal(parts.length, 0);
@@ -82,17 +107,34 @@ describe('buildFileParts', () => {
 });
 
 describe('resolveAttachmentMimeType', () => {
-  it('prefers the explicit media type', () => {
-    assert.equal(resolveAttachmentMimeType('Application/JSON', null, 'a.bin'), 'application/json');
+  it('normalizes text-like media types to text/plain', () => {
+    assert.equal(resolveAttachmentMimeType('Application/JSON', null, 'a.bin'), 'text/plain');
+    assert.equal(resolveAttachmentMimeType('text/csv', null, 'data.csv'), 'text/plain');
+    assert.equal(resolveAttachmentMimeType('application/xml', null, 'pom.xml'), 'text/plain');
+    assert.equal(resolveAttachmentMimeType('text/markdown', null, 'readme.md'), 'text/plain');
+  });
+
+  it('preserves native multimodal types', () => {
+    assert.equal(resolveAttachmentMimeType('image/png', null, 'photo.png'), 'image/png');
+    assert.equal(resolveAttachmentMimeType('image/jpeg', null, 'photo.jpg'), 'image/jpeg');
+    assert.equal(resolveAttachmentMimeType('application/pdf', null, 'doc.pdf'), 'application/pdf');
+  });
+
+  it('identifies binary extensions as application/octet-stream', () => {
+    assert.equal(resolveAttachmentMimeType('', null, 'archive.zip'), 'application/octet-stream');
+    assert.equal(resolveAttachmentMimeType('', null, 'bundle.jar'), 'application/octet-stream');
+    assert.equal(resolveAttachmentMimeType('', null, 'binary.exe'), 'application/octet-stream');
   });
 
   it('falls back to the file extension', () => {
     assert.equal(resolveAttachmentMimeType('', null, 'Main.java'), 'text/plain');
     assert.equal(resolveAttachmentMimeType(null, null, 'a.pdf'), 'application/pdf');
+    assert.equal(resolveAttachmentMimeType(null, null, 'skills-lock.json'), 'text/plain');
   });
 
   it('falls back to text/plain for unknown extensions', () => {
     assert.equal(resolveAttachmentMimeType('', null, 'a.weirdext'), 'text/plain');
+    assert.equal(resolveAttachmentMimeType('', null, 'gradlew'), 'text/plain');
   });
 });
 

@@ -178,6 +178,7 @@ public class OpenCodeSDKBridge {
         params.addProperty("reasoningEffort", reasoningEffort != null ? reasoningEffort : "");
         String mode = permissionMode != null && !permissionMode.isBlank() ? permissionMode.trim() : "default";
         params.addProperty("permissionMode", mode);
+        params.addProperty("mode", mode);
         if (agent != null && !agent.isBlank()) {
             params.addProperty("agent", agent);
         }

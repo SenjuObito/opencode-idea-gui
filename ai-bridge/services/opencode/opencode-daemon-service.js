@@ -154,8 +154,16 @@ function resolveModelParam(model) {
 function resolveAgentParam(params) {
   const agent = params?.agent;
   const mode = params?.mode;
-  if (typeof agent === 'string' && agent.trim()) return agent.trim();
-  if (typeof mode === 'string' && mode.trim()) return mode.trim();
+  if (typeof agent === 'string' && agent.trim()) {
+    const trimmed = agent.trim();
+    if (['acceptEdits', 'bypassPermissions', 'dontAsk', 'default', 'autoEdit'].includes(trimmed)) return 'build';
+    return trimmed;
+  }
+  if (typeof mode === 'string' && mode.trim()) {
+    const trimmed = mode.trim();
+    if (['acceptEdits', 'bypassPermissions', 'dontAsk', 'default', 'autoEdit'].includes(trimmed)) return 'build';
+    return trimmed;
+  }
   return undefined;
 }
 
@@ -601,7 +609,7 @@ export async function sendMessagePersistent(params = {}) {
   const requestedId = (typeof safeParams.sessionId === 'string' && safeParams.sessionId.trim())
     ? safeParams.sessionId.trim()
     : null;
-  const agent = resolveAgentParam(safeParams);
+  const agent = resolveAgentParam(safeParams) || 'build';
   const model = resolveModelParam(safeParams.model);
   // 推理力度 → opencode model variant（docs/models#variants，按模型变化）。
   const variant = (typeof safeParams.reasoningEffort === 'string' && safeParams.reasoningEffort.trim())

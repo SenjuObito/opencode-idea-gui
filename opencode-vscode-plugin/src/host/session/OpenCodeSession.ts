@@ -173,13 +173,15 @@ export class OpenCodeSession {
 			wasAborted: false,
 		};
 
+		const normMode = normalizePermissionMode(this.state.getPermissionMode());
 		const params: Record<string, unknown> = {
 			sessionId: this.state.getSessionId() ?? undefined,
 			...(slashCommand
 				? { command: slashCommand.command, commandArguments: slashCommand.arguments }
 				: { message: messageToSend }),
 			model: this.state.getModel() ?? undefined,
-			mode: normalizePermissionMode(this.state.getPermissionMode()) ?? undefined,
+			mode: normMode ?? undefined,
+			agent: normMode ?? 'build',
 			reasoningEffort: this.state.getReasoningEffort() ?? undefined,
 			cwd: cwd ?? undefined,
 			attachments: attachments.length > 0 ? attachments : undefined,

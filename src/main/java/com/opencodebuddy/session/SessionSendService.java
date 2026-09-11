@@ -308,16 +308,20 @@ public class SessionSendService {
 
     /**
      * Map the UI permission-mode selection to the opencode agent id:
-     * plan mode → "plan", everything else → "build" (null = opencode default).
+     * legacy modes ("default", "acceptEdits", etc.) → "build",
+     * explicit agents ("plan", "build", "general", custom) → forwarded as-is.
      */
     static String normalizeAgentForSend(String permissionMode) {
         if (permissionMode == null) {
-            return null;
+            return "build";
         }
-        return switch (permissionMode) {
-            case "plan" -> "plan";
-            case "acceptEdits", "bypassPermissions", "dontAsk" -> "build";
-            default -> null;
+        String trimmed = permissionMode.trim();
+        if (trimmed.isEmpty()) {
+            return "build";
+        }
+        return switch (trimmed) {
+            case "default", "acceptEdits", "bypassPermissions", "dontAsk", "autoEdit" -> "build";
+            default -> trimmed;
         };
     }
 

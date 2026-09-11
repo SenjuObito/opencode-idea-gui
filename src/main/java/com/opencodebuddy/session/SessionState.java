@@ -16,14 +16,16 @@ import java.util.UUID;
 public class SessionState {
 
     /**
-     * Canonical whitelist of valid permission modes.
-     * Shared across SessionHandler (payload validation) and ClaudeSession (mode resolution).
+     * Canonical whitelist of valid legacy permission modes.
+     * OpenCode additionally accepts arbitrary non-empty primary agent ids (e.g. build, plan, general).
      */
     public static final Set<String> VALID_PERMISSION_MODES;
     static {
         Set<String> modes = new HashSet<>();
         modes.add("default");
+        modes.add("build");
         modes.add("plan");
+        modes.add("general");
         modes.add("acceptEdits");
         modes.add("autoEdit");
         modes.add("bypassPermissions");
@@ -35,10 +37,10 @@ public class SessionState {
     }
 
     /**
-     * Check whether the given mode string is a recognized permission mode.
+     * Check whether the given mode string is a recognized permission mode or agent id.
      */
     public static boolean isValidPermissionMode(String mode) {
-        return mode != null && VALID_PERMISSION_MODES.contains(mode.trim());
+        return mode != null && !mode.trim().isEmpty();
     }
 
     /**

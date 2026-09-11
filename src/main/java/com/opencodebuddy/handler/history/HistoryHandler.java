@@ -1,6 +1,5 @@
 package com.opencodebuddy.handler.history;
 
-import com.opencodebuddy.handler.NodeJsServiceCaller;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
@@ -45,12 +44,11 @@ public class HistoryHandler extends BaseMessageHandler {
 
     public HistoryHandler(HandlerContext context) {
         super(context);
-        NodeJsServiceCaller nodeJsServiceCaller = new NodeJsServiceCaller(context);
-        this.historyLoadService = new HistoryLoadService(context, nodeJsServiceCaller);
-        this.historyDeleteService = new HistoryDeleteService(context, nodeJsServiceCaller, historyLoadService);
+        this.historyLoadService = new HistoryLoadService(context);
+        this.historyDeleteService = new HistoryDeleteService(context, historyLoadService);
         this.historyExportService = new HistoryExportService(context);
         this.historyMessageInjector = new HistoryMessageInjector(context);
-        this.historyMetadataService = new HistoryMetadataService(context, nodeJsServiceCaller);
+        this.historyMetadataService = new HistoryMetadataService(context);
     }
 
     public void setSessionLoadCallback(SessionLoadCallback callback) {

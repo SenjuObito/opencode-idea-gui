@@ -1,8 +1,7 @@
 package com.opencodebuddy.handler.history;
 
-import com.opencodebuddy.handler.NodeJsServiceCaller;
 import com.opencodebuddy.handler.core.HandlerContext;
-
+import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.session.ClaudeSession;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -22,10 +21,7 @@ import java.util.regex.Pattern;
 
 /**
  * Service for deleting session history data.
- *
- * <p>opencode sessions live inside opencode's own storage; the plugin cannot
- * delete session content directly. Deletion therefore removes the plugin-side
- * metadata (favorites, custom titles) and reloads the history view.</p>
+ * Calls OpenCode SDK to physically delete sessions from OpenCode server storage.
  */
 class HistoryDeleteService {
 
@@ -33,7 +29,6 @@ class HistoryDeleteService {
     private static final Gson GSON = new Gson();
 
     // Reject anything outside [A-Za-z0-9._-] to defeat path-traversal payloads such as "../foo"
-    // before they reach metadata cleanup. Session IDs are alphanumeric/UUID style.
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile("^[A-Za-z0-9._-]+$");
 
     static boolean isValidSessionId(String sessionId) {
@@ -41,17 +36,15 @@ class HistoryDeleteService {
     }
 
     private final HandlerContext context;
-    private final NodeJsServiceCaller nodeJsServiceCaller;
     private final HistoryLoadService historyLoadService;
 
-    HistoryDeleteService(HandlerContext context, NodeJsServiceCaller nodeJsServiceCaller, HistoryLoadService historyLoadService) {
+    HistoryDeleteService(HandlerContext context, HistoryLoadService historyLoadService) {
         this.context = context;
-        this.nodeJsServiceCaller = nodeJsServiceCaller;
         this.historyLoadService = historyLoadService;
     }
 
     /**
-     * Delete session history data (plugin-side metadata only).
+     * Delete session history data via OpenCode native delete API.
      */
     void handleDeleteSession(String sessionId, String currentProvider) {
         if (!isValidSessionId(sessionId)) {
@@ -65,7 +58,12 @@ class HistoryDeleteService {
                         LOG.info("[HistoryHandler] ========== Delete session start ==========");
                         LOG.info("[HistoryHandler] SessionId: " + sessionId + ", Provider: " + currentProvider);
 
-                        cleanupSessionMetadata(sessionId);
+                        String projectPath = context.resolveEffectiveWorkingDirectory();
+                        OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+                        if (bridge != null) {
+                            bridge.deleteSession(sessionId, projectPath).join();
+                            LOG.info("[HistoryHandler] Native session deleted successfully: " + sessionId);
+                        }
 
                         LOG.info("[HistoryHandler] Reloading history data...");
                         historyLoadService.handleLoadHistoryData(currentProvider);
@@ -80,7 +78,7 @@ class HistoryDeleteService {
     }
 
     /**
-     * Batch delete session history data (plugin-side metadata only).
+     * Batch delete session history data via OpenCode native delete API.
      */
     void handleDeleteSessions(String content, String currentProvider) {
         List<String> sessionIds = parseSessionIds(content);
@@ -95,8 +93,16 @@ class HistoryDeleteService {
                         LOG.info("[HistoryHandler] ========== Batch delete sessions start ==========");
                         LOG.info("[HistoryHandler] SessionIds: " + GSON.toJson(sessionIds) + ", Provider: " + currentProvider);
 
-                        for (String sessionId : sessionIds) {
-                            cleanupSessionMetadata(sessionId);
+                        String projectPath = context.resolveEffectiveWorkingDirectory();
+                        OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+                        if (bridge != null) {
+                            for (String sessionId : sessionIds) {
+                                try {
+                                    bridge.deleteSession(sessionId, projectPath).join();
+                                } catch (Exception ex) {
+                                    LOG.warn("[HistoryHandler] Failed to delete session: " + sessionId, ex);
+                                }
+                            }
                         }
 
                         LOG.info("[HistoryHandler] Batch delete completed: " + sessionIds.size() + " sessions");
@@ -178,16 +184,6 @@ class HistoryDeleteService {
                 continue;
             }
             sessionIds.add(sessionId);
-        }
-    }
-
-    private void cleanupSessionMetadata(String sessionId) {
-        try {
-            nodeJsServiceCaller.callNodeJsFavoritesService("removeFavorite", sessionId);
-            nodeJsServiceCaller.callNodeJsDeleteTitle(sessionId);
-            LOG.info("[HistoryHandler] Cleaned up session metadata");
-        } catch (Exception e) {
-            LOG.warn("[HistoryHandler] Failed to clean up metadata (does not affect deletion): " + e.getMessage());
         }
     }
 }

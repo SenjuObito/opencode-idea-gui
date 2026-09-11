@@ -128,6 +128,13 @@ public final class OpenCodeMarkerParser {
             return;
         }
 
+        if (line.startsWith("[SESSION_TITLE]")) {
+            String payload = stripSeparator(line, "[SESSION_TITLE]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            callback.onMessage("session_title", decoded);
+            return;
+        }
+
         if (line.startsWith("[PERMISSION_REQUEST]")) {
             callback.onMessage("permission_request", stripSeparator(line, "[PERMISSION_REQUEST]").trim());
             return;

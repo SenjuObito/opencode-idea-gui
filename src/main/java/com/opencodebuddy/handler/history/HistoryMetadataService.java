@@ -1,42 +1,31 @@
 package com.opencodebuddy.handler.history;
 
-import com.opencodebuddy.handler.NodeJsServiceCaller;
 import com.opencodebuddy.handler.core.HandlerContext;
-
+import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Service for managing session metadata: favorites and custom titles.
- *
- * Title operations are serialized via a lock to prevent concurrent
- * read-modify-write races on session-titles.json.
+ * Service for managing session metadata: favorites (in session.metadata) and titles.
  */
 class HistoryMetadataService {
 
     private static final Logger LOG = Logger.getInstance(HistoryMetadataService.class);
-
-    /**
-     * Serializes all title file operations to prevent concurrent
-     * read-modify-write races on session-titles.json.
-     */
-    private final ReentrantLock titleFileLock = new ReentrantLock();
+    private static final Gson GSON = new Gson();
 
     private final HandlerContext context;
-    private final NodeJsServiceCaller nodeJsServiceCaller;
 
-    HistoryMetadataService(HandlerContext context, NodeJsServiceCaller nodeJsServiceCaller) {
+    HistoryMetadataService(HandlerContext context) {
         this.context = context;
-        this.nodeJsServiceCaller = nodeJsServiceCaller;
     }
 
     /**
-     * Toggle favorite status.
+     * Toggle favorite status in OpenCode native session.metadata.
      */
     void handleToggleFavorite(String sessionId) {
         CompletableFuture.runAsync(() -> {
@@ -44,9 +33,12 @@ class HistoryMetadataService {
                 LOG.info("[HistoryHandler] ========== 切换收藏状态 ==========");
                 LOG.info("[HistoryHandler] SessionId: " + sessionId);
 
-                // Call Node.js favorites-service to toggle favorite status
-                String result = nodeJsServiceCaller.callNodeJsFavoritesService("toggleFavorite", sessionId);
-                LOG.info("[HistoryHandler] 收藏状态切换结果: " + result);
+                String projectPath = context.resolveEffectiveWorkingDirectory();
+                OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+                if (bridge != null) {
+                    JsonElement result = bridge.toggleFavorite(sessionId, null, projectPath).join();
+                    LOG.info("[HistoryHandler] 收藏状态切换结果: " + result);
+                }
 
             } catch (Exception e) {
                 LOG.error("[HistoryHandler] 切换收藏状态失败: " + e.getMessage(), e);
@@ -55,38 +47,28 @@ class HistoryMetadataService {
     }
 
     /**
-     * Update session title.
+     * Update session title on OpenCode server.
      */
     void handleUpdateTitle(String content) {
         CompletableFuture.runAsync(() -> {
-            titleFileLock.lock();
             try {
                 LOG.info("[HistoryHandler] ========== 更新会话标题 ==========");
 
-                // Parse JSON from frontend to extract sessionId and customTitle
-                JsonObject request = new Gson().fromJson(content, JsonObject.class);
+                // Parse JSON from frontend to extract sessionId and title/customTitle
+                JsonObject request = GSON.fromJson(content, JsonObject.class);
                 String sessionId = request.get("sessionId").getAsString();
-                String customTitle = request.get("customTitle").getAsString();
+                String title = request.has("customTitle") && !request.get("customTitle").isJsonNull()
+                        ? request.get("customTitle").getAsString()
+                        : (request.has("title") && !request.get("title").isJsonNull() ? request.get("title").getAsString() : "");
 
                 LOG.info("[HistoryHandler] SessionId: " + sessionId);
-                LOG.info("[HistoryHandler] CustomTitle: " + customTitle);
+                LOG.info("[HistoryHandler] Title: " + title);
 
-                // Call Node.js session-titles-service to update the title
-                String result = nodeJsServiceCaller.callNodeJsTitlesServiceWithParams("updateTitle", sessionId, customTitle);
-                LOG.info("[HistoryHandler] 标题更新结果: " + result);
-
-                // Parse the result
-                JsonObject resultObj = new Gson().fromJson(result, JsonObject.class);
-                boolean success = resultObj.get("success").getAsBoolean();
-
-                if (!success && resultObj.has("error")) {
-                    String error = resultObj.get("error").getAsString();
-                    ApplicationManager.getApplication().invokeLater(() -> {
-                        String jsCode = "if (window.addToast) { " +
-                                                "  window.addToast('更新标题失败: " + context.escapeJs(error) + "', 'error'); " +
-                                                "}";
-                        context.executeJavaScriptOnEDT(jsCode);
-                    });
+                String projectPath = context.resolveEffectiveWorkingDirectory();
+                OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+                if (bridge != null) {
+                    bridge.updateSessionTitle(sessionId, title, projectPath).join();
+                    LOG.info("[HistoryHandler] 标题更新成功: sessionId=" + sessionId);
                 }
 
             } catch (Exception e) {
@@ -97,27 +79,14 @@ class HistoryMetadataService {
                                             "}";
                     context.executeJavaScriptOnEDT(jsCode);
                 });
-            } finally {
-                titleFileLock.unlock();
             }
         });
     }
 
     /**
-     * Delete an orphaned custom title entry (B-011: session ID migration cleanup).
+     * Delete an orphaned custom title entry (no-op with native session API).
      */
     void handleDeleteTitle(String sessionId) {
-        CompletableFuture.runAsync(() -> {
-            titleFileLock.lock();
-            try {
-                LOG.info("[HistoryHandler] Deleting orphaned title for sessionId: " + sessionId);
-                String result = nodeJsServiceCaller.callNodeJsDeleteTitle(sessionId);
-                LOG.info("[HistoryHandler] Delete title result: " + result);
-            } catch (Exception e) {
-                LOG.warn("[HistoryHandler] Failed to delete orphaned title: " + e.getMessage());
-            } finally {
-                titleFileLock.unlock();
-            }
-        });
+        LOG.debug("[HistoryHandler] handleDeleteTitle called for sessionId: " + sessionId);
     }
 }

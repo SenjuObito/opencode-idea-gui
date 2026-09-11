@@ -233,6 +233,63 @@ public class OpenCodeSDKBridge {
     /**
      * Run a {@code !}-style shell command inside the current opencode session.
      */
+    public CompletableFuture<SDKResult> shell(String sessionId, String cwd, String command, MessageCallback callback) {
+        return shell(sessionId, cwd, command, null, null, callback);
+    }
+
+    /**
+     * Run a {@code !}-style shell command inside the current opencode session with explicit model/agent.
+     */
+    public CompletableFuture<SDKResult> shell(
+            String sessionId,
+            String cwd,
+            String command,
+            String model,
+            String agent,
+            MessageCallback callback
+    ) {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", sessionId != null ? sessionId : "");
+        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("command", command != null ? command : "");
+        if (model != null && !model.isEmpty()) {
+            params.addProperty("model", model);
+        }
+        if (agent != null && !agent.isEmpty()) {
+            params.addProperty("agent", agent);
+        }
+
+        SDKResult result = new SDKResult();
+        OpenCodeMarkerParser.StreamContext context = new OpenCodeMarkerParser.StreamContext();
+        return daemon.sendCommand("opencode.shell", params, new DaemonBridge.DaemonOutputCallback() {
+            @Override
+            public void onLine(String line) {
+                markerParser.processOutputLine(line, callback, result, context);
+            }
+
+            @Override
+            public void onStderr(String text) {
+                callback.onMessage("node_log", text);
+            }
+
+            @Override
+            public void onError(String error) {
+                if (!context.hadSendError.get()) {
+                    result.success = false;
+                    result.error = error;
+                    callback.onError(error);
+                }
+            }
+
+            @Override
+            public void onComplete(boolean success) {
+                result.success = success && !context.hadSendError.get();
+                result.messageCount = result.messages.size();
+                callback.onComplete(result);
+            }
+        }).thenApply(v -> result);
+    }
+
     public CompletableFuture<Boolean> shell(String sessionId, String cwd, String command) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
@@ -269,7 +326,38 @@ public class OpenCodeSDKBridge {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
         params.addProperty("directory", cwd != null ? cwd : "");
-        return requestJson("opencode.listMessages", params);
+        JsonArray entries = new JsonArray();
+        return request("opencode.listMessages", params, new DaemonBridge.DaemonOutputCallback() {
+            @Override
+            public void onLine(String line) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || trimmed.charAt(0) != '{') {
+                    return;
+                }
+                try {
+                    JsonObject obj = JsonParser.parseString(trimmed).getAsJsonObject();
+                    if (obj.has("messageEntry") && obj.get("messageEntry").isJsonObject()) {
+                        entries.add(obj.getAsJsonObject("messageEntry"));
+                    } else if (obj.has("messages") && obj.get("messages").isJsonArray()) {
+                        entries.addAll(obj.getAsJsonArray("messages"));
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+
+            @Override
+            public void onStderr(String text) {
+                LOG.debug("[OpenCode] stderr: " + text);
+            }
+
+            @Override
+            public void onError(String error) {
+            }
+
+            @Override
+            public void onComplete(boolean success) {
+            }
+        }).thenApply(success -> entries);
     }
 
     public CompletableFuture<JsonElement> getSessionInfo(String sessionId, String cwd) {
@@ -308,6 +396,40 @@ public class OpenCodeSDKBridge {
         JsonObject params = new JsonObject();
         params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.getMcpStatus", params);
+    }
+
+    public CompletableFuture<JsonElement> listSessions(String cwd, int limit) {
+        JsonObject params = new JsonObject();
+        params.addProperty("directory", cwd != null ? cwd : "");
+        if (limit > 0) {
+            params.addProperty("limit", limit);
+        }
+        return requestJson("opencode.listSessions", params);
+    }
+
+    public CompletableFuture<JsonElement> deleteSession(String sessionId, String cwd) {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", sessionId != null ? sessionId : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
+        return requestJson("opencode.deleteSession", params);
+    }
+
+    public CompletableFuture<JsonElement> updateSessionTitle(String sessionId, String title, String cwd) {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", sessionId != null ? sessionId : "");
+        params.addProperty("title", title != null ? title : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
+        return requestJson("opencode.updateSessionTitle", params);
+    }
+
+    public CompletableFuture<JsonElement> toggleFavorite(String sessionId, Boolean isFavorited, String cwd) {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", sessionId != null ? sessionId : "");
+        if (isFavorited != null) {
+            params.addProperty("isFavorited", isFavorited);
+        }
+        params.addProperty("directory", cwd != null ? cwd : "");
+        return requestJson("opencode.toggleFavorite", params);
     }
 
     public CompletableFuture<Boolean> replyPermission(String sessionId, String requestId, String reply, String message, String directory) {

@@ -99,14 +99,20 @@ export function setupAgentsCallback() {
       let agents: AgentItem[] = [];
 
       if (Array.isArray(parsed)) {
-        agents = parsed.map((agent: AgentConfig) => ({
-          id: agent.id,
-          name: agent.name,
-          prompt: agent.prompt,
-          mode: agent.mode,
-          hidden: agent.hidden,
-          description: agent.description,
-        }));
+        agents = parsed
+          .map((agent: Partial<AgentConfig>) => {
+            const name = agent.name || agent.id || '';
+            const id = agent.id || name;
+            return {
+              id,
+              name,
+              prompt: agent.prompt,
+              mode: agent.mode,
+              hidden: agent.hidden,
+              description: agent.description,
+            };
+          })
+          .filter(a => a.name !== '');
       }
 
       cachedAgents = agents;
@@ -297,8 +303,8 @@ export function getPrimaryAgentsSync(query = '', includeFallback = true): AgentI
 }
 
 /**
- * Synchronously return subagents (mode==='subagent' && !hidden) from the cache.
- * Used by the @ mention dropdown. Returns [] until agents have loaded.
+ * Synchronously return subagents (mode === 'subagent' && !hidden) from the cache.
+ * Used by the @ mention dropdown.
  */
 export function getSubagentsSync(query = ''): AgentItem[] {
   const subs = cachedAgents.filter(
@@ -324,9 +330,7 @@ export function ensureAgentsLoaded(): void {
 }
 
 /**
- * Provider for the @ mention dropdown: returns subagents only (no create-new /
- * empty-state noise). Falls back to [] if agents failed to load — the file
- * portion of the @ dropdown still works independently.
+ * Provider for the @ mention dropdown: returns subagents only (mode === 'subagent').
  */
 export async function subagentMentionProvider(
   query: string,
@@ -345,7 +349,7 @@ export async function subagentMentionProvider(
     requestRefresh();
   }
 
-  if (loadingState !== 'success') {
+  if (loadingState !== 'success' && cachedAgents.length === 0) {
     await waitForAgents(signal, LOADING_TIMEOUT).catch(() => {});
   }
 
@@ -359,14 +363,13 @@ export async function subagentMentionProvider(
 }
 
 /**
- * Inline SVG robot icon (16x16, currentColor). Codicon font glyphs sit on the
- * text baseline and render ~1px higher than the file list's inline SVG icons;
- * using an SVG here routes through the exact same 16x16 flex-centered box as
- * file icons, so subagent and file icons align perfectly.
+ * Inline SVG AI Agent / Sparkle icon (16x16, purple accent).
+ * Represents autonomous subagents with a modern, crisp AI glyph.
  */
 const SUBAGENT_SVG_ICON =
-  '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M8 1a.72.72 0 0 1 .72.72V2.5h2.53A2.25 2.25 0 0 1 13.5 4.75v5a2.25 2.25 0 0 1-2.25 2.25h-.5v1.28a.72.72 0 0 1-1.44 0V12H6.69v1.28a.72.72 0 0 1-1.44 0V12h-.5A2.25 2.25 0 0 1 2.5 9.75v-5A2.25 2.25 0 0 1 4.75 2.5h2.53v-.78A.72.72 0 0 1 8 1zM4.75 3.94a.81.81 0 0 0-.81.81v5c0 .45.36.81.81.81h6.5c.45 0 .81-.36.81-.81v-5a.81.81 0 0 0-.81-.81h-6.5zM5.6 6.1a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8zm4.8 0a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8zM7 7h2v1.4H7V7z"/>' +
+  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M7 1.5C7 4.54 4.54 7 1.5 7C4.54 7 7 9.46 7 12.5C7 9.46 9.46 7 12.5 7C9.46 7 7 4.54 7 1.5Z" fill="#9d7cd8"/>' +
+  '<path d="M12 1.5C12 2.88 10.88 4 9.5 4C10.88 4 12 5.12 12 6.5C12 5.12 13.12 4 14.5 4C13.12 4 12 2.88 12 1.5Z" fill="#c0a7f5"/>' +
   '</svg>';
 
 /**

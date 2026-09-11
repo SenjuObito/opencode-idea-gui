@@ -75,6 +75,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
             case "question_request" -> handleQuestionRequest(content);
             case "question_closed" -> handleQuestionClosed(content);
             case "todo_updated" -> handleTodoUpdated(content);
+            case "session_title" -> handleSessionTitle(content);
             case "revert_state" -> handleRevertState(content);
             case "session_compact_result" -> handleSessionCompactResult(content);
             default -> LOG.debug("OpenCodeMessageHandler: Unhandled message type: " + type);
@@ -122,58 +123,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
         }
 
         resetStreamingAccumulator();
-        recordSessionInHistoryIndex();
         callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
-    }
-
-    /**
-     * Record/update this session in the plugin-side history index so the
-     * history view can list sessions without an opencode session-list command.
-     */
-    private void recordSessionInHistoryIndex() {
-        String sessionId = state.getSessionId();
-        if (sessionId == null || sessionId.isBlank()) {
-            return;
-        }
-        try {
-            List<Message> messages = state.getMessages();
-            String title = null;
-            long firstTimestamp = 0;
-            for (Message message : messages) {
-                if (message.type == Message.Type.USER) {
-                    title = truncateTitle(message.content);
-                    firstTimestamp = message.timestamp;
-                    break;
-                }
-            }
-            long lastTimestamp = 0;
-            for (Message message : messages) {
-                if (message.timestamp > lastTimestamp) {
-                    lastTimestamp = message.timestamp;
-                }
-            }
-            com.opencodebuddy.cache.OpenCodeSessionIndex.getInstance().upsert(
-                    sessionId,
-                    title,
-                    state.getModel(),
-                    state.getCwd(),
-                    firstTimestamp,
-                    lastTimestamp > 0 ? lastTimestamp : state.getLastModifiedTime(),
-                    messages.size());
-        } catch (Exception e) {
-            LOG.debug("Failed to record session in history index: " + e.getMessage());
-        }
-    }
-
-    private static String truncateTitle(String content) {
-        if (content == null) {
-            return null;
-        }
-        String singleLine = content.replaceAll("\\s+", " ").trim();
-        if (singleLine.isEmpty()) {
-            return null;
-        }
-        return singleLine.length() <= 80 ? singleLine : singleLine.substring(0, 80);
     }
 
     // ===== Message events =====
@@ -404,6 +354,22 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
     private void handleTodoUpdated(String jsonContent) {
         callbackHandler.notifyTaskEvent(jsonContent);
+    }
+
+    private void handleSessionTitle(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        try {
+            JsonObject obj = com.google.gson.JsonParser.parseString(jsonContent).getAsJsonObject();
+            String sessionId = stringOrNull(obj, "sessionId");
+            String title = stringOrNull(obj, "title");
+            if (sessionId != null && !sessionId.isBlank() && title != null && !title.isBlank()) {
+                callbackHandler.notifySessionTitleReceived(sessionId, title);
+            }
+        } catch (Exception e) {
+            LOG.warn("OpenCodeMessageHandler: Failed to parse session_title payload: " + jsonContent, e);
+        }
     }
 
     private void handleRevertState(String jsonContent) {

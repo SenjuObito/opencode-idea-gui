@@ -311,7 +311,11 @@ export function useMessageSender({
   /**
    * Execute message sending (from queue or directly)
    */
-  const executeMessage = useCallback((content: string, attachments?: Attachment[]) => {
+  const executeMessage = useCallback((
+    content: string,
+    attachments?: Attachment[],
+    fileTags?: { displayPath: string; absolutePath: string }[],
+  ) => {
     // Expand inline quote chips (tokens) into their full Markdown blockquotes.
     const text = expandQuoteTokens(content).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
@@ -378,9 +382,11 @@ export function useMessageSender({
 
     // Build agent info
 
-    // Extract file tag info
-    const fileTags = chatInputRef.current?.getFileTags() ?? [];
-    const fileTagsInfo = fileTags.length > 0 ? fileTags.map(tag => ({
+    // Extract file tag info: prefer directly passed fileTags from submit, fallback to ref
+    const resolvedFileTags = (fileTags && fileTags.length > 0)
+      ? fileTags
+      : (chatInputRef.current?.getFileTags() ?? []);
+    const fileTagsInfo = resolvedFileTags.length > 0 ? resolvedFileTags.map(tag => ({
       displayPath: tag.displayPath,
       absolutePath: tag.absolutePath,
     })) : null;
@@ -401,7 +407,11 @@ export function useMessageSender({
   /**
    * Handle message submission (from ChatInputBox)
    */
-  const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
+  const handleSubmit = useCallback((
+    content: string,
+    attachments?: Attachment[],
+    fileTags?: { displayPath: string; absolutePath: string }[],
+  ) => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
 
@@ -420,7 +430,7 @@ export function useMessageSender({
     if (checkUnimplementedCommand(text)) return;
 
     // Execute message
-    executeMessage(content, attachments);
+    executeMessage(content, attachments, fileTags);
   }, [checkNewSessionCommand, checkLocalCommand, checkContextCommand, checkUnimplementedCommand, executeMessage]);
 
   /**

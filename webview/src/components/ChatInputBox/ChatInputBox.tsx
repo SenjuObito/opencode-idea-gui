@@ -421,6 +421,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
 
     const handleSubmit = useSubmitHandler({
       getTextContent,
+      extractFileTags,
+      cancelTagRendering,
       invalidateCache,
       attachments,
       isLoading,

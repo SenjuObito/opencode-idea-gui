@@ -187,6 +187,37 @@ public class SessionHandler extends BaseMessageHandler {
         final String finalRequestedCodexFastMode = requestedCodexFastMode;
         final String finalRequestedDshPreset = requestedDshPreset;
 
+        if (finalPrompt != null && finalPrompt.startsWith("!") && finalPrompt.trim().length() > 1) {
+            String command = finalPrompt.substring(1).trim();
+            CompletableFuture.runAsync(() -> {
+                String currentWorkingDir = determineWorkingDirectory();
+                String previousCwd = context.getSession().getCwd();
+
+                if (!currentWorkingDir.equals(previousCwd)) {
+                    context.getSession().setCwd(currentWorkingDir);
+                    LOG.info("[SessionHandler] Updated working directory: " + currentWorkingDir);
+                }
+
+                var project = context.getProject();
+                if (project != null) {
+                    ClaudeNotifier.setWaiting(project);
+                }
+
+                context.getSession().sendShell(command)
+                        .exceptionally(ex -> {
+                            LOG.error("Failed to execute shell command", ex);
+                            if (project != null) {
+                                ClaudeNotifier.showError(project, "Shell failed: " + ex.getMessage());
+                            }
+                            ApplicationManager.getApplication().invokeLater(() -> {
+                                callJavaScript("addErrorMessage", escapeJs("Shell 执行失败: " + ex.getMessage()));
+                            });
+                            return null;
+                        });
+            });
+            return;
+        }
+
         CompletableFuture.runAsync(() -> {
             String currentWorkingDir = determineWorkingDirectory();
             String previousCwd = context.getSession().getCwd();

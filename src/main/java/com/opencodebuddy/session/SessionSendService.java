@@ -230,20 +230,54 @@ public class SessionSendService {
         ).thenApply(result -> null);
     }
 
+    public CompletableFuture<Void> sendShellToOpenCode(String channelId, String command) {
+        OpenCodeMessageHandler handler = new OpenCodeMessageHandler(
+                state,
+                callbackFacade.getCallbackHandler()
+        );
+
+        String modelForSend = normalizeModelForSend(state.getModel());
+        String effectivePermissionMode = resolveEffectivePermissionMode(
+                normalizeRequestedPermissionMode(null),
+                state.getPermissionMode()
+        );
+        String agentForSend = normalizeAgentForSend(effectivePermissionMode);
+
+        LOG.info("[Lifecycle] sendShellToOpenCode channelId=" + channelId
+                + " sessionId=" + (state.getSessionId() != null ? state.getSessionId() : "(new)")
+                + ", cwd=" + state.getCwd()
+                + ", model=" + (modelForSend != null ? modelForSend : "(config-default)")
+                + ", agent=" + (agentForSend != null ? agentForSend : "build")
+                + ", command=" + command);
+
+        return bridge.shell(
+                state.getSessionId(),
+                state.getCwd(),
+                command,
+                modelForSend != null ? modelForSend : "",
+                agentForSend != null ? agentForSend : "build",
+                handler
+        ).thenApply(result -> null);
+    }
+
     /**
-     * "/name args..." → [name, args], or null when the input is not a command.
+     * "/name args..." → [name, args], or null when the input is not a recognized command.
      */
     static String[] parseSlashCommand(String text) {
         if (text == null) {
             return null;
         }
         java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("^/(\\S+)(?:\\s+([\\s\\S]*))?$")
+                .compile("^/([a-zA-Z0-9_-]+)(?:\\s+([\\s\\S]*))?$")
                 .matcher(text.trim());
         if (!m.matches() || m.group(1) == null || m.group(1).isEmpty()) {
             return null;
         }
-        return new String[]{m.group(1), m.group(2) != null ? m.group(2).trim() : ""};
+        String commandName = m.group(1);
+        if (!KnownCommands.isKnownSlashCommand(commandName)) {
+            return null;
+        }
+        return new String[]{commandName, m.group(2) != null ? m.group(2).trim() : ""};
     }
 
     /**

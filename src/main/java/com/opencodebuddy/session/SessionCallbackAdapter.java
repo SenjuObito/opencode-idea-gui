@@ -155,6 +155,20 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
     }
 
     @Override
+    public void onSessionTitleReceived(String sessionId, String title) {
+        if (isInactive() || sessionId == null || title == null) {
+            return;
+        }
+        LOG.info("Session Title update: " + sessionId + " -> " + title);
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            jsTarget.callJavaScript("updateSessionTitle", JsUtils.escapeJs(sessionId), JsUtils.escapeJs(title));
+        });
+    }
+
+    @Override
     public void onPermissionRequested(PermissionRequest request) {
         if (isInactive()) {
             return;

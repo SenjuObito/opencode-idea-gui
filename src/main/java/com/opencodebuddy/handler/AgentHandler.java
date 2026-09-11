@@ -15,6 +15,7 @@ import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.LocalFileSystem;
+import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 
 import java.awt.*;
 import java.io.File;
@@ -98,6 +99,48 @@ public class AgentHandler extends BaseMessageHandler {
      * Get all agents.
      */
     private void handleGetAgents() {
+        OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+        if (bridge != null && bridge.isDaemonAlive()) {
+            String cwd = context.resolveEffectiveWorkingDirectory();
+            bridge.listAgents(cwd).thenAccept(json -> {
+                try {
+                    JsonArray resultAgents = new JsonArray();
+                    if (json != null && json.isJsonObject()) {
+                        JsonObject obj = json.getAsJsonObject();
+                        if (obj.has("agents") && obj.get("agents").isJsonArray()) {
+                            resultAgents = obj.getAsJsonArray("agents");
+                        }
+                    }
+                    if (resultAgents.size() > 0) {
+                        for (int i = 0; i < resultAgents.size(); i++) {
+                            if (resultAgents.get(i).isJsonObject()) {
+                                JsonObject a = resultAgents.get(i).getAsJsonObject();
+                                if (!a.has("id") && a.has("name")) {
+                                    a.addProperty("id", a.get("name").getAsString());
+                                }
+                            }
+                        }
+                        String agentsJson = gson.toJson(resultAgents);
+                        ApplicationManager.getApplication().invokeLater(() -> {
+                            callJavaScript("window.updateAgents", escapeJs(agentsJson));
+                        });
+                        return;
+                    }
+                } catch (Exception e) {
+                    LOG.warn("[AgentHandler] Failed to parse opencode agents: " + e.getMessage());
+                }
+                fallbackGetAgents();
+            }).exceptionally(ex -> {
+                LOG.warn("[AgentHandler] Bridge listAgents failed: " + ex.getMessage());
+                fallbackGetAgents();
+                return null;
+            });
+            return;
+        }
+        fallbackGetAgents();
+    }
+
+    private void fallbackGetAgents() {
         try {
             List<JsonObject> agents = settingsService.getAgents();
             String agentsJson = gson.toJson(agents);

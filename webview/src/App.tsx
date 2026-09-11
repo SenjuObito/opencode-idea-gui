@@ -749,7 +749,11 @@ const App = () => {
   }, [applyRevertState, resetShareState, currentSessionId, handleCancelCompact]);
 
   // handleSubmit with queue support (new session and local commands bypass loading check)
-  const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
+  const handleSubmit = useCallback((
+    content: string,
+    attachments?: Attachment[],
+    fileTags?: { displayPath: string; absolutePath: string }[],
+  ) => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     if (!text && !hasAttachments) return;
@@ -774,7 +778,7 @@ const App = () => {
       }
       // /context - handled locally even while loading
       if (CONTEXT_COMMANDS.has(command)) {
-        hookHandleSubmit(content, attachments);
+        hookHandleSubmit(content, attachments, fileTags);
         return;
       }
       // opencode builtin session commands (compact/undo/redo/fork/share/unshare)
@@ -792,7 +796,7 @@ const App = () => {
       enqueueMessage(content, attachments);
       return;
     }
-    hookHandleSubmit(content, attachments);
+    hookHandleSubmit(content, attachments, fileTags);
   }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──

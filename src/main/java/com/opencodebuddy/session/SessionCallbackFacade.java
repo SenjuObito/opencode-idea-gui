@@ -45,6 +45,10 @@ public class SessionCallbackFacade {
         callbackHandler.notifySessionIdReceived(sessionId);
     }
 
+    public void notifySessionTitleReceived(String sessionId, String title) {
+        callbackHandler.notifySessionTitleReceived(sessionId, title);
+    }
+
     public void notifyPermissionRequested(PermissionRequest request) {
         callbackHandler.notifyPermissionRequested(request);
     }

@@ -52,6 +52,15 @@ public class CallbackHandler {
     }
 
     /**
+     * Notify that a session title update was received.
+     */
+    public void notifySessionTitleReceived(String sessionId, String title) {
+        if (callback != null) {
+            callback.onSessionTitleReceived(sessionId, title);
+        }
+    }
+
+    /**
      * Notify of a permission request.
      */
     public void notifyPermissionRequested(PermissionRequest request) {

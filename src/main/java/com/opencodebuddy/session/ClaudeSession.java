@@ -147,6 +147,15 @@ public class ClaudeSession {
         }
 
         /**
+         * Called when a session title update is received from the backend/SDK.
+         *
+         * @param sessionId the target session ID
+         * @param title the updated session title
+         */
+        default void onSessionTitleReceived(String sessionId, String title) {
+        }
+
+        /**
          * Called when a Claude Code task_* SDK system event is received
          * (task_started / task_progress / task_notification).
          *
@@ -564,6 +573,31 @@ public class ClaudeSession {
                     )
             ).thenCompose(v -> syncUserMessageUuidsAfterSend());
         }).exceptionally(ex -> {
+            state.setError(ex.getMessage());
+            state.setBusy(false);
+            state.setLoading(false);
+            callbackFacade.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
+            return null;
+        });
+    }
+
+    /**
+     * Send a shell command in the session context (opencode `!` semantics).
+     */
+    public CompletableFuture<Void> sendShell(String command) {
+        lastTurnStartedAtMillis = System.currentTimeMillis();
+        manuallyInterrupted = false;
+        String normalizedCommand = (command != null) ? command.trim() : "";
+        if (normalizedCommand.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        Message userMessage = new Message(Message.Type.USER, "!" + normalizedCommand);
+        sendService.updateSessionStateForSend(userMessage, "!" + normalizedCommand);
+
+        return launchClaude().thenCompose(chId ->
+                sendService.sendShellToOpenCode(chId, normalizedCommand)
+        ).thenCompose(v -> syncUserMessageUuidsAfterSend()).exceptionally(ex -> {
             state.setError(ex.getMessage());
             state.setBusy(false);
             state.setLoading(false);

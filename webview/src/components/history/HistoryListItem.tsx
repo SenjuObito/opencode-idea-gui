@@ -195,7 +195,6 @@ export const HistoryListItem = memo(({
     onConvertToCliSession(session.sessionId);
   }, [onConvertToCliSession, session.sessionId]);
 
-  const fileSize = session.fileSize ? formatFileSize(session.fileSize) : null;
   const showEntrypointBadge = session.entrypoint && session.entrypoint !== 'cli' && session.entrypoint !== 'remote';
   // [TEMP] 下载会话按钮当前点击无响应，临时隐藏（handler / props / i18n 均保留）。详见 docs/KNOWN-ISSUES.md
   const showExportButton = false;
@@ -309,16 +308,8 @@ export const HistoryListItem = memo(({
         )}
       </div>
       <div className="history-item-meta">
-        <span>{t('history.messageCount', { count: session.messageCount })}</span>
-        {fileSize && (
-          <>
-            <span className="history-meta-dot">•</span>
-            <span className={fileSize.isMB ? 'history-filesize-large' : ''}>{fileSize.text}</span>
-          </>
-        )}
         {showEntrypointBadge && (
           <>
-            <span className="history-meta-dot">•</span>
             <span
               className={`history-entrypoint-badge history-entrypoint-${session.entrypoint}`}
               title={t(`history.entrypointTooltip.${session.entrypoint}`, { defaultValue: session.entrypoint })}
@@ -331,9 +322,9 @@ export const HistoryListItem = memo(({
               }`}></span>
               {t(`history.entrypointLabel.${session.entrypoint}`, { defaultValue: session.entrypoint })}
             </span>
+            <span className="history-meta-dot">•</span>
           </>
         )}
-        <span className="history-meta-dot">•</span>
         <div className="history-session-id-container">
           <span
             className="history-session-id"

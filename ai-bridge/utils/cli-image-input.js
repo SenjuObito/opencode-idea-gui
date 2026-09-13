@@ -442,22 +442,27 @@ export function resolveAttachmentMimeType(mediaTypeHint, dataUrlMime, fileName) 
  *
  * opencode server schema (packages/schema/src/v1/session.ts — FilePartInput):
  *   { id?, type: "file", mime: string, filename?: string, url: string, source? }
- * `url` accepts both `data:<mime>;base64,<payload>` and `file://<abs path>`.
+ * `url` accepts both `data:<mime>;base64,<payload>` (multimodal) and `file://<abs path>`.
+ *
+ * Text / code files are decoded to UTF-8 and returned in `textAttachments` to be
+ * inlined into prompt text, since downstream LLM APIs reject non-multimodal MIME
+ * types on media/image part endpoints.
  *
  * Nothing is dropped silently: every skipped attachment yields an entry in
  * `errors` so the caller can surface it.
  *
  * @param {CliAttachment[]} attachments
  * @param {{ maxBytes?: number }} [options]
- * @returns {{ parts: Array<{ type: 'file', mime: string, filename: string, url: string }>, errors: string[] }}
+ * @returns {{ parts: Array<{ type: 'file', mime: string, filename: string, url: string }>, textAttachments: Array<{ fileName: string, content: string, mime: string }>, errors: string[] }}
  */
 export function buildFileParts(attachments, options = {}) {
   const maxBytes = options.maxBytes ?? MAX_ATTACHMENT_BYTES;
   const parts = [];
+  const textAttachments = [];
   const errors = [];
 
   if (!Array.isArray(attachments) || attachments.length === 0) {
-    return { parts, errors };
+    return { parts, textAttachments, errors };
   }
 
   for (const att of attachments) {
@@ -535,15 +540,40 @@ export function buildFileParts(attachments, options = {}) {
       continue;
     }
 
-    parts.push({
-      type: 'file',
-      mime,
-      filename: label,
-      url: `data:${mime};base64,${buffer.toString('base64')}`,
-    });
+    if (isNativeMedia) {
+      parts.push({
+        type: 'file',
+        mime,
+        filename: label,
+        url: `data:${mime};base64,${buffer.toString('base64')}`,
+      });
+    } else {
+      const textContent = buffer.toString('utf8');
+      textAttachments.push({
+        fileName: label,
+        content: textContent,
+        mime,
+      });
+    }
   }
 
-  return { parts, errors };
+  return { parts, textAttachments, errors };
+}
+
+/**
+ * Formats inlined text attachments into a structured Markdown section for prompt injection.
+ *
+ * @param {Array<{ fileName: string, content: string, mime?: string }>} textAttachments
+ * @returns {string}
+ */
+export function formatInlinedAttachments(textAttachments) {
+  if (!Array.isArray(textAttachments) || textAttachments.length === 0) {
+    return '';
+  }
+  const blocks = textAttachments.map((att) => {
+    return `<attachment filename="${att.fileName}">\n${att.content}\n</attachment>`;
+  });
+  return '\n\n## Attached Files\n' + blocks.join('\n\n');
 }
 
 /**

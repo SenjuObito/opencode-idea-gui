@@ -9,7 +9,6 @@ import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -339,17 +338,17 @@ public class OpenCodeMessageHandler implements MessageCallback {
         } catch (Exception e) {
             LOG.warn("[OpenCode] permission closed parse failed: " + e.getMessage());
         }
+        callbackHandler.notifyPromptClosed("permission", jsonContent);
     }
 
     private void handleQuestionRequest(String jsonContent) {
         LOG.info("[OpenCode] question requested (webview dialog): " + jsonContent);
-        // Forward the raw normalized payload so the webview question dialog can
-        // render it once the webview side is wired (window.onQuestionRequested).
-        callbackHandler.notifyTaskEvent(jsonContent);
+        callbackHandler.notifyQuestionRequested(jsonContent);
     }
 
     private void handleQuestionClosed(String jsonContent) {
         LOG.info("[OpenCode] question closed: " + jsonContent);
+        callbackHandler.notifyPromptClosed("question", jsonContent);
     }
 
     private void handleTodoUpdated(String jsonContent) {
@@ -374,6 +373,22 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
     private void handleRevertState(String jsonContent) {
         LOG.debug("[OpenCode] revert state: " + jsonContent);
+        if (jsonContent == null || !jsonContent.startsWith("{")) {
+            return;
+        }
+        try {
+            JsonObject payload = com.google.gson.JsonParser.parseString(jsonContent).getAsJsonObject();
+            boolean hasRevert = payload.has("hasRevert") && payload.get("hasRevert").getAsBoolean();
+            if (hasRevert) {
+                state.setRevertState(new SessionState.RevertState(""));
+            } else {
+                state.setRevertState(null);
+            }
+            callbackHandler.notifyRevertStateUpdate(hasRevert);
+            callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
+        } catch (Exception e) {
+            LOG.warn("[OpenCode] Failed to parse revert_state: " + jsonContent, e);
+        }
     }
 
     private void handleSessionCompactResult(String jsonContent) {

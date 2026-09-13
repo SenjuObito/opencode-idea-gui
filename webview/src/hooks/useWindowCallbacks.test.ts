@@ -2414,5 +2414,66 @@ describe('useWindowCallbacks integration', () => {
 
       delete window.__pendingUpdateJson;
     });
+
+    it('correctly finalizes tool-only shell command turn without falsely denying toolId', () => {
+      const initialMessages: ClaudeMessage[] = [
+        { type: 'user', content: '!ls', timestamp: '2026-06-14T12:30:00.000Z' },
+        {
+          type: 'assistant',
+          content: '',
+          isStreaming: true,
+          __turnId: 40,
+          timestamp: '2026-06-14T12:30:01.000Z',
+        },
+      ];
+
+      const { opts, buffer } = createOptsWithMessages(initialMessages);
+      opts.isStreamingRef.current = true;
+      opts.streamingMessageIndexRef.current = 1;
+      opts.streamingTurnIdRef.current = 40;
+      opts.turnIdCounterRef.current = 40;
+
+      renderHook(() => useWindowCallbacks(opts));
+
+      // Backend pending snapshot containing empty-content assistant with tool_use raw AND tool_result user message
+      window.__pendingUpdateJson = JSON.stringify([
+        { type: 'user', content: '!ls' },
+        {
+          type: 'assistant',
+          content: '',
+          raw: {
+            message: {
+              content: [
+                { type: 'tool_use', id: 'shell-call-1', name: 'bash', input: { command: 'ls' } },
+              ],
+            },
+          },
+        },
+        {
+          type: 'user',
+          content: '[tool_result]',
+          raw: {
+            message: {
+              content: [
+                { type: 'tool_result', tool_use_id: 'shell-call-1', is_error: false, content: 'file1.txt\nfile2.txt' },
+              ],
+            },
+          },
+        },
+      ]);
+
+      act(() => {
+        window.onStreamEnd!('80');
+      });
+
+      const result = buffer.current;
+      expect(result.length).toBe(3);
+      expect(result[1].raw).toBeDefined();
+      expect(result[2].content).toBe('[tool_result]');
+      // shell-call-1 must NOT be marked as denied since its tool_result is resolved
+      expect(window.__deniedToolIds?.has('shell-call-1')).toBe(false);
+
+      delete window.__pendingUpdateJson;
+    });
   });
 });

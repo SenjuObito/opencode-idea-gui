@@ -20,6 +20,8 @@
  * Internal call sites that gate "should we bypass the dialog?" stay with the raw pair.
  */
 
+import { getUiPreferences, updateUiPreferences } from './uiPreferences';
+
 export const SKIP_NEW_SESSION_CONFIRM_KEY = 'skipNewSessionConfirm';
 export const SKIP_NEW_SESSION_CONFIRM_EVENT = 'skipNewSessionConfirmChanged';
 
@@ -33,27 +35,21 @@ export interface SkipNewSessionConfirmChangedDetail {
  */
 export function getSkipNewSessionConfirm(): boolean {
   try {
+    const fromPrefs = getUiPreferences().skipNewSessionConfirm;
+    if (fromPrefs) return true;
     return localStorage.getItem(SKIP_NEW_SESSION_CONFIRM_KEY) === 'true';
   } catch {
-    // localStorage can throw in some sandboxed contexts; fall back to safest default.
     return false;
   }
 }
 
 /**
  * Persist the preference AND notify any listeners in the same tab.
- *
- * The native `storage` event only fires for cross-tab writes, so we dispatch a
- * CustomEvent for same-tab subscribers (settings page toggle, etc.).
- *
- * If the localStorage write fails (sandboxed iframe, quota exceeded, etc.), we
- * deliberately DO NOT dispatch the event — otherwise the UI would optimistically
- * update while the next page reload silently reverts, causing visible drift
- * between settings-page state and the actual dialog behaviour.
  */
 export function setSkipNewSessionConfirm(value: boolean): void {
   try {
     localStorage.setItem(SKIP_NEW_SESSION_CONFIRM_KEY, value ? 'true' : 'false');
+    updateUiPreferences({ skipNewSessionConfirm: value });
   } catch (error) {
     console.warn('[skipNewSessionConfirm] failed to persist:', error);
     return;

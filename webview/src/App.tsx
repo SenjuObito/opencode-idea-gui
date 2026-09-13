@@ -141,7 +141,7 @@ const App = () => {
   const {
     messagesContainerRef, messagesEndRef, inputAreaRef,
     isUserAtBottomRef, isAutoScrollingRef, userPausedRef, scrollToBottom,
-  } = useScrollBehavior({ currentView, messages, loading, streamingActive });
+  } = useScrollBehavior({ currentView, messages, loading, isCompacting, streamingActive });
 
   // ── Streaming messages ──
   const {
@@ -160,21 +160,19 @@ const App = () => {
     currentProvider, selectedModel, permissionMode,
     daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled,
     currentProviderRef,
-    activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
+    activeProviderConfig,
     reasoningEffort, sendShortcut, autoOpenFileEnabled,
-    longContextEnabled,
     usagePercentage, usageUsedTokens, usageMaxTokens,
     setPermissionMode, setCurrentProvider,
-    setClaudePermissionMode, setOpenCodePermissionMode,
-    setSelectedClaudeModel,
+    setOpenCodePermissionMode,
     setSelectedOpenCodeModel,
-    setLongContextEnabled, setReasoningEffort,
+    setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     handleModeSelect, handleModelSelect,
     handleReasoningChange, handleToggleThinking,
     handleSendShortcutChange,
-    handleAutoOpenFileEnabledChange, handleLongContextChange,
+    handleAutoOpenFileEnabledChange,
   } = useModelProviderState({ addToast, t });
 
   // ── Global drag event interception ──
@@ -575,6 +573,9 @@ const App = () => {
       setIsCompacting(false);
       setCompactingStartTime(null);
       setMessages((prev) => [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)]);
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
     };
     return () => {
       delete window.onForkSuccess;
@@ -594,10 +595,10 @@ const App = () => {
     setMessages, setStatus, setLoading, setLoadingStartTime,
     setIsThinking, setStreamingActive, setSessionLoading, setHistoryData,
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    setPermissionMode, setCurrentProvider, setClaudePermissionMode,
+    setPermissionMode, setCurrentProvider,
     setOpenCodePermissionMode,
-    setSelectedClaudeModel, setSelectedOpenCodeModel,
-    setLongContextEnabled, setReasoningEffort,
+    setSelectedOpenCodeModel,
+    setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setContextInfo,
     setSubagentHistories,
@@ -647,7 +648,6 @@ const App = () => {
     setCurrentView,
     forceCreateNewSession,
     handleModeSelect,
-    longContextEnabled,
     openContextUsageDialog,
     closeContextUsageDialog,
   });
@@ -673,13 +673,6 @@ const App = () => {
     setPendingRevert(null);
   }, []);
 
-  // ── Message queue ──
-  const {
-    queue: messageQueue,
-    enqueue: enqueueMessage,
-    dequeue: dequeueMessage,
-  } = useMessageQueue({ isLoading: loading, isCompacting, onExecute: executeMessage });
-
   /**
    * 发送真实消息前消费 revert 边界。与 opencode 服务端语义一致：
    * prompt/command/shell/summarize 都会先执行 revert.cleanup——从边界消息起
@@ -687,8 +680,6 @@ const App = () => {
    * 占位条滞留、以及清除边界后被撤销的旧消息"复活"。
    */
   const consumeRevertBoundary = useCallback(() => {
-    // Use the ref to avoid a stale closure: this callback is invoked from the
-    // submit path where the `revertBoundaryId` state may not have caught up.
     const boundaryId = revertBoundaryIdRef.current;
     if (!hasRevertStateRef.current || !boundaryId) return;
     const idx = messages.findIndex((m) => getMessageId(m) === boundaryId);
@@ -704,9 +695,28 @@ const App = () => {
     sendBridgeEvent('compact_session');
     setIsCompacting(true);
     setCompactingStartTime(Date.now());
-  }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime]);
+    userPausedRef.current = false;
+    isUserAtBottomRef.current = true;
+    scrollToBottom();
+    requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+  }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime, scrollToBottom, userPausedRef, isUserAtBottomRef]);
   const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
-    useCompactConfirm(doCompact);
+    useCompactConfirm(doCompact, loading || isCompacting);
+
+  // "Don't ask again" checkbox state for the compact confirm dialog.
+  // Resets to unchecked every time the dialog re-opens.
+  const [skipCompactAgain, setSkipCompactAgain] = useState(false);
+  useEffect(() => {
+    if (showCompactConfirm) {
+      setSkipCompactAgain(false);
+    }
+  }, [showCompactConfirm]);
+
+  const handleConfirmCompactWithSkip = useCallback(() => {
+    handleCompactConfirmed(skipCompactAgain);
+  }, [handleCompactConfirmed, skipCompactAgain]);
 
   // Handle opencode builtin session commands typed as slash commands
   // (mirror the TUI: /compact /undo /redo /fork /share /unshare).
@@ -741,6 +751,26 @@ const App = () => {
     }
   }, [requestCompact, handleUndoMessage, handleRedoMessage, handleForkFull, handleShare, handleUnshare]);
 
+  // Execute from queue handler (dispatches builtin slash commands or sends message)
+  const executeFromQueue = useCallback((content: string, attachments?: Attachment[]) => {
+    const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    if (text.startsWith('/')) {
+      const command = text.split(/\s+/)[0].toLowerCase();
+      if (BUILTIN_SESSION_COMMANDS.has(command)) {
+        handleBuiltinCommand(command);
+        return;
+      }
+    }
+    executeMessage(content, attachments);
+  }, [handleBuiltinCommand, executeMessage]);
+
+  // ── Message queue ──
+  const {
+    queue: messageQueue,
+    enqueue: enqueueMessage,
+    dequeue: dequeueMessage,
+  } = useMessageQueue({ isLoading: loading, isCompacting, onExecute: executeFromQueue });
+
   // Reset revert / share / compact-confirm state on session switch
   useEffect(() => {
     applyRevertState(false);
@@ -757,7 +787,8 @@ const App = () => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     if (!text && !hasAttachments) return;
-    // Local commands work even while loading
+
+    // View-switching / session-reset commands bypass busy guard
     if (text.startsWith('/')) {
       const command = text.split(/\s+/)[0].toLowerCase();
       // New session commands
@@ -770,34 +801,39 @@ const App = () => {
         setCurrentView('history');
         return;
       }
+    }
+
+    // If loading or compacting, all other messages / commands enter the FIFO queue
+    if (loading || isCompacting) {
+      enqueueMessage(content, attachments);
+      return;
+    }
+
+    // Local commands when idle
+    if (text.startsWith('/')) {
+      const command = text.split(/\s+/)[0].toLowerCase();
       // /plan - switch to plan mode (opencode has a native plan agent)
       if (PLAN_COMMANDS.has(command)) {
         handleModeSelect('plan');
         addToast(t('chat.planModeEnabled', { defaultValue: 'Plan mode enabled' }), 'info');
         return;
       }
-      // /context - handled locally even while loading
+      // /context - handled locally
       if (CONTEXT_COMMANDS.has(command)) {
         hookHandleSubmit(content, attachments, fileTags);
         return;
       }
       // opencode builtin session commands (compact/undo/redo/fork/share/unshare)
       if (BUILTIN_SESSION_COMMANDS.has(command)) {
-        // /compact 在用户确认后才发送，revert 边界在确认时（doCompact）消费；
-        // 其余（undo/redo/fork/share）是纯客户端操作，不影响服务端 revert 状态。
         handleBuiltinCommand(command);
         return;
       }
     }
+
     // 普通消息 / 队列消息 / !shell —— 服务端 prompt 前都会 cleanup revert
     consumeRevertBoundary();
-    // If loading or compacting, add to queue
-    if (loading || isCompacting) {
-      enqueueMessage(content, attachments);
-      return;
-    }
     hookHandleSubmit(content, attachments, fileTags);
-  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
+  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
@@ -925,11 +961,9 @@ const App = () => {
               daemonStatusLoaded={daemonStatusLoaded}
               retryDaemonStatus={retryDaemonStatus}
               activeProviderConfig={activeProviderConfig}
-              claudeSettingsAlwaysThinkingEnabled={claudeSettingsAlwaysThinkingEnabled}
               reasoningEffort={reasoningEffort}
               sendShortcut={sendShortcut}
               autoOpenFileEnabled={autoOpenFileEnabled}
-              longContextEnabled={longContextEnabled}
               usagePercentage={usagePercentage}
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
@@ -938,8 +972,7 @@ const App = () => {
               onReasoningChange={handleReasoningChange}
               onToggleThinking={handleToggleThinking}
               onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
-               onLongContextChange={handleLongContextChange}
-               messageQueue={messageQueue}
+              messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
             />
           </div>
@@ -990,9 +1023,18 @@ const App = () => {
         message={t('chat.compactConfirmMessage')}
         confirmText={t('chat.compactConfirmAction')}
         cancelText={t('common.cancel')}
-        onConfirm={handleCompactConfirmed}
+        onConfirm={handleConfirmCompactWithSkip}
         onCancel={handleCancelCompact}
-      />
+      >
+        <label className="confirm-dialog-dont-ask-again">
+          <input
+            type="checkbox"
+            checked={skipCompactAgain}
+            onChange={(e) => setSkipCompactAgain(e.target.checked)}
+          />
+          <span>{t('common.dontAskAgain')}</span>
+        </label>
+      </ConfirmDialog>
     </>
   );
 };

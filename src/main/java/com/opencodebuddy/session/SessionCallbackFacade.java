@@ -92,4 +92,20 @@ public class SessionCallbackFacade {
     public void notifyUserMessageUuidPatched(String content, String uuid) {
         callbackHandler.notifyUserMessageUuidPatched(content, uuid);
     }
+
+    public void notifyQuestionRequested(String jsonContent) {
+        callbackHandler.notifyQuestionRequested(jsonContent);
+    }
+
+    public void notifyPromptClosed(String kind, String jsonContent) {
+        callbackHandler.notifyPromptClosed(kind, jsonContent);
+    }
+
+    public void notifyRevertStateUpdate(boolean hasRevert, String messageId) {
+        callbackHandler.notifyRevertStateUpdate(hasRevert, messageId);
+    }
+
+    public void notifyRevertStateUpdate(boolean hasRevert) {
+        callbackHandler.notifyRevertStateUpdate(hasRevert);
+    }
 }

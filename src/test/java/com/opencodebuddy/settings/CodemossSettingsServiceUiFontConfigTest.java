@@ -150,7 +150,7 @@ public class CodemossSettingsServiceUiFontConfigTest {
             originalHomeDir = getCachedHomeDirectory();
         }
         setCachedHomeDirectory(tempHome.toString());
-        Files.createDirectories(tempHome.resolve(".codemoss"));
+        Files.createDirectories(tempHome.resolve(".opencodebuddy"));
     }
 
     private String getCachedHomeDirectory() throws Exception {

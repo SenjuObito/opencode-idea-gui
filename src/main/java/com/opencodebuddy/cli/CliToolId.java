@@ -4,12 +4,7 @@ package com.opencodebuddy.cli;
  * Supported headless CLI tools shown in Settings → Provider Management → CLI.
  */
 public enum CliToolId {
-    GROK("grok", "Grok CLI", "grok"),
-    KIMI("kimi", "Kimi CLI", "kimi"),
-    OPENCODE("opencode", "OpenCode", "opencode"),
-    PI("pi", "PI CLI", "pi"),
-    OMP("omp", "OMP CLI", "omp"),
-    DSH("dsh", "DeepSeek Harness", "dsh");
+    OPENCODE("opencode", "OpenCode", "opencode");
 
     private final String id;
     private final String displayName;

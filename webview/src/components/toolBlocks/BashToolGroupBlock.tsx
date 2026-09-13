@@ -64,8 +64,9 @@ function parseBashItem(
   }
 
   const isDenied = toolId ? (deniedToolIds?.has(toolId) ?? false) : false;
-  const isCompleted = (result !== undefined && result !== null) || isDenied;
-  const isError = isDenied || (isCompleted && result?.is_error === true);
+  const hasResult = result !== undefined && result !== null;
+  const isCompleted = hasResult || isDenied;
+  const isError = hasResult ? result.is_error === true : isDenied;
 
   return {
     command,

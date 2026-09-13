@@ -140,6 +140,15 @@ public class SessionState {
     // Slash commands — volatile for cross-thread visibility (same reason as permissionMode/model/provider)
     private volatile List<String> slashCommands = new ArrayList<>();
 
+    // Revert state — records whether the session is currently reverted to a specific message
+    public static class RevertState {
+        public final String messageId;
+        public RevertState(String messageId) {
+            this.messageId = messageId != null ? messageId : "";
+        }
+    }
+    private volatile RevertState revertState = null;
+
     // PSI context collection toggle
     private boolean psiContextEnabled = true;
 
@@ -220,6 +229,14 @@ public class SessionState {
 
     public boolean isPsiContextEnabled() {
         return psiContextEnabled;
+    }
+
+    public RevertState getRevertState() {
+        return revertState;
+    }
+
+    public void setRevertState(RevertState revertState) {
+        this.revertState = revertState;
     }
 
     // Setters

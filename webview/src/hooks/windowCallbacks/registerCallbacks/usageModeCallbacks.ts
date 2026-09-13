@@ -9,11 +9,6 @@
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
-import {
-  has1MContextSuffix,
-  normalizeClaudeModelId,
-  strip1MContextSuffix,
-} from '../../../components/ChatInputBox/types';
 import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBootstrap';
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
 
@@ -24,11 +19,8 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     setUsageMaxTokens,
     setPermissionMode,
     setCurrentProvider,
-    setClaudePermissionMode,
     setOpenCodePermissionMode,
-    setSelectedClaudeModel,
     setSelectedOpenCodeModel,
-    setLongContextEnabled,
     setReasoningEffort,
     setSendShortcut,
     setAutoOpenFileEnabled,
@@ -75,16 +67,11 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     window.onUsageUpdate(pending);
   }
 
-  const updateMode = (mode?: PermissionMode, providerOverride?: string) => {
-    const activeProvider = providerOverride || currentProviderRef.current;
+  const updateMode = (mode?: PermissionMode) => {
     if (typeof mode === 'string' && mode.length > 0) {
       const nextMode: PermissionMode = mode;
       setPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
-      if (activeProvider === 'opencode') {
-        setOpenCodePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
-      } else {
-        setClaudePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
-      }
+      setOpenCodePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
     }
   };
 
@@ -92,20 +79,11 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   window.onModeReceived = (mode) => updateMode(mode as PermissionMode);
 
   window.onModelChanged = (modelId) => {
-    const provider = currentProviderRef.current;
-    if (provider === 'claude') {
-      setSelectedClaudeModel(normalizeClaudeModelId(modelId));
-    } else if (provider === 'opencode') {
-      setSelectedOpenCodeModel(modelId);
-    }
+    setSelectedOpenCodeModel(modelId);
   };
 
-  window.onModelConfirmed = (modelId, provider) => {
-    if (provider === 'claude') {
-      setSelectedClaudeModel(normalizeClaudeModelId(modelId));
-    } else if (provider === 'opencode') {
-      setSelectedOpenCodeModel(modelId);
-    }
+  window.onModelConfirmed = (modelId) => {
+    setSelectedOpenCodeModel(modelId);
   };
 
   window.onSessionStateRestored = (json: string) => {
@@ -140,28 +118,16 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   window.applyBackendTabState = (json: string) => {
     try {
       const state = JSON.parse(json) as Record<string, unknown>;
-      const rawProvider = state.provider;
-      if (rawProvider !== 'claude' && rawProvider !== 'codex' && rawProvider !== 'opencode') {
-        throw new Error('invalid provider');
-      }
-      // opencode-only fork: a persisted 'codex' tab falls back to opencode.
-      const provider = rawProvider === 'codex' ? 'opencode' : rawProvider;
+      const provider = 'opencode';
 
-      // This is Java -> UI recovery state, not a user selection. Update the
-      // synchronous ref and React state without emitting set_provider/set_model.
       currentProviderRef.current = provider;
       setCurrentProvider(provider);
 
       if (typeof state.model === 'string' && state.model.length > 0) {
-        if (provider === 'claude') {
-          setSelectedClaudeModel(normalizeClaudeModelId(strip1MContextSuffix(state.model)));
-          setLongContextEnabled(has1MContextSuffix(state.model));
-        } else {
-          setSelectedOpenCodeModel(state.model);
-        }
+        setSelectedOpenCodeModel(state.model);
       }
 
-      updateMode(state.permissionMode as PermissionMode | undefined, provider);
+      updateMode(state.permissionMode as PermissionMode | undefined);
 
       const reasoningValues: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
       if (reasoningValues.includes(state.reasoningEffort as ReasoningEffort)) {

@@ -5,15 +5,16 @@ import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.permission.PermissionService;
+import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.settings.CodemossSettingsService;
 import com.opencodebuddy.util.SoundNotificationService;
 import com.opencodebuddy.util.SystemNotificationService;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.project.Project;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
 import java.util.Map;
@@ -34,8 +35,25 @@ public class PermissionHandler extends BaseMessageHandler {
     private static final String[] SUPPORTED_TYPES = {
         "permission_decision",
         "ask_user_question_response",
+        "ask_user_question_reject",
         "plan_approval_response"
     };
+
+    private static class PendingQuestion {
+        final String sessionId;
+        final JsonArray questions;
+        final String toolName;
+        final String directory;
+
+        PendingQuestion(String sessionId, JsonArray questions, String toolName, String directory) {
+            this.sessionId = sessionId;
+            this.questions = questions;
+            this.toolName = toolName;
+            this.directory = directory;
+        }
+    }
+
+    private final Map<String, PendingQuestion> pendingQuestions = new ConcurrentHashMap<>();
 
     private static int payloadLength(String value) {
         return value == null ? 0 : value.length();
@@ -177,6 +195,11 @@ public class PermissionHandler extends BaseMessageHandler {
             LOG.debug("[ASK_USER_QUESTION][BRIDGE_RECV] payloadLength=" + payloadLength(content));
             handleAskUserQuestionResponse(content);
             return true;
+        } else if ("ask_user_question_reject".equals(type)) {
+            LOG.debug("[ASK_USER_QUESTION][BRIDGE_RECV] Received ask_user_question_reject from JS");
+            LOG.debug("[ASK_USER_QUESTION][BRIDGE_RECV] payloadLength=" + payloadLength(content));
+            handleAskUserQuestionReject(content);
+            return true;
         } else if ("plan_approval_response".equals(type)) {
             LOG.debug("[PLAN_APPROVAL][BRIDGE_RECV] Received plan_approval_response from JS");
             LOG.debug("[PLAN_APPROVAL][BRIDGE_RECV] payloadLength=" + payloadLength(content));
@@ -257,7 +280,9 @@ public class PermissionHandler extends BaseMessageHandler {
             requestData.addProperty("channelId", request.getChannelId());
             requestData.addProperty("toolName", request.getToolName());
 
-            JsonObject inputsJson = gson.toJsonTree(request.getInputs()).getAsJsonObject();
+            JsonObject inputsJson = request.getInputs() != null
+                    ? gson.toJsonTree(request.getInputs()).getAsJsonObject()
+                    : new JsonObject();
             requestData.add("inputs", inputsJson);
 
             if (request.getSuggestions() != null) {
@@ -267,45 +292,35 @@ public class PermissionHandler extends BaseMessageHandler {
             String requestJson = gson.toJson(requestData);
             String escapedJson = escapeJs(requestJson);
 
-            // Get the project associated with the permission request
-            Project targetProject = request.getProject();
-            if (targetProject == null) {
-                LOG.warn("[PermissionHandler] 警告: PermissionRequest 没有关联的 Project，使用当前 context 的窗口");
-                targetProject = this.context.getProject();
+            // Trigger permission reminder sound
+            try {
+                askUserQuestionSoundNotifier.play();
+            } catch (Exception ignored) {
             }
 
-            // Get the window instance for the target project
-            com.opencodebuddy.ui.toolwindow.ClaudeChatWindow targetWindow =
-                com.opencodebuddy.ui.toolwindow.ClaudeSDKToolWindow.getChatWindow(targetProject);
+            // Execute directly via context browser on EDT with retry loop
+            String jsCode = "(function retryShowPermission(retries) { " +
+                "  if (window.showPermissionDialog) { " +
+                "    window.showPermissionDialog('" + escapedJson + "'); " +
+                "  } else if (retries > 0) { " +
+                "    setTimeout(function() { retryShowPermission(retries - 1); }, 200); " +
+                "  } else { " +
+                "    console.error('[PermissionHandler][JS] FAILED: showPermissionDialog not available!'); " +
+                "  } " +
+                "})(30);";
 
-            if (targetWindow == null) {
-                LOG.error("[PermissionHandler] Error: cannot find window instance for project " + targetProject.getName());
-                // If target window is not found, deny the permission request
+            context.executeJavaScriptOnEDT(jsCode);
+
+        } catch (Exception e) {
+            LOG.error("[PermissionHandler] 显示权限弹窗失败: errorClass=" + errorClass(e), e);
+            if (this.context.getSession() != null) {
                 this.context.getSession().handlePermissionDecision(
                     request.getChannelId(),
                     false,
                     false,
-                    "Failed to show permission dialog: window not found"
+                    "Failed to show permission dialog"
                 );
-                notifyPermissionDenied();
-                return;
             }
-
-            // Execute JavaScript in the target window to show the dialog
-            String jsCode = "if (window.showPermissionDialog) { " +
-                "  window.showPermissionDialog('" + escapedJson + "'); " +
-                "}";
-
-            targetWindow.executeJavaScriptCode(jsCode);
-
-        } catch (Exception e) {
-            LOG.error("[PermissionHandler] 显示权限弹窗失败: errorClass=" + errorClass(e), e);
-            this.context.getSession().handlePermissionDecision(
-                request.getChannelId(),
-                false,
-                false,
-                "Failed to show permission dialog"
-            );
             notifyPermissionDenied();
         }
     }
@@ -385,6 +400,7 @@ public class PermissionHandler extends BaseMessageHandler {
 
         int permissionCount = pendingPermissionRequests.size();
         int askUserCount = pendingAskUserQuestionRequests.size();
+        int opencodeQuestionCount = pendingQuestions.size();
         int planCount = pendingPlanApprovalRequests.size();
 
         // Cancel all pending permission requests
@@ -398,6 +414,7 @@ public class PermissionHandler extends BaseMessageHandler {
             entry.getValue().complete(null);
         }
         pendingAskUserQuestionRequests.clear();
+        pendingQuestions.clear();
 
         // Cancel all pending PlanApproval requests
         for (Map.Entry<String, CompletableFuture<JsonObject>> entry : pendingPlanApprovalRequests.entrySet()) {
@@ -414,7 +431,7 @@ public class PermissionHandler extends BaseMessageHandler {
         if (permissionCount > 0) {
             forceCloseFrontendDialog("forceClosePermissionDialog", null);
         }
-        if (askUserCount > 0) {
+        if (askUserCount > 0 || opencodeQuestionCount > 0) {
             forceCloseFrontendDialog("forceCloseAskUserQuestionDialog", null);
         }
         if (planCount > 0) {
@@ -422,7 +439,117 @@ public class PermissionHandler extends BaseMessageHandler {
         }
 
         LOG.info("[PERM_CLEAR] Cleared: " + permissionCount + " permission, " +
-                 askUserCount + " askUser, " + planCount + " plan requests");
+                 (askUserCount + opencodeQuestionCount) + " askUser, " + planCount + " plan requests");
+    }
+
+    /**
+     * Show AskUserQuestion dialog (from OpenCode daemon/SSE).
+     */
+    public void onQuestionRequested(String jsonContent) {
+        LOG.info("[PermissionHandler] onQuestionRequested: " + jsonContent);
+        try {
+            Gson gson = new Gson();
+            JsonObject payload = gson.fromJson(jsonContent, JsonObject.class);
+            if (payload == null) {
+                return;
+            }
+            String requestId = stringOrNull(payload, "requestId");
+            if (requestId == null || requestId.isBlank()) {
+                requestId = stringOrNull(payload, "id");
+            }
+            if (requestId == null || requestId.isBlank()) {
+                requestId = "question-1";
+            }
+            String sessionId = stringOrNull(payload, "sessionId");
+            if (sessionId == null && context.getSession() != null) {
+                sessionId = context.getSession().getSessionId();
+            }
+            String toolName = stringOrNull(payload, "tool");
+            JsonArray questions = payload.has("questions") && payload.get("questions").isJsonArray()
+                    ? payload.getAsJsonArray("questions")
+                    : new JsonArray();
+            String directory = context.resolveEffectiveWorkingDirectory();
+
+            pendingQuestions.put(requestId, new PendingQuestion(sessionId, questions, toolName, directory));
+
+            // Trigger visual toast and sound reminders
+            try {
+                askUserQuestionVisualNotifier.remind();
+                askUserQuestionSoundNotifier.play();
+            } catch (Exception e) {
+                LOG.warn("[PermissionHandler] Failed to trigger question notification: " + e.getMessage());
+            }
+
+            JsonObject requestData = new JsonObject();
+            requestData.addProperty("requestId", requestId);
+            if (sessionId != null) {
+                requestData.addProperty("sessionId", sessionId);
+            }
+            if (toolName != null) {
+                requestData.addProperty("toolName", toolName);
+            }
+            requestData.add("questions", questions);
+
+            String requestJson = gson.toJson(requestData);
+            String escapedJson = escapeJs(requestJson);
+
+            String jsCode = "(function retryShowAskUserQuestion(retries) { " +
+                "  if (window.showAskUserQuestionDialog) { " +
+                "    window.showAskUserQuestionDialog('" + escapedJson + "'); " +
+                "  } else if (retries > 0) { " +
+                "    setTimeout(function() { retryShowAskUserQuestion(retries - 1); }, 200); " +
+                "  } else { " +
+                "    console.error('[PermissionHandler][JS] FAILED: showAskUserQuestionDialog not available!'); " +
+                "  } " +
+                "})(30);";
+
+            context.executeJavaScriptOnEDT(jsCode);
+        } catch (Exception e) {
+            LOG.error("[PermissionHandler] Failed to process onQuestionRequested: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Server resolved/aborted a pending prompt (turn aborted, timeout, etc.).
+     */
+    public void onPromptClosed(String kind, String jsonContent) {
+        LOG.info("[PermissionHandler] onPromptClosed: kind=" + kind + ", content=" + jsonContent);
+        try {
+            Gson gson = new Gson();
+            JsonObject payload = gson.fromJson(jsonContent, JsonObject.class);
+            if (payload == null) {
+                return;
+            }
+            if ("question".equals(kind)) {
+                String requestId = stringOrNull(payload, "requestId");
+                if (requestId == null) {
+                    requestId = stringOrNull(payload, "requestID");
+                }
+                if (requestId == null) {
+                    requestId = stringOrNull(payload, "id");
+                }
+                if (requestId != null && !requestId.isBlank()) {
+                    pendingQuestions.remove(requestId);
+                    forceCloseFrontendDialog("forceCloseAskUserQuestionDialog", requestId);
+                }
+            } else {
+                String permissionId = stringOrNull(payload, "permissionId");
+                if (permissionId == null) {
+                    permissionId = stringOrNull(payload, "permissionID");
+                }
+                if (permissionId == null) {
+                    permissionId = stringOrNull(payload, "requestID");
+                }
+                if (permissionId == null) {
+                    permissionId = stringOrNull(payload, "id");
+                }
+                if (permissionId != null && !permissionId.isBlank()) {
+                    forceCloseFrontendDialog("forceClosePermissionDialog", permissionId);
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("[PermissionHandler] onPromptClosed parse failed: " + e.getMessage());
+        }
     }
 
     /**
@@ -499,8 +626,11 @@ public class PermissionHandler extends BaseMessageHandler {
         try {
             Gson gson = new Gson();
             JsonObject response = gson.fromJson(jsonContent, JsonObject.class);
+            if (response == null) {
+                return;
+            }
 
-            String requestId = response.get("requestId").getAsString();
+            String requestId = stringOrNull(response, "requestId");
             JsonObject answers = response.has("answers") && !response.get("answers").isJsonNull()
                 ? response.get("answers").getAsJsonObject()
                 : new JsonObject();
@@ -510,12 +640,110 @@ public class PermissionHandler extends BaseMessageHandler {
             if (pendingFuture != null) {
                 LOG.debug("[ASK_USER_QUESTION][HANDLE_RESPONSE] Completing future with answerCount=" + answers.size());
                 pendingFuture.complete(answers);
-            } else {
+                return;
+            }
+
+            PendingQuestion pending = pendingQuestions.remove(requestId);
+            if (pending == null) {
                 LOG.warn("[ASK_USER_QUESTION][HANDLE_RESPONSE] No pending request found for requestId: " + requestId);
+                return;
+            }
+
+            // Emit complete Q&A data to webview
+            JsonObject onQAData = new JsonObject();
+            onQAData.addProperty("callId", pending.toolName != null ? pending.toolName : "");
+            onQAData.addProperty("requestId", requestId);
+            onQAData.add("questions", pending.questions);
+            onQAData.add("answers", answers);
+            context.executeJavaScriptOnEDT("if (window.onQuestionAnswered) { window.onQuestionAnswered('"
+                    + escapeJs(gson.toJson(onQAData)) + "'); }");
+
+            JsonArray orderedAnswers = buildOrderedAnswers(pending.questions, answers);
+
+            OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+            if (bridge != null) {
+                bridge.replyQuestion(pending.sessionId, requestId, orderedAnswers, pending.directory)
+                        .whenComplete((ok, error) -> {
+                            if (error != null || !Boolean.TRUE.equals(ok)) {
+                                String msg = error != null ? error.getMessage() : "daemon rejected";
+                                LOG.warn("[OpenCode] replyQuestion failed: id=" + requestId + " error=" + msg);
+                                context.executeJavaScriptOnEDT("if (window.showToast) { window.showToast('"
+                                        + escapeJs("回答提交失败: " + msg) + "'); }");
+                                forceCloseFrontendDialog("invalidateQuestionCard", requestId);
+                            }
+                        });
             }
         } catch (Exception e) {
             LOG.error("[ASK_USER_QUESTION][HANDLE_RESPONSE] ERROR: errorClass=" + errorClass(e), e);
         }
+    }
+
+    /**
+     * Handle AskUserQuestion reject/skip messages from JavaScript.
+     */
+    private void handleAskUserQuestionReject(String jsonContent) {
+        LOG.debug("[ASK_USER_QUESTION][HANDLE_REJECT] " + jsonContent);
+        try {
+            Gson gson = new Gson();
+            JsonObject response = gson.fromJson(jsonContent, JsonObject.class);
+            if (response == null) {
+                return;
+            }
+            String requestId = stringOrNull(response, "requestId");
+            PendingQuestion pending = pendingQuestions.remove(requestId);
+            if (pending == null) {
+                return;
+            }
+            OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+            if (bridge != null) {
+                bridge.rejectQuestion(pending.sessionId, requestId, pending.directory)
+                        .whenComplete((ok, error) -> {
+                            if (error != null || !Boolean.TRUE.equals(ok)) {
+                                String msg = error != null ? error.getMessage() : "daemon rejected";
+                                LOG.warn("[OpenCode] rejectQuestion failed: id=" + requestId + " error=" + msg);
+                            }
+                        });
+            }
+        } catch (Exception e) {
+            LOG.error("[ASK_USER_QUESTION][HANDLE_REJECT] ERROR: errorClass=" + errorClass(e), e);
+        }
+    }
+
+    private static JsonArray buildOrderedAnswers(JsonArray questions, JsonObject answers) {
+        JsonArray ordered = new JsonArray();
+        if (questions == null) {
+            return ordered;
+        }
+        for (int i = 0; i < questions.size(); i++) {
+            JsonArray itemAnswers = new JsonArray();
+            if (questions.get(i).isJsonObject()) {
+                JsonObject qObj = questions.get(i).getAsJsonObject();
+                String qText = qObj.has("question") && !qObj.get("question").isJsonNull()
+                        ? qObj.get("question").getAsString()
+                        : (qObj.has("text") && !qObj.get("text").isJsonNull() ? qObj.get("text").getAsString() : "");
+                if (answers != null && qText != null && answers.has(qText) && !answers.get(qText).isJsonNull()) {
+                    com.google.gson.JsonElement val = answers.get(qText);
+                    if (val.isJsonArray()) {
+                        for (com.google.gson.JsonElement v : val.getAsJsonArray()) {
+                            if (v.isJsonPrimitive()) {
+                                itemAnswers.add(v.getAsString());
+                            }
+                        }
+                    } else if (val.isJsonPrimitive()) {
+                        itemAnswers.add(val.getAsString());
+                    }
+                }
+            }
+            ordered.add(itemAnswers);
+        }
+        return ordered;
+    }
+
+    private static String stringOrNull(JsonObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
+            return null;
+        }
+        return obj.get(key).getAsString();
     }
 
     /**

@@ -109,8 +109,7 @@ public class PromptFileWatcher implements BulkFileListener {
      */
     private void reloadAndNotify(PromptScope scope) {
         try {
-            notifyProvider(scope, "claude");
-            notifyProvider(scope, "codex");
+            notifyProvider(scope, "opencode");
         } catch (Exception e) {
             LOG.error("[PromptFileWatcher] Failed to reload prompts for scope=" + scope.getValue(), e);
         }

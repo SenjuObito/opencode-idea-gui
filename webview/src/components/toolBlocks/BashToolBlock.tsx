@@ -31,9 +31,10 @@ const BashToolBlock = memo(function BashToolBlock({ input, result, toolId }: Bas
 
   // Determine tool call status based on result
   // If denied, treat as completed (show error state)
-  const isCompleted = (result !== undefined && result !== null) || isDenied;
-  // If denied, show as error state
-  const isError = isDenied || (isCompleted && result?.is_error === true);
+  const hasResult = result !== undefined && result !== null;
+  const isCompleted = hasResult || isDenied;
+  // If result is present, its is_error is authoritative; otherwise isDenied marks denied/interrupted state
+  const isError = hasResult ? result.is_error === true : isDenied;
 
   let output = '';
 

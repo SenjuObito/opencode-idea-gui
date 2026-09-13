@@ -1,6 +1,5 @@
 package com.opencodebuddy.session;
 
-import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.settings.CodemossSettingsService;
 import com.opencodebuddy.notifications.ClaudeNotifier;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
@@ -152,14 +151,6 @@ public class SessionSendService {
             resolvedMode = "default";
         }
         return resolvedMode;
-    }
-
-    public static String getCodexRuntimeAccessError(String accessMode) {
-        if (CodemossSettingsService.CODEX_RUNTIME_ACCESS_MANAGED.equals(accessMode)
-                || CodemossSettingsService.CODEX_RUNTIME_ACCESS_CLI_LOGIN.equals(accessMode)) {
-            return null;
-        }
-        return OpenCodeBuddyBundle.message("error.codexLocalAccessNotAuthorized");
     }
 
     private CompletableFuture<Void> sendToOpenCode(

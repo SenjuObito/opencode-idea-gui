@@ -169,6 +169,19 @@ public class ClaudeSession {
          */
         default void onTaskEvent(String eventJson) {
         }
+
+        default void onQuestionRequested(String jsonContent) {
+        }
+
+        default void onPromptClosed(String kind, String jsonContent) {
+        }
+
+        default void onRevertStateUpdate(boolean hasRevert, String messageId) {
+        }
+
+        default void onRevertStateUpdate(boolean hasRevert) {
+            onRevertStateUpdate(hasRevert, null);
+        }
     }
 
     public ClaudeSession(
@@ -885,5 +898,13 @@ public class ClaudeSession {
                                 + " error=" + (error != null ? error.getMessage() : "daemon rejected"));
                     }
                 });
+    }
+
+    public SessionState.RevertState getRevertState() {
+        return state.getRevertState();
+    }
+
+    public void setRevertState(SessionState.RevertState revertState) {
+        state.setRevertState(revertState);
     }
 }

@@ -54,10 +54,19 @@ public class UserTextSanitizerTest {
                 + "## Project Modules\n\n- mod-a\n\n"
                 + "## Active Terminal Session\n\n- Terminal: local\n\n"
                 + "## Referenced Files\n\n- f\n\n"
+                + "## Attached Files\n\n<attachment filename=\"a.txt\">\nhello\n</attachment>\n\n"
                 + "## IDE Context\n\nActive file: `x`\n\n"
                 + "## User's Current IDE Context\n\nviewing x\n\n"
                 + "## Agent Role and Instructions\n\nrole";
         assertEquals("t", UserTextSanitizer.sanitize(text));
+    }
+
+    @Test
+    public void stripsAttachedFilesSection() {
+        String text = "请分析附件\n\n"
+                + "## Attached Files\n\n"
+                + "<attachment filename=\".env\">\nFOO=BAR\n</attachment>";
+        assertEquals("请分析附件", UserTextSanitizer.sanitize(text));
     }
 
     @Test

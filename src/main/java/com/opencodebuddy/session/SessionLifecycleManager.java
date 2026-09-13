@@ -1,7 +1,6 @@
 package com.opencodebuddy.session;
 
 import com.opencodebuddy.bridge.NodeDetector;
-import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.model.SessionTemplate;
 import com.opencodebuddy.settings.CodemossSettingsService;
 import com.opencodebuddy.handler.UsagePushService;
@@ -9,6 +8,9 @@ import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.skill.SlashCommandRegistry;
 import com.opencodebuddy.util.JsUtils;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -16,6 +18,10 @@ import com.intellij.openapi.project.Project;
 import com.intellij.ui.jcef.JBCefBrowser;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -305,13 +311,30 @@ public class SessionLifecycleManager {
         StreamMessageCoalescer coalescer = host.getStreamCoalescer();
         if (coalescer == null) {
             host.callJavaScript("historyLoadComplete", String.valueOf(messageCount));
+            syncRevertState(loadedSession);
             return;
         }
         coalescer.flush(seq -> {
             if (!host.isDisposed()) {
                 host.callJavaScript("historyLoadComplete", String.valueOf(messageCount));
+                syncRevertState(loadedSession);
             }
         });
+    }
+
+    private void syncRevertState(ClaudeSession session) {
+        if (session == null) {
+            return;
+        }
+        SessionState.RevertState rs = session.getRevertState();
+        com.google.gson.JsonObject revertPayload = new com.google.gson.JsonObject();
+        revertPayload.addProperty("hasRevert", rs != null);
+        if (rs != null && rs.messageId != null && !rs.messageId.isBlank()) {
+            revertPayload.addProperty("messageId", rs.messageId);
+        } else {
+            revertPayload.add("messageId", com.google.gson.JsonNull.INSTANCE);
+        }
+        host.callJavaScript("onRevertStateUpdate", revertPayload.toString());
     }
 
     /**
@@ -344,8 +367,8 @@ public class SessionLifecycleManager {
     }
 
     /**
-     * Fetch slash commands using local registry (no SDK/API call needed).
-     * Merges built-in commands with skill-derived commands per provider.
+     * Fetches slash commands on startup or refresh.
+     * Merges built-in commands with local and dynamic OpenCode daemon commands.
      */
     public void fetchSlashCommandsOnStartup() {
         ClaudeSession currentSession = host.getSession();
@@ -354,16 +377,10 @@ public class SessionLifecycleManager {
             cwd = host.getProject().getBasePath();
         }
 
-        // Determine current provider
-        String provider = "opencode";
-        if (currentSession != null && currentSession.getProvider() != null) {
-            provider = currentSession.getProvider();
-        }
-
-        LOG.info("Fetching slash commands locally, provider=" + provider + ", cwd=" + cwd);
+        LOG.info("Fetching slash commands locally, cwd=" + cwd);
 
         String currentFilePath = getCurrentEditorFilePath();
-        var commands = SlashCommandRegistry.getCommands(provider, cwd, currentFilePath);
+        var commands = SlashCommandRegistry.getCommands(cwd, currentFilePath);
         String commandsJson = SlashCommandRegistry.toJson(commands);
 
         host.setFetchedSlashCommandsCount(commands.size());
@@ -377,6 +394,77 @@ public class SessionLifecycleManager {
                 LOG.warn("Failed to send slash commands to frontend: " + e.getMessage(), e);
             }
         });
+
+        // Asynchronously enhance with dynamic commands from OpenCode daemon (opencode.json, server commands, etc.)
+        if (host.getOpenCodeSDKBridge() != null) {
+            final String targetCwd = cwd;
+            final List<SlashCommandRegistry.SlashCommand> baselineCommands = new ArrayList<>(commands);
+            host.getOpenCodeSDKBridge().listCommands(targetCwd).thenAccept(jsonElement -> {
+                if (jsonElement == null) {
+                    return;
+                }
+                try {
+                    JsonArray rawCommands = null;
+                    if (jsonElement.isJsonObject()) {
+                        JsonObject obj = jsonElement.getAsJsonObject();
+                        if (obj.has("commands") && obj.get("commands").isJsonArray()) {
+                            rawCommands = obj.getAsJsonArray("commands");
+                        }
+                    } else if (jsonElement.isJsonArray()) {
+                        rawCommands = jsonElement.getAsJsonArray();
+                    }
+
+                    if (rawCommands != null && !rawCommands.isEmpty()) {
+                        Map<String, SlashCommandRegistry.SlashCommand> merged = new LinkedHashMap<>();
+                        for (SlashCommandRegistry.SlashCommand cmd : baselineCommands) {
+                            String key = cmd.name().trim().toLowerCase();
+                            if (!key.startsWith("/")) {
+                                key = "/" + key;
+                            }
+                            merged.put(key, cmd);
+                        }
+
+                        for (JsonElement item : rawCommands) {
+                            if (!item.isJsonObject()) {
+                                continue;
+                            }
+                            JsonObject cmdObj = item.getAsJsonObject();
+                            if (!cmdObj.has("name")) {
+                                continue;
+                            }
+                            String rawName = cmdObj.get("name").getAsString().trim();
+                            if (rawName.isEmpty()) {
+                                continue;
+                            }
+                            String label = rawName.startsWith("/") ? rawName : "/" + rawName;
+                            String key = label.toLowerCase();
+                            String desc = cmdObj.has("description") && !cmdObj.get("description").isJsonNull()
+                                    ? cmdObj.get("description").getAsString() : "";
+                            String source = cmdObj.has("source") && !cmdObj.get("source").isJsonNull()
+                                    ? cmdObj.get("source").getAsString() : "opencode";
+                            merged.put(key, new SlashCommandRegistry.SlashCommand(label, desc, source));
+                        }
+
+                        List<SlashCommandRegistry.SlashCommand> mergedList = new ArrayList<>(merged.values());
+                        String mergedJson = SlashCommandRegistry.toJson(mergedList);
+                        host.setFetchedSlashCommandsCount(mergedList.size());
+                        ApplicationManager.getApplication().invokeLater(() -> {
+                            try {
+                                host.callJavaScript("updateSlashCommands", JsUtils.escapeJs(mergedJson));
+                                LOG.info("Slash commands refreshed from OpenCode daemon: " + mergedList.size() + " commands");
+                            } catch (Exception e) {
+                                LOG.debug("Failed to send refreshed slash commands to frontend: " + e.getMessage());
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Failed to parse dynamic slash commands from OpenCode daemon: " + e.getMessage(), e);
+                }
+            }).exceptionally(ex -> {
+                LOG.debug("OpenCode daemon listCommands request not available or failed: " + ex.getMessage());
+                return null;
+            });
+        }
     }
 
     /**
@@ -442,7 +530,7 @@ public class SessionLifecycleManager {
             // subsequent message updates arrive.
             host.callJavaScript("historyLoadComplete");
             host.callJavaScript("updateStatus",
-                    JsUtils.escapeJs(OpenCodeBuddyBundle.message("toast.newSessionCreatedReady")));
+                    JsUtils.escapeJs("toast.newSessionCreatedReady"));
             resetTokenUsage();
         });
     }

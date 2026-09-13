@@ -73,4 +73,41 @@ describe('BashToolGroupBlock', () => {
     expect(outputText).toBeTruthy();
     expect(outputText?.textContent).toBe('stdout line 1\nstdout line 2');
   });
+
+  it('renders completed status without error badge when results are successful even with deniedToolIds', () => {
+    const deniedSet = new Set(['bash-1']);
+    const { container } = render(
+      <BashToolGroupBlock
+        items={[
+          {
+            toolId: 'bash-1',
+            input: { command: 'echo hello' },
+            result: { type: 'tool_result', content: 'hello', is_error: false },
+          },
+        ]}
+        deniedToolIds={deniedSet}
+      />,
+    );
+
+    expect(container.querySelector('.bash-group-progress.error')).toBeNull();
+    expect(container.querySelector('.tool-status-indicator.completed')).toBeTruthy();
+    expect(container.querySelector('.tool-status-indicator.error')).toBeNull();
+  });
+
+  it('renders error badge when result has is_error: true', () => {
+    const { container } = render(
+      <BashToolGroupBlock
+        items={[
+          {
+            toolId: 'bash-2',
+            input: { command: 'exit 1' },
+            result: { type: 'tool_result', content: 'error occurred', is_error: true },
+          },
+        ]}
+      />,
+    );
+
+    expect(container.querySelector('.bash-group-progress.error')).toBeTruthy();
+    expect(container.querySelector('.tool-status-indicator.error')).toBeTruthy();
+  });
 });

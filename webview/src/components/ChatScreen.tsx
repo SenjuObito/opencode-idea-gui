@@ -94,11 +94,9 @@ export interface ChatScreenProps {
   daemonStatusLoaded: boolean;
   retryDaemonStatus: () => void;
   activeProviderConfig: ProviderState['activeProviderConfig'];
-  claudeSettingsAlwaysThinkingEnabled: ProviderState['claudeSettingsAlwaysThinkingEnabled'];
   reasoningEffort: ProviderState['reasoningEffort'];
   sendShortcut: ProviderState['sendShortcut'];
   autoOpenFileEnabled: ProviderState['autoOpenFileEnabled'];
-  longContextEnabled: ProviderState['longContextEnabled'];
   usagePercentage: ProviderState['usagePercentage'];
   usageUsedTokens: ProviderState['usageUsedTokens'];
   usageMaxTokens: ProviderState['usageMaxTokens'];
@@ -109,7 +107,6 @@ export interface ChatScreenProps {
   onReasoningChange: ProviderState['handleReasoningChange'];
   onToggleThinking: ProviderState['handleToggleThinking'];
   onAutoOpenFileEnabledChange: ProviderState['handleAutoOpenFileEnabledChange'];
-  onLongContextChange: ProviderState['handleLongContextChange'];
 
   // Message queue
   messageQueue: MessageQueueValue;
@@ -143,11 +140,11 @@ export const ChatScreen = ({
   currentSdkInstalled,
   daemonStatusLoaded,
   retryDaemonStatus,
-  activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
+  activeProviderConfig,
   reasoningEffort, sendShortcut, autoOpenFileEnabled,
-  longContextEnabled, usagePercentage, usageUsedTokens, usageMaxTokens,
+  usagePercentage, usageUsedTokens, usageMaxTokens,
   onModeSelect, onModelSelect, onReasoningChange, onToggleThinking,
-  onAutoOpenFileEnabledChange, onLongContextChange,
+  onAutoOpenFileEnabledChange,
   messageQueue, onRemoveFromQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
@@ -318,7 +315,7 @@ export const ChatScreen = ({
           usageUsedTokens={usageUsedTokens}
           usageMaxTokens={usageMaxTokens}
           showUsage={true}
-          alwaysThinkingEnabled={activeProviderConfig?.settingsConfig?.alwaysThinkingEnabled ?? claudeSettingsAlwaysThinkingEnabled}
+          alwaysThinkingEnabled={activeProviderConfig?.settingsConfig?.alwaysThinkingEnabled}
           placeholder={sendShortcut === 'cmdEnter' ? t('chat.inputPlaceholderCmdEnter') : t('chat.inputPlaceholderEnter')}
           sdkInstalled={currentSdkInstalled}
           daemonStatusLoaded={daemonStatusLoaded}
@@ -354,8 +351,6 @@ export const ChatScreen = ({
           onRemoveFromQueue={onRemoveFromQueue}
           autoOpenFileEnabled={autoOpenFileEnabled}
           onAutoOpenFileEnabledChange={onAutoOpenFileEnabledChange}
-          longContextEnabled={longContextEnabled}
-          onLongContextChange={onLongContextChange}
           onCompactClick={handleCompact}
         />
       </div>

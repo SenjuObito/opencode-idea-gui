@@ -91,6 +91,11 @@ public final class SkillFrontmatterParser {
             return null;
         }
 
+        if (content.startsWith("\uFEFF")) {
+            content = content.substring(1);
+        }
+        content = content.stripLeading();
+
         if (!content.startsWith("---")) {
             LOG.debug("No frontmatter delimiter at start of file: " + filePath);
             return null;
@@ -262,6 +267,11 @@ public final class SkillFrontmatterParser {
         } catch (IOException e) {
             return null;
         }
+
+        if (content.startsWith("\uFEFF")) {
+            content = content.substring(1);
+        }
+        content = content.stripLeading();
 
         // Find the end of frontmatter
         if (!content.startsWith("---")) {

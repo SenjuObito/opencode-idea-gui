@@ -17,7 +17,6 @@ import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
-import { installRuntimeProviderDispatchers } from './utils/runtimeProviderCapabilities';
 import { sendBridgeEvent } from './utils/bridge';
 import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
 import { debugLog } from './utils/debug';
@@ -35,12 +34,6 @@ if (!import.meta.env.DEV) {
   console.info = noop;
   console.warn = noop;
 }
-
-// Install the runtime provider dispatcher exactly once so that every
-// consumer (Settings, RuntimeProviderSelect, …) receives provider events
-// through a deterministic subscriber registry instead of overriding
-// `window.update*Provider*` callbacks ad-hoc.
-installRuntimeProviderDispatchers();
 
 function createBridgeHeartbeatStarter() {
   let started = false;

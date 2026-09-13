@@ -108,7 +108,7 @@ public final class PluginFileLogger {
         if (configured != null && !configured.trim().isEmpty()) {
             return new File(configured.trim());
         }
-        String home = System.getProperty("user.home");
+        String home = com.opencodebuddy.util.PlatformUtils.getHomeDirectory();
         String os = System.getProperty("os.name", "").toLowerCase();
         if (os.contains("mac") || os.contains("darwin")) {
             return new File(home, "Library/Logs/opencode-idea-gui/opencode-plugin.log");

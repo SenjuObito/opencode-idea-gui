@@ -14,8 +14,8 @@
     overflow-anchor: auto; /* 用户离开底部后，交还给浏览器维持当前可见位置 */
 }
 
-/* Collapsed messages indicator */
 .collapsed-messages-indicator {
+    display: block !important;
     padding: 8px 20px;
     text-align: center;
     color: var(--text-secondary, #888);
@@ -27,6 +27,23 @@
     &:hover {
         opacity: 1;
         text-decoration: underline;
+    }
+
+    &.loading,
+    &.is-loading {
+        cursor: default;
+        opacity: 1;
+        display: block !important;
+        &:hover {
+            text-decoration: none;
+        }
+    }
+
+    .collapsed-messages-loading-wrapper {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
     }
 }
 
@@ -107,8 +124,20 @@
 
 /* compact_notification 内的卡片（成功/失败）需撑满与助手消息一致的全宽，
    抵消上方 align-items: flex-start 造成的横向收缩 */
+.message.compact_notification {
+    width: 100%;
+    box-sizing: border-box;
+}
+
 .message.compact_notification .message-content {
     width: 100%;
+    box-sizing: border-box;
+}
+
+.message.compact_notification .message-block-item {
+    width: 100%;
+    align-self: stretch;
+    box-sizing: border-box;
 }
 
 .message-header-row {

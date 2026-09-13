@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchGithubReleases } from './githubReleases';
+import { CHANGELOG_DATA } from './changelog';
 
 describe('fetchGithubReleases', () => {
   const ORIGINAL_FETCH = globalThis.fetch;
@@ -13,7 +14,7 @@ describe('fetchGithubReleases', () => {
     globalThis.fetch = ORIGINAL_FETCH;
   });
 
-  it('returns an empty list (never cc-gui history) when the repo has no releases', async () => {
+  it('falls back to bundled CHANGELOG_DATA when the repo has no online releases', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [],
@@ -21,9 +22,9 @@ describe('fetchGithubReleases', () => {
 
     const result = await fetchGithubReleases();
 
-    expect(result.entries).toEqual([]);
-    expect(result.empty).toBe(true);
-    expect(result.error).toBe('no releases');
+    expect(result.fromFallback).toBe(true);
+    expect(result.entries).toEqual(CHANGELOG_DATA);
+    expect(result.entries.length).toBeGreaterThan(0);
   });
 
   it('returns parsed releases when the repo publishes them', async () => {
@@ -39,15 +40,16 @@ describe('fetchGithubReleases', () => {
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0].version).toBe('1.2.0');
     expect(result.entries[0].content.en).toContain('fixed');
-    expect(result.empty).toBeFalsy();
+    expect(result.fromFallback).toBeFalsy();
   });
 
-  it('returns an empty list with an error (no cc-gui fallback) when the request fails', async () => {
+  it('falls back to bundled CHANGELOG_DATA with error info when network request fails', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('CSP blocked'));
 
     const result = await fetchGithubReleases();
 
-    expect(result.entries).toEqual([]);
+    expect(result.fromFallback).toBe(true);
+    expect(result.entries).toEqual(CHANGELOG_DATA);
     expect(result.error).toBe('CSP blocked');
   });
 });

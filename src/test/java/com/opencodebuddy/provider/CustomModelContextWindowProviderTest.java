@@ -11,16 +11,16 @@ import static org.junit.Assert.assertFalse;
 public class CustomModelContextWindowProviderTest {
 
     @Test
-    public void shouldResolveOnlyWholeKCodexContextWindowsByExactModelId() throws Exception {
+    public void shouldResolveOnlyWholeKOpencodeContextWindowsByExactModelId() throws Exception {
         Path config = Files.createTempFile("custom-model-context", ".json");
         Files.writeString(config, """
                 {
                   "customModelContextWindows": {
-                    "claude": {
+                    "other": {
                       "shared-model": 500000,
                       "invalid-model": -1
                     },
-                    "codex": {
+                    "opencode": {
                       "shared-model": 1000000,
                       "partial-k-model": 500500,
                       "sub-k-model": 500,
@@ -32,13 +32,13 @@ public class CustomModelContextWindowProviderTest {
 
         CustomModelContextWindowProvider provider = CustomModelContextWindowProvider.createForTests(config);
 
-        assertFalse(provider.getContextWindow("claude", "shared-model").isPresent());
-        assertEquals(1_000_000, provider.getContextWindow("codex", "shared-model").orElseThrow());
-        assertFalse(provider.getContextWindow("codex", "shared-model[1m]").isPresent());
-        assertFalse(provider.getContextWindow("claude", "invalid-model").isPresent());
-        assertFalse(provider.getContextWindow("codex", "partial-k-model").isPresent());
-        assertFalse(provider.getContextWindow("codex", "sub-k-model").isPresent());
-        assertFalse(provider.getContextWindow("codex", "fractional-model").isPresent());
-        assertFalse(provider.getContextWindow("codex", "missing-model").isPresent());
+        assertEquals(500_000, provider.getContextWindow("other", "shared-model").orElseThrow());
+        assertEquals(1_000_000, provider.getContextWindow("opencode", "shared-model").orElseThrow());
+        assertFalse(provider.getContextWindow("opencode", "shared-model[1m]").isPresent());
+        assertFalse(provider.getContextWindow("other", "invalid-model").isPresent());
+        assertFalse(provider.getContextWindow("opencode", "partial-k-model").isPresent());
+        assertFalse(provider.getContextWindow("opencode", "sub-k-model").isPresent());
+        assertFalse(provider.getContextWindow("opencode", "fractional-model").isPresent());
+        assertFalse(provider.getContextWindow("opencode", "missing-model").isPresent());
     }
 }

@@ -118,7 +118,17 @@ export function collectUnresolvedToolUseIds(
 
       for (const tu of toolUses) {
         if (!existingResultIds.has(tu.id) && !window.__deniedToolIds?.has(tu.id)) {
-          idsToAdd.push(tu.id);
+          let resolvedElsewhere = false;
+          for (const m of messages) {
+            harvestToolResultIdsInto(m, existingResultIds);
+            if (existingResultIds.has(tu.id)) {
+              resolvedElsewhere = true;
+              break;
+            }
+          }
+          if (!resolvedElsewhere) {
+            idsToAdd.push(tu.id);
+          }
         }
       }
       break;
@@ -546,10 +556,10 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
             const content = typeof rawContent === 'string' ? rawContent : '';
             if (content) {
               backendSnapshotContent = content;
-              const rawVal = parsed[i].raw;
-              if (rawVal != null && (typeof rawVal === 'object' || typeof rawVal === 'string')) {
-                backendSnapshotRaw = rawVal as ClaudeRawMessage | string;
-              }
+            }
+            const rawVal = parsed[i].raw;
+            if (rawVal != null && (typeof rawVal === 'object' || typeof rawVal === 'string')) {
+              backendSnapshotRaw = rawVal as ClaudeRawMessage | string;
             }
             break;
           }

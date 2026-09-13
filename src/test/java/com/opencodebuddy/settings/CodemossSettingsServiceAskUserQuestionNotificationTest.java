@@ -33,7 +33,7 @@ public class CodemossSettingsServiceAskUserQuestionNotificationTest {
         assertFalse(service.getAskUserQuestionNotificationEnabled());
         assertFalse(service.getAskUserQuestionSoundNotificationEnabled());
 
-        Path configPath = tempHome.resolve(".codemoss").resolve("config.json");
+        Path configPath = tempHome.resolve(".opencodebuddy").resolve("config.json");
         Files.writeString(configPath,
                 "{\"askUserQuestionNotificationEnabled\":null,"
                         + "\"askUserQuestionSoundNotificationEnabled\":null,"
@@ -103,7 +103,7 @@ public class CodemossSettingsServiceAskUserQuestionNotificationTest {
             originalHomeDir = getCachedHomeDirectory();
         }
         setCachedHomeDirectory(tempHome.toString());
-        Files.createDirectories(tempHome.resolve(".codemoss"));
+        Files.createDirectories(tempHome.resolve(".opencodebuddy"));
     }
 
     private String getCachedHomeDirectory() throws Exception {

@@ -189,4 +189,26 @@ describe('useScrollBehavior', () => {
     expect(container.classList.contains('scroll-anchor-enabled')).toBe(false);
     expect(endRectSpy).toHaveBeenCalled();
   });
+
+  it('triggers auto-scroll to bottom when isCompacting becomes true', () => {
+    const { container, getScrollTop, setScrollTop, setScrollHeight } = createScrollableContainer();
+    const { result, rerender } = renderHook(
+      (props: HookProps & { isCompacting?: boolean }) => useScrollBehavior(props),
+      {
+        initialProps: { ...INITIAL_PROPS, currentView: 'chat', isCompacting: false },
+      }
+    );
+
+    act(() => {
+      result.current.messagesContainerRef.current = container;
+    });
+
+    setScrollHeight(1500);
+    setScrollTop(600);
+
+    rerender({ ...INITIAL_PROPS, currentView: 'chat', isCompacting: true });
+
+    expect(getScrollTop()).toBe(1100);
+    expect(result.current.isUserAtBottomRef.current).toBe(true);
+  });
 });

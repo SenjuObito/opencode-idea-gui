@@ -38,7 +38,7 @@ public class CodemossSettingsServicePermissionTimeoutTest {
         CodemossSettingsService service = new CodemossSettingsService();
         assertEquals(300, service.getPermissionDialogTimeoutSeconds());
 
-        Path configPath = tempHome.resolve(".codemoss").resolve("config.json");
+        Path configPath = tempHome.resolve(".opencodebuddy").resolve("config.json");
         Files.writeString(configPath, "{\"permissionDialogTimeoutSeconds\":\"bad\"}", StandardCharsets.UTF_8);
 
         assertEquals(300, service.getPermissionDialogTimeoutSeconds());
@@ -62,7 +62,7 @@ public class CodemossSettingsServicePermissionTimeoutTest {
             originalHomeDir = getCachedHomeDirectory();
         }
         setCachedHomeDirectory(tempHome.toString());
-        Files.createDirectories(tempHome.resolve(".codemoss"));
+        Files.createDirectories(tempHome.resolve(".opencodebuddy"));
     }
 
     private String getCachedHomeDirectory() throws Exception {

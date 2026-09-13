@@ -55,14 +55,15 @@ public class PermissionHandlerTest {
     }
 
     @Test
-    public void getSupportedTypesReturnsTheThreeIpcMessageTypes() {
+    public void getSupportedTypesReturnsTheExpectedIpcMessageTypes() {
         // Order is part of the dispatch contract documented in PermissionHandler.SUPPORTED_TYPES,
         // but the asserted property here is set-membership: the bridge will deliver any of these
-        // three keys and the handler must claim ownership of all three.
+        // keys and the handler must claim ownership of all.
         String[] actual = handler.getSupportedTypes().clone();
         String[] expected = {
                 "permission_decision",
                 "ask_user_question_response",
+                "ask_user_question_reject",
                 "plan_approval_response"
         };
         Arrays.sort(actual);
@@ -76,6 +77,12 @@ public class PermissionHandlerTest {
         // bridge try the next one. A false return value is therefore part of the contract, not
         // an error condition.
         assertFalse(handler.handle("totally_unknown_type", "{}"));
+    }
+
+    @Test
+    public void handleDispatchesAskUserQuestionReject() {
+        String content = "{\"requestId\":\"auq-reject-1\"}";
+        assertTrue(handler.handle("ask_user_question_reject", content));
     }
 
     @Test
@@ -400,5 +407,44 @@ public class PermissionHandlerTest {
         public void play() {
             callCount++;
         }
+    }
+
+    @Test
+    public void onQuestionRequestedStoresPendingQuestionAndTriggersNotifiers() throws Exception {
+        FakeAskUserQuestionVisualNotifier visual = new FakeAskUserQuestionVisualNotifier();
+        FakeAskUserQuestionSoundNotifier sound = new FakeAskUserQuestionSoundNotifier();
+        PermissionHandler customHandler = new PermissionHandler(
+                contextStub(),
+                new FakeSafetyNetScheduler(),
+                visual,
+                sound
+        );
+
+        String questionJson = "{\"requestId\":\"q-test-1\",\"sessionId\":\"ses-1\",\"tool\":\"ask\","
+                + "\"questions\":[{\"question\":\"Choose color\",\"options\":[\"red\",\"blue\"]}]}";
+        customHandler.onQuestionRequested(questionJson);
+
+        assertEquals(1, visual.callCount);
+        assertEquals(1, sound.callCount);
+
+        Field f = PermissionHandler.class.getDeclaredField("pendingQuestions");
+        f.setAccessible(true);
+        Map<?, ?> map = (Map<?, ?>) f.get(customHandler);
+        assertTrue("pendingQuestions should contain q-test-1", map.containsKey("q-test-1"));
+    }
+
+    @Test
+    public void onPromptClosedRemovesPendingQuestion() throws Exception {
+        PermissionHandler customHandler = new PermissionHandler(contextStub());
+        String questionJson = "{\"requestId\":\"q-closed-1\",\"questions\":[]}";
+        customHandler.onQuestionRequested(questionJson);
+
+        Field f = PermissionHandler.class.getDeclaredField("pendingQuestions");
+        f.setAccessible(true);
+        Map<?, ?> map = (Map<?, ?>) f.get(customHandler);
+        assertTrue(map.containsKey("q-closed-1"));
+
+        customHandler.onPromptClosed("question", "{\"requestId\":\"q-closed-1\"}");
+        assertFalse(map.containsKey("q-closed-1"));
     }
 }

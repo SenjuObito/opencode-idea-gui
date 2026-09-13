@@ -176,4 +176,35 @@ public class CallbackHandler {
             callback.onTaskEvent(eventJson);
         }
     }
+
+    /**
+     * Notify of a question request (AskUserQuestion).
+     */
+    public void notifyQuestionRequested(String jsonContent) {
+        if (callback != null) {
+            callback.onQuestionRequested(jsonContent);
+        }
+    }
+
+    /**
+     * Notify that a question or permission prompt was closed/resolved by the server.
+     */
+    public void notifyPromptClosed(String kind, String jsonContent) {
+        if (callback != null) {
+            callback.onPromptClosed(kind, jsonContent);
+        }
+    }
+
+    /**
+     * Notify that session revert state was updated.
+     */
+    public void notifyRevertStateUpdate(boolean hasRevert, String messageId) {
+        if (callback != null) {
+            callback.onRevertStateUpdate(hasRevert, messageId);
+        }
+    }
+
+    public void notifyRevertStateUpdate(boolean hasRevert) {
+        notifyRevertStateUpdate(hasRevert, null);
+    }
 }

@@ -6,6 +6,8 @@ import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Converts opencode SDK message entries ({@code [{info, parts}]}, as returned
@@ -31,6 +33,8 @@ import java.util.List;
  * </ul>
  */
 public final class OpenCodeMessageConverter {
+
+    private static final int MAX_TOOL_RESULT_CHARS = 20_000;
 
     private OpenCodeMessageConverter() {
     }
@@ -92,8 +96,25 @@ public final class OpenCodeMessageConverter {
             }
         }
 
+        // Extract inlined attachment blocks (<attachment filename="...">) from text
+        // so they render as attachment chips in the UI when restored from history.
+        Pattern inlinedPattern = Pattern.compile("<attachment\\s+filename=\"([^\"]+)\"[^>]*>", Pattern.CASE_INSENSITIVE);
+        Matcher attMatcher = inlinedPattern.matcher(text.toString());
+        while (attMatcher.find()) {
+            String filename = attMatcher.group(1);
+            boolean alreadyPresent = attachmentBlocks.stream()
+                    .anyMatch(b -> filename.equals(string(b, "fileName")));
+            if (!alreadyPresent) {
+                JsonObject block = new JsonObject();
+                block.addProperty("type", "attachment");
+                block.addProperty("fileName", filename);
+                block.addProperty("mediaType", "text/plain");
+                attachmentBlocks.add(block);
+            }
+        }
+
         // Drop the context sections the plugin appended on send (## IDE Context,
-        // ## Referenced Files, agent instructions, …) — model-only payload.
+        // ## Referenced Files, ## Attached Files, inlined attachments, agent instructions, …) — model-only payload.
         String displayText = UserTextSanitizer.sanitize(text.toString());
 
         for (JsonObject block : attachmentBlocks) {
@@ -220,7 +241,8 @@ public final class OpenCodeMessageConverter {
                     JsonObject resultBlock = new JsonObject();
                     resultBlock.addProperty("type", "tool_result");
                     resultBlock.addProperty("tool_use_id", callId);
-                    resultBlock.addProperty("content", !error.isEmpty() ? error : output);
+                    String rawContent = !error.isEmpty() ? error : output;
+                    resultBlock.addProperty("content", truncateToolContent(rawContent));
                     content.add(resultBlock);
                     message.add("content", content);
                     resultRaw.addProperty("type", "user");
@@ -292,6 +314,15 @@ public final class OpenCodeMessageConverter {
         } catch (Exception ignored) {
         }
         return System.currentTimeMillis();
+    }
+
+    private static String truncateToolContent(String s) {
+        if (s == null || s.length() <= MAX_TOOL_RESULT_CHARS) {
+            return s != null ? s : "";
+        }
+        String marker = "\n... [truncated, total " + s.length() + " chars]";
+        int available = Math.max(0, MAX_TOOL_RESULT_CHARS - marker.length());
+        return s.substring(0, available) + marker;
     }
 
     private static String string(JsonObject obj, String key) {

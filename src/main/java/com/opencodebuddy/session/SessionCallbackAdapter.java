@@ -434,6 +434,53 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
         });
     }
 
+    @Override
+    public void onQuestionRequested(String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.trim().isEmpty()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            permissionHandler.onQuestionRequested(jsonContent);
+        });
+    }
+
+    @Override
+    public void onPromptClosed(String kind, String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.trim().isEmpty()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            permissionHandler.onPromptClosed(kind, jsonContent);
+        });
+    }
+
+    @Override
+    public void onRevertStateUpdate(boolean hasRevert, String messageId) {
+        if (isInactive()) {
+            return;
+        }
+        com.google.gson.JsonObject payload = new com.google.gson.JsonObject();
+        payload.addProperty("hasRevert", hasRevert);
+        if (messageId != null && !messageId.isBlank()) {
+            payload.addProperty("messageId", messageId);
+        } else {
+            payload.add("messageId", com.google.gson.JsonNull.INSTANCE);
+        }
+        final String jsonStr = payload.toString();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            jsTarget.callJavaScript("onRevertStateUpdate", jsonStr);
+        });
+    }
+
     /**
      * Dispose internal resources. Call when the parent window is disposed.
      */

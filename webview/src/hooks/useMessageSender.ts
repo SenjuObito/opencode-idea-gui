@@ -2,10 +2,6 @@ import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
-import {
-  EFFORT_SUPPORTED_CLAUDE_MODELS,
-  apply1MContextSuffix,
-} from '../components/ChatInputBox/types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
 
@@ -27,13 +23,6 @@ function createContextUsageRequestId(): string {
     return crypto.randomUUID();
   }
   return `context-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function shouldSendReasoningEffort(provider: string, model: string): boolean {
-  if (provider !== 'claude') {
-    return true;
-  }
-  return EFFORT_SUPPORTED_CLAUDE_MODELS.has(model);
 }
 
 export interface UseMessageSenderOptions {
@@ -67,7 +56,6 @@ export interface UseMessageSenderOptions {
   setCurrentView: (view: 'chat' | 'history' | 'settings') => void;
   forceCreateNewSession: () => void;
   handleModeSelect?: (mode: PermissionMode) => void;
-  longContextEnabled?: boolean;
   openContextUsageDialog: (requestId?: string | null, loading?: boolean) => void;
   closeContextUsageDialog: (requestId?: string | null) => boolean;
 }
@@ -101,7 +89,6 @@ export function useMessageSender({
   setCurrentView,
   forceCreateNewSession,
   handleModeSelect,
-  longContextEnabled,
   openContextUsageDialog,
   closeContextUsageDialog,
 }: UseMessageSenderOptions) {
@@ -168,10 +155,8 @@ export function useMessageSender({
       openContextUsageDialog(requestId, true);
 
       // Send bridge event to fetch context usage with current model
-      // Apply [1m] suffix if long context is enabled so the SDK creates
-      // a runtime with the correct context window limit.
       const sent = sendBridgeEvent('get_context_usage', JSON.stringify({
-        model: apply1MContextSuffix(selectedModel, longContextEnabled ?? false),
+        model: selectedModel,
         requestId,
       }));
 
@@ -184,7 +169,7 @@ export function useMessageSender({
       return true;
     }
     return false;
-  }, [currentProvider, selectedModel, longContextEnabled, addToast, t, openContextUsageDialog, closeContextUsageDialog]);
+  }, [currentProvider, selectedModel, addToast, t, openContextUsageDialog, closeContextUsageDialog]);
 
   /**
    * Check for unimplemented slash commands
@@ -269,9 +254,7 @@ export function useMessageSender({
       effectiveMode: effectivePermissionMode,
     });
 
-    const reasoningEffortPayload = shouldSendReasoningEffort(currentProvider, selectedModel)
-      ? { reasoningEffort }
-      : {};
+    const reasoningEffortPayload = { reasoningEffort };
 
     if (hasAttachments) {
       try {

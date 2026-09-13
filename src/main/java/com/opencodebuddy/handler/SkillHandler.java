@@ -77,7 +77,7 @@ public class SkillHandler extends BaseMessageHandler {
      */
     private void handleGetAllSkills() {
         try {
-            String workspaceRoot = context.getProject().getBasePath();
+            String workspaceRoot = context.getProject() != null ? context.getProject().getBasePath() : null;
 
             JsonObject skills = SkillService.getAllSkills(workspaceRoot);
 
@@ -116,7 +116,7 @@ public class SkillHandler extends BaseMessageHandler {
 
                 // Set initial directory to project base path
                 VirtualFile initialDir = null;
-                String projectPath = context.getProject().getBasePath();
+                String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
                 if (projectPath != null) {
                     initialDir = LocalFileSystem.getInstance().findFileByPath(NodeDetector.toVfsPath(projectPath));
                 }
@@ -130,7 +130,7 @@ public class SkillHandler extends BaseMessageHandler {
 
                     CompletableFuture.runAsync(() -> {
                         try {
-                            String workspaceRoot = context.getProject().getBasePath();
+                            String workspaceRoot = context.getProject() != null ? context.getProject().getBasePath() : null;
                             JsonObject importResult = SkillService.importSkills(paths, scope, workspaceRoot);
                             String resultJson = GSON.toJson(importResult);
 
@@ -163,7 +163,7 @@ public class SkillHandler extends BaseMessageHandler {
             String skillName = json.get("name").getAsString();
             String scope = json.has("scope") ? json.get("scope").getAsString() : "global";
             boolean enabled = json.has("enabled") ? json.get("enabled").getAsBoolean() : true;
-            String workspaceRoot = context.getProject().getBasePath();
+            String workspaceRoot = context.getProject() != null ? context.getProject().getBasePath() : null;
 
             CompletableFuture.runAsync(() -> {
                 try {
@@ -205,7 +205,7 @@ public class SkillHandler extends BaseMessageHandler {
             String requestId = json.has("requestId") ? json.get("requestId").getAsString() : null;
             String scope = json.has("scope") ? json.get("scope").getAsString() : "global";
             boolean currentEnabled = json.has("enabled") ? json.get("enabled").getAsBoolean() : true;
-            String workspaceRoot = context.getProject().getBasePath();
+            String workspaceRoot = context.getProject() != null ? context.getProject().getBasePath() : null;
 
             CompletableFuture.runAsync(() -> {
                 try {
@@ -278,21 +278,31 @@ public class SkillHandler extends BaseMessageHandler {
         try {
             Path normalized = Paths.get(path).toAbsolutePath().normalize();
             String userHome = NodeDetector.resolveHomeForFileOps();
-            String projectBase = context.getProject().getBasePath();
+            String projectBase = context.getProject() != null ? context.getProject().getBasePath() : null;
 
-            // Claude skills directories
             List<Path> validBases = new ArrayList<>();
+            // OpenCode skills directories
+            validBases.add(Paths.get(userHome, ".config", "opencode", "skill"));
+            validBases.add(Paths.get(userHome, ".config", "opencode", "skills"));
+            validBases.add(Paths.get(userHome, ".opencode", "skill"));
+            validBases.add(Paths.get(userHome, ".opencode", "skills"));
+            // Claude skills directories
             validBases.add(Paths.get(userHome, ".claude", "skills"));
             validBases.add(Paths.get(userHome, ".claude", "commands"));
             validBases.add(Paths.get(userHome, ".codemoss", "skills"));
-            // Codex skills directories
+            // Codex & Agents skills directories
             validBases.add(Paths.get(userHome, ".agents", "skills"));
             validBases.add(Paths.get(userHome, ".codex", "skills"));
 
             if (projectBase != null) {
+                validBases.add(Paths.get(projectBase, ".config", "opencode", "skill"));
+                validBases.add(Paths.get(projectBase, ".config", "opencode", "skills"));
+                validBases.add(Paths.get(projectBase, ".opencode", "skill"));
+                validBases.add(Paths.get(projectBase, ".opencode", "skills"));
                 validBases.add(Paths.get(projectBase, ".claude", "skills"));
                 validBases.add(Paths.get(projectBase, ".claude", "commands"));
                 validBases.add(Paths.get(projectBase, ".agents", "skills"));
+                validBases.add(Paths.get(projectBase, ".codex", "skills"));
             }
 
             for (Path base : validBases) {
@@ -348,9 +358,9 @@ public class SkillHandler extends BaseMessageHandler {
                 })
                 .finishOnUiThread(com.intellij.openapi.application.ModalityState.defaultModalityState(), virtualFile -> {
                     // Open the file on the UI thread
-                    if (virtualFile != null) {
+                    if (virtualFile != null && context.getProject() != null) {
                         FileEditorManager.getInstance(context.getProject()).openFile(virtualFile, true);
-                    } else {
+                    } else if (virtualFile == null) {
                         LOG.error("[SkillHandler] Cannot find file: " + fileToOpen);
                     }
                 })

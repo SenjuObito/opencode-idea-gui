@@ -104,3 +104,55 @@ describe('deriveTodosForTurn', () => {
     ]);
   });
 });
+
+describe('useChatComputations findToolResult', () => {
+  it('finds tool result even when message raw is a serialized JSON string', async () => {
+    const { renderHook } = await import('@testing-library/react');
+    const { useChatComputations } = await import('./useChatComputations');
+
+    const messages: ClaudeMessage[] = [
+      {
+        type: 'assistant',
+        content: '',
+        raw: {
+          message: {
+            content: [{ type: 'tool_use', id: 'tool-json-str', name: 'bash', input: { command: 'ls' } }],
+          },
+        },
+      },
+      {
+        type: 'user',
+        content: '[tool_result]',
+        raw: JSON.stringify({
+          message: {
+            content: [{ type: 'tool_result', tool_use_id: 'tool-json-str', content: 'output text', is_error: false }],
+          },
+        }) as unknown as ClaudeMessage['raw'],
+      },
+    ];
+
+    const currentSessionIdRef = { current: 'ses_1' };
+    const { result } = renderHook(() =>
+      useChatComputations({
+        t: ((k: string) => k) as any,
+        messages,
+        mergedMessages: messages,
+        subagentHistories: {},
+        customSessionTitle: null,
+        streamingActive: false,
+        currentProvider: 'opencode',
+        currentSessionId: 'ses_1',
+        currentSessionIdRef,
+        getMessageText: (m) => m.content ?? '',
+        getContentBlocks: () => [],
+        sseTodos: null,
+      })
+    );
+
+    const hit = result.current.findToolResult('tool-json-str', 0);
+    expect(hit).toBeDefined();
+    expect(hit?.type).toBe('tool_result');
+    expect(hit?.tool_use_id).toBe('tool-json-str');
+    expect(hit?.content).toBe('output text');
+  });
+});

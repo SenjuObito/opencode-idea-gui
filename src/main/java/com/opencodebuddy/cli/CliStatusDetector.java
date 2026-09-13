@@ -172,78 +172,30 @@ public final class CliStatusDetector {
         return new ArrayList<>(candidates);
     }
 
+    private static String[] envKeysFor(CliToolId tool) {
+        switch (tool) {
+            case OPENCODE:
+                return new String[]{"OPENCODE_BIN", "OPENCODE_PATH", "OPENCODE_CLI_PATH"};
+            default:
+                return new String[0];
+        }
+    }
+
     private static List<String> homeBinDirs(CliToolId tool, String home) {
         List<String> dirs = new ArrayList<>();
         if (home == null || home.isBlank()) {
             return dirs;
         }
         switch (tool) {
-            case GROK:
-                dirs.add(join(home, ".grok", "bin"));
-                dirs.add(join(home, ".local", "bin"));
-                break;
-            case KIMI:
-                dirs.add(join(home, ".kimi-code", "bin"));
-                dirs.add(join(home, ".kimi", "bin"));
-                dirs.add(join(home, ".moonshot", "bin"));
-                dirs.add(join(home, ".local", "bin"));
-                break;
             case OPENCODE:
                 dirs.add(join(home, ".opencode", "bin"));
                 dirs.add(join(home, ".local", "share", "opencode", "bin"));
                 dirs.add(join(home, ".local", "bin"));
                 break;
-            case PI:
-                dirs.add(join(home, ".pi", "bin"));
-                dirs.add(join(home, ".local", "bin"));
-                break;
-            case OMP:
-                dirs.add(join(home, ".omp", "bin"));
-                dirs.add(join(home, ".local", "bin"));
-                break;
-            case DSH:
-                // Hermes (the DSH-native installer) keeps node + dsh together.
-                dirs.add(join(home, ".hermes", "node", "bin"));
-                dirs.add(join(home, ".dsh", "bin"));
-                dirs.add(join(home, ".local", "bin"));
-                break;
             default:
                 break;
         }
-        // Shared npm / package-manager locations
-        if (PlatformUtils.isWindows()) {
-            String appData = System.getenv("APPDATA");
-            if (appData != null && !appData.isBlank()) {
-                dirs.add(join(appData, "npm"));
-            }
-            String programFiles = System.getenv("ProgramFiles");
-            if (programFiles != null && !programFiles.isBlank()) {
-                dirs.add(join(programFiles, "nodejs"));
-            }
-            String programFilesX86 = System.getenv("ProgramFiles(x86)");
-            if (programFilesX86 != null && !programFilesX86.isBlank()) {
-                dirs.add(join(programFilesX86, "nodejs"));
-            }
-        } else {
-            dirs.add("/usr/local/bin");
-            dirs.add("/opt/homebrew/bin");
-            dirs.add("/usr/bin");
-            dirs.add(join(home, ".npm-global", "bin"));
-            dirs.add(join(home, ".volta", "bin"));
-            dirs.add(join(home, ".cargo", "bin"));
-        }
         return dirs;
-    }
-
-    private static String[] envKeysFor(CliToolId tool) {
-        return switch (tool) {
-            case GROK -> new String[]{"GROK_BIN", "GROK_PATH", "GROK_CLI_PATH"};
-            case KIMI -> new String[]{"KIMI_BIN", "KIMI_PATH", "KIMI_CLI_PATH", "KIMI_CODE_BIN"};
-            case OPENCODE -> new String[]{"OPENCODE_BIN", "OPENCODE_PATH", "OPENCODE_CLI_PATH"};
-            case PI -> new String[]{"PI_BIN", "PI_PATH", "PI_CLI_PATH"};
-            case OMP -> new String[]{"OMP_BIN", "OMP_PATH", "OMP_CLI_PATH"};
-            case DSH -> new String[]{"DSH_BIN", "DSH_PATH", "DSH_CLI_PATH"};
-        };
     }
 
     private static ProbeResult probe(String candidate) {
@@ -434,12 +386,8 @@ public final class CliStatusDetector {
         String current = env.getOrDefault(pathKey, env.getOrDefault("PATH", ""));
         String sep = PlatformUtils.isWindows() ? ";" : ":";
         List<String> extras = new ArrayList<>(List.of(
-                join(home, ".kimi-code", "bin"),
-                join(home, ".kimi", "bin"),
                 join(home, ".opencode", "bin"),
-                join(home, ".grok", "bin"),
-                join(home, ".pi", "bin"),
-                join(home, ".omp", "bin"),
+                join(home, ".local", "share", "opencode", "bin"),
                 join(home, ".local", "bin"),
                 join(home, ".cargo", "bin"),
                 "/opt/homebrew/bin",

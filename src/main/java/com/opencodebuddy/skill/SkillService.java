@@ -15,7 +15,7 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Pattern;
 
 /**
@@ -24,8 +24,8 @@ import java.util.regex.Pattern;
  * Manages skill import, deletion, enabling, and disabling.
  * <p>
  * Active skills storage locations:
- * - Global: ~/.config/opencode/skill
- * - Local: {workspace}/.opencode/skill
+ * - Global: ~/.config/opencode/skill, ~/.claude/skills, ~/.agents/skills
+ * - Local: {workspace}/.opencode/skill, {workspace}/.claude/skills, {workspace}/.agents/skills
  * <p>
  * Management directories (disabled skills):
  * - Global: ~/.codemoss/skills/global
@@ -52,10 +52,10 @@ public class SkillService {
         return SAFE_NAME.matcher(name).matches();
     }
 
-    // ==================== Active Directories (read by Claude) ====================
+    // ==================== Active Directories (read by Claude / OpenCode) ====================
 
     /**
-     * Gets the global active skills directory (~/.claude/skills).
+     * Gets the primary global active skills directory (~/.config/opencode/skill).
      */
     public static String getGlobalSkillsDir() {
         String homeDir = NodeDetector.resolveHomeForFileOps();
@@ -63,13 +63,40 @@ public class SkillService {
     }
 
     /**
-     * Gets the local active skills directory ({workspace}/.claude/skills).
+     * Gets all candidate global active skills directories.
+     */
+    public static List<String> getGlobalActiveSkillsDirs() {
+        String homeDir = NodeDetector.resolveHomeForFileOps();
+        List<String> dirs = new ArrayList<>();
+        dirs.add(Paths.get(homeDir, ".config", "opencode", "skill").toString());
+        dirs.add(Paths.get(homeDir, ".config", "opencode", "skills").toString());
+        dirs.add(Paths.get(homeDir, ".opencode", "skill").toString());
+        dirs.add(Paths.get(homeDir, ".opencode", "skills").toString());
+        dirs.add(Paths.get(homeDir, ".agents", "skills").toString());
+        return dirs;
+    }
+
+    /**
+     * Gets the primary local active skills directory ({workspace}/.opencode/skill).
      */
     public static String getLocalSkillsDir(String workspaceRoot) {
         if (workspaceRoot == null || workspaceRoot.isEmpty()) {
             return null;
         }
         return Paths.get(workspaceRoot, ".opencode", "skill").toString();
+    }
+
+    /**
+     * Gets all candidate local active skills directories.
+     */
+    public static List<String> getLocalActiveSkillsDirs(String workspaceRoot) {
+        List<String> dirs = new ArrayList<>();
+        if (workspaceRoot != null && !workspaceRoot.isEmpty()) {
+            dirs.add(Paths.get(workspaceRoot, ".opencode", "skill").toString());
+            dirs.add(Paths.get(workspaceRoot, ".opencode", "skills").toString());
+            dirs.add(Paths.get(workspaceRoot, ".agents", "skills").toString());
+        }
+        return dirs;
     }
 
     // ==================== Management Directories (storage for disabled skills) ====================
@@ -135,14 +162,20 @@ public class SkillService {
      */
     public static JsonObject getAllSkillsByScope(String scope, String workspaceRoot) {
         JsonObject allSkills = new JsonObject();
+        Set<String> seenNames = new HashSet<>();
 
-        // 1. Scan the active directory (enabled = true)
-        String activeDir = "global".equals(scope) ? getGlobalSkillsDir() : getLocalSkillsDir(workspaceRoot);
-        if (activeDir != null) {
+        // 1. Scan active directories (enabled = true)
+        List<String> activeDirs = "global".equals(scope)
+                ? getGlobalActiveSkillsDirs()
+                : getLocalActiveSkillsDirs(workspaceRoot);
+        for (String activeDir : activeDirs) {
             JsonObject activeSkills = scanSkillsDirectory(activeDir, scope, true);
-            // Merge into results
             for (String key : activeSkills.keySet()) {
-                allSkills.add(key, activeSkills.get(key));
+                JsonObject skill = activeSkills.getAsJsonObject(key);
+                String name = skill != null && skill.has("name") ? skill.get("name").getAsString() : key;
+                if (seenNames.add(name)) {
+                    allSkills.add(key, skill);
+                }
             }
         }
 
@@ -150,9 +183,12 @@ public class SkillService {
         String managementDir = "global".equals(scope) ? getGlobalManagementDir() : getLocalManagementDir(workspaceRoot);
         if (managementDir != null) {
             JsonObject disabledSkills = scanSkillsDirectory(managementDir, scope, false);
-            // Merge into results
             for (String key : disabledSkills.keySet()) {
-                allSkills.add(key, disabledSkills.get(key));
+                JsonObject skill = disabledSkills.getAsJsonObject(key);
+                String name = skill != null && skill.has("name") ? skill.get("name").getAsString() : key;
+                if (seenNames.add(name)) {
+                    allSkills.add(key, skill);
+                }
             }
         }
 
@@ -368,22 +404,29 @@ public class SkillService {
         }
 
         // Select the appropriate directory based on the enabled state
-        String dir;
+        File targetPath = null;
         if (enabled) {
-            dir = "global".equals(scope) ? getGlobalSkillsDir() : getLocalSkillsDir(workspaceRoot);
+            List<String> activeDirs = "global".equals(scope)
+                    ? getGlobalActiveSkillsDirs()
+                    : getLocalActiveSkillsDirs(workspaceRoot);
+            for (String d : activeDirs) {
+                File f = new File(d, name);
+                if (f.exists()) {
+                    targetPath = f;
+                    break;
+                }
+            }
         } else {
-            dir = "global".equals(scope) ? getGlobalManagementDir() : getLocalManagementDir(workspaceRoot);
+            String dir = "global".equals(scope) ? getGlobalManagementDir() : getLocalManagementDir(workspaceRoot);
+            if (dir != null) {
+                File f = new File(dir, name);
+                if (f.exists()) {
+                    targetPath = f;
+                }
+            }
         }
 
-        if (dir == null) {
-            result.addProperty("success", false);
-            result.addProperty("error", "无法获取 " + scope + " Skills 目录");
-            return result;
-        }
-
-        File targetPath = new File(dir, name);
-
-        if (!targetPath.exists()) {
+        if (targetPath == null || !targetPath.exists()) {
             result.addProperty("success", false);
             result.addProperty("error", "Skill 不存在: " + name);
             return result;
@@ -523,22 +566,30 @@ public class SkillService {
             return result;
         }
 
-        // Source directory: active directory
-        String sourceDir = "global".equals(scope) ? getGlobalSkillsDir() : getLocalSkillsDir(workspaceRoot);
+        List<String> activeDirs = "global".equals(scope)
+                ? getGlobalActiveSkillsDirs()
+                : getLocalActiveSkillsDirs(workspaceRoot);
         // Target directory: management directory (disabled skills)
         String targetDir = "global".equals(scope) ? getGlobalManagementDir() : getLocalManagementDir(workspaceRoot);
 
-        if (sourceDir == null || targetDir == null) {
+        if (targetDir == null) {
             result.addProperty("success", false);
             result.addProperty("error", "无法获取 " + scope + " Skills 目录");
             return result;
         }
 
-        File source = new File(sourceDir, name);
+        File source = null;
+        for (String d : activeDirs) {
+            File f = new File(d, name);
+            if (f.exists()) {
+                source = f;
+                break;
+            }
+        }
         File target = new File(targetDir, name);
 
         // Check if the source file exists
-        if (!source.exists()) {
+        if (source == null || !source.exists()) {
             result.addProperty("success", false);
             result.addProperty("error", "Skill does not exist in the active directory: " + name);
             return result;

@@ -1,118 +1,41 @@
-import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ButtonAreaProps, ModelInfo, PermissionMode, ReasoningEffort } from './types';
-import { getAvailableReasoningLevels } from './types';
+import type { ButtonAreaProps, PermissionMode, ReasoningEffort } from './types';
+import { OPENCODE_DEFAULT_MODEL_ID, getAvailableReasoningLevels } from './types';
 import { ModelSelect, ModeSelect, ReasoningSelect } from './selectors';
-import { STORAGE_KEYS } from '../../types/provider';
-import type { CodexCustomModel } from '../../types/provider';
-import { readClaudeModelMapping } from '../../utils/claudeModelMapping';
 import { useCliModels } from '../../hooks/providers/useCliModels';
 import { useToolbarSelectorCompact } from './hooks/useToolbarSelectorCompact';
 import { resolveProviderModels } from './resolveProviderModels';
 
 /**
- * Get custom Claude model list from localStorage
- * Uses runtime type validation for data safety
- */
-function getCustomClaudeModels(): ModelInfo[] {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return [];
-  }
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEYS.CLAUDE_CUSTOM_MODELS);
-    if (!stored) {
-      return [];
-    }
-    const parsed = JSON.parse(stored) as CodexCustomModel[];
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed
-      .filter((m): m is CodexCustomModel => !!m && typeof m === 'object' && typeof m.id === 'string' && m.id.trim().length > 0)
-      .map(m => ({
-        id: m.id,
-        label: m.label || m.id,
-        description: m.description,
-      }));
-  } catch {
-    return [];
-  }
-}
-
-/**
  * ButtonArea - Bottom toolbar component
- * Contains mode selector, model selector, attachment button, prompt enhancer button, send/stop button
+ * Contains mode selector, model selector, send/stop button
  */
 export const ButtonArea = ({
   disabled = false,
   hasInputContent = false,
   isLoading = false,
-  selectedModel = 'claude-sonnet-4-7',
+  selectedModel = OPENCODE_DEFAULT_MODEL_ID,
   permissionMode = 'default',
-  currentProvider = 'claude',
-  reasoningEffort = 'high',
+  currentProvider = 'opencode',
+  reasoningEffort = 'medium',
   onSubmit,
   onStop,
   onModeSelect,
   onModelSelect,
   onReasoningChange,
   onAddModel,
-  longContextEnabled = true,
-  onLongContextChange,
 }: ButtonAreaProps) => {
   const { t } = useTranslation();
-  // const fileInputRef = useRef<HTMLInputElement>(null);
   const { cliModels, cliModelsLoading, cliModelsError, cliDefaultModel, cliCatalogHasEntries, refreshCliModels } = useCliModels(currentProvider);
 
-  // Track changes to custom models in localStorage
-  // When localStorage changes, updating this version number triggers useMemo recalculation
-  const [customModelsVersion, setCustomModelsVersion] = useState(0);
-
-  // Listen for localStorage changes (cross-tab sync + same-tab custom events)
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEYS.CLAUDE_MODEL_MAPPING || e.key === STORAGE_KEYS.CLAUDE_CUSTOM_MODELS) {
-        setCustomModelsVersion(v => v + 1);
-      }
-    };
-
-    // Listen for custom events (localStorage changes within the same tab)
-    const handleCustomStorageChange = (e: CustomEvent<{ key: string }>) => {
-      if (e.detail.key === STORAGE_KEYS.CLAUDE_MODEL_MAPPING || e.detail.key === STORAGE_KEYS.CLAUDE_CUSTOM_MODELS) {
-        setCustomModelsVersion(v => v + 1);
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('localStorageChange', handleCustomStorageChange as EventListener);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('localStorageChange', handleCustomStorageChange as EventListener);
-    };
-  }, []);
-
-  // Select model list based on current provider — shared with Prompt Enhancer /
-  // Commit AI settings so the three surfaces never diverge.
-  // customModelsVersion triggers recalculation when localStorage changes.
   const availableModels = useMemo(() => {
-    let claudeMapping = null;
-    try {
-      claudeMapping = readClaudeModelMapping();
-    } catch {
-      claudeMapping = null;
-    }
     return resolveProviderModels({
       provider: currentProvider,
       cliModels,
       cliCatalogHasEntries,
-      claudeCustomModels: getCustomClaudeModels(),
-      codexCustomModels: [],
-      claudeMapping,
     });
-    // customModelsVersion intentionally forces re-read of localStorage customs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProvider, customModelsVersion, cliModels, cliCatalogHasEntries]);
+  }, [currentProvider, cliModels, cliCatalogHasEntries]);
 
   // 所选模型的 opencode variants（推理力度档位）。
   const selectedModelInfo = availableModels.find((m) => m.id === selectedModel);
@@ -256,8 +179,6 @@ export const ButtonArea = ({
           error={cliModelsError}
           onRetry={() => refreshCliModels(currentProvider)}
           onAddModel={onAddModel}
-          longContextEnabled={longContextEnabled}
-          onLongContextChange={onLongContextChange}
         />
         <ReasoningSelect
           value={reasoningEffort}

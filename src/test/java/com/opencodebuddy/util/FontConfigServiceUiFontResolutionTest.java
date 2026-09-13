@@ -117,7 +117,7 @@ public class FontConfigServiceUiFontResolutionTest {
 
         assertEquals("customFile", resolved.get("mode").getAsString());
         assertEquals("customFile", resolved.get("effectiveMode").getAsString());
-        assertEquals("CC GUI Code Custom", resolved.get("fontFamily").getAsString());
+        assertEquals("OpenCode Buddy Code Custom", resolved.get("fontFamily").getAsString());
         assertTrue(resolved.get("fontUrl").getAsString().startsWith("https://cc-gui-font.local/"));
         assertEquals("truetype", resolved.get("fontFormat").getAsString());
         assertFalse(resolved.has("fontBase64"));
@@ -152,9 +152,9 @@ public class FontConfigServiceUiFontResolutionTest {
         JsonObject resolved = invokeResolveUiFontConfig(persisted, createUiFontConfig());
 
         // UI custom fonts must use the UI-specific family name so they never collide with the
-        // code custom font family ("CC GUI Code Custom").
+        // code custom font family ("OpenCode Buddy Code Custom").
         assertEquals("customFile", resolved.get("effectiveMode").getAsString());
-        assertEquals("CC GUI UI Custom", resolved.get("fontFamily").getAsString());
+        assertEquals("OpenCode Buddy UI Custom", resolved.get("fontFamily").getAsString());
     }
 
     @Test

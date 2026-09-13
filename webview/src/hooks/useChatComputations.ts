@@ -131,8 +131,16 @@ export function useChatComputations({
     }
     for (let i = 0; i < currentMessages.length; i += 1) {
       const candidate = currentMessages[i];
-      const raw = candidate.raw;
-      if (!raw || typeof raw === 'string') continue;
+      let raw = candidate.raw;
+      if (!raw) continue;
+      if (typeof raw === 'string') {
+        try {
+          raw = JSON.parse(raw) as ClaudeRawMessage;
+        } catch {
+          continue;
+        }
+      }
+      if (typeof raw !== 'object' || raw === null) continue;
       const content = raw.content ?? raw.message?.content;
       if (!Array.isArray(content)) continue;
       const resultBlock = content.find(

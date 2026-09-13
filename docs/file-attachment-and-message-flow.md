@@ -1,205 +1,202 @@
-# OpenCode IDEA GUI：文件识别、文件发送、@引用与文本交互完整流程
+# OpenCode IDEA & VS Code 插件：文件识别、附件处理、@引用与文件上下文完整架构与排查指南
 
-本文档系统阐述了在 **OpenCode IDEA GUI** 插件中，**识别文件（补全与提取）**、**发送文件（附件/图片/代码）**、**@ 引用文件（标签化与上下文注入）** 以及 **发送普通文本** 的端到端完整链路实现，涵盖前端 WebView、IntelliJ 平台 Java 宿主层、Node.js AI-Bridge Daemon 层以及 OpenCode Server / SDK 层的协同机制。
+本文档系统阐述了在 **OpenCode IDEA GUI** 与 **OpenCode VS Code Plugin** 两个插件中，**上传附件（图片/PDF/代码/文本文件）**、**@ 引用文件（模糊搜索与标签化）**、**文件与 IDE 上下文（活动文件/选区/终端/工作区）** 以及 **提示词组装与历史记录净化** 的端到端完整实现原理与排查手册。
 
 ---
 
-## 1. 架构总览
+## 1. 核心概念与场景分工对比
 
-整个交互链路采用 **分层解耦、事件流式驱动** 的架构设计：
+在插件体系中，用户与文件的交互分为三大核心维度，各自承担不同的职责与底层传输策略：
+
+| 维度 | 1. 📎 上传附件 (Attachments) | 2. 🔍 @ 引用文件 (Referenced Files) | 3. 💻 IDE 与文件上下文 (IDE Context) |
+| :--- | :--- | :--- | :--- |
+| **触发方式** | 点击输入框旁“📎 添加附件”、拖拽文件或剪贴板粘贴截图/文件 | 在输入框中键入 `@` 唤起项目文件补全下拉列表并回车选择 | 自动收集：当前活动编辑器文件、选中的代码行号范围、活动终端等 |
+| **典型场景** | 项目外部文件、独立配置文件（如 `.env`）、临时日志、截图卡片 | 项目工作区内已有源码文件（如 `src/App.tsx`） | 当前正在阅读的代码片段、光标所在位置的函数 |
+| **传输形式** | **内容快照传递**：<br>• 图片/PDF：原生多模态 `FilePartInput`<br>• 代码/文本：`<attachment filename="...">` 内联注入 | **路径引用传递**：<br>在 `## Referenced Files` 中注入文件绝对路径，由 Agent 调用 `Read` 工具按需从磁盘读取 | **路径与选区标记传递**：<br>在 `## IDE Context` 中注入路径与行号范围（如 `#L10-25`），Agent 按需读取 |
+| **设计考量** | 外部文件不在磁盘工作区，必须携带内容快照；且文本文件不能作为 `data:text/plain` 多模态块发送给模型（会触发 400 错误） | 项目内文件如果每次都打出全文，会严重消耗上下文 Token 并超出提示词限制；路径传递让智能体自主按需阅读 | 精准告知模型用户当前视觉焦点所在，无需内联大段选中代码 |
+
+---
+
+## 2. 端到端架构与数据流图
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as 用户
     participant Webview as React Webview (前端)
-    participant Java as IntelliJ Java Plugin (宿主)
-    participant Daemon as Node.js AI-Bridge (Daemon)
-    participant OpenCode as OpenCode Serve / SDK
+    participant Host as 宿主 (Java / VS Code Extension)
+    participant Bridge as AI-Bridge Daemon (Node.js)
+    participant OpenCode as OpenCode Serve / LLM Provider
 
-    %% 场景1：@引用文件搜索与补全
+    %% 场景1：@ 引用文件
     rect rgb(240, 248, 255)
     Note over User, OpenCode: 阶段 1：@ 引用文件搜索与标签化
     User->>Webview: 键入 "@" 或 "@文件名"
-    Webview->>Java: JCEF Bridge: findFiles(query)
-    Java->>Daemon: NDJSON: opencode.findFiles
-    Daemon->>OpenCode: SDK: client.findFiles(query)
-    OpenCode-->>Daemon: 文件列表 (按 frecency + 模糊排序)
-    Daemon-->>Java: entries[]
-    Java-->>Webview: 补全候选项列表
-    User->>Webview: 选中文件
-    Webview->>Webview: 渲染为 .file-tag Chip 并记录路径映射
+    Webview->>Host: RPC: findFiles(query)
+    Host->>Bridge: opencode.findFiles
+    Bridge->>OpenCode: SDK: client.findFiles(query)
+    OpenCode-->>Bridge: 文件列表 (按 frecency + 模糊排序)
+    Bridge-->>Host: entries[]
+    Host-->>Webview: 候选项列表
+    User->>Webview: 选中目标文件
+    Webview->>Webview: 渲染为 .file-tag Chip 标签并记录绝对路径映射
     end
 
-    %% 阶段 2：发送消息（文本 + 附件 + @引用）
+    %% 场景2：发送消息与上下文组装
     rect rgb(245, 255, 245)
-    Note over User, OpenCode: 阶段 2：消息发送与处理（文本/附件/@文件）
-    User->>Webview: 点击发送 / 按 Enter
-    Webview->>Webview: 提取文本、附件 Base64、@引用文件元数据 (fileTags)
-    Webview->>Java: JCEF: send_message / send_message_with_attachments
-    Java->>Java: 收集 IDE 当前激活文件/选区上下文 + 组装 ## Referenced Files
-    Java->>Daemon: NDJSON: opencode.send { message, attachments, model, agent, ... }
-    Daemon->>Daemon: buildFileParts: 规范化 MIME、构建 FilePartInput (data: / file://)
-    Daemon->>OpenCode: SDK: promptAsync(sessionId, promptText, { parts, ... })
+    Note over User, OpenCode: 阶段 2：发送消息与分流处理
+    User->>Webview: 发送 (用户文本 + 上传附件 + @引用标签)
+    Webview->>Host: send_message_with_attachments (text, attachments, fileTags)
+    Host->>Host: 组装 IDE 选区 (## IDE Context) + @引用 (## Referenced Files)
+    Host->>Bridge: opencode.send (message, attachments, model, agent, ...)
+    Bridge->>Bridge: buildFileParts: 拆分原生多模态 parts 与 textAttachments
+    Bridge->>Bridge: 将 textAttachments 格式化为 ## Attached Files 拼入 promptText
+    Bridge->>OpenCode: SDK: promptAsync(sessionId, promptText, { parts: [image/pdf] })
     end
 
-    %% 阶段 3：流式响应与渲染
+    %% 阶段 3：流式响应与历史回放
     rect rgb(255, 250, 240)
-    Note over User, OpenCode: 阶段 3：流式响应与历史清洗
-    OpenCode-->>Daemon: SSE Events (message.part.delta, message.updated...)
-    Daemon-->>Java: Marker 协议行 ([CONTENT_DELTA], [MESSAGE], [STREAM_END])
-    Java-->>Webview: 实时推送增量文本、思考过程、工具调用
-    Webview-->>User: 打字机流式渲染
+    Note over User, OpenCode: 阶段 3：流式响应与会话历史净化
+    OpenCode-->>Bridge: SSE Events (message.part.delta, message.updated...)
+    Bridge-->>Host: Marker 协议行 ([CONTENT_DELTA], [MESSAGE], [STREAM_END])
+    Host-->>Webview: 打字机流式推送到前端
+    Note over Webview, Host: 历史记录恢复时：UserTextSanitizer 剥离所有 ## 注入段落，保留纯净用户气泡与 Chip 标签
     end
 ```
 
 ---
 
-## 2. 核心交互流程详解
+## 3. 关键机制与深度技术实现
 
-### 2.1 识别文件与 @ 引用文件流程
+### 3.1 附件处理与 LLM API 400 错误根因及分流解决方案
 
-#### (1) 触发与搜索
-- **输入捕获**：在 `ChatInputBox` 中，用户输入 `@` 触发 `useCompletionTriggerDetection`，检测光标所在位置的查询词。
-- **文件检索**：通过 JCEF 桥向 Java 端发送 `findFiles` 请求。
-  - Java 端 `OpenCodeSDKBridge.findFiles` -> 转发给 Daemon `opencode.findFiles`。
-  - Daemon 调用 `@opencode-ai/sdk` 的 `findFiles`，OpenCode 服务端基于项目文件系统的使用频率（frecency）与模糊匹配返回候选文件列表。
+#### 根因剖析
+在 OpenCode SDK 中，`FilePartInput` 支持通过 `url: "data:<mime>;base64,..."` 传递文件。
+然而，OpenCode Serve 会将此部分作为多模态媒体块（Media / Image Block）透传给上游大模型 API（如 Anthropic Claude API、OpenAI、DeepSeek 等）。
+主流模型提供商的 API 严格限制多模态类型仅支持原生媒体：
+- `image/jpeg`, `image/png`, `image/gif`, `image/webp`
+- `application/pdf`（部分模型支持）
 
-#### (2) 标签化渲染（File Tag Chip）
-- **选择插入**：用户从下拉列表中选中目标文件后，`useFileTags` 将选中的 `@path` 转换为内联标签元素：
-  ```html
-  <span class="file-tag has-tooltip" contenteditable="false" data-file-path="src/main.ts" data-tooltip="/Users/.../src/main.ts">
-    <span class="file-tag-icon"><svg>...</svg></span>
-    <span class="file-tag-text">main.ts</span>
-    <span class="file-tag-close">&times;</span>
-  </span>
-  ```
-- **映射管理**：前端通过 `pathMappingRef` 维护展示名/相对路径到绝对路径的映射，支持包含行号标记（如 `#L10-20`）以及特殊终端/服务协议（如 `terminal://`、`service://`）。
-- **光标保全**：替换 innerHTML 时通过 `virtualCursorUtils` 精确计算并恢复虚拟光标位置，防止输入跳动。
+如果将 `.env`, `.gradle`, `.js`, `.json`, `.java`, `.txt` 等文本/代码文件封装为 `data:text/plain;base64,...`，上游 API 会直接报错：
+`400 Invalid mime_type: 'text/plain'. Expected one of image/jpeg, image/png, image/gif, image/webp, application/pdf`。
 
-#### (3) 发送时元数据提取与后端注入
-- **前端提取**：发送前调用 `extractFileTags()` 提取所有包含的 `{ displayPath, absolutePath }`，作为 `fileTags` 数组随 payload 发送。
-- **Java 宿主注入**：
-  - `SessionContextService.buildCodexContextAppend` 将 `fileTags` 转换为提示词末尾的参考文件说明：
-    ```markdown
-    ## Referenced Files
-    The following files were referenced by the user:
-    - `/Users/.../src/main.ts`
+#### 分流解决方案（`cli-image-input.js`）
+在 AI-Bridge 层的 `buildFileParts` 中进行精准分流：
+1. **原生多模态文件（`image/*` 与 `application/pdf`）**：
+   - 生成 `parts: [{ type: "file", mime, filename, url: "data:..." }]`，通过模型原生多模态通道传输。
+2. **代码与纯文本文件（`.env`, `.json`, `.ts`, `.java`, `.py`, `.sql` 等）**：
+   - 解码 Base64 为 UTF-8 字符串，存入 `textAttachments`。
+   - 调用 `formatInlinedAttachments` 将其格式化为结构化 Markdown 注入块：
+     ```markdown
+     ## Attached Files
 
-    Read them with your file tools as needed; the user expects answers based on their content.
-    ```
-  - **重要设计决策**：**不直接内联大段文件内容**。因为 OpenCode 具备智能体（Agentic）工具调用能力，传递文件绝对路径让模型按需使用 `Read` 工具读取，既避免溢出 Windows 命令行/提示词长度限制，又确保读取到最新的磁盘内容。
+     <attachment filename=".env">
+     DATABASE_URL=postgres://localhost:5432/mydb
+     API_KEY=sk_test_123456
+     </attachment>
+     ```
+   - 拼接到 `promptText` 末尾。大模型能 100% 完整读取代码内容，且零 400 报错。
+3. **不可读二进制文件（`.zip`, `.jar`, `.exe`, `.class`, `.so` 等）**：
+   - 拦截并记录友好错误提示，避免向模型发送破坏性二进制乱码。
 
 ---
 
-### 2.2 发送文件（附件 / 图片 / 代码 / 文本文件）流程
+### 3.2 @ 引用文件机制 (Referenced Files)
 
-#### (1) 前端添加附件
-- **多途径输入**：支持点击回形针按钮选取文件、从系统拖拽文件至输入框、或直接在输入框粘贴（Paste）截图/文件。
-- **文件转换**：`useAttachmentHandlers` 通过 `FileReader.readAsDataURL` 将文件转换为 Base64 编码，并封装为 `Attachment` 对象：
-  ```ts
-  interface Attachment {
-    id: string;
-    fileName: string;
-    mediaType: string;
-    data: string; // Base64 数据（无 data URL 前缀）
-  }
-  ```
-- **MIME 优化**：针对浏览器无法识别的无扩展名脚本或默认标记为 `application/octet-stream` 的文件进行脱敏，留给后端/Daemon 做二次 MIME 嗅探。
+1. **前端交互与光标保全**：
+   - 用户键入 `@` 触发 `useCompletionTriggerDetection`。
+   - 选中后 `useFileTags` 将选中的文件替换为 `<span class="file-tag" data-file-path="...">` 标签。
+   - `virtualCursorUtils` 在 innerHTML 替换后恢复光标位置，防止光标跳动。
+2. **元数据提取与注入**：
+   - 前端提取 `fileTags: [{ displayPath, absolutePath }]` 随请求发送。
+   - 宿主（Java `SessionContextService` / VS Code `OpenCodeSession`）生成：
+     ```markdown
+     ## Referenced Files
 
-#### (2) 通信与 payload 传递
-- 前端通过 JCEF 事件 `send_message_with_attachments` 将文本、附件数组、`fileTags` 等序列化后发送到 Java 端。
-- Java 端 `SessionHandler` 解析附件列表，并通过 `OpenCodeSDKBridge.sendMessage` 将参数通过 stdin 传递给 AI-Bridge Daemon。
+     The following files were referenced by the user:
 
-#### (3) AI-Bridge 层的 FilePart 规范化 (`buildFileParts`)
-在 `ai-bridge/utils/cli-image-input.js` 中，Daemon 将附件构建为符合 OpenCode Server 标准的 `FilePartInput`：
+     - `/path/to/src/index.ts`
 
-1. **多模态类型（Native Multimodal）**：
-   - 图片格式（`image/png`, `image/jpeg`, `image/webp`, `image/gif` 等）和 `application/pdf`：保留原生 MIME，生成 `data:<mime>;base64,<payload>`。
-2. **代码与纯文本类型（Code / Plaintext）**：
-   - JSON、YAML、TS、Java、Python、SQL、Markdown 等代码及文本文件：**统一强制规范化为 `text/plain`**。
-   - **设计原因**：OpenCode Server 会将 `data:` + `text/plain` 的 FilePart 内联解析为可读文本内容；若直接传递 `application/json` 或其他非标准多模态 MIME，下游 LLM Provider 会报错“functionality not supported”。
-3. **大小限制与安全过滤**：
-   - 检查 Base64 解码后大小（单附件软上限为 4MB）。
-   - 过滤不可读的二进制文件（如 `.zip`, `.exe`, `.class`, `.so` 等或前 1KB 包含 NUL 字符的 Buffer）。
-4. **空文本兜底（Fallback Text）**：
-   - 当用户仅发送附件而未输入任何文字时，自动补充安全提示词：
-     - 仅包含图片：`Please analyze the attached image(s).`
-     - 包含其他文件：`Please review the attached file(s).`
-     - 避免 OpenCode 服务端因 Prompt 为空而拒绝请求。
+     Read them with your file tools as needed; the user expects answers based on their content.
+     ```
+   - OpenCode 智能体通过自身的 `Read` 工具读取最新文件内容。
 
-#### (4) OpenCode SDK 提交
-```js
-await sdk.promptAsync(sessionId, promptText, {
-  model: model || undefined,
-  agent: agent || undefined,
-  variant: variant || undefined,
-  directory: directory || undefined,
-  parts: fileParts, // 包含所有规范化后的 FilePartInput
-});
+---
+
+### 3.3 IDE 与文件上下文 (IDE Context)
+
+在消息发送前，宿主自动收集用户的编辑器状态：
+1. **活动文件与选区（Selection）**：
+   - 若用户在编辑器中高亮选中了代码，生成：
+     ```markdown
+     ## IDE Context
+
+     Active file: `/path/to/App.tsx#L15-30`
+
+     The user has selected the referenced lines in this file; the selection is the primary subject of the user's question. Read the file to see the selected code.
+     ```
+2. **活动文件（Active File）**：
+   - 若用户未选区，仅打开了某个文件：
+     ```markdown
+     ## User's Current IDE Context
+
+     The user is viewing this file in their IDE. This is the PRIMARY SUBJECT of the user's question: `/path/to/App.tsx`
+     ```
+3. **多模块工作区与终端（Modules & Terminal）**：
+   - 注入 `## Workspace Context`、`## Project Modules` 以及 `## Active Terminal Session`。
+
+---
+
+### 3.4 提示词净化与历史回放隔离 (`UserTextSanitizer`)
+
+为了向模型提供完整上下文，所有 `##` 注入块都会随消息持久化存储到 OpenCode Serve 的会话历史中。
+当重新加载会话或向前端渲染用户气泡时，`UserTextSanitizer` 会根据白名单标题剥离这些附加块：
+
+```
+INJECTED_SECTION_TITLES = [
+  "## Workspace Context",
+  "## Project Modules",
+  "## Active Terminal Session",
+  "## Referenced Files",
+  "## Attached Files",
+  "## IDE Context",
+  "## User's Current IDE Context",
+  "## Agent Role and Instructions"
+]
 ```
 
----
-
-### 2.3 发送普通文本流程
-
-#### (1) 前端输入校验与清理
-- **清理与防抖**：过滤零宽字符（`\u200B-\u200D\uFEFF`），展开引用块 Token（`expandQuoteTokens`）。
-- **历史记录**：将本次输入存入 `useInputHistory` 本地缓存（支持上下键回溯历史）。
-- **状态联动**：清空输入框并取消挂起的防抖回调，防止重复填充。
-
-#### (2) Java 宿主层增强
-- **斜杠命令解析**：检测是否为 `/compact`, `/fork`, `/share` 等本地内置命令或 `/custom_command`，若是斜杠命令则通过 `opencode.sendCommand`（`/session/{id}/command`）路由。
-- **IDE 上下文自动收集**（`SessionContextService`）：
-  - **活动编辑器与选区**：若用户在编辑器中选中了代码片段，自动生成带有行号范围的上下文标记（`## IDE Context`，如 `Active file: src/App.tsx#L20-L45`）。
-  - **工作区多模块信息**：若处于 Multi-Module / Workspace 项目，注入子工程结构。
-  - **Agent 角色指令**：若当前 Tab 启用了特定的 Agent 预设，追加 `## Agent Role and Instructions`。
-
-#### (3) 调度与会话维护
-- `OpenCodeSDKBridge` 将最终处理后的提示词发送至 Daemon。
-- Daemon 自动管理 `sessionID`（复用现有或通过 `sdk.createSession` 创建新会话），并绑定项目工作目录（`directory`）。
+- **UI 呈现效果**：
+  - 用户消息气泡只显示用户最初输入的纯净文本（如 `请帮我看看这个配置`）；
+  - `@` 引用的文件通过消息的 `fileTags` 渲染为 `@file` Chip；
+  - 上传的附件通过消息的 `attachments` / `attachment` block 渲染为 `📎 Attachment` Chip；
+  - 各组件展示互不干扰、井然有序。
 
 ---
 
-## 3. 流式响应与历史回放清洗机制
+## 4. 单元测试覆盖与验证清单
 
-### 3.1 运行时流式输出（Streaming）
-OpenCode Server 通过 SSE（Server-Sent Events）推送事件，Daemon 将其映射为 stdout Marker 协议输出：
+本体系在各层均配备了自动化单元测试：
 
-| Marker 协议行 | 含义 |
-| :--- | :--- |
-| `[MESSAGE_START] <sessionId>` | 会话/消息轮次开始 |
-| `[CONTENT_DELTA] "<text>"` | 文本增量输出（打字机流式推送） |
-| `[THINKING_DELTA] "<text>"` | 深度思考/推理过程增量 |
-| `[MESSAGE] { tool_use / tool_result }` | 工具调用状态及返回结果 |
-| `[PERMISSION_REQUEST] {...}` | 权限审批弹窗请求（Read/Write/Bash） |
-| `[USAGE] {...}` | Token 消耗与成本统计 |
-| `[STREAM_END] <sessionId>` | 当前轮次流式结束 |
-
-Java 层的 `OpenCodeMessageHandler` 监听 Marker 并驱动 JCEF 将增量推入 Webview，实现流畅的打字机交互体验。
-
-### 3.2 历史记录回放与清洗（Sanitizing）
-当切换或重新打开历史会话时，`listMessages` 会从服务端拉取完整的消息部件（parts）。为了保证 UI 展现整洁，系统进行了两级清洗：
-
-1. **服务端合成部件过滤（`OpenCodeMessageConverter`）**：
-   - 过滤带有 `synthetic: true` 标记的部件（如服务端自动生成的 `Called the Read tool...` 以及展开的文件内容）。
-   - 将 `type: "file"` 部件还原为前端的 Attachment Chip 或图片预览卡片。
-2. **宿主注入上下文剥离（`UserTextSanitizer`）**：
-   - 剥离发送时由 Java 插件附加的 `## IDE Context`、`## Referenced Files`、`## Agent Role and Instructions` 等模型专用上下文，仅将用户原始输入的文本呈现在聊天气泡中。
+| 测试文件 | 覆盖模块与测试内容 | 执行命令 |
+| :--- | :--- | :--- |
+| `ai-bridge/utils/file-parts.test.js` (IDEA & VS Code) | • 图片原生多模态 `parts` 构建<br>• 代码/文本文件 `textAttachments` 提取<br>• `formatInlinedAttachments` Markdown 生成<br>• 二进制文件拦截与错误处理<br>• 路径映射与空文本兜底 | `node --test utils/file-parts.test.js` |
+| `SessionContextServiceTest.java` (IDEA) | • 图片生成 `image` block<br>• 文本附件生成 `attachment` block<br>• 混合附件构建<br>• `## Referenced Files` 路径注入（无大段内容内联）<br>• `## IDE Context` 选区行号标记注入 | `./gradlew test --tests *SessionContextServiceTest*` |
+| `UserTextSanitizerTest.java` (IDEA) | • `## Attached Files` 剥离<br>• `## Referenced Files` / `## IDE Context` 剥离<br>• 多段落混合剥离与幂等性保障<br>• 用户自定义 Markdown 标题保留 | `./gradlew test --tests *UserTextSanitizerTest*` |
+| `src/test/extension.test.ts` (VS Code) | • `UserTextSanitizer.ts` 剥离 `## Attached Files`<br>• 剥离 `## Referenced Files` 与 `## IDE Context`<br>• `needsSanitize` 检测判断 | `npm run compile` / VS Code Test Runner |
 
 ---
 
-## 4. 关键代码模块索引
+## 5. 常见问题排查手册 (Troubleshooting)
 
-| 模块 / 文件 | 主要职责 |
-| :--- | :--- |
-| [`useFileTags.ts`](file:///Users/obito/source/repos/opencode-idea-gui/webview/src/components/ChatInputBox/hooks/useFileTags.ts) | 前端 `@` 文件引用匹配、`.file-tag` Chip 标签渲染与光标保全 |
-| [`useAttachmentHandlers.ts`](file:///Users/obito/source/repos/opencode-idea-gui/webview/src/components/ChatInputBox/hooks/useAttachmentHandlers.ts) | 前端文件选取、拖拽、粘贴与 Base64 转换 |
-| [`useSubmitHandler.ts`](file:///Users/obito/source/repos/opencode-idea-gui/webview/src/components/ChatInputBox/hooks/useSubmitHandler.ts) | 前端输入提交、历史记录、上下文提取与状态重置 |
-| [`SessionHandler.java`](file:///Users/obito/source/repos/opencode-idea-gui/src/main/java/com/opencodebuddy/handler/SessionHandler.java) | JCEF Bridge 消息入口，解析 payload 并调度发送 |
-| [`SessionContextService.java`](file:///Users/obito/source/repos/opencode-idea-gui/src/main/java/com/opencodebuddy/session/SessionContextService.java) | 注入 IDE 上下文、活动文件选区与 `## Referenced Files` |
-| [`OpenCodeSDKBridge.java`](file:///Users/obito/source/repos/opencode-idea-gui/src/main/java/com/opencodebuddy/provider/opencode/OpenCodeSDKBridge.java) | Java 与 Node.js AI-Bridge Daemon 的双向通信门面 |
-| [`opencode-daemon-service.js`](file:///Users/obito/source/repos/opencode-idea-gui/ai-bridge/services/opencode/opencode-daemon-service.js) | 常驻 `opencode serve` 守护进程管理、会话维护与 SSE 监听 |
-| [`cli-image-input.js`](file:///Users/obito/source/repos/opencode-idea-gui/ai-bridge/utils/cli-image-input.js) | 附件解析、MIME 智能规范化、`FilePartInput` 构建与体积校验 |
-| [`OpenCodeMessageConverter.java`](file:///Users/obito/source/repos/opencode-idea-gui/src/main/java/com/opencodebuddy/session/OpenCodeMessageConverter.java) | 历史消息转换，过滤合成内容并还原附件 Chip |
-| [`UserTextSanitizer.java`](file:///Users/obito/source/repos/opencode-idea-gui/src/main/java/com/opencodebuddy/session/UserTextSanitizer.java) | 剥离注入上下文，还原纯净用户文本 |
+### Q1: 上传代码或文本文件后，大模型报错 `Invalid mime_type: text/plain`
+- **原因**：宿主或 AI-Bridge 将文本文件作为 `url: data:text/plain;base64,...` 的 FilePart 发送给了模型多模态通道。
+- **排查与确认**：检查 `ai-bridge/utils/cli-image-input.js` 中的 `buildFileParts` 是否启用了 `textAttachments` 提取与 `formatInlinedAttachments` 注入逻辑。
+
+### Q2: 上传附件后模型回答“我没有收到任何文件内容”
+- **原因**：宿主未将非图片附件加入到发送 payload 中，或未格式化为 `<attachment>` 标签注入到 prompt。
+- **排查与确认**：检查 IDEA 端 `SessionContextService.java` 的 `buildUserMessage` 是否包含 `createAttachmentBlock(att)`，以及 Daemon 端的 `sendMessagePersistent` 是否调用了 `formatInlinedAttachments`。
+
+### Q3: 历史会话恢复后，用户聊天气泡里出现了大段 `## Referenced Files` 或 `## Attached Files`
+- **原因**：`UserTextSanitizer` 缺少对应的段落标题定义。
+- **排查与确认**：检查 Java 端 `UserTextSanitizer.java` 和 TS 端 `UserTextSanitizer.ts` 的 `INJECTED_SECTION_TITLES` 列表中是否包含 `"## Attached Files"`。
+

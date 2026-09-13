@@ -42,6 +42,8 @@ public class SessionContextService {
                 for (ClaudeSession.Attachment att : attachments) {
                     if (isImageAttachment(att)) {
                         contentArr.add(createImageBlock(att));
+                    } else if (att != null) {
+                        contentArr.add(createAttachmentBlock(att));
                     }
                 }
 
@@ -362,6 +364,20 @@ public class SessionContextService {
         imageBlock.add("source", source);
 
         return imageBlock;
+    }
+
+    private JsonObject createAttachmentBlock(ClaudeSession.Attachment att) {
+        JsonObject block = new JsonObject();
+        block.addProperty("type", "attachment");
+        String filename = att != null && att.fileName != null ? att.fileName : "attachment";
+        block.addProperty("fileName", filename);
+        block.addProperty("name", filename);
+        block.addProperty("media_type", att != null && att.mediaType != null ? att.mediaType : "text/plain");
+        block.addProperty("mediaType", att != null && att.mediaType != null ? att.mediaType : "text/plain");
+        if (att != null && att.data != null) {
+            block.addProperty("data", att.data);
+        }
+        return block;
     }
 
     private JsonObject createTextBlock(String text) {

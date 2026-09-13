@@ -3025,10 +3025,12 @@ public class ClaudeChatWindow {
                     streamCoalescer.flush(seq -> {
                         if (!disposed) {
                             callJavaScript("historyLoadComplete", String.valueOf(count));
+                            syncRevertStateToFrontend(restoring);
                         }
                     });
                 } else {
                     callJavaScript("historyLoadComplete", String.valueOf(count));
+                    syncRevertStateToFrontend(restoring);
                 }
             })).exceptionally(ex -> {
                 LOG.warn("[ClaudeChatWindow] Same-session soft reload failed: " + ex.getMessage(), ex);
@@ -3042,6 +3044,21 @@ public class ClaudeChatWindow {
                 return null;
             });
         });
+    }
+
+    private void syncRevertStateToFrontend(ClaudeSession restoring) {
+        if (restoring == null) {
+            return;
+        }
+        SessionState.RevertState rs = restoring.getRevertState();
+        JsonObject revertPayload = new JsonObject();
+        revertPayload.addProperty("hasRevert", rs != null);
+        if (rs != null && rs.messageId != null && !rs.messageId.isBlank()) {
+            revertPayload.addProperty("messageId", rs.messageId);
+        } else {
+            revertPayload.add("messageId", com.google.gson.JsonNull.INSTANCE);
+        }
+        callJavaScript("onRevertStateUpdate", revertPayload.toString());
     }
 
     private ChatWindowDelegate.DelegateHost createDelegateHost() {

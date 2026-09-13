@@ -29,14 +29,14 @@ public class CodemossSettingsServicePromptProviderTest {
         Path home = Files.createTempDirectory("prompt-provider-home");
         originalHome = getHome();
         setHome(home.toString());
-        Files.createDirectories(home.resolve(".codemoss"));
+        Files.createDirectories(home.resolve(".opencodebuddy"));
 
         JsonObject config = new JsonObject();
         JsonObject prompts = new JsonObject();
         prompts.add("same-id", prompt("Claude", "claude"));
         prompts.add("codex-id", prompt("Codex", "codex"));
         config.add("prompts", prompts);
-        Files.writeString(home.resolve(".codemoss/prompt.json"), config.toString());
+        Files.writeString(home.resolve(".opencodebuddy/prompt.json"), config.toString());
 
         CodemossSettingsService service = new CodemossSettingsService();
         List<JsonObject> codexPrompts = service.getPrompts(PromptScope.GLOBAL, null, "codex");

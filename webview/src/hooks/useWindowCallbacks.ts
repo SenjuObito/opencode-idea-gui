@@ -43,11 +43,8 @@ export interface UseWindowCallbacksOptions {
   setUsageMaxTokens: React.Dispatch<React.SetStateAction<number | undefined>>;
   setPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   setCurrentProvider: React.Dispatch<React.SetStateAction<string>>;
-  setClaudePermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   setOpenCodePermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
-  setSelectedClaudeModel: React.Dispatch<React.SetStateAction<string>>;
   setSelectedOpenCodeModel: React.Dispatch<React.SetStateAction<string>>;
-  setLongContextEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setReasoningEffort: React.Dispatch<React.SetStateAction<ReasoningEffort>>;
   setSendShortcut: React.Dispatch<React.SetStateAction<'enter' | 'cmdEnter'>>;
   setAutoOpenFileEnabled: React.Dispatch<React.SetStateAction<boolean>>;

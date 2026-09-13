@@ -23,11 +23,17 @@ public final class UserTextSanitizer {
      * of these exact headings are removed, so a user typing their own markdown
      * headings survives.
      */
+    private static final Pattern ATTACHMENT_BLOCK_PATTERN = Pattern.compile(
+            "<attachment\\b[^>]*>.*?(?:</attachment>|\\z)",
+            Pattern.DOTALL | Pattern.CASE_INSENSITIVE
+    );
+
     private static final List<String> INJECTED_SECTION_TITLES = List.of(
             "## Workspace Context",
             "## Project Modules",
             "## Active Terminal Session",
             "## Referenced Files",
+            "## Attached Files",
             "## IDE Context",
             "## User's Current IDE Context",
             "## Agent Role and Instructions"
@@ -60,9 +66,18 @@ public final class UserTextSanitizer {
         if (text == null || text.isEmpty()) {
             return "";
         }
-        Matcher matcher = INJECTED_SECTION.matcher(text);
-        String stripped = matcher.replaceAll("");
-        return stripped.strip();
+        // 1. Strip inlined <attachment> blocks first so any ## headers inside them
+        // don't confuse the section regex.
+        String withoutAttachments = ATTACHMENT_BLOCK_PATTERN.matcher(text).replaceAll("");
+        // 2. Strip standard ## injected context sections.
+        Matcher matcher = INJECTED_SECTION.matcher(withoutAttachments);
+        String stripped = matcher.replaceAll("").strip();
+        // 3. Drop synthetic fallback prompt text for attachment-only turns.
+        if ("Please review the attached file(s).".equals(stripped)
+                || "Please analyze the attached image(s).".equals(stripped)) {
+            return "";
+        }
+        return stripped;
     }
 
     /**
@@ -71,6 +86,12 @@ public final class UserTextSanitizer {
      * non-identical object for nothing).
      */
     public static boolean needsSanitize(String text) {
-        return text != null && INJECTED_SECTION.matcher(text).find();
+        if (text == null) {
+            return false;
+        }
+        return ATTACHMENT_BLOCK_PATTERN.matcher(text).find()
+                || INJECTED_SECTION.matcher(text).find()
+                || "Please review the attached file(s).".equals(text.trim())
+                || "Please analyze the attached image(s).".equals(text.trim());
     }
 }

@@ -10,12 +10,8 @@ public class CliToolIdTest {
 
     @Test
     public void fromId_acceptsKnownTools() {
-        assertEquals(CliToolId.GROK, CliToolId.fromId("grok"));
-        assertEquals(CliToolId.KIMI, CliToolId.fromId("KIMI"));
         assertEquals(CliToolId.OPENCODE, CliToolId.fromId(" opencode "));
-        assertEquals(CliToolId.PI, CliToolId.fromId("pi"));
-        assertEquals(CliToolId.OMP, CliToolId.fromId("omp"));
-        assertEquals(CliToolId.OMP, CliToolId.fromId(" OMP "));
+        assertEquals(CliToolId.OPENCODE, CliToolId.fromId("OPENCODE"));
     }
 
     @Test
@@ -23,16 +19,13 @@ public class CliToolIdTest {
         assertNull(CliToolId.fromId(null));
         assertNull(CliToolId.fromId(""));
         assertNull(CliToolId.fromId("claude"));
+        assertNull(CliToolId.fromId("grok"));
     }
 
     @Test
     public void binaryNames_matchExpected() {
-        assertEquals("grok", CliToolId.GROK.getBinaryName());
-        assertEquals("kimi", CliToolId.KIMI.getBinaryName());
         assertEquals("opencode", CliToolId.OPENCODE.getBinaryName());
-        assertEquals("pi", CliToolId.PI.getBinaryName());
-        assertEquals("omp", CliToolId.OMP.getBinaryName());
-        assertEquals("OMP CLI", CliToolId.OMP.getDisplayName());
+        assertEquals("OpenCode", CliToolId.OPENCODE.getDisplayName());
         for (CliToolId tool : CliToolId.values()) {
             assertNotNull(tool.getDisplayName());
         }

@@ -101,7 +101,7 @@ final class AdditionalDirectoryResolver {
     }
 
     static String getManagedDirectory(Map<String, String> env, Path policyPath) {
-        String fromEnv = env != null ? env.get("CLAUDE_CODE_MANAGED_DIR") : null;
+        String fromEnv = env != null ? env.get("OPENCODE_MANAGED_DIR") : null;
         if (fromEnv != null && !fromEnv.trim().isEmpty()) {
             String normalized = SlashCommandPathPolicy.normalizePath(fromEnv.trim());
             LOG.debug("Managed directory from env: " + normalized);
@@ -134,12 +134,12 @@ final class AdditionalDirectoryResolver {
             if (programData == null || programData.isEmpty()) {
                 programData = "C:\\ProgramData";
             }
-            return Paths.get(programData, "ClaudeCode", "managed-settings.json");
+            return Paths.get(programData, "OpenCode", "managed-settings.json");
         }
         if (PlatformUtils.isMac()) {
-            return Paths.get("/Library/Application Support/ClaudeCode/managed-settings.json");
+            return Paths.get("/Library/Application Support/OpenCode/managed-settings.json");
         }
-        return Paths.get("/etc/claude-code/managed-settings.json");
+        return Paths.get("/etc/opencode/managed-settings.json");
     }
 
     static List<JsonObject> getMergedClaudeSettings(String cwd, String userHome) {
@@ -147,7 +147,7 @@ final class AdditionalDirectoryResolver {
 
         if (userHome != null && !userHome.isEmpty()) {
             try {
-                Path userSettings = Paths.get(userHome, ".claude", "settings.json").toAbsolutePath().normalize();
+                Path userSettings = Paths.get(userHome, ".opencode", "settings.json").toAbsolutePath().normalize();
                 JsonObject user = SlashCommandJsonReader.readJsonObject(userSettings);
                 if (user != null) {
                     settings.add(user);
@@ -160,13 +160,13 @@ final class AdditionalDirectoryResolver {
         if (cwd != null && !cwd.isEmpty()) {
             try {
                 Path cwdPath = Paths.get(cwd).toAbsolutePath().normalize();
-                Path projectSettings = cwdPath.resolve(".claude").resolve("settings.json");
+                Path projectSettings = cwdPath.resolve(".opencode").resolve("settings.json");
                 JsonObject project = SlashCommandJsonReader.readJsonObject(projectSettings);
                 if (project != null) {
                     settings.add(project);
                 }
 
-                Path localSettings = cwdPath.resolve(".claude").resolve("settings.local.json");
+                Path localSettings = cwdPath.resolve(".opencode").resolve("settings.local.json");
                 JsonObject local = SlashCommandJsonReader.readJsonObject(localSettings);
                 if (local != null) {
                     settings.add(local);

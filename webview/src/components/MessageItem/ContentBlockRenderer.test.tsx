@@ -159,3 +159,67 @@ describe('ContentBlockRenderer askuserquestion', () => {
     expect(container.innerHTML).toBe('');
   });
 });
+
+describe('ContentBlockRenderer compact_notification', () => {
+  it('renders success compact notification card with codicon-check and pill class', () => {
+    const block: ClaudeContentBlock = {
+      type: 'compact_notification',
+      status: 'success',
+      headerText: '会话已压缩',
+      items: ['item1', 'item2'],
+    };
+
+    const { container, getByText } = render(
+      <ContentBlockRenderer
+        block={block}
+        messageIndex={0}
+        messageType="compact_notification"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={true}
+        isLastBlock={true}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('会话已压缩')).toBeTruthy();
+    expect(getByText('— 2 messages summarized')).toBeTruthy();
+    expect(container.querySelector('.compact-card--compact-pill')).toBeTruthy();
+    expect(container.querySelector('.compact-card--success')).toBeTruthy();
+    expect(container.querySelector('.codicon-check')).toBeTruthy();
+  });
+
+  it('renders failure compact notification card with codicon-warning and detail', () => {
+    const block: ClaudeContentBlock = {
+      type: 'compact_notification',
+      status: 'failure',
+      headerText: '压缩会话失败',
+      detail: 'Timeout error',
+    };
+
+    const { container, getByText } = render(
+      <ContentBlockRenderer
+        block={block}
+        messageIndex={0}
+        messageType="compact_notification"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={true}
+        isLastBlock={true}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('压缩会话失败')).toBeTruthy();
+    expect(getByText('— Timeout error')).toBeTruthy();
+    expect(container.querySelector('.compact-card--compact-pill')).toBeTruthy();
+    expect(container.querySelector('.compact-card--failure')).toBeTruthy();
+    expect(container.querySelector('.codicon-warning')).toBeTruthy();
+  });
+});

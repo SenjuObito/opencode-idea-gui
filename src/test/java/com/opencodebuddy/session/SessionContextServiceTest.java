@@ -40,6 +40,44 @@ public class SessionContextServiceTest {
     }
 
     @Test
+    public void buildUserMessageIncludesAttachmentBlockForNonImageFiles() {
+        SessionContextService service = new SessionContextService(null);
+        List<ClaudeSession.Attachment> attachments = List.of(
+                new ClaudeSession.Attachment("config.json", "application/json", "{\"key\":\"val\"}"),
+                new ClaudeSession.Attachment("app.ts", "text/plain", "console.log('hi');")
+        );
+
+        ClaudeSession.Message message = service.buildUserMessage("Check these files", attachments);
+
+        assertEquals(ClaudeSession.Message.Type.USER, message.type);
+        assertEquals("Check these files", message.content);
+        JsonArray content = message.raw.getAsJsonObject("message").getAsJsonArray("content");
+        assertEquals(3, content.size());
+        assertEquals("attachment", content.get(0).getAsJsonObject().get("type").getAsString());
+        assertEquals("config.json", content.get(0).getAsJsonObject().get("name").getAsString());
+        assertEquals("attachment", content.get(1).getAsJsonObject().get("type").getAsString());
+        assertEquals("app.ts", content.get(1).getAsJsonObject().get("name").getAsString());
+        assertEquals("text", content.get(2).getAsJsonObject().get("type").getAsString());
+    }
+
+    @Test
+    public void buildUserMessageHandlesMixedImageAndTextAttachments() {
+        SessionContextService service = new SessionContextService(null);
+        List<ClaudeSession.Attachment> attachments = List.of(
+                new ClaudeSession.Attachment("screenshot.png", "image/png", "img-b64"),
+                new ClaudeSession.Attachment("notes.txt", "text/plain", "hello notes")
+        );
+
+        ClaudeSession.Message message = service.buildUserMessage("Look at these", attachments);
+
+        JsonArray content = message.raw.getAsJsonObject("message").getAsJsonArray("content");
+        assertEquals(3, content.size());
+        assertEquals("image", content.get(0).getAsJsonObject().get("type").getAsString());
+        assertEquals("attachment", content.get(1).getAsJsonObject().get("type").getAsString());
+        assertEquals("text", content.get(2).getAsJsonObject().get("type").getAsString());
+    }
+
+    @Test
     public void buildCodexContextAppendReferencesPathsWithoutInliningContent() throws Exception {
         File referencedFile = temporaryFolder.newFile("ReferencedExample.java");
         Files.writeString(referencedFile.toPath(), "class ReferencedExample {}", StandardCharsets.UTF_8);

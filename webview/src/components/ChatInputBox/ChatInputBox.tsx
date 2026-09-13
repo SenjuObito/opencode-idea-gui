@@ -111,8 +111,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onRemoveFromQueue,
       autoOpenFileEnabled,
       onAutoOpenFileEnabledChange,
-      longContextEnabled = true,
-      onLongContextChange,
       onCompactClick,
     }: ChatInputBoxProps,
     ref: React.ForwardedRef<ChatInputBoxHandle>
@@ -722,8 +720,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           alwaysThinkingEnabled={alwaysThinkingEnabled}
           onToggleThinking={onToggleThinking}
           onAddModel={onOpenModelSettings}
-          longContextEnabled={longContextEnabled}
-          onLongContextChange={onLongContextChange}
           fileCompletion={fileCompletion}
           commandCompletion={commandCompletion}
           dollarCommandCompletion={dollarCommandCompletion}

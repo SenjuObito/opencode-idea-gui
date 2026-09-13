@@ -13,6 +13,104 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: '0.5.4',
+    date: '2026-08-26',
+    content: {
+      en: `✨ Features
+- Add the **OMP (Oh My Pi) CLI Provider**: a Pi-compatible headless agent (\`omp\` / \`@oh-my-pi/pi-coding-agent\`) with \`--resume\` multi-turn sessions, \`omp models --json\` catalogs, title-first history under \`~/.omp/agent/sessions\`, and a mode dropdown driven by the user's \`modelRoles\` (by @Sojiroh)
+- Add a **Claude plan-usage bar** in the input tool cluster, colored by spend pace vs. the 5h / 7d window budget, with a worst-window warning dot; **z.ai / GLM** backends fill the same bar from the monitor quota endpoint (plan tier, stale-cache hint) instead of SDK \`rate_limit_event\` (by @toxeh, @zhukunpenglinyutong)
+- Add **DSH agent preset switching** in the chat toolbar: built-in and user-installed presets persist per tab, apply to spawned DSH hosts, and reload owned hosts when the preset changes (by @yibeiqingke, @zhukunpenglinyutong)
+- Nest **model / effort / speed / 1M context** into a compact model-config dropdown with in-viewport fly-outs, so the input toolbar stays readable in narrow plugin widths (by @zhukunpenglinyutong)
+- Expand **Codex Pet**: configurable random action mappings, safe local pet deletion, and a redesigned settings workspace with responsive preview / operations panels (by @GGMGG)
+
+🔧 Improvements
+- Finish the **Grok persistent ACP runtime**: route Grok through \`GrokSDKBridge\` instead of a per-request CLI process, keep one ACP daemon across turns, convert snapshot chunks into true deltas (no duplicated / resurrected text), and persist \`grok.env\` into the daemon (by @toxeh)
+- Switch Claude settings startup sync to **repair-only fill-in-the-blanks**: missing provider-managed fields are added, existing user values (including per-env keys) are never overwritten, and incomplete / exempt providers are skipped (by @HardBrick21, @zhukunpenglinyutong)
+- Polish the **DSH settings card** (CLI install + local host as one product) and open docs / MCP help links through the system browser instead of dead \`target=_blank\` anchors in JCEF (by @zhukunpenglinyutong)
+- Restore **Codex 0.148+ rollout history** by indexing sessions whose user prompt is a \`response_item\`, and keep provider \`auth.json\` inline (with a backup of unmanaged auth before the first post-upgrade overwrite) (by @zhukunpenglinyutong, @GGMGG)
+
+🐛 Fixes
+- Offload **Node.js auto-detection / verification off the EDT** so hung \`which\` probes in VMs no longer freeze the IDE on chat-window open (by @mbehensky, @zhukunpenglinyutong)
+- Make **Codex provider activation atomic** and keep MCP / Skills authorization in sync with the enabled managed provider, so upgrades no longer drop credentials or reject \`~/.codex\` access (by @GGMGG)
+- Restore **Codex subagent lifecycle and plan rendering**: keep spawn identity / sidechain status across reloads, isolate \`update_plan\` to the current turn, hide opaque spawn prompts, and ignore late status responses from other sessions (by @GGMGG)
+- Isolate **model labels and icons by provider** so third-party catalogs whose ids collide with \`claude-*\` slots no longer inherit Claude mappings (by @toxeh)
+- Keep the **DSH configured model** in the picker when the runtime catalog omits that route, and spawn \`--dump-config\` through the Windows-safe CLI shim (by @yibeiqingke, @zhukunpenglinyutong)
+- Clear **model-routing env vars** (\`ANTHROPIC_MODEL\` / \`ANTHROPIC_DEFAULT_*\`) in the settings override so \`~/.claude/settings.json\` can no longer pin every family to one model (by @hebulin, closes #1509)
+- Fix **\`@file\` references with spaces in the filename** on both the input and the rendered message, and preserve ordinary text between consecutive project-tree file chips (by @Cyber0xFE, @elexiang, @zhukunpenglinyutong, closes #1726)
+- Preserve **existing input content** when inserting an IDE selection / snippet while a stale webview selection is still non-collapsed (by @hebulin, closes #1700)
+- Stop **MCP stdio container leaks** by closing stdin (EOF) before signalling, and expand \`\${VAR}\` placeholders in \`.mcp.json\` env from Claude settings files (by @hebulin, closes #1721, #1722)
+- Preserve **Claude thinking-block boundaries** during streaming so independent thoughts are no longer concatenated (or duplicated) across assistant messages (by @gadfly3173)
+- Signal daemon **ready before SDK preload** so Java startup / heartbeats are no longer blocked on the Claude Agent SDK import (by @hebulin)
+- Migrate the retired **Commit AI / Prompt Enhancer** default \`claude-sonnet-4-6\` to \`claude-sonnet-5\` on read (by @hebulin, closes #1693)
+- Delay **model-config submenu hover** so fly-outs stay reachable when the pointer crosses rows above them (by @zhukunpenglinyutong)`,
+      zh: `✨ 新功能
+- 新增 **OMP（Oh My Pi）CLI Provider**：兼容 Pi 的无头 Agent（\`omp\` / \`@oh-my-pi/pi-coding-agent\`），支持 \`--resume\` 多轮会话、\`omp models --json\` 模型目录、\`~/.omp/agent/sessions\` 下 title-first 历史，以及由用户 \`modelRoles\` 驱动的模式选择器（by @Sojiroh）
+- 输入栏工具区新增 **Claude 套餐用量条**：按 5h / 7d 窗口的消耗节奏着色，并用最差窗口圆点提示风险；**z.ai / GLM** 后端改为从 monitor 配额接口填充同一条用量条（展示套餐档位、过期缓存提示），而不再依赖 SDK \`rate_limit_event\`（by @toxeh、@zhukunpenglinyutong）
+- 聊天工具栏新增 **DSH Agent Preset 切换**：内置与用户安装的 preset 按 Tab 持久化，会应用到新拉起的 DSH host，并在 preset 变更时重载由插件托管的 host（by @yibeiqingke、@zhukunpenglinyutong）
+- 将 **模型 / 推理强度 / 速度 / 1M 上下文** 收进紧凑的模型配置下拉，子菜单限制在插件视口内弹出，窄宽度下输入工具栏仍可读（by @zhukunpenglinyutong）
+- 扩展 **Codex Pet**：可配置随机动作映射、安全删除本地宠物，并重做设置页的预览 / 操作面板（by @GGMGG）
+
+🔧 优化
+- 完成 **Grok 持久化 ACP runtime**：Grok 改为走 \`GrokSDKBridge\` 而非每次请求拉起 CLI，跨轮次复用同一个 ACP daemon，把快照式 chunk 转成真 delta（避免重复 / 复活文本），并把 \`grok.env\` 注入 daemon（by @toxeh）
+- Claude 设置启动同步改为 **只补缺失字段**：仅填充缺失的供应商管理字段，永不覆盖用户已有值（含 env 里的单个键）；不完整或豁免的供应商会跳过（by @HardBrick21、@zhukunpenglinyutong）
+- 打磨 **DSH 设置卡片**（CLI 安装与本地 host 合并为一张产品卡），文档 / MCP 帮助链接改为通过系统浏览器打开，避免 JCEF 中 \`target=_blank\` 点击无响应（by @zhukunpenglinyutong）
+- 恢复 **Codex 0.148+ rollout 历史**：索引 user prompt 为 \`response_item\` 的会话；provider \`auth.json\` 继续内联保存，并在升级后首次覆盖非托管 auth 前先备份（by @zhukunpenglinyutong、@GGMGG）
+
+🐛 修复
+- 将 **Node.js 自动检测 / 校验移出 EDT**，虚拟机里卡住的 \`which\` 探测不再在打开聊天窗口时冻住整个 IDE（by @mbehensky、@zhukunpenglinyutong）
+- **Codex 供应商激活改为原子操作**，MCP / Skills 授权与已启用的托管供应商保持同步，升级不再丢失凭证或拒绝访问 \`~/.codex\`（by @GGMGG）
+- 修复 **Codex 子代理生命周期与计划渲染**：重载后保留 spawn 身份与侧链状态，将 \`update_plan\` 隔离到当前轮，隐藏不透明的 spawn prompt，并忽略来自其他会话的迟到状态响应（by @GGMGG）
+- **按 provider 隔离模型标签与图标**，第三方目录里与 \`claude-*\` 槽位撞 id 的条目不再套用 Claude 映射（by @toxeh）
+- 运行时目录未包含该路由时，**DSH 模型选择器仍保留已配置模型**；Windows 上通过安全 CLI shim 拉起 \`--dump-config\`（by @yibeiqingke、@zhukunpenglinyutong）
+- 在 settings override 中清空 **模型路由环境变量**（\`ANTHROPIC_MODEL\` / \`ANTHROPIC_DEFAULT_*\`），避免 \`~/.claude/settings.json\` 把所有模型族钉到同一个模型（by @hebulin，关闭 #1509）
+- 修复 **文件名含空格的 \`@file\` 引用** 在输入框与消息展示两侧被截断的问题，并保留连续项目树文件 chip 之间的普通文本（by @Cyber0xFE、@elexiang、@zhukunpenglinyutong，关闭 #1726）
+- 在 webview 仍残留未折叠选区时插入 IDE 选区 / 片段，**不再删掉输入框已有内容**（by @hebulin，关闭 #1700）
+- 先关闭 stdin（EOF）再发信号，避免 **MCP stdio 容器泄漏**；并从 Claude settings 文件展开 \`.mcp.json\` env 中的 \`\${VAR}\` 占位符（by @hebulin，关闭 #1721、#1722）
+- 流式输出中保留 **Claude thinking 块边界**，独立思考内容不再被拼在一起或重复追加（by @gadfly3173）
+- Daemon 在 SDK 预加载前先发 **ready**，Java 启动 / 心跳不再被 Claude Agent SDK 导入阻塞（by @hebulin）
+- 读取时把已退役的 **Commit AI / Prompt Enhancer** 默认模型 \`claude-sonnet-4-6\` 迁移为 \`claude-sonnet-5\`（by @hebulin，关闭 #1693）
+- 延迟 **模型配置子菜单的 hover 切换**，指针划过上方行时飞出菜单仍可到达（by @zhukunpenglinyutong）`,
+    },
+  },
+  {
+    version: '0.5.3',
+    date: '2026-08-21',
+    content: {
+      en: `✨ Features
+- Add **DeepSeek Harness (DSH) CLI Provider**: connect the DSH daemon through a WebSocket bridge with streaming text / thinking, tool calls and results, approval and question handling, model discovery, persistent multi-turn sessions, history list / load / delete, and provider-aware session routing (by @zhukunpenglinyutong)
+- Add **DSH settings and provider UI**: configure the DSH host and binary, start / stop the daemon, inspect status, select DSH models, and use DSH from the chat and history views with localized UI (by @zhukunpenglinyutong)
+
+🔧 Improvements
+- Improve **DSH bridge reliability and lifecycle management**: drain subprocess stderr, validate and atomically persist host settings, guard lifecycle re-entry, release finished-turn resources promptly, and return best-effort responses when approval or question forwarding fails (by @zhukunpenglinyutong)
+- Add **compact transcript restoration**: reopening a compacted conversation restores the full pre-compaction history instead of only the compact summary (by @Gadfly)
+- Improve **OpenCode model loading on Windows**: recover from empty model lists, use a private temporary directory for redirects, and avoid inlining file contents into model requests (by @zhukunpenglinyutong)
+- Restore the **Star History chart** and add the official documentation entry, with dashboard popovers rendered correctly in IDE themes (by @FaintFlower, @zhukunpenglinyutong)
+
+🐛 Fixes
+- Fix **multi-tab webview rendering** so open tabs keep their content and render updates independently (by @Gadfly)
+- Fix **Codex approval policy compatibility**: stop passing the retired \`approval_policy=untrusted\` value to the Codex CLI (by @hebulin)
+- Fix **DSH protocol and process edge cases**: reject malformed fragmented WebSocket messages, cap aggregate frame sizes, guard against PID reuse, clear stale timers, handle foreign-turn idle backstops, and include useful stderr tails in failures (by @zhukunpenglinyutong)
+- Fix **conversation event attribution and history backfilling**: keep sidechain rows out of parent links, preserve parent conversation chains, and ensure turn results are not stranded when an event is skipped (by @zhukunpenglinyutong)
+- Harden **Grok permission and edit reporting** on error paths by requiring exact permission methods, sequence-safe ledger keys, and evidence-backed edit results (by @zhukunpenglinyutong)`,
+      zh: `✨ 新功能
+- 新增 **DeepSeek Harness（DSH）CLI Provider**：通过 WebSocket bridge 连接 DSH daemon，支持流式文本 / 思考、工具调用与结果、权限与提问处理、模型发现、持久化多轮会话，以及按 provider 路由的会话历史（列表 / 加载 / 删除）（by @zhukunpenglinyutong）
+- 新增 **DSH 设置与 Provider 界面**：可配置 DSH host 与 binary、启动 / 停止 daemon、查看状态、选择 DSH 模型，并在聊天与历史视图中使用 DSH；界面文案支持多语言（by @zhukunpenglinyutong）
+
+🔧 优化
+- 加固 **DSH bridge 可靠性与生命周期管理**：排空子进程 stderr、校验并原子化保存 host 设置、防止生命周期重复进入、及时释放已完成轮次资源；权限或提问转发失败时也会尽力返回响应，避免 host 长时间等待（by @zhukunpenglinyutong）
+- 新增 **紧凑会话记录恢复**：重新打开被压缩的对话时恢复压缩前的完整历史，而不再只显示压缩摘要（by @Gadfly）
+- 改进 **Windows 上的 OpenCode 模型加载**：修复模型列表为空时的恢复逻辑，重定向使用私有临时目录，并避免将文件内容直接内联到模型请求中（by @zhukunpenglinyutong）
+- 恢复 **Star History 图表**并新增官方文档入口，同时修复 dashboard 弹出层在 IDE 主题下的显示（by @FaintFlower、@zhukunpenglinyutong）
+
+🐛 修复
+- 修复 **多 Tab webview 渲染**：打开的 Tab 能保留各自内容，并彼此独立接收渲染更新（by @Gadfly）
+- 修复 **Codex 权限策略兼容性**：不再向 Codex CLI 传递已废弃的 \`approval_policy=untrusted\` 值（by @hebulin）
+- 修复 **DSH 协议与进程边界问题**：拒绝格式错误的分片 WebSocket 消息、限制聚合帧大小、防止 PID 复用误判、清理过期定时器、为外部轮次增加空闲兜底，并在失败信息中携带有用的 stderr 尾部内容（by @zhukunpenglinyutong）
+- 修复 **会话事件归属与历史回填**：侧链记录不再错误建立父消息关联，父会话链保持完整；事件被跳过时，轮次结果也不会遗失（by @zhukunpenglinyutong）
+- 加固 **Grok 权限与编辑结果上报**：错误路径仅接受精确的权限方法，权限 ledger 使用序列安全的 key，编辑成功状态必须有实际证据支持（by @zhukunpenglinyutong）`,
+    },
+  },
+  {
     version: '0.5.2',
     date: '2026-08-12',
     content: {

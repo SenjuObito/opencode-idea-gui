@@ -68,9 +68,8 @@ public class SessionStateTest {
     }
 
     @Test
-    public void defaultModelIsTheLiveSonnet5() {
+    public void defaultModelIsOpenCodeDefault() {
         SessionState state = new SessionState();
-        // The initial value must never be a retired id (#1678).
-        Assert.assertEquals("claude-sonnet-5", state.getModel());
+        Assert.assertEquals("opencode-default", state.getModel());
     }
 }

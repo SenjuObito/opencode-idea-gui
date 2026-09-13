@@ -104,7 +104,10 @@ public class SettingsHandler extends BaseMessageHandler {
         // User language preference
         "set_user_language",
         "get_user_language",
-        "clear_user_language"
+        "clear_user_language",
+        "set_provider",
+        "get_ui_preferences",
+        "set_ui_preferences"
     };
 
     public SettingsHandler(HandlerContext context) {
@@ -228,12 +231,6 @@ public class SettingsHandler extends BaseMessageHandler {
                 return true;
             case "set_streaming_enabled":
                 projectConfigHandler.handleSetStreamingEnabled(content);
-                return true;
-            case "get_codex_sandbox_mode":
-                projectConfigHandler.handleGetCodexSandboxMode();
-                return true;
-            case "set_codex_sandbox_mode":
-                projectConfigHandler.handleSetCodexSandboxMode(content);
                 return true;
             case "get_send_shortcut":
                 projectConfigHandler.handleGetSendShortcut();
@@ -367,6 +364,34 @@ public class SettingsHandler extends BaseMessageHandler {
                 return true;
             case "clear_user_language":
                 handleClearUserLanguage();
+                return true;
+            case "set_provider":
+                if (content != null && !content.isEmpty()) {
+                    context.setCurrentProvider(content);
+                }
+                return true;
+            case "get_ui_preferences":
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    try {
+                        JsonObject prefs = context.getSettingsService().getUiPreferences();
+                        callJavaScript("window.applyUiPreferences", escapeJs(prefs.toString()));
+                    } catch (Exception e) {
+                        LOG.warn("[SettingsHandler] Failed to get ui_preferences: " + e.getMessage());
+                        callJavaScript("window.applyUiPreferences", "{}");
+                    }
+                });
+                return true;
+            case "set_ui_preferences":
+                try {
+                    JsonObject patch = gson.fromJson(content, JsonObject.class);
+                    context.getSettingsService().setUiPreferences(patch);
+                    JsonObject currentPrefs = context.getSettingsService().getUiPreferences();
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        callJavaScript("window.applyUiPreferences", escapeJs(currentPrefs.toString()));
+                    });
+                } catch (Exception e) {
+                    LOG.warn("[SettingsHandler] Failed to set ui_preferences: " + e.getMessage());
+                }
                 return true;
             default:
                 return false;

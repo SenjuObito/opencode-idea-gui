@@ -22,8 +22,8 @@ public class AdditionalDirectoryResolverTest {
         Path project = Files.createDirectories(workspace.resolve("project"));
         Path nested = Files.createDirectories(project.resolve("nested"));
 
-        Files.createDirectories(home.resolve(".claude").resolve("commands"));
-        Files.createDirectories(project.resolve(".claude").resolve("commands"));
+        Files.createDirectories(home.resolve(".opencode").resolve("commands"));
+        Files.createDirectories(project.resolve(".opencode").resolve("commands"));
 
         List<SlashCommandRegistry.SkillScanDir> dirs = AdditionalDirectoryResolver.getSkillScanDirs(
                 nested.toString(),
@@ -32,8 +32,8 @@ public class AdditionalDirectoryResolverTest {
         );
 
         assertEquals(2, dirs.size());
-        assertEquals(project.resolve(".claude").resolve("commands").toString(), dirs.get(0).path());
-        assertEquals(home.resolve(".claude").resolve("commands").toString(), dirs.get(1).path());
+        assertEquals(project.resolve(".opencode").resolve("commands").toString(), dirs.get(0).path());
+        assertEquals(home.resolve(".opencode").resolve("commands").toString(), dirs.get(1).path());
     }
 
     @Test
@@ -46,8 +46,8 @@ public class AdditionalDirectoryResolverTest {
         Path projectOnly = Files.createDirectories(cwd.resolve("project-only"));
         Path localOnly = Files.createDirectories(cwd.resolve("local-only"));
 
-        Path userClaude = Files.createDirectories(home.resolve(".claude"));
-        Path projectClaude = Files.createDirectories(cwd.resolve(".claude"));
+        Path userClaude = Files.createDirectories(home.resolve(".opencode"));
+        Path projectClaude = Files.createDirectories(cwd.resolve(".opencode"));
 
         Files.writeString(
                 userClaude.resolve("settings.json"),
@@ -109,7 +109,7 @@ public class AdditionalDirectoryResolverTest {
         );
 
         Map<String, String> env = new HashMap<>();
-        env.put("CLAUDE_CODE_MANAGED_DIR", envDir.toString());
+        env.put("OPENCODE_MANAGED_DIR", envDir.toString());
 
         String managedDirectory = AdditionalDirectoryResolver.getManagedDirectory(env, policyFile);
 
@@ -154,8 +154,8 @@ public class AdditionalDirectoryResolverTest {
         Path root = Files.createTempDirectory("slash-command-enabled-plugins");
         Path home = Files.createDirectories(root.resolve("home"));
         Path cwd = Files.createDirectories(root.resolve("workspace"));
-        Path userClaude = Files.createDirectories(home.resolve(".claude"));
-        Path projectClaude = Files.createDirectories(cwd.resolve(".claude"));
+        Path userClaude = Files.createDirectories(home.resolve(".opencode"));
+        Path projectClaude = Files.createDirectories(cwd.resolve(".opencode"));
 
         Files.writeString(
                 userClaude.resolve("settings.json"),

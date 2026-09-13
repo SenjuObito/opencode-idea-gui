@@ -15,6 +15,7 @@ import OtherSettingsSection from './OtherSettingsSection';
 import { SkillsSettingsSection } from '../skills';
 import SettingsDialogs from './SettingsDialogs';
 import { setNewSessionConfirmEnabled as persistNewSessionConfirmEnabled } from '../../utils/skipNewSessionConfirm';
+import { setCompactConfirmEnabled as persistCompactConfirmEnabled } from '../../utils/skipCompactConfirm';
 
 // Import custom hooks
 import {
@@ -86,6 +87,15 @@ const SettingsView = ({
 
   // Basic settings actions: working dir, streaming, shortcuts, sound, commit prompt, etc.
   const {
+    nodePath,
+    setNodePath,
+    savingNodePath,
+    setSavingNodePath,
+    nodeVersion,
+    setNodeVersion,
+    minNodeVersion,
+    setMinNodeVersion,
+    handleSaveNodePath,
     opencodeCliPath,
     setOpencodeCliPath,
     savingOpencodeCliPath,
@@ -96,12 +106,6 @@ const SettingsView = ({
     setSavingWorkingDirectory,
     editorFontConfig,
     setEditorFontConfig,
-    vscodeFontList,
-    setVscodeFontList,
-    systemFontList,
-    setSystemFontList,
-    systemFontError,
-    setSystemFontError,
     uiFontConfig,
     setUiFontConfig,
     codeFontConfig,
@@ -123,6 +127,8 @@ const SettingsView = ({
     setHistoryCompletionEnabled,
     skipNewSessionConfirm,
     setSkipNewSessionConfirm,
+    skipCompactConfirm,
+    setSkipCompactConfirm,
     handleSaveOpencodeCliPath,
     handleSaveWorkingDirectory,
     handleUiFontSelectionChange,
@@ -212,14 +218,15 @@ const SettingsView = ({
 
   // Register window callbacks for Java bridge communication
   useSettingsWindowCallbacks({
+    setNodePath,
+    setSavingNodePath,
+    setNodeVersion,
+    setMinNodeVersion,
     setOpencodeCliPath,
     setSavingOpencodeCliPath,
     setWorkingDirectory,
     setSavingWorkingDirectory,
     setEditorFontConfig,
-    setVscodeFontList,
-    setSystemFontList,
-    setSystemFontError,
     setUiFontConfig,
     setCodeFontConfig,
     setIdeTheme,
@@ -274,6 +281,12 @@ const SettingsView = ({
               onThemeChange={setThemePreference}
               fontSizeLevel={fontSizeLevel}
               onFontSizeLevelChange={setFontSizeLevel}
+              nodePath={nodePath}
+              onNodePathChange={setNodePath}
+              onSaveNodePath={handleSaveNodePath}
+              savingNodePath={savingNodePath}
+              nodeVersion={nodeVersion}
+              minNodeVersion={minNodeVersion}
               opencodeCliPath={opencodeCliPath}
               onOpencodeCliPathChange={setOpencodeCliPath}
               onSaveOpencodeCliPath={handleSaveOpencodeCliPath}
@@ -283,10 +296,6 @@ const SettingsView = ({
               onSaveWorkingDirectory={handleSaveWorkingDirectory}
               savingWorkingDirectory={savingWorkingDirectory}
               editorFontConfig={editorFontConfig}
-              vscodeFontList={vscodeFontList}
-              systemFontList={systemFontList}
-              systemFontError={systemFontError}
-              onRequestSystemFontList={() => window.sendToJava?.('get_system_font_list:')}
               uiFontConfig={uiFontConfig}
               codeFontConfig={codeFontConfig}
               onUiFontSelectionChange={handleUiFontSelectionChange}
@@ -316,6 +325,14 @@ const SettingsView = ({
                 // to localStorage and dispatches the sync event for other surfaces.
                 setSkipNewSessionConfirm(!enabled);
                 persistNewSessionConfirmEnabled(enabled);
+              }}
+              compactConfirmEnabled={!skipCompactConfirm}
+              onCompactConfirmEnabledChange={(enabled) => {
+                // Optimistic local update so the toggle reflects instantly even if
+                // the CustomEvent loops back. persistCompactConfirmEnabled writes
+                // to localStorage and dispatches the sync event for other surfaces.
+                setSkipCompactConfirm(!enabled);
+                persistCompactConfirmEnabled(enabled);
               }}
               soundNotificationEnabled={soundNotificationEnabled}
               onSoundNotificationEnabledChange={handleSoundNotificationEnabledChange}

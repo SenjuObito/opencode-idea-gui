@@ -17,6 +17,10 @@ import styles from './style.module.less';
 
 declare global {
   interface Window {
+    onCommandsList?: (json: string) => void;
+    onCommandsRead?: (json: string) => void;
+    onCommandsSaved?: (json: string) => void;
+    onCommandsDeleted?: (json: string) => void;
     __onCommandsList?: (json: string) => void;
     __onCommandsRead?: (json: string) => void;
     __onCommandsSaved?: (json: string) => void;
@@ -151,18 +155,42 @@ const PromptSection = () => {
       } catch { /* ignore */ }
     };
     window.addEventListener('on-commands-list', handler as EventListener);
-    window.__onCommandsList = (json: string) => {
+    const onList = (json: string) => {
       window.dispatchEvent(new CustomEvent('on-commands-list', { detail: json }));
     };
-    window.__onCommandsSaved = (json: string) => {
-      const data = JSON.parse(json);
-      sendBridgeEvent('commands_list', JSON.stringify({ scope: data.scope || scope }));
+    const onSaved = (json: string) => {
+      try {
+        const data = JSON.parse(json);
+        sendBridgeEvent('commands_list', JSON.stringify({ scope: data.scope || scope }));
+      } catch {
+        sendBridgeEvent('commands_list', JSON.stringify({ scope }));
+      }
     };
-    window.__onCommandsDeleted = (json: string) => {
-      const data = JSON.parse(json);
-      sendBridgeEvent('commands_list', JSON.stringify({ scope: data.scope || scope }));
+    const onDeleted = (json: string) => {
+      try {
+        const data = JSON.parse(json);
+        sendBridgeEvent('commands_list', JSON.stringify({ scope: data.scope || scope }));
+      } catch {
+        sendBridgeEvent('commands_list', JSON.stringify({ scope }));
+      }
     };
-    return () => window.removeEventListener('on-commands-list', handler as EventListener);
+
+    window.onCommandsList = onList;
+    window.__onCommandsList = onList;
+    window.onCommandsSaved = onSaved;
+    window.__onCommandsSaved = onSaved;
+    window.onCommandsDeleted = onDeleted;
+    window.__onCommandsDeleted = onDeleted;
+
+    return () => {
+      window.removeEventListener('on-commands-list', handler as EventListener);
+      window.onCommandsList = undefined;
+      window.__onCommandsList = undefined;
+      window.onCommandsSaved = undefined;
+      window.__onCommandsSaved = undefined;
+      window.onCommandsDeleted = undefined;
+      window.__onCommandsDeleted = undefined;
+    };
   }, [scope]);
 
   useEffect(() => {
@@ -176,9 +204,11 @@ const PromptSection = () => {
       setEditor({ open: true, name, original: data.exists ? name : '', content: data.content || '' });
     };
     window.addEventListener('on-commands-read', handler as EventListener);
-    window.__onCommandsRead = (json: string) => {
+    const onRead = (json: string) => {
       window.dispatchEvent(new CustomEvent('on-commands-read', { detail: json }));
     };
+    window.onCommandsRead = onRead;
+    window.__onCommandsRead = onRead;
     sendBridgeEvent('commands_read', JSON.stringify({ scope, name }));
   };
 

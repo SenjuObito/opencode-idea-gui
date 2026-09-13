@@ -13,9 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.Locale;
+import java.util.*;
 
 /**
  * Manages opencode command markdown files ("prompts") in the official
@@ -67,26 +65,37 @@ public class CommandsHandler extends BaseMessageHandler {
         String scope = scopeOf(payload);
         JsonObject result = baseResult(scope);
         JsonArray items = new JsonArray();
-        File dir = commandDir(scope);
-        File[] files = dir.listFiles((d, name) -> name.toLowerCase(Locale.ROOT).endsWith(".md"));
-        if (files != null) {
-            Arrays.sort(files, Comparator.comparing(File::getName));
-            for (File f : files) {
-                JsonObject item = new JsonObject();
-                item.addProperty("name", f.getName().substring(0, f.getName().length() - 3));
-                item.addProperty("fileName", f.getName());
-                item.addProperty("size", f.length());
-                item.addProperty("lastModified", f.lastModified());
-                String content = Files.readString(f.toPath(), StandardCharsets.UTF_8);
-                item.addProperty("description", extractFrontmatterField(content, "description"));
-                item.addProperty("agent", extractFrontmatterField(content, "agent"));
-                item.addProperty("model", extractFrontmatterField(content, "model"));
-                items.add(item);
+        List<File> dirs = commandDirs(scope);
+        Set<String> seenNames = new HashSet<>();
+        File primaryDir = commandDir(scope);
+
+        for (File dir : dirs) {
+            if (!dir.exists()) {
+                continue;
+            }
+            File[] files = dir.listFiles((d, name) -> name.toLowerCase(Locale.ROOT).endsWith(".md"));
+            if (files != null) {
+                Arrays.sort(files, Comparator.comparing(File::getName));
+                for (File f : files) {
+                    String name = f.getName().substring(0, f.getName().length() - 3);
+                    if (seenNames.add(name)) {
+                        JsonObject item = new JsonObject();
+                        item.addProperty("name", name);
+                        item.addProperty("fileName", f.getName());
+                        item.addProperty("size", f.length());
+                        item.addProperty("lastModified", f.lastModified());
+                        String content = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+                        item.addProperty("description", extractFrontmatterField(content, "description"));
+                        item.addProperty("agent", extractFrontmatterField(content, "agent"));
+                        item.addProperty("model", extractFrontmatterField(content, "model"));
+                        items.add(item);
+                    }
+                }
             }
         }
         result.add("commands", items);
-        result.addProperty("dir", dir.getAbsolutePath());
-        result.addProperty("exists", dir.exists());
+        result.addProperty("dir", primaryDir.getAbsolutePath());
+        result.addProperty("exists", primaryDir.exists());
         callJavaScript("window.onCommandsList", gson.toJson(result));
     }
 
@@ -118,9 +127,11 @@ public class CommandsHandler extends BaseMessageHandler {
         File target = new File(dir, name + ".md");
         Files.writeString(target.toPath(), content, StandardCharsets.UTF_8);
         if (original != null && !original.equals(name)) {
-            File oldFile = new File(dir, original + ".md");
-            if (oldFile.exists()) {
-                Files.deleteIfExists(oldFile.toPath());
+            for (File d : commandDirs(scope)) {
+                File oldFile = new File(d, original + ".md");
+                if (oldFile.exists()) {
+                    Files.deleteIfExists(oldFile.toPath());
+                }
             }
         }
         JsonObject result = baseResult(scope);
@@ -132,8 +143,13 @@ public class CommandsHandler extends BaseMessageHandler {
     private void handleDelete(JsonObject payload) throws IOException {
         String scope = scopeOf(payload);
         String name = safeName(payload);
-        File file = commandFile(scope, name);
-        boolean deleted = file != null && file.exists() && Files.deleteIfExists(file.toPath());
+        boolean deleted = false;
+        for (File dir : commandDirs(scope)) {
+            File file = new File(dir, name + ".md");
+            if (file.exists() && Files.deleteIfExists(file.toPath())) {
+                deleted = true;
+            }
+        }
         JsonObject result = baseResult(scope);
         result.addProperty("name", name);
         result.addProperty("deleted", deleted);
@@ -142,21 +158,46 @@ public class CommandsHandler extends BaseMessageHandler {
 
     // ===== helpers =====
 
-    private File commandDir(String scope) {
+    private List<File> commandDirs(String scope) {
+        List<File> list = new ArrayList<>();
         if ("project".equals(scope)) {
             String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
-            Path base = projectPath != null ? Path.of(projectPath) : Paths.get(com.opencodebuddy.util.PlatformUtils.getHomeDirectory());
-            return base.resolve(PROJECT_COMMAND_DIR).toFile();
+            if (projectPath != null) {
+                list.add(Path.of(projectPath).resolve(".opencode/command").toFile());
+                list.add(Path.of(projectPath).resolve(".opencode/commands").toFile());
+                list.add(Path.of(projectPath).resolve(".claude/commands").toFile());
+            }
+        } else {
+            String home = com.opencodebuddy.util.PlatformUtils.getHomeDirectory();
+            list.add(Paths.get(home).resolve(".config/opencode/command").toFile());
+            list.add(Paths.get(home).resolve(".config/opencode/commands").toFile());
+            list.add(Paths.get(home).resolve(".opencode/command").toFile());
+            list.add(Paths.get(home).resolve(".opencode/commands").toFile());
+            list.add(Paths.get(home).resolve(".claude/commands").toFile());
         }
-        return Paths.get(com.opencodebuddy.util.PlatformUtils.getHomeDirectory()).resolve(GLOBAL_COMMAND_DIR).toFile();
+        return list;
+    }
+
+    private File commandDir(String scope) {
+        List<File> dirs = commandDirs(scope);
+        return dirs.isEmpty() ? Paths.get(com.opencodebuddy.util.PlatformUtils.getHomeDirectory()).resolve(GLOBAL_COMMAND_DIR).toFile() : dirs.get(0);
     }
 
     private File commandFile(String scope, String name) {
-        File dir = commandDir(scope);
-        File f = new File(dir, name + ".md");
-        // Path-traversal guard: resolved path must stay inside the command dir.
+        for (File dir : commandDirs(scope)) {
+            File f = new File(dir, name + ".md");
+            if (f.exists()) {
+                try {
+                    if (f.getCanonicalPath().startsWith(dir.getCanonicalPath() + File.separator)) {
+                        return f;
+                    }
+                } catch (IOException ignored) {}
+            }
+        }
+        File defaultDir = commandDir(scope);
+        File f = new File(defaultDir, name + ".md");
         try {
-            if (!f.getCanonicalPath().startsWith(dir.getCanonicalPath() + File.separator)) {
+            if (!f.getCanonicalPath().startsWith(defaultDir.getCanonicalPath() + File.separator)) {
                 return null;
             }
         } catch (IOException e) {

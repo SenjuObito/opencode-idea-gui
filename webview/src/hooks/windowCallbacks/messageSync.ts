@@ -171,14 +171,25 @@ export const appendOptimisticMessageIfMissing = (
         : Array.isArray(backendRaw?.content)
           ? backendRaw.content
           : [];
-      const mergedContent = [...attachmentBlocks, ...backendContent];
-      const mergedRaw = {
-        ...backendRaw,
-        message: { ...(backendRaw?.message ?? {}), content: mergedContent },
-      };
-      const result = [...nextList];
-      result[matchedIndex] = { ...backendMsg, raw: mergedRaw };
-      return result;
+      const existingAttachmentNames = new Set(
+        backendContent
+          .filter((b: any) => b && typeof b === 'object' && b.type === 'attachment')
+          .map((b: any) => b.fileName || b.name || b.title || b.filename || '')
+          .filter(Boolean)
+      );
+      const newAttachmentBlocks = attachmentBlocks.filter(
+        (b: any) => !existingAttachmentNames.has(b.fileName || b.name || b.title || b.filename || '')
+      );
+      if (newAttachmentBlocks.length > 0) {
+        const mergedContent = [...newAttachmentBlocks, ...backendContent];
+        const mergedRaw = {
+          ...backendRaw,
+          message: { ...(backendRaw?.message ?? {}), content: mergedContent },
+        };
+        const result = [...nextList];
+        result[matchedIndex] = { ...backendMsg, raw: mergedRaw };
+        return result;
+      }
     }
   }
 

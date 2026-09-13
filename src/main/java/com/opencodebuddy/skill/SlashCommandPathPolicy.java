@@ -103,16 +103,24 @@ final class SlashCommandPathPolicy {
     }
 
     static Path resolveManagedSkillsDirectory(Path managedPath) {
-        Path candidate = managedPath.resolve(".opencode").resolve("skill");
-        if (Files.isDirectory(candidate)) {
-            return candidate;
+        Path opencodeSkill = managedPath.resolve(".opencode").resolve("skill");
+        if (Files.isDirectory(opencodeSkill)) {
+            return opencodeSkill;
+        }
+        Path opencodeSkills = managedPath.resolve(".opencode").resolve("skills");
+        if (Files.isDirectory(opencodeSkills)) {
+            return opencodeSkills;
+        }
+        Path claudeSkills = managedPath.resolve(".claude").resolve("skills");
+        if (Files.isDirectory(claudeSkills)) {
+            return claudeSkills;
         }
         Path directSkills = managedPath.resolve("skills");
         if (Files.isDirectory(directSkills)) {
             return directSkills;
         }
         if (Files.isDirectory(managedPath) && managedPath.getFileName() != null
-                && "skills".equals(managedPath.getFileName().toString())) {
+                && ("skills".equals(managedPath.getFileName().toString()) || "skill".equals(managedPath.getFileName().toString()))) {
             return managedPath;
         }
         return null;

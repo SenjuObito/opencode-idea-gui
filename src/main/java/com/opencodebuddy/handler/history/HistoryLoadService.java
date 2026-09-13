@@ -19,7 +19,7 @@ import java.util.concurrent.CompletableFuture;
  * OpenCode native: sessions are queried directly from the OpenCode server
  * via SDK (default limit: 20) with favorites retrieved from session.metadata.
  */
-class HistoryLoadService {
+public class HistoryLoadService {
 
     private static final Logger LOG = Logger.getInstance(HistoryLoadService.class);
     private static final Gson GSON = new Gson();
@@ -27,14 +27,14 @@ class HistoryLoadService {
 
     private final HandlerContext context;
 
-    HistoryLoadService(HandlerContext context) {
+    public HistoryLoadService(HandlerContext context) {
         this.context = context;
     }
 
     /**
      * Load and inject history data into the frontend (including favorite info from session.metadata).
      */
-    void handleLoadHistoryData(String provider) {
+    public void handleLoadHistoryData(String provider) {
         CompletableFuture.runAsync(() -> {
             LOG.info("[HistoryHandler] ========== 开始加载历史数据 ========== provider=" + provider);
 
@@ -131,7 +131,9 @@ class HistoryLoadService {
 
         if (rawSessions != null) {
             for (JsonElement item : rawSessions) {
-                if (!item.isJsonObject()) continue;
+                if (!item.isJsonObject()) {
+                    continue;
+                }
                 JsonObject s = item.getAsJsonObject();
 
                 JsonObject session = new JsonObject();

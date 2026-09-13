@@ -31,8 +31,6 @@ export function ChatInputBoxFooter({
   alwaysThinkingEnabled,
   onToggleThinking,
   onAddModel,
-  longContextEnabled = true,
-  onLongContextChange,
   fileCompletion,
   commandCompletion,
   dollarCommandCompletion,
@@ -54,8 +52,6 @@ export function ChatInputBoxFooter({
   alwaysThinkingEnabled?: boolean;
   onToggleThinking?: (enabled: boolean) => void;
   onAddModel?: () => void;
-  longContextEnabled?: boolean;
-  onLongContextChange?: (enabled: boolean) => void;
   fileCompletion: CompletionController;
   commandCompletion: CompletionController;
   dollarCommandCompletion?: CompletionController;
@@ -81,8 +77,6 @@ export function ChatInputBoxFooter({
         alwaysThinkingEnabled={alwaysThinkingEnabled}
         onToggleThinking={onToggleThinking}
         onAddModel={onAddModel}
-        longContextEnabled={longContextEnabled}
-        onLongContextChange={onLongContextChange}
       />
 
       {/* @ file reference dropdown menu */}

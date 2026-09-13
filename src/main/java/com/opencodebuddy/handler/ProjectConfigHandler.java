@@ -209,31 +209,6 @@ public class ProjectConfigHandler {
             "Failed to save streaming config");
     }
 
-    public void handleGetCodexSandboxMode() {
-        respondWithJson("window.updateCodexSandboxMode",
-            () -> jsonOf("sandboxMode", settingsService.getCodexSandboxMode(context.getProject().getBasePath())),
-            jsonOf("sandboxMode", "workspace-write"),
-            "Failed to get Codex sandbox mode");
-    }
-
-    public void handleSetCodexSandboxMode(String content) {
-        try {
-            String projectPath = context.getProject().getBasePath();
-            JsonObject json = gson.fromJson(content, JsonObject.class);
-            String sandboxMode = readString(json, "sandboxMode", "workspace-write");
-            settingsService.setCodexSandboxMode(projectPath, sandboxMode);
-            LOG.info("[ProjectConfigHandler] Set Codex sandbox mode: " + sandboxMode);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                context.callJavaScript("window.updateCodexSandboxMode",
-                    context.escapeJs(gson.toJson(jsonOf("sandboxMode", sandboxMode))));
-                context.callJavaScript("window.showSuccessI18n", "toast.saveSuccess");
-            });
-        } catch (Exception e) {
-            LOG.error("[ProjectConfigHandler] Failed to set Codex sandbox mode: " + e.getMessage(), e);
-            showError("Failed to save Codex sandbox mode: " + e.getMessage());
-        }
-    }
-
     public void handleGetAutoOpenFileEnabled() {
         respondWithJson("window.updateAutoOpenFileEnabled",
             () -> {

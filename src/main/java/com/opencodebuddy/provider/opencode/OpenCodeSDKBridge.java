@@ -453,19 +453,39 @@ public class OpenCodeSDKBridge {
         return request("opencode.replyPermission", params, noopCallback());
     }
 
-    public CompletableFuture<Boolean> replyQuestion(String requestId, JsonArray answers) {
+    public CompletableFuture<Boolean> replyQuestion(String sessionId, String questionId, JsonArray answers, String directory) {
         JsonObject params = new JsonObject();
-        params.addProperty("requestID", requestId != null ? requestId : "");
+        if (sessionId != null && !sessionId.isBlank()) {
+            params.addProperty("sessionId", sessionId);
+        }
+        if (directory != null && !directory.isBlank()) {
+            params.addProperty("directory", directory);
+        }
+        params.addProperty("questionID", questionId != null ? questionId : "");
         if (answers != null) {
             params.add("answers", answers);
         }
         return request("opencode.replyQuestion", params, noopCallback());
     }
 
-    public CompletableFuture<Boolean> rejectQuestion(String requestId) {
+    public CompletableFuture<Boolean> replyQuestion(String requestId, JsonArray answers) {
+        return replyQuestion(null, requestId, answers, null);
+    }
+
+    public CompletableFuture<Boolean> rejectQuestion(String sessionId, String questionId, String directory) {
         JsonObject params = new JsonObject();
-        params.addProperty("requestID", requestId != null ? requestId : "");
+        if (sessionId != null && !sessionId.isBlank()) {
+            params.addProperty("sessionId", sessionId);
+        }
+        if (directory != null && !directory.isBlank()) {
+            params.addProperty("directory", directory);
+        }
+        params.addProperty("questionID", questionId != null ? questionId : "");
         return request("opencode.rejectQuestion", params, noopCallback());
+    }
+
+    public CompletableFuture<Boolean> rejectQuestion(String requestId) {
+        return rejectQuestion(null, requestId, null);
     }
 
     public CompletableFuture<Boolean> summarize(String sessionId, String cwd, String providerId, String modelId) {

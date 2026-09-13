@@ -44,35 +44,19 @@ public final class SlashCommandRegistry {
     public record PluginPath(String pluginName, String path, String type) {
     }
 
-    // Claude built-in commands (GUI-relevant only; CLI-only and frontend-local ones are excluded)
-    // Includes commands that work via SDK or are handled by frontend locally
-    // 'local-jsx' commands (TUI UI) that have GUI equivalents are included
-    // Bundled skills from CLI that are userInvocable and work in GUI environment
-    public static final List<SlashCommand> CLAUDE_BUILTIN = List.of(
+    // OpenCode built-in commands
+    public static final List<SlashCommand> OPENCODE_BUILTIN = List.of(
             new SlashCommand("/compact", "Summarize conversation to free context", "builtin"),
-            new SlashCommand("/context", "Visualize current context usage as a colored grid", "builtin"),
-            new SlashCommand("/goal", "Keep working across turns until the goal condition is met", "builtin"),
-            new SlashCommand("/init", "Initialize a new CLAUDE.md file with codebase documentation", "builtin"),
-            new SlashCommand("/mcp", "List configured MCP servers and their connection status", "builtin"),
-            new SlashCommand("/plan", "Switch to plan mode", "builtin"),
-            new SlashCommand("/resume", "Resume a previous conversation", "builtin"),
-            new SlashCommand("/review", "Review a pull request", "builtin"),
-            // Bundled skills (userInvocable, no ANT-only restriction)
-            new SlashCommand("/batch", "Execute large-scale changes in parallel across isolated worktrees", "bundled"),
-            new SlashCommand("/claude-api", "Build apps with the Claude API or Anthropic SDK", "bundled"),
-            new SlashCommand("/debug", "Enable debug logging and diagnose session issues", "bundled"),
-            new SlashCommand("/loop", "Run a prompt or command on a recurring interval", "bundled"),
-            new SlashCommand("/simplify", "Review changed code for reuse, quality, and efficiency", "bundled"),
-            new SlashCommand("/update-config", "Configure settings.json (hooks, permissions, env vars)", "bundled")
-    );
-
-    // Codex built-in commands (GUI-relevant only; CLI-only ones like /status, /model, /quit are excluded)
-    public static final List<SlashCommand> CODEX_BUILTIN = List.of(
-            new SlashCommand("/compact", "Summarize conversation to free tokens", "builtin"),
-            new SlashCommand("/diff", "Show pending changes diff including untracked files", "builtin"),
-            new SlashCommand("/init", "Generate an AGENTS.md scaffold", "builtin"),
-            new SlashCommand("/plan", "Switch to plan mode", "builtin"),
-            new SlashCommand("/review", "Review working tree changes", "builtin")
+            new SlashCommand("/undo", "Undo the last turn and revert file changes", "builtin"),
+            new SlashCommand("/redo", "Redo previously undone turn", "builtin"),
+            new SlashCommand("/fork", "Fork conversation into a new session", "builtin"),
+            new SlashCommand("/share", "Share session and create public link", "builtin"),
+            new SlashCommand("/unshare", "Unshare session", "builtin"),
+            new SlashCommand("/review", "Review code changes or git diff", "builtin"),
+            new SlashCommand("/init", "Initialize project instructions (OPENCODE.md)", "builtin"),
+            new SlashCommand("/models", "Select or switch active model", "builtin"),
+            new SlashCommand("/themes", "Select or switch UI theme", "builtin"),
+            new SlashCommand("/help", "Show help and available commands", "builtin")
     );
 
     /**
@@ -156,19 +140,17 @@ public final class SlashCommandRegistry {
     }
 
     /**
-     * Gets the merged slash command list for a given provider and working directory.
+     * Gets the merged slash command list for a given working directory.
      */
-    public static List<SlashCommand> getCommands(String provider, String cwd) {
-        return getCommands(provider, cwd, null);
+    public static List<SlashCommand> getCommands(String cwd) {
+        return getCommands(cwd, null);
     }
 
     /**
-     * Gets the merged slash command list for a given provider and working directory.
+     * Gets the merged OpenCode slash command list for a given working directory.
      */
-    public static List<SlashCommand> getCommands(String provider, String cwd, String currentFilePath) {
-        boolean isCodex = "codex".equalsIgnoreCase(provider);
-
-        List<SlashCommand> builtins = isCodex ? CODEX_BUILTIN : CLAUDE_BUILTIN;
+    public static List<SlashCommand> getCommands(String cwd, String currentFilePath) {
+        List<SlashCommand> builtins = OPENCODE_BUILTIN;
         String userHome = resolveUserHome();
         Path currentFile = SlashCommandPathPolicy.toNormalizedPath(currentFilePath);
 
@@ -178,46 +160,28 @@ public final class SlashCommandRegistry {
         List<SlashCommand> localSkillCommands = List.of();
         List<SlashCommand> additionalCmdCommands = List.of();
         List<SlashCommand> additionalSkillCommands = List.of();
-        List<SlashCommand> managedSkillCommands = List.of();
-        List<SlashCommand> pluginSkillCommands = List.of();
-        List<SlashCommand> pluginCmdCommands = List.of();
 
-        if (isCodex) {
-            if (userHome.isEmpty()) {
-                globalCmdCommands = List.of();
-            } else {
-                globalCmdCommands = PromptCommandScanner.scanPromptsAsCommands(
-                        userHome + File.separator + ".codex" + File.separator + "prompts");
-            }
+        if (userHome.isEmpty()) {
+            globalCmdCommands = List.of();
             globalSkillCommands = List.of();
         } else {
-            if (userHome.isEmpty()) {
-                globalCmdCommands = List.of();
-                globalSkillCommands = List.of();
-            } else {
-                String claudeDir = userHome + File.separator + ".config" + File.separator + "opencode";
-                globalCmdCommands = scanCommandsAsCommands(
-                        claudeDir + File.separator + "commands", "user");
-                globalSkillCommands = scanSkillsAsCommands(
-                        claudeDir + File.separator + "skills", "user", null, currentFile);
-            }
+            String opencodeDir = userHome + File.separator + ".config" + File.separator + "opencode";
+            globalCmdCommands = scanCommandsAsCommands(
+                    opencodeDir + File.separator + "commands", "user");
+            globalSkillCommands = scanSkillsAsCommands(
+                    opencodeDir + File.separator + "skills", "user", null, currentFile);
+        }
 
-            if (cwd != null && !cwd.isEmpty()) {
-                List<SkillScanDir> cmdDirs = getCommandScanDirs(cwd);
-                List<SkillScanDir> skillDirs = getSkillsScanDirs(cwd);
+        if (cwd != null && !cwd.isEmpty()) {
+            List<SkillScanDir> cmdDirs = getCommandScanDirs(cwd);
+            List<SkillScanDir> skillDirs = getSkillsScanDirs(cwd);
 
-                localCmdCommands = scanCommandsFromDirs(cmdDirs, "local");
-                localSkillCommands = scanSkillsFromDirs(skillDirs, "local", null, currentFile);
+            localCmdCommands = scanCommandsFromDirs(cmdDirs, "local");
+            localSkillCommands = scanSkillsFromDirs(skillDirs, "local", null, currentFile);
 
-                List<String> additionalDirs = getAdditionalDirectories(cwd, userHome);
-                additionalCmdCommands = scanAdditionalCommands(additionalDirs);
-                additionalSkillCommands = scanAdditionalSkills(additionalDirs, currentFile);
-            }
-
-            managedSkillCommands = ManagedSkillScanner.scanManagedSkills(getManagedDirectory(), currentFilePath);
-            List<PluginPath> allPluginPaths = PluginCommandScanner.getPluginPaths(cwd, userHome);
-            pluginSkillCommands = PluginCommandScanner.scanPluginSkills(allPluginPaths, currentFilePath);
-            pluginCmdCommands = PluginCommandScanner.scanPluginCommands(allPluginPaths);
+            List<String> additionalDirs = getAdditionalDirectories(cwd, userHome);
+            additionalCmdCommands = scanAdditionalCommands(additionalDirs);
+            additionalSkillCommands = scanAdditionalSkills(additionalDirs, currentFile);
         }
 
         return mergeCommandsInOrder(
@@ -226,11 +190,11 @@ public final class SlashCommandRegistry {
                 localSkillCommands,
                 additionalCmdCommands,
                 additionalSkillCommands,
-                managedSkillCommands,
+                List.of(),
                 globalCmdCommands,
                 globalSkillCommands,
-                pluginCmdCommands,
-                pluginSkillCommands
+                List.of(),
+                List.of()
         );
     }
 

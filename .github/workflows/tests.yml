@@ -5,13 +5,16 @@ name: Tests
 #   - webview unit tests (vitest + tsc typecheck)
 #   - Java unit tests (Linux)
 #   - WSL integration tests (Windows + WSL)
-# All jobs run in parallel and are intentionally independent of build.yml, so a
-# test failure can never block the Build Plugin job.
+# Triggered by version tags only (plus manual runs), the same policy as
+# build.yml: pushing a branch starts no CI at all. Use the Actions tab →
+# "Run workflow" to run the suite on demand while developing.
+# The jobs stay independent of build.yml, so a test failure does not block the
+# release build — re-run the release after fixing the tests.
 on:
   push:
-    branches: [ '**' ]
-  pull_request:
-    branches: [ '**' ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   # ai-bridge tests use Node's built-in test runner (node:test). They are
@@ -123,7 +126,9 @@ jobs:
           node-version: '22.12.0'
 
       - name: Set up WSL
-        uses: Vampire/setup-wsl@v7
+        # Vampire/setup-wsl publishes no floating major tag — v7 does not exist,
+        # so the action must be pinned to a full release tag.
+        uses: Vampire/setup-wsl@v7.0.0
         with:
           distribution: Ubuntu-22.04
 
@@ -145,4 +150,4 @@ jobs:
         run: npm ci
 
       - name: Run WSL integration tests
-        run: ./gradlew test --tests "com.github.claudecodegui.bridge.NodeDetectorWslTest"
+        run: ./gradlew test --tests "com.opencodebuddy.bridge.NodeDetectorWslTest"

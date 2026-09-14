@@ -39,10 +39,18 @@ flowchart TD
 | :--- | :--- |
 | `webview/src/version/githubReleases.ts` | 核心获取逻辑：仓库常量定义、GitHub API fetch、5 分钟缓存管理、本地 CHANGELOG_DATA 回退 |
 | `webview/scripts/extract-changelog.mjs` | 从根目录 `CHANGELOG.md` 提取版本日志生成 `webview/src/version/changelog.ts` 的脚本 |
-| `webview/src/version/changelog.ts` | 本地打包的静态变更记录（支持 OpenCode 改造版本及历史记录） |
+| `tools/extract-release-notes.mjs` | 从 `CHANGELOG.md` 提取指定版本的发布说明，输出「中文正文 + `### English` + 英文正文」供 GitHub Release body 使用（`build.yml` 的 release job 调用） |
+| `webview/src/version/changelog.ts` | 本地打包的静态变更记录（仅含 OpenCode Buddy 自 `1.0.0-opencode.1` 起的版本；上游 cc-gui 历史已从 `CHANGELOG.md` 移除） |
 | `webview/src/components/ChangelogDialog.tsx` | 版本记录弹窗 UI 组件：支持分页、版本快速切换、中英文 Markdown 内容渲染 |
 | `webview/src/components/settings/CommunitySection/index.tsx` | 设置界面社区分区：包含 GitHub 开源地址复制按钮及版本记录入口 |
 | `webview/src/version/githubReleases.test.ts` | 单元测试：覆盖仓库地址、线上解析、404 回退、离线兜底及缓存管理 |
+
+### 3.1 `CHANGELOG.md` 书写格式
+
+每个版本一个 `## x.y.z (日期)` 段落，段内用 `中文：` / `English：` 两个标记把内容分成中英两半——两个脚本都靠这两个标记切分：
+
+- `extract-changelog.mjs` → `content.zh` / `content.en`，弹窗各渲染一个块（少写英文时英文块为空，不会再出现同一段中文渲染两遍）；
+- `tools/extract-release-notes.mjs` → Release body 为「中文正文 + `### English` + 英文正文」，`githubReleases.ts` 按 `### English` 再拆回两半。
 
 ---
 

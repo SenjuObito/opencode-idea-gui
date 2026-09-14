@@ -1,14 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  decodeCliOutput,
   isWindowsCmdShim,
-  quoteCmdArg,
-  resolveCliSpawn,
   selectWindowsWhereMatch,
   resolveWindowsSpawnableBin,
-  resolveOmpCliPath,
-  commonCliBinDirs,
 } from './cli-path.js';
 
 test('isWindowsCmdShim detects .cmd/.bat only on win32-style paths', () => {
@@ -111,130 +106,7 @@ test('resolveWindowsSpawnableBin handles paths with spaces', () => {
   assert.equal(resolved, `${base}.cmd`);
 });
 
-test('resolveOmpCliPath honors OMP_BIN env override', () => {
-  const saved = {
-    OMP_BIN: process.env.OMP_BIN,
-    OMP_PATH: process.env.OMP_PATH,
-    OMP_CLI_PATH: process.env.OMP_CLI_PATH,
-  };
-  try {
-    process.env.OMP_BIN = '/tmp/custom-omp/bin/omp';
-    delete process.env.OMP_PATH;
-    delete process.env.OMP_CLI_PATH;
-    assert.equal(resolveOmpCliPath(), '/tmp/custom-omp/bin/omp');
-
-    process.env.OMP_BIN = '';
-    process.env.OMP_PATH = '/tmp/alt-omp/bin/omp';
-    assert.equal(resolveOmpCliPath(), '/tmp/alt-omp/bin/omp');
-  } finally {
-    for (const [key, value] of Object.entries(saved)) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    }
-  }
-});
-
-test('commonCliBinDirs includes the OMP bin dir after the PI entry', () => {
-  const dirs = commonCliBinDirs('/home/tester');
-  const piIndex = dirs.indexOf('/home/tester/.pi/bin');
-  const ompIndex = dirs.indexOf('/home/tester/.omp/bin');
-  assert.ok(piIndex !== -1, 'expected .pi/bin entry');
-  assert.ok(ompIndex !== -1, 'expected .omp/bin entry');
-  assert.equal(ompIndex, piIndex + 1);
-});
-
-test('quoteCmdArg wraps and escapes cmd metacharacters', () => {
-  assert.equal(quoteCmdArg('models'), '"models"');
-  assert.equal(quoteCmdArg('C:\\Program Files\\nodejs\\opencode.cmd'), '"C:\\Program Files\\nodejs\\opencode.cmd"');
-  assert.equal(quoteCmdArg('say "hi"'), '"say ""hi"""');
-  assert.equal(quoteCmdArg('%PATH%'), '"%%PATH%%"');
-});
-
-test('decodeCliOutput keeps valid UTF-8 and recovers GBK stderr', () => {
-  assert.equal(decodeCliOutput('opencode/big-pickle'), 'opencode/big-pickle');
-  assert.equal(decodeCliOutput(Buffer.from('opencode/big-pickle')), 'opencode/big-pickle');
-  let gbkSupported = false;
-  for (const label of ['gbk', 'gb18030']) {
-    try {
-      // eslint-disable-next-line no-new
-      new TextDecoder(label);
-      gbkSupported = true;
-      break;
-    } catch {
-      // Node without full ICU
-    }
-  }
-  if (!gbkSupported) return;
-  // GBK for 不是内部或外部命令 — the cmd.exe message after `'C:\\Program'`.
-  const gbk = Buffer.from([0xB2, 0xBB, 0xCA, 0xC7, 0xC4, 0xDA, 0xB2, 0xBF, 0xBB, 0xF2, 0xCD, 0xE2, 0xB2, 0xBF, 0xC3, 0xFC, 0xC1, 0xEE]);
-  const decoded = decodeCliOutput(gbk);
-  assert.equal(decoded.includes('\uFFFD'), false);
-  assert.match(decoded, /命令/);
-});
-
-test('resolveCliSpawn launches spaced .cmd shims via cmd basename + PATH', () => {
-  const env = { PATH: 'C:\\Windows\\system32', ComSpec: 'C:\\Windows\\system32\\cmd.exe' };
-  const invocation = resolveCliSpawn(
-    'C:\\Program Files\\nodejs\\opencode.cmd',
-    ['models'],
-    { env },
-    true,
-  );
-  assert.equal(invocation.file, 'C:\\Windows\\system32\\cmd.exe');
-  assert.equal(invocation.options.shell, false);
-  assert.equal(invocation.options.windowsVerbatimArguments, true);
-  // /s strips the outer quotes, leaving `"opencode.cmd" "models"`.
-  assert.deepEqual(invocation.args, ['/d', '/s', '/c', '""opencode.cmd" "models""']);
-  assert.match(invocation.options.env.PATH, /^C:\\Program Files\\nodejs;/);
-  // The command token must not contain the spaced prefix that cmd splits on.
-  assert.equal(invocation.args[3].includes('C:\\Program'), false);
-});
-
-test('resolveCliSpawn strips a previously quoted .cmd path', () => {
-  const invocation = resolveCliSpawn(
-    '"C:\\Program Files\\nodejs\\opencode.cmd"',
-    ['models'],
-    { env: { PATH: 'C:\\Windows\\system32' } },
-    true,
-  );
-  assert.equal(invocation.args[3].includes('C:\\Program'), false);
-  assert.match(invocation.args[3], /opencode\.cmd/);
-});
-
-test('resolveCliSpawn leaves .exe and non-Windows targets as a direct spawn', () => {
-  const exe = resolveCliSpawn(
-    'C:\\Program Files\\nodejs\\opencode.exe',
-    ['models'],
-    { env: { PATH: 'C:\\Windows\\system32' } },
-    true,
-  );
-  assert.equal(exe.file, 'C:\\Program Files\\nodejs\\opencode.exe');
-  assert.deepEqual(exe.args, ['models']);
-  assert.notEqual(exe.options.shell, true);
-
-  const posix = resolveCliSpawn(
-    'C:\\Program Files\\nodejs\\opencode.cmd',
-    ['models'],
-    {},
-    false,
-  );
-  assert.equal(posix.file, 'C:\\Program Files\\nodejs\\opencode.cmd');
-  assert.deepEqual(posix.args, ['models']);
-});
-
-test('resolveCliSpawn file-redirect quotes both the shim and the dest path', () => {
-  const invocation = resolveCliSpawn(
-    'C:\\Program Files\\nodejs\\opencode.cmd',
-    ['models'],
-    { env: { PATH: 'C:\\Windows\\system32' }, redirectTo: 'C:\\Users\\a\\AppData\\Local\\Temp\\models.txt' },
-    true,
-  );
-  assert.equal(invocation.file.endsWith('cmd.exe') || invocation.file === 'cmd.exe', true);
-  assert.match(invocation.args[3], /opencode\.cmd/);
-  assert.match(invocation.args[3], />/);
-  assert.match(invocation.args[3], /models\.txt/);
-  assert.equal(invocation.args[3].includes('C:\\Program'), false);
-});
+// The resolveOmpCliPath / quoteCmdArg / decodeCliOutput / resolveCliSpawn /
+// commonCliBinDirs tests were removed together with those helpers: cli-path.js
+// is now opencode-only (no OMP/Pi providers, no cmd-shim spawn wrapper), so
+// importing them only produced "does not provide an export named …" errors.

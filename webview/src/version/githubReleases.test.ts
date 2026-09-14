@@ -86,6 +86,44 @@ describe('fetchGithubReleases logic & fallback', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('splits a bilingual release body into one zh block and one en block', async () => {
+    // Shape emitted by tools/extract-release-notes.mjs: `[zh, '### English', en]`,
+    // prefixed with a `## OpenCode Buddy <version>` header.
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          tag_name: 'v1.0.0-opencode.1',
+          body: '## OpenCode Buddy 1.0.0-opencode.1\n\n- 中文条目 (abc1234)\n\n### English\n\n- english item (abc1234)',
+          published_at: '2026-09-06T12:00:00Z',
+        },
+      ],
+    } as Response);
+
+    const result = await fetchGithubReleases();
+    const { zh, en } = result.entries[0].content;
+
+    // The generated version heading is dropped — the dialog header already shows it.
+    expect(zh).toBe('- 中文条目 (abc1234)');
+    expect(en).toBe('- english item (abc1234)');
+    // Distinct halves: assigning the whole body to both fields rendered it twice.
+    expect(zh).not.toBe(en);
+  });
+
+  it('does not duplicate a release body that has no ### English marker', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ tag_name: 'v0.0.4', body: '- 只有中文', published_at: '2026-09-08' }],
+    } as Response);
+
+    const result = await fetchGithubReleases();
+    const { zh, en } = result.entries[0].content;
+
+    // Falls back to a single block rather than repeating the body.
+    expect(zh).toBe('- 只有中文');
+    expect(en).toBe('');
+  });
+
   it('falls back to bundled CHANGELOG_DATA when GitHub returns HTTP 404', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

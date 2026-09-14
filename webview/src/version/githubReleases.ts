@@ -55,6 +55,37 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** The release pipeline prefixes every body with `## OpenCode Buddy <version>` (see tools/extract-release-notes.mjs). */
+const LEADING_VERSION_HEADING_RE = /^#{1,6}\s*OpenCode\b[^\n]*\n?/;
+
+/** Bilingual bodies carry the English translation below this marker heading. */
+const ENGLISH_SECTION_RE = /^###\s+English\s*$/m;
+
+/** Drop the generated version heading — the dialog header already shows the version and date. */
+function stripVersionHeading(text: string): string {
+  return text.replace(LEADING_VERSION_HEADING_RE, '').trim();
+}
+
+/**
+ * Split a release body into its Chinese and English halves.
+ *
+ * tools/extract-release-notes.mjs emits `[zh, '### English', en]`, and the
+ * changelog dialog renders content.zh and content.en as two blocks — assigning
+ * the same body to both fields (the old behaviour) would print the whole
+ * bilingual text twice. A body without the marker (hand-written release notes)
+ * goes to `zh` only, so it still renders exactly one block.
+ */
+function splitBilingualBody(body: string): { en: string; zh: string } {
+  const marker = ENGLISH_SECTION_RE.exec(body);
+  if (!marker) {
+    return { en: '', zh: stripVersionHeading(body) };
+  }
+  return {
+    zh: stripVersionHeading(body.slice(0, marker.index)),
+    en: stripVersionHeading(body.slice(marker.index + marker[0].length)),
+  };
+}
+
 function parseReleases(data: unknown): ChangelogEntry[] {
   const list = Array.isArray(data) ? data : [];
   const entries: ChangelogEntry[] = [];
@@ -68,7 +99,7 @@ function parseReleases(data: unknown): ChangelogEntry[] {
     entries.push({
       version,
       date: published.slice(0, 10),
-      content: { en: body, zh: body },
+      content: splitBilingualBody(body),
     });
   }
   return entries;

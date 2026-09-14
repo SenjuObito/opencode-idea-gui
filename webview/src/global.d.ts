@@ -498,6 +498,11 @@ interface Window {
   showSuccessI18n?: (i18nKey: string) => void;
 
   /**
+   * System font list push
+   */
+  onSystemFontListReceived?: (jsonStr: string) => void;
+
+  /**
    * Update skills list
    */
   updateSkills?: (json: string) => void;

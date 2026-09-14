@@ -70,7 +70,7 @@ public class CodemossSettingsServiceUiPreferencesTest {
     }
 
     private void setCachedHomeDirectory(String path) throws Exception {
-        Field homeDirField = PlatformUtils.class.getDeclaredField("cachedHomeDirectory");
+        Field homeDirField = PlatformUtils.class.getDeclaredField("cachedRealHomeDir");
         homeDirField.setAccessible(true);
         homeDirField.set(null, path);
     }

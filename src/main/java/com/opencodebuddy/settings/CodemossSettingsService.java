@@ -48,8 +48,10 @@ public class CodemossSettingsService {
     // so they reuse these UI_FONT_*-named constants. They are NOT UI-only despite the name.
     private static final String UI_FONT_MODE_KEY = "mode";
     private static final String UI_FONT_CUSTOM_PATH_KEY = "customFontPath";
+    private static final String UI_FONT_FAMILY_KEY = "fontFamily";
     private static final Set<String> VALID_UI_FONT_MODES = Set.of(
             FontConfigService.UI_FONT_MODE_FOLLOW_EDITOR,
+            FontConfigService.UI_FONT_MODE_NAMED,
             FontConfigService.UI_FONT_MODE_CUSTOM_FILE
     );
 
@@ -421,11 +423,22 @@ public class CodemossSettingsService {
      * @param customFontPath custom font path for custom file mode
      */
     public void setUiFontConfig(String mode, String customFontPath) throws IOException {
+        setUiFontConfig(mode, customFontPath, null);
+    }
+
+    /**
+     * Persist UI font configuration including named family.
+     *
+     * @param mode requested mode
+     * @param customFontPath custom font path for custom file mode
+     * @param fontFamily font family name for named mode
+     */
+    public void setUiFontConfig(String mode, String customFontPath, String fontFamily) throws IOException {
         JsonObject config = readConfig();
-        config.add(UI_FONT_CONFIG_KEY, createUiFontConfig(mode, customFontPath));
+        config.add(UI_FONT_CONFIG_KEY, createUiFontConfig(mode, customFontPath, fontFamily));
         writeConfig(config);
         LOG.debug("[CodemossSettings] Set UI font config: mode=" + mode
-                + ", customFontPath=" + customFontPath);
+                + ", customFontPath=" + customFontPath + ", fontFamily=" + fontFamily);
     }
 
     /**
@@ -448,11 +461,22 @@ public class CodemossSettingsService {
      * @param customFontPath custom font path for custom file mode
      */
     public void setCodeFontConfig(String mode, String customFontPath) throws IOException {
+        setCodeFontConfig(mode, customFontPath, null);
+    }
+
+    /**
+     * Persist code font configuration including named family.
+     *
+     * @param mode requested mode
+     * @param customFontPath custom font path for custom file mode
+     * @param fontFamily font family name for named mode
+     */
+    public void setCodeFontConfig(String mode, String customFontPath, String fontFamily) throws IOException {
         JsonObject config = readConfig();
-        config.add(CODE_FONT_CONFIG_KEY, createCodeFontConfig(mode, customFontPath));
+        config.add(CODE_FONT_CONFIG_KEY, createCodeFontConfig(mode, customFontPath, fontFamily));
         writeConfig(config);
         LOG.debug("[CodemossSettings] Set code font config: mode=" + mode
-                + ", customFontPath=" + customFontPath);
+                + ", customFontPath=" + customFontPath + ", fontFamily=" + fontFamily);
     }
 
     // ==================== UI Preferences Management ====================
@@ -569,17 +593,28 @@ public class CodemossSettingsService {
         String customFontPath = rawConfig.has(UI_FONT_CUSTOM_PATH_KEY) && !rawConfig.get(UI_FONT_CUSTOM_PATH_KEY).isJsonNull()
                 ? rawConfig.get(UI_FONT_CUSTOM_PATH_KEY).getAsString()
                 : null;
-        return createUiFontConfig(requestedMode, customFontPath);
+        String fontFamily = rawConfig.has(UI_FONT_FAMILY_KEY) && !rawConfig.get(UI_FONT_FAMILY_KEY).isJsonNull()
+                ? rawConfig.get(UI_FONT_FAMILY_KEY).getAsString()
+                : null;
+        return createUiFontConfig(requestedMode, customFontPath, fontFamily);
     }
 
     private JsonObject createUiFontConfig(String mode, String customFontPath) {
+        return createUiFontConfig(mode, customFontPath, null);
+    }
+
+    private JsonObject createUiFontConfig(String mode, String customFontPath, String fontFamily) {
         String normalizedMode = VALID_UI_FONT_MODES.contains(mode)
                 ? mode
                 : FontConfigService.UI_FONT_MODE_FOLLOW_EDITOR;
         JsonObject uiFont = new JsonObject();
         uiFont.addProperty(UI_FONT_MODE_KEY, normalizedMode);
 
-        if (FontConfigService.UI_FONT_MODE_CUSTOM_FILE.equals(normalizedMode)
+        if (FontConfigService.UI_FONT_MODE_NAMED.equals(normalizedMode)
+                && fontFamily != null
+                && !fontFamily.trim().isEmpty()) {
+            uiFont.addProperty(UI_FONT_FAMILY_KEY, fontFamily.trim());
+        } else if (FontConfigService.UI_FONT_MODE_CUSTOM_FILE.equals(normalizedMode)
                 && customFontPath != null
                 && !customFontPath.trim().isEmpty()) {
             uiFont.addProperty(UI_FONT_CUSTOM_PATH_KEY, customFontPath.trim());
@@ -598,10 +633,17 @@ public class CodemossSettingsService {
         String customFontPath = rawConfig.has(UI_FONT_CUSTOM_PATH_KEY) && !rawConfig.get(UI_FONT_CUSTOM_PATH_KEY).isJsonNull()
                 ? rawConfig.get(UI_FONT_CUSTOM_PATH_KEY).getAsString()
                 : null;
-        return createCodeFontConfig(requestedMode, customFontPath);
+        String fontFamily = rawConfig.has(UI_FONT_FAMILY_KEY) && !rawConfig.get(UI_FONT_FAMILY_KEY).isJsonNull()
+                ? rawConfig.get(UI_FONT_FAMILY_KEY).getAsString()
+                : null;
+        return createCodeFontConfig(requestedMode, customFontPath, fontFamily);
     }
 
     private JsonObject createCodeFontConfig(String mode, String customFontPath) {
+        return createCodeFontConfig(mode, customFontPath, null);
+    }
+
+    private JsonObject createCodeFontConfig(String mode, String customFontPath, String fontFamily) {
         // UI font and code font share the same valid-mode set (see VALID_UI_FONT_MODES).
         String normalizedMode = VALID_UI_FONT_MODES.contains(mode)
                 ? mode
@@ -609,7 +651,11 @@ public class CodemossSettingsService {
         JsonObject codeFont = new JsonObject();
         codeFont.addProperty(UI_FONT_MODE_KEY, normalizedMode);
 
-        if (FontConfigService.UI_FONT_MODE_CUSTOM_FILE.equals(normalizedMode)
+        if (FontConfigService.UI_FONT_MODE_NAMED.equals(normalizedMode)
+                && fontFamily != null
+                && !fontFamily.trim().isEmpty()) {
+            codeFont.addProperty(UI_FONT_FAMILY_KEY, fontFamily.trim());
+        } else if (FontConfigService.UI_FONT_MODE_CUSTOM_FILE.equals(normalizedMode)
                 && customFontPath != null
                 && !customFontPath.trim().isEmpty()) {
             codeFont.addProperty(UI_FONT_CUSTOM_PATH_KEY, customFontPath.trim());

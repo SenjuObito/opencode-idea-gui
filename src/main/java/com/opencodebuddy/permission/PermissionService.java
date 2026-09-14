@@ -417,7 +417,7 @@ public class PermissionService {
 
     private int showSystemPermissionDialog(String toolName, JsonObject inputs) {
         StringBuilder message = new StringBuilder();
-        message.append("Claude requests to perform the following action:\n\n");
+        message.append("OpenCode Buddy requests to perform the following action:\n\n");
         message.append("Tool: ").append(toolName).append("\n");
         if (inputs.has("file_path")) {
             message.append("File: ").append(inputs.get("file_path").getAsString()).append("\n");

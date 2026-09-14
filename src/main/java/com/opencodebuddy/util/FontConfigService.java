@@ -8,10 +8,13 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
+import java.awt.GraphicsEnvironment;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import javax.swing.UIManager;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -22,6 +25,7 @@ public class FontConfigService {
 
     private static final Logger LOG = Logger.getInstance(FontConfigService.class);
     public static final String UI_FONT_MODE_FOLLOW_EDITOR = "followEditor";
+    public static final String UI_FONT_MODE_NAMED = "named";
     public static final String UI_FONT_MODE_CUSTOM_FILE = "customFile";
     public static final String UI_FONT_WARNING_CUSTOM_UNAVAILABLE = "fontUnavailable";
 
@@ -340,6 +344,34 @@ public class FontConfigService {
         return 1.2f;
     }
 
+    public static List<String> getSystemFontFamilies() {
+        try {
+            String[] names = GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames();
+            List<String> list = new ArrayList<>();
+            for (String name : names) {
+                if (name != null && !name.trim().isEmpty() && !name.startsWith(".")) {
+                    list.add(name.trim());
+                }
+            }
+            Collections.sort(list, String.CASE_INSENSITIVE_ORDER);
+            return list;
+        } catch (Exception e) {
+            LOG.warn("[FontConfig] Failed to get system font family names: " + e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    public static JsonObject getSystemFontListJson() {
+        JsonObject result = new JsonObject();
+        JsonArray array = new JsonArray();
+        for (String font : getSystemFontFamilies()) {
+            array.add(font);
+        }
+        result.add("fonts", array);
+        result.addProperty("source", "host");
+        return result;
+    }
+
     private static JsonObject resolveFontConfig(
             JsonObject persistedConfig,
             JsonObject sourceFontConfig,
@@ -360,6 +392,9 @@ public class FontConfigService {
         if (normalizedPersistedConfig.has("customFontPath")) {
             resolvedConfig.addProperty("customFontPath", normalizedPersistedConfig.get("customFontPath").getAsString());
         }
+        if (normalizedPersistedConfig.has("fontFamily")) {
+            resolvedConfig.addProperty("fontFamily", normalizedPersistedConfig.get("fontFamily").getAsString());
+        }
         resolvedConfig.addProperty("fontSize", normalizedSourceConfig.get("fontSize").getAsInt());
         resolvedConfig.addProperty("lineSpacing", normalizedSourceConfig.get("lineSpacing").getAsFloat());
         resolvedConfig.add("fallbackFonts", normalizedSourceConfig.getAsJsonArray("fallbackFonts"));
@@ -372,7 +407,16 @@ public class FontConfigService {
         String warning = null;
         String warningCode = null;
 
-        if (UI_FONT_MODE_CUSTOM_FILE.equals(requestedMode)) {
+        if (UI_FONT_MODE_NAMED.equals(requestedMode)) {
+            String namedFamily = normalizedPersistedConfig.has("fontFamily")
+                    ? normalizedPersistedConfig.get("fontFamily").getAsString()
+                    : null;
+            if (namedFamily != null && !namedFamily.trim().isEmpty()) {
+                resolvedFontFamily = namedFamily.trim();
+                resolvedDisplayName = namedFamily.trim();
+                effectiveMode = UI_FONT_MODE_NAMED;
+            }
+        } else if (UI_FONT_MODE_CUSTOM_FILE.equals(requestedMode)) {
             String customFontPath = normalizedPersistedConfig.has("customFontPath")
                     ? normalizedPersistedConfig.get("customFontPath").getAsString()
                     : null;
@@ -424,18 +468,31 @@ public class FontConfigService {
                 ? persistedConfig.get("mode").getAsString()
                 : UI_FONT_MODE_FOLLOW_EDITOR;
         if (!UI_FONT_MODE_FOLLOW_EDITOR.equals(mode)
+                && !UI_FONT_MODE_NAMED.equals(mode)
                 && !UI_FONT_MODE_CUSTOM_FILE.equals(mode)) {
             mode = UI_FONT_MODE_FOLLOW_EDITOR;
         }
 
-        normalized.addProperty("mode", mode);
-        if (UI_FONT_MODE_CUSTOM_FILE.equals(mode)
+        if (UI_FONT_MODE_NAMED.equals(mode)) {
+            String namedFamily = persistedConfig != null
+                    && persistedConfig.has("fontFamily")
+                    && !persistedConfig.get("fontFamily").isJsonNull()
+                    ? persistedConfig.get("fontFamily").getAsString().trim()
+                    : "";
+            if (namedFamily.isEmpty()) {
+                mode = UI_FONT_MODE_FOLLOW_EDITOR;
+            } else {
+                normalized.addProperty("fontFamily", namedFamily);
+            }
+        } else if (UI_FONT_MODE_CUSTOM_FILE.equals(mode)
                 && persistedConfig != null
                 && persistedConfig.has("customFontPath")
                 && !persistedConfig.get("customFontPath").isJsonNull()
                 && !persistedConfig.get("customFontPath").getAsString().trim().isEmpty()) {
             normalized.addProperty("customFontPath", persistedConfig.get("customFontPath").getAsString().trim());
         }
+
+        normalized.addProperty("mode", mode);
         return normalized;
     }
 

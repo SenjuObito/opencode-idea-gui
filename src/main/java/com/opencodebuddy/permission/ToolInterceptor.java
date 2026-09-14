@@ -72,7 +72,7 @@ public class ToolInterceptor {
         ApplicationManager.getApplication().invokeLater(() -> {
             int result = JOptionPane.showConfirmDialog(
                 null,
-                "Claude 需要执行以下操作：\n\n" +
+                "OpenCode Buddy 需要执行以下操作：\n\n" +
                 message + "\n\n" +
                 "这可能涉及文件写入或系统命令执行。\n" +
                 "是否允许执行？",

@@ -51,6 +51,7 @@ public class SettingsHandler extends BaseMessageHandler {
         "get_working_directory",
         "set_working_directory",
         "get_editor_font_config",
+        "get_system_font_list",
         "get_ui_font_config",
         "set_ui_font_config",
         "browse_ui_font_file",
@@ -207,6 +208,9 @@ public class SettingsHandler extends BaseMessageHandler {
                 return true;
             case "get_editor_font_config":
                 projectConfigHandler.handleGetEditorFontConfig();
+                return true;
+            case "get_system_font_list":
+                projectConfigHandler.handleGetSystemFontList();
                 return true;
             case "get_ui_font_config":
                 projectConfigHandler.handleGetUiFontConfig();

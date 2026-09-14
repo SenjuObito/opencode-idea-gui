@@ -1,0 +1,6 @@
+<svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark theme variant: same frame, brightened so the tool window icon stays
+       legible on dark backgrounds and when the tool window is not selected.
+       Picked up automatically instead of opencode-icon.svg while a dark theme is active. -->
+  <path fill="#CED0D6" fill-rule="evenodd" d="M16 6H8v12h8V6zm4 16H4V2h16v20z"/>
+</svg>

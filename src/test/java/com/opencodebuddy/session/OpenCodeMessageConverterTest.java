@@ -104,11 +104,11 @@ public class OpenCodeMessageConverterTest {
                 + "]";
         List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entry("user", parts)));
         JsonObject user = out.get(0);
-        assertEquals("Please review the attached file(s).", user.get("content").getAsString());
+        assertEquals("", user.get("content").getAsString());
         JsonArray blocks = user.getAsJsonObject("raw")
                 .getAsJsonObject("message")
                 .getAsJsonArray("content");
-        assertEquals(2, blocks.size());
+        assertEquals(1, blocks.size());
         assertEquals("attachment", blocks.get(0).getAsJsonObject().get("type").getAsString());
         assertEquals("gradlew", blocks.get(0).getAsJsonObject().get("fileName").getAsString());
     }

@@ -52,7 +52,7 @@ public class ClaudeNotifier {
      * default ({@code notifier.taskComplete.title}).
      */
     public static void showSuccess(@NotNull Project project, @Nullable String title, String message) {
-        show(project, "Claude [OK]", message, 5000);
+        show(project, "OpenCode Buddy [OK]", message, 5000);
         // Show the task completion visual notification toast
         SystemNotificationService.getInstance().showVisualNotificationToast(project, title, message);
         // Play the task completion notification sound
@@ -179,11 +179,11 @@ public class ClaudeNotifier {
     }
 
     public static void showError(@NotNull Project project, String message) {
-        show(project, "Claude [ERR]", message, 8000);
+        show(project, "OpenCode Buddy [ERR]", message, 8000);
     }
 
     public static void showWarning(@NotNull Project project, String message) {
-        show(project, "Claude [WARN]", message, 6000);
+        show(project, "OpenCode Buddy [WARN]", message, 6000);
     }
 
     public static void clearStatus(@NotNull Project project) {

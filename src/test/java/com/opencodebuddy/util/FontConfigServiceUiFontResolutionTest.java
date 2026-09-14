@@ -165,6 +165,77 @@ public class FontConfigServiceUiFontResolutionTest {
         assertFalse(result.errorMessage(), result.valid());
     }
 
+    @Test
+    public void shouldReturnSystemFontFamiliesAndJson() {
+        java.util.List<String> families = FontConfigService.getSystemFontFamilies();
+        assertNotNull(families);
+
+        JsonObject json = FontConfigService.getSystemFontListJson();
+        assertNotNull(json);
+        assertTrue(json.has("fonts"));
+        assertTrue(json.get("fonts").isJsonArray());
+        assertEquals("host", json.get("source").getAsString());
+        assertEquals(families.size(), json.getAsJsonArray("fonts").size());
+    }
+
+    @Test
+    public void shouldResolveUiNamedFontMode() throws Exception {
+        JsonObject persisted = new JsonObject();
+        persisted.addProperty("mode", "named");
+        persisted.addProperty("fontFamily", "JetBrains Mono");
+
+        JsonObject resolved = invokeResolveUiFontConfig(persisted, createUiFontConfig());
+
+        assertEquals("named", resolved.get("mode").getAsString());
+        assertEquals("named", resolved.get("effectiveMode").getAsString());
+        assertEquals("JetBrains Mono", resolved.get("fontFamily").getAsString());
+        assertEquals("JetBrains Mono", resolved.get("displayName").getAsString());
+        assertFalse(resolved.has("warning"));
+    }
+
+    @Test
+    public void shouldFallBackToEditorWhenUiNamedFontFamilyIsBlank() throws Exception {
+        JsonObject persisted = new JsonObject();
+        persisted.addProperty("mode", "named");
+        persisted.addProperty("fontFamily", "   ");
+
+        JsonObject resolved = invokeResolveUiFontConfig(persisted, createUiFontConfig());
+
+        assertEquals("followEditor", resolved.get("mode").getAsString());
+        assertEquals("followEditor", resolved.get("effectiveMode").getAsString());
+        assertEquals("Inter", resolved.get("fontFamily").getAsString());
+        assertFalse(resolved.has("warning"));
+    }
+
+    @Test
+    public void shouldResolveCodeNamedFontMode() throws Exception {
+        JsonObject persisted = new JsonObject();
+        persisted.addProperty("mode", "named");
+        persisted.addProperty("fontFamily", "Fira Code");
+
+        JsonObject resolved = invokeResolveCodeFontConfig(persisted, createEditorFontConfig());
+
+        assertEquals("named", resolved.get("mode").getAsString());
+        assertEquals("named", resolved.get("effectiveMode").getAsString());
+        assertEquals("Fira Code", resolved.get("fontFamily").getAsString());
+        assertEquals("Fira Code", resolved.get("displayName").getAsString());
+        assertFalse(resolved.has("warning"));
+    }
+
+    @Test
+    public void shouldFallBackToEditorWhenCodeNamedFontFamilyIsBlank() throws Exception {
+        JsonObject persisted = new JsonObject();
+        persisted.addProperty("mode", "named");
+        persisted.addProperty("fontFamily", "");
+
+        JsonObject resolved = invokeResolveCodeFontConfig(persisted, createEditorFontConfig());
+
+        assertEquals("followEditor", resolved.get("mode").getAsString());
+        assertEquals("followEditor", resolved.get("effectiveMode").getAsString());
+        assertEquals("Monaco", resolved.get("fontFamily").getAsString());
+        assertFalse(resolved.has("warning"));
+    }
+
     private JsonObject invokeResolveUiFontConfig(JsonObject persistedConfig, JsonObject uiFontConfig) throws Exception {
         Method method;
         try {

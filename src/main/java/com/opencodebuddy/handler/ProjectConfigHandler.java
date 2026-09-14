@@ -484,6 +484,16 @@ public class ProjectConfigHandler {
         }
     }
 
+    public void handleGetSystemFontList() {
+        try {
+            JsonObject json = FontConfigService.getSystemFontListJson();
+            ApplicationManager.getApplication().invokeLater(() ->
+                context.callJavaScript("window.onSystemFontListReceived", context.escapeJs(json.toString())));
+        } catch (Exception e) {
+            LOG.error("[ProjectConfigHandler] Failed to get system font list: " + e.getMessage(), e);
+        }
+    }
+
     public void handleGetUiFontConfig() {
         dispatchUiFontConfigUpdate();
     }
@@ -493,6 +503,7 @@ public class ProjectConfigHandler {
             JsonObject json = gson.fromJson(content, JsonObject.class);
             String mode = readString(json, "mode", FontConfigService.UI_FONT_MODE_FOLLOW_EDITOR);
             String customFontPath = readString(json, "customFontPath", null);
+            String fontFamily = readString(json, "fontFamily", null);
 
             if (FontConfigService.UI_FONT_MODE_CUSTOM_FILE.equals(mode)) {
                 FontConfigService.ValidationResult validation = FontConfigService.validateCustomUiFontFile(customFontPath);
@@ -502,7 +513,7 @@ public class ProjectConfigHandler {
                 }
             }
 
-            settingsService.setUiFontConfig(mode, customFontPath);
+            settingsService.setUiFontConfig(mode, customFontPath, fontFamily);
             dispatchUiFontConfigUpdate();
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set UI font config: " + e.getMessage(), e);
@@ -519,6 +530,7 @@ public class ProjectConfigHandler {
             JsonObject json = gson.fromJson(content, JsonObject.class);
             String mode = readString(json, "mode", FontConfigService.UI_FONT_MODE_FOLLOW_EDITOR);
             String customFontPath = readString(json, "customFontPath", null);
+            String fontFamily = readString(json, "fontFamily", null);
 
             if (FontConfigService.UI_FONT_MODE_CUSTOM_FILE.equals(mode)) {
                 FontConfigService.ValidationResult validation = FontConfigService.validateCustomUiFontFile(customFontPath);
@@ -528,7 +540,7 @@ public class ProjectConfigHandler {
                 }
             }
 
-            settingsService.setCodeFontConfig(mode, customFontPath);
+            settingsService.setCodeFontConfig(mode, customFontPath, fontFamily);
             dispatchCodeFontConfigUpdate();
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set code font config: " + e.getMessage(), e);

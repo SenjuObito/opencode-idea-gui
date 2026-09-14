@@ -28,14 +28,28 @@ public final class TokenUsageUtils {
         if (usage == null) {
             return 0;
         }
-        int input = usage.has("input_tokens") ? usage.get("input_tokens").getAsInt() : 0;
+        JsonObject target = usage.has("tokens") && usage.get("tokens").isJsonObject()
+                ? usage.getAsJsonObject("tokens") : usage;
+
+        int input = target.has("input_tokens") ? target.get("input_tokens").getAsInt()
+                : (target.has("input") ? target.get("input").getAsInt() : 0);
         if ("codex".equals(provider)) {
             return input;
         }
-        int cacheCreation = usage.has("cache_creation_input_tokens")
-                ? usage.get("cache_creation_input_tokens").getAsInt() : 0;
-        int cacheRead = usage.has("cache_read_input_tokens")
-                ? usage.get("cache_read_input_tokens").getAsInt() : 0;
+        int cacheCreation = target.has("cache_creation_input_tokens")
+                ? target.get("cache_creation_input_tokens").getAsInt() : 0;
+        int cacheRead = target.has("cache_read_input_tokens")
+                ? target.get("cache_read_input_tokens").getAsInt() : 0;
+
+        if (target.has("cache") && target.get("cache").isJsonObject()) {
+            JsonObject cache = target.getAsJsonObject("cache");
+            if (cache.has("read") && !cache.get("read").isJsonNull()) {
+                cacheRead += cache.get("read").getAsInt();
+            }
+            if (cache.has("write") && !cache.get("write").isJsonNull()) {
+                cacheCreation += cache.get("write").getAsInt();
+            }
+        }
         return input + cacheCreation + cacheRead;
     }
 
@@ -99,6 +113,12 @@ public final class TokenUsageUtils {
             if (preferRootUsage && rootUsage != null) {
                 return rootUsage;
             }
+            if (msg.has("turnUsage") && msg.get("turnUsage").isJsonObject()) {
+                return msg.getAsJsonObject("turnUsage");
+            }
+            if (msg.has("tokens") && msg.get("tokens").isJsonObject()) {
+                return msg.getAsJsonObject("tokens");
+            }
             if (msg.has("message") && msg.get("message").isJsonObject()) {
                 JsonObject message = msg.getAsJsonObject("message");
                 if (message.has("usage") && message.get("usage").isJsonObject()) {
@@ -132,6 +152,12 @@ public final class TokenUsageUtils {
                     ? msg.raw.getAsJsonObject("usage") : null;
             if (preferRootUsage && rootUsage != null) {
                 return rootUsage;
+            }
+            if (msg.raw.has("turnUsage") && msg.raw.get("turnUsage").isJsonObject()) {
+                return msg.raw.getAsJsonObject("turnUsage");
+            }
+            if (msg.raw.has("tokens") && msg.raw.get("tokens").isJsonObject()) {
+                return msg.raw.getAsJsonObject("tokens");
             }
             // Check usage inside message object
             if (msg.raw.has("message") && msg.raw.get("message").isJsonObject()) {

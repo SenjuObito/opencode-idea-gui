@@ -116,6 +116,58 @@ public class TokenUsageUtilsTest {
         assertTrue(raw.has("turnCostUsd"));
     }
 
+    /**
+     * Verifies OpenCode nested tokens shape correctly calculates context tokens including cache.
+     */
+    @Test
+    public void opencodeContextTokensIncludeNestedCache() {
+        JsonObject usage = new JsonObject();
+        JsonObject tokens = new JsonObject();
+        tokens.addProperty("input", 350);
+        tokens.addProperty("output", 120);
+        tokens.addProperty("reasoning", 0);
+        JsonObject cache = new JsonObject();
+        cache.addProperty("read", 45000);
+        cache.addProperty("write", 2000);
+        tokens.add("cache", cache);
+        usage.add("tokens", tokens);
+
+        assertEquals(47350, TokenUsageUtils.extractContextTokens(usage, "opencode"));
+    }
+
+    /**
+     * Verifies findLastUsageFromSessionMessages finds OpenCode turnUsage and tokens from raw message.
+     */
+    @Test
+    public void opencodeFindLastUsagePrefersTurnUsageAndTokens() {
+        JsonObject raw1 = new JsonObject();
+        JsonObject tokens = new JsonObject();
+        tokens.addProperty("input", 150);
+        JsonObject cache1 = new JsonObject();
+        cache1.addProperty("read", 5000);
+        tokens.add("cache", cache1);
+        raw1.add("tokens", tokens);
+
+        ClaudeSession.Message assistant1 = new ClaudeSession.Message(
+                ClaudeSession.Message.Type.ASSISTANT, "first", raw1);
+
+        JsonObject raw2 = new JsonObject();
+        JsonObject turnUsage = new JsonObject();
+        turnUsage.addProperty("input_tokens", 250);
+        turnUsage.addProperty("cache_read_input_tokens", 18000);
+        turnUsage.addProperty("cache_creation_input_tokens", 800);
+        raw2.add("turnUsage", turnUsage);
+
+        ClaudeSession.Message assistant2 = new ClaudeSession.Message(
+                ClaudeSession.Message.Type.ASSISTANT, "second", raw2);
+
+        JsonObject found = TokenUsageUtils.findLastUsageFromSessionMessages(
+                List.of(assistant1, assistant2), "opencode");
+
+        assertEquals(turnUsage, found);
+        assertEquals(19050, TokenUsageUtils.extractContextTokens(found, "opencode"));
+    }
+
     private static JsonObject usage(int inputTokens) {
         JsonObject usage = new JsonObject();
         usage.addProperty("input_tokens", inputTokens);

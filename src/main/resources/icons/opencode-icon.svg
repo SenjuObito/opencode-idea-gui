@@ -1,3 +1,6 @@
 <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Light theme variant (IDE standard icon gray #6C707E).
+       Dark themes automatically use opencode-icon_dark.svg: the platform resolves
+       the "_dark" suffix for icons loaded through IconLoader / plugin.xml. -->
   <path fill="#6C707E" fill-rule="evenodd" d="M16 6H8v12h8V6zm4 16H4V2h16v20z"/>
 </svg>

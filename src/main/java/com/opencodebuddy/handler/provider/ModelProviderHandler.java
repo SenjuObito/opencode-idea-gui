@@ -24,11 +24,17 @@ public class ModelProviderHandler {
 
     static final Map<String, Integer> MODEL_CONTEXT_LIMITS = new HashMap<>();
     static {
-        // Known opencode zen models; unknown models fall back to the default
-        // window parsed from "[Nk]/[Nm]" suffixes or 200k.
+        // Known models limits
         MODEL_CONTEXT_LIMITS.put("qwen3-coder", 256_000);
         MODEL_CONTEXT_LIMITS.put("grok-code", 256_000);
         MODEL_CONTEXT_LIMITS.put("claude-sonnet-4-5", 200_000);
+        MODEL_CONTEXT_LIMITS.put("claude-sonnet-4-7", 200_000);
+        MODEL_CONTEXT_LIMITS.put("claude-opus-4", 200_000);
+        MODEL_CONTEXT_LIMITS.put("claude-opus-4-1", 200_000);
+        MODEL_CONTEXT_LIMITS.put("claude-3-7-sonnet", 200_000);
+        MODEL_CONTEXT_LIMITS.put("gpt-5", 400_000);
+        MODEL_CONTEXT_LIMITS.put("gpt-5-codex", 400_000);
+        MODEL_CONTEXT_LIMITS.put("gpt-4o", 128_000);
     }
 
     private static final String FIXED_PROVIDER = "opencode";
@@ -123,8 +129,11 @@ public class ModelProviderHandler {
             return 200_000;
         }
 
+        String trimmed = model.trim();
+
+        // 1. Explicit bracketed capacity suffix, e.g. "claude-sonnet-4-7 [1m]" or "model[200k]"
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\s*\\[([0-9.]+)([kKmM])\\]\\s*$");
-        java.util.regex.Matcher matcher = pattern.matcher(model);
+        java.util.regex.Matcher matcher = pattern.matcher(trimmed);
 
         if (matcher.find()) {
             try {
@@ -139,8 +148,27 @@ public class ModelProviderHandler {
             }
         }
 
-        Integer known = MODEL_CONTEXT_LIMITS.get(model);
-        return known != null ? known : 200_000;
+        Integer known = MODEL_CONTEXT_LIMITS.get(trimmed);
+        if (known != null) {
+            return known;
+        }
+
+        // 2. Strip provider prefix if present (e.g. "anthropic/claude-3-7-sonnet" -> "claude-3-7-sonnet")
+        int slashIdx = trimmed.indexOf('/');
+        String bareModel = slashIdx >= 0 ? trimmed.substring(slashIdx + 1) : trimmed;
+        known = MODEL_CONTEXT_LIMITS.get(bareModel);
+        if (known != null) {
+            return known;
+        }
+
+        // 3. Prefix matching
+        for (Map.Entry<String, Integer> entry : MODEL_CONTEXT_LIMITS.entrySet()) {
+            if (trimmed.startsWith(entry.getKey()) || bareModel.startsWith(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+
+        return 200_000;
     }
 
     public static int getModelContextLimit(String provider, String model) {

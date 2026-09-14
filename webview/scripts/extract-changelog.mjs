@@ -27,17 +27,33 @@ const content = fs.readFileSync(changelogPath, 'utf8');
 function parseChangelog(raw) {
   const entries = [];
 
-  // Split by version headers: ##### **...**
-  const headerRegex = /^#{5}\s+\*\*(.+?)\*\*/gm;
+  // Match both:
+  // 1. ##### **2026年8月26日（v0.5.4）**
+  // 2. ## 1.0.0-opencode.1 (2026-09-06) or ## [1.0.0] - 2026-09-06
+  const headerRegex = /^(?:#{5}\s+\*\*(.+?)\*\*|##\s+(?:\[?v?([\w.-]+)\]?)\s*(?:\(([\d-]+)\)|-\s*([\d-]+))?)/gm;
   const headers = [];
   let match;
 
   while ((match = headerRegex.exec(raw)) !== null) {
-    headers.push({
-      fullMatch: match[1].trim(),
-      index: match.index,
-      endIndex: match.index + match[0].length,
-    });
+    if (match[1]) {
+      headers.push({
+        type: 'bold',
+        rawMatch: match[1].trim(),
+        index: match.index,
+        endIndex: match.index + match[0].length,
+      });
+    } else if (match[2]) {
+      const ver = match[2].trim();
+      if (!/^unreleased$/i.test(ver) && !/^format$/i.test(ver)) {
+        headers.push({
+          type: 'h2',
+          version: ver.replace(/^v/, ''),
+          date: (match[3] || match[4] || '').trim(),
+          index: match.index,
+          endIndex: match.index + match[0].length,
+        });
+      }
+    }
   }
 
   for (let i = 0; i < headers.length; i++) {
@@ -45,29 +61,31 @@ function parseChangelog(raw) {
     const nextIndex = i + 1 < headers.length ? headers[i + 1].index : raw.length;
     const sectionContent = raw.substring(header.endIndex, nextIndex).trim();
 
-    // Extract the version from headers that use localized date formats with the version in parentheses
-    const versionMatch = header.fullMatch.match(/[（(]v?(\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9.]+)?)[）)]/);
-    if (!versionMatch) continue;
-
-    const version = versionMatch[1];
-
-    // Extract date - try full date first, then partial
+    let version = '';
     let date = '';
-    const fullDateMatch = header.fullMatch.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
-    if (fullDateMatch) {
-      date = `${fullDateMatch[1]}-${fullDateMatch[2].padStart(2, '0')}-${fullDateMatch[3].padStart(2, '0')}`;
+
+    if (header.type === 'h2') {
+      version = header.version;
+      date = header.date;
     } else {
-      const partialDateMatch = header.fullMatch.match(/(\d{1,2})月(\d{1,2})日/);
-      if (partialDateMatch) {
-        // Assume 2025 for dates without year (older entries)
-        date = `2025-${partialDateMatch[1].padStart(2, '0')}-${partialDateMatch[2].padStart(2, '0')}`;
+      const versionMatch = header.rawMatch.match(/[（(]v?(\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9.]+)?)[）)]/);
+      if (!versionMatch) continue;
+
+      version = versionMatch[1];
+
+      const fullDateMatch = header.rawMatch.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+      if (fullDateMatch) {
+        date = `${fullDateMatch[1]}-${fullDateMatch[2].padStart(2, '0')}-${fullDateMatch[3].padStart(2, '0')}`;
+      } else {
+        const partialDateMatch = header.rawMatch.match(/(\d{1,2})月(\d{1,2})日/);
+        if (partialDateMatch) {
+          date = `2025-${partialDateMatch[1].padStart(2, '0')}-${partialDateMatch[2].padStart(2, '0')}`;
+        }
       }
     }
 
-    // Split into English and Chinese sections
     const { en, zh } = splitBilingual(sectionContent);
-
-    entries.push({ version, date, content: { en, zh } });
+    entries.push({ version, date, content: { en: en || zh, zh: zh || en } });
   }
 
   return entries;

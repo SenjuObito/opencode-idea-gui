@@ -65,6 +65,7 @@ export interface UseSettingsBasicActionsReturn {
     | undefined;
   uiFontConfig: UiFontConfig | undefined;
   codeFontConfig: CodeFontConfig | undefined;
+  systemFonts: string[];
   /** Send shortcut state (prefers prop over local state) */
   sendShortcut: 'enter' | 'cmdEnter';
   localSendShortcut: 'enter' | 'cmdEnter';
@@ -76,11 +77,15 @@ export interface UseSettingsBasicActionsReturn {
   selectedSound: string;
   customSoundPath: string;
   diffExpandedByDefault: boolean;
+  setDiffExpandedByDefault: (enabled: boolean) => void;
   historyCompletionEnabled: boolean;
+  setHistoryCompletionEnabled: (enabled: boolean) => void;
   /** Whether to skip the "create new session with existing messages" confirm dialog. */
   skipNewSessionConfirm: boolean;
+  setSkipNewSessionConfirm: (enabled: boolean) => void;
   /** Whether to skip the "compact session" confirm dialog. */
   skipCompactConfirm: boolean;
+  setSkipCompactConfirm: (enabled: boolean) => void;
   taskCompletionNotificationEnabled: boolean;
   askUserQuestionNotificationEnabled: boolean;
   detailedOutputEnabled: boolean;
@@ -139,18 +144,16 @@ export interface UseSettingsBasicActionsReturn {
   ) => void;
   /** @internal */ setUiFontConfig: (config: UiFontConfig | undefined) => void;
   /** @internal */ setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
+  /** @internal */ setSystemFonts: (fonts: string[]) => void;
   /** @internal */ setLocalSendShortcut: (shortcut: 'enter' | 'cmdEnter') => void;
   /** @internal */ setLocalAutoOpenFileEnabled: (enabled: boolean) => void;
   /** @internal */ setSoundNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setSoundOnlyWhenUnfocused: (enabled: boolean) => void;
   /** @internal */ setSelectedSound: (soundId: string) => void;
   /** @internal */ setCustomSoundPath: (path: string) => void;
-  /** @internal */ setDiffExpandedByDefault: (expanded: boolean) => void;
-  /** @internal */ setHistoryCompletionEnabled: (enabled: boolean) => void;
-  /** @internal */ setSkipNewSessionConfirm: (enabled: boolean) => void;
-  /** @internal */ setSkipCompactConfirm: (enabled: boolean) => void;
   /** @internal */ setTaskCompletionNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setAskUserQuestionNotificationEnabled: (enabled: boolean) => void;
+  /** @internal */ setDetailedOutputEnabled: (enabled: boolean) => void;
   /** @internal */ setSystemNotificationOnlyWhenUnfocused: (enabled: boolean) => void;
   /** @internal */ setAskUserQuestionSoundNotificationEnabled: (enabled: boolean) => void;
 }
@@ -189,6 +192,11 @@ export function useSettingsBasicActions({
   >();
   const [uiFontConfig, setUiFontConfig] = useState<UiFontConfig | undefined>();
   const [codeFontConfig, setCodeFontConfig] = useState<CodeFontConfig | undefined>();
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+
+  useEffect(() => {
+    sendToJava('get_system_font_list:');
+  }, []);
 
   // Send shortcut configuration - prefer props, fallback to local state
   const [localSendShortcut, setLocalSendShortcut] = useState<'enter' | 'cmdEnter'>('enter');
@@ -582,6 +590,8 @@ export function useSettingsBasicActions({
     setUiFontConfig,
     codeFontConfig,
     setCodeFontConfig,
+    systemFonts,
+    setSystemFonts,
     localSendShortcut,
     setLocalSendShortcut,
     sendShortcut,
@@ -628,6 +638,7 @@ export function useSettingsBasicActions({
     setAskUserQuestionNotificationEnabled,
     handleAskUserQuestionNotificationEnabledChange,
     detailedOutputEnabled,
+    setDetailedOutputEnabled,
     handleDetailedOutputEnabledChange,
     systemNotificationOnlyWhenUnfocused,
     setSystemNotificationOnlyWhenUnfocused,

@@ -1,5 +1,6 @@
 package com.opencodebuddy.session;
 
+import com.opencodebuddy.handler.provider.ModelProviderHandler;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.provider.common.MessageCallback;
 import com.opencodebuddy.provider.common.SDKResult;
@@ -196,10 +197,14 @@ public class OpenCodeMessageHandler implements MessageCallback {
             int cacheCreation = readInt(usage, "cache_creation_input_tokens", "cache_creation");
 
             com.google.gson.JsonObject turnUsage = new com.google.gson.JsonObject();
-            turnUsage.addProperty("input_tokens", Math.max(0, input - cacheRead));
+            turnUsage.addProperty("input_tokens", input);
             turnUsage.addProperty("cache_creation_input_tokens", cacheCreation);
             turnUsage.addProperty("cache_read_input_tokens", cacheRead);
             turnUsage.addProperty("output_tokens", output + readInt(usage, "reasoning_tokens"));
+
+            int usedTokens = input + cacheRead + cacheCreation;
+            int maxTokens = ModelProviderHandler.getModelContextLimit(state.getModel());
+            callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
 
             boolean updated = attachUsageToLastAssistant(turnUsage);
             if (updated) {

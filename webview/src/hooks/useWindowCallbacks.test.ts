@@ -151,8 +151,7 @@ describe('useWindowCallbacks integration', () => {
 
     expect(currentProviderRef.current).toBe('claude');
     expect(opts.setCurrentProvider).toHaveBeenCalledWith('claude');
-    expect(opts.setSelectedClaudeModel).toHaveBeenCalledWith('claude-opus-4-8');
-    expect(opts.setLongContextEnabled).toHaveBeenCalledWith(true);
+    expect(opts.setSelectedOpenCodeModel).toHaveBeenCalledWith('claude-opus-4-8');
     expect(opts.setReasoningEffort).toHaveBeenCalledWith('high');
     expect(window.__CCGUI_RECOVERY_STATE_APPLIED__).toBe(true);
     expect((window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.length).toBe(bridgeCallsBeforeRestore);

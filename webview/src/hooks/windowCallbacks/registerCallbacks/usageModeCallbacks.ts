@@ -129,18 +129,9 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
 
       if (typeof state.model === 'string' && state.model.length > 0) {
         const model = state.model;
-        const hasLongContextSuffix = model.endsWith('[1m]');
-        const baseModel = hasLongContextSuffix ? model.slice(0, -4) : model;
-
-        if (provider === 'claude') {
-          options.setSelectedClaudeModel(baseModel);
-        } else {
-          setSelectedOpenCodeModel(baseModel);
-        }
-
-        if (options.setLongContextEnabled) {
-          options.setLongContextEnabled(hasLongContextSuffix);
-        }
+        // opencode-only：长上下文开关未接入，[1m] 只是恢复模型时的展示后缀。
+        const baseModel = model.endsWith('[1m]') ? model.slice(0, -4) : model;
+        setSelectedOpenCodeModel(baseModel);
       }
 
       updateMode(state.permissionMode as PermissionMode | undefined);

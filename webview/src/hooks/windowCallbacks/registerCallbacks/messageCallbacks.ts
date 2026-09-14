@@ -930,10 +930,9 @@ export function registerMessageCallbacks(
 
   window.beginCodexHistoryPage = (json: string) => {
     try {
-      const { pageId, sessionId, mode } = JSON.parse(json) as {
+      const { pageId, sessionId } = JSON.parse(json) as {
         pageId: string;
         sessionId: string;
-        mode: 'prepend' | 'replace';
       };
       if (!pageId || !sessionId) return;
       codexPageBuffer.set(pageId, []);

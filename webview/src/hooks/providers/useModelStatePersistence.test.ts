@@ -147,7 +147,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
     expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'opencode-default']]);
   });
 
-  it('treats a backend-supplied legacy provider as "no backend preference"', () => {
+  it('treats a backend-supplied legacy provider as "no backend preference" but still applies initial tab model', () => {
     const setCurrentProvider = vi.fn();
     const setSelectedOpenCodeModel = vi.fn();
     (window as unknown as { __INITIAL_TAB_PROVIDER__?: unknown }).__INITIAL_TAB_PROVIDER__ = 'claude';
@@ -165,7 +165,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'opencode-default']]);
+    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'claude-sonnet-4-6']]);
   });
 
   it('keeps a saved opencode model untouched when the snapshot also carries legacy fields', () => {

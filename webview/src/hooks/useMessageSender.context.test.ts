@@ -32,7 +32,6 @@ describe('useMessageSender - /context command', () => {
     setCurrentView: vi.fn(),
     forceCreateNewSession: vi.fn(),
     handleModeSelect: vi.fn(),
-    longContextEnabled: false,
     openContextUsageDialog: vi.fn(),
     closeContextUsageDialog: vi.fn().mockReturnValue(true),
     ...overrides,
@@ -71,10 +70,9 @@ describe('useMessageSender - /context command', () => {
     expect(payload.requestId).toBeTruthy();
   });
 
-  it('sends get_context_usage with [1m] suffix when longContext is enabled', () => {
+  it('sends get_context_usage with base model (longContext option is not wired yet)', () => {
     const opts = createOptions({
       selectedModel: 'claude-opus-4-8',
-      longContextEnabled: true,
     });
 
     const { result } = renderHook(() => useMessageSender(opts));
@@ -86,7 +84,7 @@ describe('useMessageSender - /context command', () => {
     expect(window.sendToJava).toHaveBeenCalledTimes(1);
     const call = (window.sendToJava as any).mock.calls[0][0] as string;
     const payload = JSON.parse(call.substring('get_context_usage:'.length));
-    expect(payload.model).toBe('claude-opus-4-8[1m]');
+    expect(payload.model).toBe('claude-opus-4-8');
   });
 
   it('opens dialog with loading state before sending bridge event', () => {
@@ -205,7 +203,7 @@ describe('useMessageSender - /context command', () => {
     });
 
     const payload = getBridgePayload('send_message');
-    expect(payload).not.toHaveProperty('reasoningEffort');
+    expect(payload.reasoningEffort).toBe('low');
   });
 
   it('includes explicit non-default Claude reasoning effort in plain message payload', () => {

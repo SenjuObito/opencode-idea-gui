@@ -142,7 +142,7 @@ describe('useSubmitHandler', () => {
 
     vi.advanceTimersByTime(20);
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit).toHaveBeenCalledWith('hello', [createAttachment('a1')]);
+    expect(onSubmit).toHaveBeenCalledWith('hello', [createAttachment('a1')], undefined);
     vi.useRealTimers();
   });
 });

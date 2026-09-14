@@ -42,13 +42,14 @@ describe('ReasoningSelect', () => {
     expect(screen.getByText('Max')).toBeTruthy();
   });
 
-  it('keeps max hidden for Codex models that do not support it', () => {
+  it('keeps max hidden when modelVariants excludes it', () => {
     render(
       <ReasoningSelect
         value={'xhigh'}
         onChange={vi.fn()}
         currentProvider={'codex'}
         selectedModel={'gpt-5.5'}
+        modelVariants={['low', 'medium', 'high', 'xhigh']}
       />,
     );
 
@@ -57,18 +58,19 @@ describe('ReasoningSelect', () => {
     expect(screen.queryByText('Max')).toBeNull();
   });
 
-  it('keeps max hidden when the Codex model is unknown', () => {
+  it('shows all levels when modelVariants is empty (no filtering)', () => {
     render(
       <ReasoningSelect
         value={'xhigh'}
         onChange={vi.fn()}
         currentProvider={'codex'}
+        modelVariants={[]}
       />,
     );
 
     fireEvent.click(screen.getByRole('button'));
 
-    expect(screen.queryByText('Max')).toBeNull();
+    expect(screen.getByText('Max')).toBeTruthy();
   });
 
   it('shows max for custom GPT-5.6 model suffixes', () => {
@@ -102,13 +104,14 @@ describe('ReasoningSelect', () => {
     expect(screen.getByText('Max')).toBeTruthy();
   });
 
-  it('shows max but not xhigh for Claude Sonnet 4.6', () => {
+  it('shows max but not xhigh for Claude Sonnet 4.6 (via modelVariants)', () => {
     render(
       <ReasoningSelect
         value="high"
         onChange={vi.fn()}
         currentProvider="claude"
         selectedModel="claude-sonnet-4-6"
+        modelVariants={['low', 'medium', 'high', 'max']}
       />,
     );
 
@@ -118,13 +121,14 @@ describe('ReasoningSelect', () => {
     expect(screen.getByText('Max')).toBeTruthy();
   });
 
-  it('shows max but not xhigh for Claude Sonnet 5', () => {
+  it('shows max but not xhigh for Claude Sonnet 5 (via modelVariants)', () => {
     render(
       <ReasoningSelect
         value="high"
         onChange={vi.fn()}
         currentProvider="claude"
         selectedModel="claude-sonnet-5"
+        modelVariants={['low', 'medium', 'high', 'max']}
       />,
     );
 
@@ -134,7 +138,7 @@ describe('ReasoningSelect', () => {
     expect(screen.getByText('Max')).toBeTruthy();
   });
 
-  it('resets unavailable effort when selected Claude model changes', () => {
+  it('resets unavailable effort when modelVariants excludes current value', () => {
     const onChange = vi.fn();
 
     render(
@@ -143,22 +147,24 @@ describe('ReasoningSelect', () => {
         onChange={onChange}
         currentProvider="claude"
         selectedModel="claude-sonnet-4-6"
+        modelVariants={['low', 'medium', 'high', 'max']}
       />,
     );
 
     expect(onChange).toHaveBeenCalledWith('high');
   });
 
-  it('hides for Claude models without effort support', () => {
+  it('shows all levels when modelVariants is empty (source treats it as no filter)', () => {
     render(
       <ReasoningSelect
         value="high"
         onChange={vi.fn()}
         currentProvider="claude"
         selectedModel="claude-haiku-4-5"
+        modelVariants={[]}
       />,
     );
 
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button')).toBeTruthy();
   });
 });

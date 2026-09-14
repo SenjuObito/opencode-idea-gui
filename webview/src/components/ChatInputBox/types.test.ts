@@ -1,44 +1,42 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLAUDE_MODELS,
-  DEFAULT_CLAUDE_MODEL_ID,
-  normalizeClaudeModelId,
+  OPENCODE_DEFAULT_MODEL_ID,
+  OPENCODE_MODELS,
+  getAvailableReasoningLevels,
 } from './types';
 
-describe('normalizeClaudeModelId', () => {
-  it('falls back to the default model for empty input', () => {
-    expect(normalizeClaudeModelId(null)).toBe(DEFAULT_CLAUDE_MODEL_ID);
-    expect(normalizeClaudeModelId(undefined)).toBe(DEFAULT_CLAUDE_MODEL_ID);
-    expect(normalizeClaudeModelId('')).toBe(DEFAULT_CLAUDE_MODEL_ID);
+describe('OPENCODE_DEFAULT_MODEL_ID', () => {
+  it('is defined and non-empty', () => {
+    expect(OPENCODE_DEFAULT_MODEL_ID).toBe('opencode-default');
+  });
+});
+
+describe('OPENCODE_MODELS', () => {
+  it('contains the default model', () => {
+    expect(OPENCODE_MODELS.some((m) => m.id === OPENCODE_DEFAULT_MODEL_ID)).toBe(true);
   });
 
-  it('keeps the default model inside CLAUDE_MODELS', () => {
-    // The fallback must always be selectable — deriving it from CLAUDE_MODELS[0]
-    // (the newest tier) broke users whose API relay lacks that model.
-    expect(CLAUDE_MODELS.some((m) => m.id === DEFAULT_CLAUDE_MODEL_ID)).toBe(true);
-  });
-
-  it('migrates retired Sonnet 4.6 to the current default', () => {
-    // Saved by versions <= 0.4.7 where sonnet-4-6 was the default model.
-    expect(normalizeClaudeModelId('claude-sonnet-4-6')).toBe('claude-sonnet-4-7');
-  });
-
-  it('migrates retired Opus 4.6 to Opus 4.8', () => {
-    expect(normalizeClaudeModelId('claude-opus-4-6')).toBe('claude-opus-4-8');
-  });
-
-  it('migrates retired IDs carrying a [1m] suffix', () => {
-    expect(normalizeClaudeModelId('claude-sonnet-4-6[1m]')).toBe('claude-sonnet-4-7');
-    expect(normalizeClaudeModelId('claude-opus-4-6[1m]')).toBe('claude-opus-4-8');
-  });
-
-  it('leaves current models untouched', () => {
-    for (const model of CLAUDE_MODELS) {
-      expect(normalizeClaudeModelId(model.id)).toBe(model.id);
+  it('has valid structure for all models', () => {
+    for (const model of OPENCODE_MODELS) {
+      expect(model.id).toBeTruthy();
+      expect(model.label).toBeTruthy();
     }
   });
+});
 
-  it('leaves unknown custom model IDs untouched', () => {
-    expect(normalizeClaudeModelId('qwen3.5-plus')).toBe('qwen3.5-plus');
+describe('getAvailableReasoningLevels', () => {
+  it('returns all levels when no modelVariants are provided', () => {
+    const levels = getAvailableReasoningLevels('claude', 'claude-opus-4-8');
+    expect(levels.length).toBe(5);
+  });
+
+  it('filters by modelVariants when provided', () => {
+    const levels = getAvailableReasoningLevels('claude', 'claude-opus-4-8', ['low', 'medium', 'high']);
+    expect(levels.map((l) => l.id)).toEqual(['low', 'medium', 'high']);
+  });
+
+  it('returns all levels when modelVariants is empty', () => {
+    const levels = getAvailableReasoningLevels('claude', 'claude-opus-4-8', []);
+    expect(levels.length).toBe(5);
   });
 });

@@ -118,13 +118,29 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   window.applyBackendTabState = (json: string) => {
     try {
       const state = JSON.parse(json) as Record<string, unknown>;
-      const provider = 'opencode';
+      // Normalize legacy 'codex' provider to 'opencode' for backward compatibility
+      const rawProvider = typeof state.provider === 'string' && state.provider.length > 0
+        ? state.provider
+        : 'opencode';
+      const provider = rawProvider === 'codex' ? 'opencode' : rawProvider;
 
       currentProviderRef.current = provider;
       setCurrentProvider(provider);
 
       if (typeof state.model === 'string' && state.model.length > 0) {
-        setSelectedOpenCodeModel(state.model);
+        const model = state.model;
+        const hasLongContextSuffix = model.endsWith('[1m]');
+        const baseModel = hasLongContextSuffix ? model.slice(0, -4) : model;
+
+        if (provider === 'claude') {
+          options.setSelectedClaudeModel(baseModel);
+        } else {
+          setSelectedOpenCodeModel(baseModel);
+        }
+
+        if (options.setLongContextEnabled) {
+          options.setLongContextEnabled(hasLongContextSuffix);
+        }
       }
 
       updateMode(state.permissionMode as PermissionMode | undefined);

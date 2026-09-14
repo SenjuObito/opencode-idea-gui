@@ -32,6 +32,13 @@ jobs:
         with:
           node-version: '22.12.0'
 
+      # The suites import the bridge modules directly, and those pull in
+      # @opencode-ai/sdk/v2 (services/opencode/opencode-sdk-client.js), so the
+      # dependency tree must be present even though nothing is built here.
+      - name: Install ai-bridge dependencies
+        working-directory: ai-bridge
+        run: npm ci
+
       - name: Run ai-bridge tests
         run: node --test "ai-bridge/**/*.test.js"
 

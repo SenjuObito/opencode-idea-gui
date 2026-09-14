@@ -126,6 +126,14 @@ interface Window {
    * Triggers Markdown re-rendering to fix incorrect rendering on first history load.
    */
   historyLoadComplete?: (expectedMessageCount?: string | number) => void;
+  /** Legacy Codex callback — kept as no-op. Does NOT release session transition guard. */
+  codexHistoryPageRenderComplete?: () => void;
+  /** Begin a Codex history page transfer (paginated history loading). */
+  beginCodexHistoryPage?: (json: string) => void;
+  /** Append a batch of messages to an in-progress Codex history page. */
+  appendCodexHistoryPageBatch?: (pageId: string, json: string) => void;
+  /** Complete and apply a Codex history page transfer. */
+  completeCodexHistoryPage?: (json: string) => void;
   /** Early history completion buffered before React installs the real callback. */
   __pendingHistoryLoadComplete?: { expectedMessageCount?: string | number };
   /** Number of messages in the latest full backend snapshot accepted by this page. */

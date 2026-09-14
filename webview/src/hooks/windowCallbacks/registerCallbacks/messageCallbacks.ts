@@ -918,6 +918,117 @@ export function registerMessageCallbacks(
     window.historyLoadComplete(pendingHistoryLoadComplete.expectedMessageCount);
   }
 
+  // Legacy Codex callback — kept as no-op to avoid breaking older Java hosts.
+  // Unlike historyLoadComplete, this must NOT release the session transition guard.
+  window.codexHistoryPageRenderComplete = () => {};
+
+  // =========================================================================
+  // Codex History Page (paginated history loading)
+  // =========================================================================
+
+  const codexPageBuffer = new Map<string, ClaudeMessage[]>();
+
+  window.beginCodexHistoryPage = (json: string) => {
+    try {
+      const { pageId, sessionId, mode } = JSON.parse(json) as {
+        pageId: string;
+        sessionId: string;
+        mode: 'prepend' | 'replace';
+      };
+      if (!pageId || !sessionId) return;
+      codexPageBuffer.set(pageId, []);
+      // Note: __codexHistoryPageInfo is NOT updated here — it retains the
+      // previous page's range so completeCodexHistoryPage can verify contiguity.
+    } catch (error) {
+      console.error('[Frontend] Failed to parse beginCodexHistoryPage:', error);
+    }
+  };
+
+  window.appendCodexHistoryPageBatch = (pageId: string, json: string) => {
+    try {
+      const messages = JSON.parse(json) as ClaudeMessage[];
+      if (!Array.isArray(messages)) return;
+      const existing = codexPageBuffer.get(pageId);
+      if (existing) {
+        existing.push(...messages);
+      } else {
+        codexPageBuffer.set(pageId, [...messages]);
+      }
+    } catch (error) {
+      console.error('[Frontend] Failed to parse appendCodexHistoryPageBatch:', error);
+    }
+  };
+
+  window.completeCodexHistoryPage = (json: string) => {
+    try {
+      const {
+        pageId,
+        sessionId,
+        mode,
+        fromTurn,
+        toTurn,
+        totalTurns,
+        hasMore,
+        loadedMessageCount,
+      } = JSON.parse(json) as {
+        pageId: string;
+        sessionId: string;
+        mode: 'prepend' | 'replace';
+        fromTurn: number;
+        toTurn: number;
+        totalTurns: number;
+        hasMore: boolean;
+        loadedMessageCount: number;
+      };
+
+      const buffered = codexPageBuffer.get(pageId);
+      codexPageBuffer.delete(pageId);
+      if (!buffered) return;
+
+      // Ignore if session changed during transfer
+      if (currentSessionIdRef.current !== sessionId) return;
+
+      // Contiguity check: for prepend mode, the new page's toTurn must match
+      // the existing page's fromTurn. If there's a gap, reject and show error.
+      const existingPageInfo = window.__codexHistoryPageInfo;
+      if (mode === 'prepend' && existingPageInfo) {
+        if (existingPageInfo.fromTurn > 0 && toTurn !== existingPageInfo.fromTurn) {
+          addToast('Codex history changed while loading; please retry', 'error');
+          return;
+        }
+      }
+
+      if (mode === 'replace') {
+        setMessages(buffered);
+        window.__prependedHistoryMessageCount = 0;
+      } else {
+        // prepend
+        setMessages((prev) => [...buffered, ...prev]);
+        window.__prependedHistoryMessageCount =
+          (window.__prependedHistoryMessageCount ?? 0) + buffered.length;
+      }
+
+      // Update page info
+      window.__codexHistoryPageInfo = {
+        pageId,
+        sessionId,
+        mode,
+        fromTurn,
+        toTurn,
+        totalTurns,
+        hasMore,
+        loadedMessageCount,
+      };
+
+      // Adjust streaming index for prepended messages
+      if (mode === 'prepend' && options.streamingMessageIndexRef.current >= 0) {
+        options.streamingMessageIndexRef.current += buffered.length;
+      }
+    } catch (error) {
+      console.error('[Frontend] Failed to parse completeCodexHistoryPage:', error);
+    }
+  };
+
   window.addUserMessage = (content: string) => {
     if (window.__sessionTransitioning) return;
     const userMessage: ClaudeMessage = {

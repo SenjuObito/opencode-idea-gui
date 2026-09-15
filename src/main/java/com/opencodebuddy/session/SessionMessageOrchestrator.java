@@ -171,7 +171,12 @@ public class SessionMessageOrchestrator {
                     }
                 }
 
-                restoreTokenUsage(serverMessages);
+                // 用量必须从「已解析的会话消息」里取，而不是转换器的外层 JSON：
+                // OpenCodeMessageConverter 把 opencode 的 tokens 挂在 outer.raw.tokens，
+                // 外层对象本身没有 usage/turnUsage/tokens 字段，
+                // TokenUsageUtils.findLastUsageFromRawMessages 因此永远拿到 null，
+                // 历史会话的上下文用量就停在切会话时被重置的 0%。
+                restoreTokenUsage();
                 callbackFacade.notifyMessageUpdate(state.getMessages());
             } catch (Exception e) {
                 state.setError(e.getMessage());
@@ -297,9 +302,22 @@ public class SessionMessageOrchestrator {
         return null;
     }
 
-    private void restoreTokenUsage(List<JsonObject> serverMessages) {
+    /**
+     * 恢复历史会话的上下文用量环。
+     *
+     * <p>对应 vscode 插件 {@code OpenCodeSession.republishUsageFromHistory()}：
+     * 在 state 里已经装好解析后的消息之后，从最后一条带用量的助手消息重推一次
+     * used/max。没有历史用量则什么都不推，让前端保持原样，而不是把 0 当成真值。</p>
+     *
+     * <p>取值走 {@code state.getMessages()}（{@link ClaudeSession.Message#raw} 层），
+     * 因为 opencode 的 token 快照位于 {@code raw.tokens}；早期版本误传
+     * {@link OpenCodeMessageConverter} 的外层对象（用量埋在 {@code raw} 里），
+     * 导致 {@code findLastUsageFromRawMessages} 恒为 null、用量环永远显示 0%。</p>
+     */
+    private void restoreTokenUsage() {
         try {
-            JsonObject lastUsage = TokenUsageUtils.findLastUsageFromRawMessages(serverMessages, state.getProvider());
+            JsonObject lastUsage = TokenUsageUtils.findLastUsageFromSessionMessages(
+                    state.getMessages(), state.getProvider());
             if (lastUsage == null) {
                 return;
             }

@@ -3,6 +3,7 @@ package com.opencodebuddy.session;
 import com.opencodebuddy.handler.PermissionHandler;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.util.JsUtils;
+import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.vfs.VirtualFileManager;
@@ -386,8 +387,15 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
             int safeUsedTokens = normalizeUsageValue(usedTokens);
             int safeMaxTokens = normalizeUsageValue(maxTokens);
             double percentage = calculateUsagePercentage(safeUsedTokens, safeMaxTokens);
-            String json = String.format("{\"percentage\":%.2f,\"usedTokens\":%d,\"maxTokens\":%d}",
-                    percentage, safeUsedTokens, safeMaxTokens);
+            // 用 Gson 而不是 String.format("%.2f")：后者按默认 locale 渲染，逗号小数点
+            // 的地区（de/fr/ru…）会产出 {"percentage":12,34} 这种非法 JSON，前端
+            // JSON.parse 抛错后整条推送被丢弃，用量环就永远停在 0%。对应 vscode
+            // SessionCallbackAdapter 里的 JSON.stringify。
+            JsonObject payload = new JsonObject();
+            payload.addProperty("percentage", percentage);
+            payload.addProperty("usedTokens", safeUsedTokens);
+            payload.addProperty("maxTokens", safeMaxTokens);
+            String json = payload.toString();
             jsTarget.callJavaScript("onUsageUpdate", JsUtils.escapeJs(json));
             LOG.debug("Usage update sent to frontend: " + safeUsedTokens + "/" + safeMaxTokens);
         });

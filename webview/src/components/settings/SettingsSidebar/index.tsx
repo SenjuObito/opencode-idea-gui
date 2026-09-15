@@ -12,7 +12,9 @@ interface SidebarItem {
 const sidebarItems: SidebarItem[] = [
   { key: 'basic', icon: 'codicon-settings-gear', labelKey: 'settings.basic.title' },
   { key: 'providers', icon: 'codicon-vm-connect', labelKey: 'settings.providers' },
-  { key: 'prompts', icon: 'codicon-notebook', labelKey: 'settings.prompts' },
+  // 命令（提示词）暂时下线：入口先隐藏，PromptSection 与 i18n 文案保留，
+  // 重新放开只需恢复本行。
+  // { key: 'prompts', icon: 'codicon-notebook', labelKey: 'settings.prompts' },
   { key: 'usage', icon: 'codicon-graph', labelKey: 'settings.usage' },
   { key: 'mcp', icon: 'codicon-server', labelKey: 'settings.mcp' },
   // { key: 'agents', icon: 'codicon-robot', labelKey: 'settings.agents' },

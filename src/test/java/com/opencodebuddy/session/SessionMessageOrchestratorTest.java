@@ -218,6 +218,57 @@ public class SessionMessageOrchestratorTest {
         assertTrue(callback.usageUpdates.isEmpty());
     }
 
+    /**
+     * opencode 的历史消息由 {@link OpenCodeMessageConverter} 产出：真实的 token
+     * 快照挂在 {@code envelope.raw.tokens}，外层对象只有 type/content/timestamp/raw。
+     * 恢复用量时若只扫外层，找不到任何 usage/turnUsage/tokens 字段，会话切过去之后
+     * 用量环就永远停在 0%（这正是本用例守护的回归）。
+     */
+    @Test
+    public void loadFromServerRestoresOpenCodeRawTokensUsage() {
+        SessionState state = new SessionState();
+        state.setProvider("opencode");
+        state.setModel("deepseek/deepseek-v4-pro");
+        state.setSessionId("session-opencode-usage");
+        state.setCwd("/workspace");
+
+        RecordingCallback callback = new RecordingCallback();
+        SessionCallbackFacade callbackFacade = new SessionCallbackFacade(null);
+        callbackFacade.setCallback(callback);
+        RecordingHistoryAccess historyAccess = new RecordingHistoryAccess();
+
+        JsonObject cache = new JsonObject();
+        cache.addProperty("read", 9000);
+        cache.addProperty("write", 1200);
+        JsonObject tokens = new JsonObject();
+        tokens.addProperty("input", 14000);
+        tokens.addProperty("output", 500);
+        tokens.add("cache", cache);
+
+        JsonObject raw = new JsonObject();
+        raw.addProperty("type", "assistant");
+        raw.add("message", new JsonObject());
+        raw.add("tokens", tokens);
+
+        JsonObject envelope = new JsonObject();
+        envelope.addProperty("type", "assistant");
+        envelope.addProperty("content", "Recovered answer");
+        envelope.addProperty("timestamp", 1_700_000_000_000L);
+        envelope.add("raw", raw);
+        historyAccess.providerHistory = List.of(envelope);
+
+        SessionMessageOrchestrator orchestrator = new SessionMessageOrchestrator(
+                null, state, new MessageParser(), callbackFacade, historyAccess);
+
+        orchestrator.loadFromServer().join();
+
+        // 上下文占用 = input + cache.read + cache.write = 14000 + 9000 + 1200。
+        // 分母取决于模型目录/回退表，这里只钉住分子 —— 修复前整条推送根本不存在。
+        assertEquals(1, callback.usageUpdates.size());
+        assertTrue("unexpected usage update: " + callback.usageUpdates.get(0),
+                callback.usageUpdates.get(0).startsWith("24200:"));
+    }
+
     @Test
     public void loadFromServerPreservesNormalizedCodexToolBlocks() {
         SessionState state = new SessionState();

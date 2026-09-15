@@ -25,7 +25,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 public class ProjectConfigHandler {
 
     private static final Logger LOG = Logger.getInstance(ProjectConfigHandler.class);
-    static final String SEND_SHORTCUT_PROPERTY_KEY = "claude.code.send.shortcut";
+    static final String SEND_SHORTCUT_PROPERTY_KEY = "opencodebuddy.send.shortcut";
 
     private final HandlerContext context;
     private final CodemossSettingsService settingsService;

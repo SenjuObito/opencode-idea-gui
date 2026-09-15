@@ -137,7 +137,7 @@ public final class PluginFileLogger {
             flushLocked();
         } catch (Exception e) {
             disabled = true;
-            LOG.warn("[FileLog] Failed to open " + file + ": " + e.getMessage());
+            LOG.warn("[FileLog] Failed to open " + file, e);
         }
     }
 

@@ -287,7 +287,7 @@ public class SessionState {
     /**
      * Migrate retired Claude model ids to their live replacement on write.
      *
-     * <p>Persisted tab state (.idea/claudeCodeTabState.xml) and history sessions keep
+     * <p>Persisted tab state (.idea/opencodebuddyTabState.xml) and history sessions keep
      * whatever model id was saved forever. When a model is retired from the API
      * (sonnet-4-6, sonnet-4-7, ...), restoring such a tab would otherwise spawn a CLI
      * pinned to a dead model that fails on every send ("It may not exist or you may

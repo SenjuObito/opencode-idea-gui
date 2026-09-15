@@ -61,8 +61,8 @@ import java.util.concurrent.TimeUnit;
 public class ChatWindowDelegate {
 
     private static final Logger LOG = Logger.getInstance(ChatWindowDelegate.class);
-    private static final String NODE_PATH_PROPERTY_KEY = "claude.code.node.path";
-    private static final String PERMISSION_MODE_PROPERTY_KEY = "claude.code.permission.mode";
+    private static final String NODE_PATH_PROPERTY_KEY = "opencodebuddy.node.path";
+    private static final String PERMISSION_MODE_PROPERTY_KEY = "opencodebuddy.permission.mode";
     private static final int STATUS_RESET_DELAY_SECONDS = 5;
 
     public enum TabAnswerStatus {

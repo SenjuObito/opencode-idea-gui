@@ -50,6 +50,14 @@ final class BridgeArchiveLocator {
             File archiveFile = locateArchive(candidate);
             if (archiveFile != null) {
                 File pluginDir = archiveFile.getParentFile();
+                // Verify the found plugin directory belongs to the current plugin.
+                // When multiple plugins are installed (e.g. legacy idea-claude-code-gui
+                // and new opencode-buddy-jetbrains), the candidate enumeration may
+                // match the wrong plugin's ai-bridge.zip first.
+                if (!isCurrentPluginDirectory(pluginDir, expectedId)) {
+                    LOG.info("[BridgeResolver] Skipping archive from other plugin: " + pluginDir.getAbsolutePath());
+                    continue;
+                }
                 LOG.debug("[BridgeResolver] Plugin directory with archive: " + pluginDir.getAbsolutePath());
                 return new PluginLocation(pluginDir, PluginMetadata.getPluginVersion());
             }
@@ -57,6 +65,40 @@ final class BridgeArchiveLocator {
 
         LOG.debug("[BridgeResolver] Could not resolve plugin directory containing " + SDK_ARCHIVE_NAME);
         return null;
+    }
+
+    /**
+     * Check if the given plugin directory belongs to the current plugin.
+     * Matches against the plugin ID, the known on-disk directory name,
+     * or a parent directory containing the plugin's JAR files.
+     */
+    private static boolean isCurrentPluginDirectory(File pluginDir, String expectedId) {
+        if (pluginDir == null) {
+            return false;
+        }
+        String dirName = pluginDir.getName();
+        // Match by plugin ID (e.g. "com.senjuobito.opencode-buddy")
+        if (expectedId.equals(dirName)) {
+            return true;
+        }
+        // Match by known on-disk directory names
+        if (BridgePathLocator.PLUGIN_DIR_NAME.equals(dirName)) {
+            return true;
+        }
+        // Check if the directory contains a lib/ with JARs (typical plugin layout)
+        // and one of the JARs belongs to the current plugin
+        File libDir = new File(pluginDir, "lib");
+        if (libDir.isDirectory()) {
+            File[] jars = libDir.listFiles((dir, name) -> name.endsWith(".jar"));
+            if (jars != null) {
+                for (File jar : jars) {
+                    if (jar.getName().contains(expectedId) || jar.getName().contains(BridgePathLocator.PLUGIN_DIR_NAME)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     static List<File> collectPluginDirCandidates(File classpathPluginDir) {

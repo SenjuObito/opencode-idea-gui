@@ -22,9 +22,9 @@ final class BridgePathLocator {
 
     static final String SDK_DIR_NAME = "ai-bridge";
     static final String NODE_SCRIPT = "channel-manager.js";
-    static final String PLUGIN_DIR_NAME = "idea-claude-code-gui";
+    static final String PLUGIN_DIR_NAME = "opencode-buddy-jetbrains";
     static final String BRIDGE_PATH_PROPERTY = "opencode.bridge.path";
-    static final String BRIDGE_PATH_ENV = "CLAUDE_BRIDGE_PATH";
+    static final String BRIDGE_PATH_ENV = "OPENCODE_BRIDGE_PATH";
 
     private BridgePathLocator() {
     }

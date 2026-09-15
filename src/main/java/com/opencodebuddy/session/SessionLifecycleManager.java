@@ -31,7 +31,7 @@ import java.util.concurrent.CompletableFuture;
 public class SessionLifecycleManager {
 
     private static final Logger LOG = Logger.getInstance(SessionLifecycleManager.class);
-    private static final String PERMISSION_MODE_PROPERTY_KEY = "claude.code.permission.mode";
+    private static final String PERMISSION_MODE_PROPERTY_KEY = "opencodebuddy.permission.mode";
 
     /**
      * Host interface providing access to window-level dependencies.

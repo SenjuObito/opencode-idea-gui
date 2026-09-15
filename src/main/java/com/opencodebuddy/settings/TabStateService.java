@@ -14,8 +14,8 @@ import java.util.Map;
  * Saves and restores custom tab names plus per-tab session binding state.
  */
 @State(
-    name = "ClaudeCodeTabState",
-    storages = @Storage("claudeCodeTabState.xml")
+    name = "OpenCodeBuddyTabState",
+    storages = @Storage("opencodebuddyTabState.xml")
 )
 @Service(Service.Level.PROJECT)
 public final class TabStateService implements PersistentStateComponent<TabStateService.State> {

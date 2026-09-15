@@ -15,7 +15,7 @@ public class PermissionModeHandler {
 
     private static final Logger LOG = Logger.getInstance(PermissionModeHandler.class);
 
-    static final String PERMISSION_MODE_PROPERTY_KEY = "claude.code.permission.mode";
+    static final String PERMISSION_MODE_PROPERTY_KEY = "opencodebuddy.permission.mode";
 
     private final HandlerContext context;
     private final Gson gson = new Gson();

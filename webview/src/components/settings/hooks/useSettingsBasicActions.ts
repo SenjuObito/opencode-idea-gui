@@ -332,7 +332,7 @@ export function useSettingsBasicActions({
   const handleSaveOpencodeCliPath = useCallback(() => {
     setSavingOpencodeCliPath(true);
     const payload = { path: (opencodeCliPath || '').trim() };
-    sendToJava(`set_claude_cli_path:${JSON.stringify(payload)}`);
+    sendToJava(`set_opencode_cli_path:${JSON.stringify(payload)}`);
   }, [opencodeCliPath]);
 
   const handleSaveWorkingDirectory = useCallback(() => {

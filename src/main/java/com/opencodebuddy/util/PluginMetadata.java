@@ -60,20 +60,38 @@ public final class PluginMetadata {
     public static java.io.File getPluginDirectory(Class<?> anchorClass) {
         try {
             CodeSource codeSource = anchorClass.getProtectionDomain().getCodeSource();
-            if (codeSource == null || codeSource.getLocation() == null) {
-                return null;
+            if (codeSource != null && codeSource.getLocation() != null) {
+                java.io.File location = new java.io.File(codeSource.getLocation().toURI());
+                if (location.isFile()) {
+                    java.io.File parent = location.getParentFile();
+                    java.io.File result = parent != null && "lib".equals(parent.getName()) ? parent.getParentFile() : parent;
+                    if (result != null && result.isDirectory()) {
+                        return result;
+                    }
+                } else if (location.isDirectory()) {
+                    return location;
+                }
             }
-
-            java.io.File location = new java.io.File(codeSource.getLocation().toURI());
-            if (location.isFile()) {
-                java.io.File parent = location.getParentFile();
-                return parent != null && "lib".equals(parent.getName()) ? parent.getParentFile() : parent;
-            }
-            return location;
         } catch (Exception e) {
             LOG.debug("Failed to resolve plugin directory from classpath: " + e.getMessage());
-            return null;
         }
+
+        // Fallback: try to resolve from PathManager using the plugin ID
+        try {
+            String pluginId = getPluginId();
+            String pluginsPath = com.intellij.openapi.application.PathManager.getPluginsPath();
+            if (pluginsPath != null && !pluginsPath.isEmpty() && pluginId != null) {
+                java.io.File fromPluginsPath = new java.io.File(pluginsPath, pluginId);
+                if (fromPluginsPath.isDirectory()) {
+                    LOG.debug("[PluginMetadata] Resolved plugin directory from PathManager: " + fromPluginsPath.getAbsolutePath());
+                    return fromPluginsPath;
+                }
+            }
+        } catch (Exception e) {
+            LOG.debug("Failed to resolve plugin directory from PathManager: " + e.getMessage());
+        }
+
+        return null;
     }
 
     @Nullable

@@ -32,14 +32,8 @@ public class EditorContextCollector {
     private boolean autoOpenFileEnabled = true;
     private boolean workspaceContextEnabled = true;
 
-    private boolean isQuickFix = false;
-
     public EditorContextCollector(Project project) {
         this.project = project;
-    }
-
-    public void setQuickFix(boolean quickFix) {
-        this.isQuickFix = quickFix;
     }
 
     public void setPsiContextEnabled(boolean enabled) {
@@ -210,10 +204,6 @@ public class EditorContextCollector {
             } catch (Exception e) {
                 LOG.warn("Failed to collect workspace context: " + e.getMessage());
             }
-        }
-
-        if (isQuickFix) {
-            openedFilesJson.addProperty("isQuickFix", true);
         }
 
         return openedFilesJson;

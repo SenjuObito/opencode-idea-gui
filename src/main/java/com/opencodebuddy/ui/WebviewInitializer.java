@@ -330,7 +330,7 @@ public class WebviewInitializer {
                 return handleClipboardPathRequest();
             });
 
-            // Create a dedicated JSQuery for hiding the CCG panel via Shift+Esc
+            // Create a dedicated JSQuery for hiding the OpenCode panel via Shift+Esc
             currentBridges.hidePanelQuery.addHandler((msg) -> {
                 synchronized (this.bridgeLock) {
                     if (host.isDisposed() || this.bridges != currentBridges

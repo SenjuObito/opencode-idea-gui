@@ -347,7 +347,7 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setCustomSessionTitle).toHaveBeenCalledWith(longAiTitle);
   });
 
-  it('updateSessionTitle skips when sessionId does not match currentSessionIdRef (stale event)', () => {
+  it('updateSessionTitle for a stale session updates only the history list, not the header title', () => {
     const opts = createOptions({
       currentSessionIdRef: { current: 'sess-current' },
     });
@@ -357,7 +357,9 @@ describe('useWindowCallbacks integration', () => {
       window.updateSessionTitle!('sess-stale', 'Stale AI title');
     });
 
-    expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
+    // The history list entry is still synced so a background session shows its
+    // AI-generated title, but the visible header title must not be hijacked.
+    expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-stale', 'Stale AI title');
     expect(opts.updateHistoryTitle).not.toHaveBeenCalled();
     expect(opts.setCustomSessionTitle).not.toHaveBeenCalled();
   });

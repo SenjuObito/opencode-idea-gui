@@ -33,8 +33,6 @@ import com.opencodebuddy.handler.file.FileHandler;
 import com.opencodebuddy.handler.file.OpenClassHandler;
 import com.opencodebuddy.handler.file.UndoFileHandler;
 import com.opencodebuddy.permission.PermissionService;
-import com.opencodebuddy.provider.common.MessageCallback;
-import com.opencodebuddy.provider.common.SDKResult;
 import com.opencodebuddy.session.SessionLifecycleManager;
 import com.opencodebuddy.session.StreamMessageCoalescer;
 import com.opencodebuddy.util.JsUtils;
@@ -56,7 +54,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Delegates for initialization setup and runtime operations:
- * handler registration, permission setup, tab status, QuickFix, and frontend ready handling.
+ * handler registration, permission setup, tab status, and frontend ready handling.
  */
 public class ChatWindowDelegate {
 
@@ -119,8 +117,6 @@ public class ChatWindowDelegate {
     private final DelegateHost host;
     private TabAnswerStatus currentTabStatus = TabAnswerStatus.IDLE;
     private ScheduledFuture<?> statusResetTask;
-    private volatile String pendingQuickFixPrompt = null;
-    private volatile MessageCallback pendingQuickFixCallback = null;
     // Reference to the SettingsHandler for clean theme-callback unregistration on dispose.
     private com.opencodebuddy.handler.SettingsHandler settingsHandler;
     // Pushes {alive, serveReady} to the webview (check_daemon_status, frontend_ready, daemon lifecycle).
@@ -440,62 +436,6 @@ public class ChatWindowDelegate {
         updateTabStatus(loading ? TabAnswerStatus.ANSWERING : TabAnswerStatus.IDLE);
     }
 
-    public void sendQuickFixMessage(String prompt, boolean isQuickFix, MessageCallback callback) {
-        ClaudeSession session = host.getSession();
-        if (session == null) {
-            LOG.warn("QuickFix: Session is null, cannot send message");
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callback.onError("Session not initialized. Please wait for the tool window to fully load.");
-            });
-            return;
-        }
-
-        session.getContextCollector().setQuickFix(isQuickFix);
-
-        if (!host.isFrontendReady()) {
-            LOG.info("QuickFix: Frontend not ready, queuing message for later");
-            pendingQuickFixPrompt = prompt;
-            pendingQuickFixCallback = callback;
-            return;
-        }
-
-        executeQuickFixInternal(prompt, callback);
-    }
-
-    private void executePendingQuickFix(String prompt, MessageCallback callback) {
-        ClaudeSession session = host.getSession();
-        if (session == null || host.isDisposed()) {
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callback.onError("Session not available");
-            });
-            return;
-        }
-        executeQuickFixInternal(prompt, callback);
-    }
-
-    private void executeQuickFixInternal(String prompt, MessageCallback callback) {
-        String escapedPrompt = JsUtils.escapeJs(prompt);
-        host.callJavaScript("addUserMessage", escapedPrompt);
-        host.callJavaScript("showLoading", "true");
-
-        host.getSession().send(prompt, null, (String) null).thenRun(() -> {
-            List<ClaudeSession.Message> messages = host.getSession().getMessages();
-            if (!messages.isEmpty()) {
-                ClaudeSession.Message last = messages.get(messages.size() - 1);
-                if (last.type == ClaudeSession.Message.Type.ASSISTANT && last.content != null) {
-                    ApplicationManager.getApplication().invokeLater(() -> {
-                        callback.onComplete(SDKResult.success(last.content));
-                    });
-                }
-            }
-        }).exceptionally(ex -> {
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callback.onError(ex.getMessage());
-            });
-            return null;
-        });
-    }
-
     public void handleFrontendReady() {
         LOG.info("Received frontend_ready signal, frontend is now ready to receive data");
         PluginFileLogger.info("LIFECYCLE", "frontend_ready received");
@@ -522,17 +462,6 @@ public class ChatWindowDelegate {
             refreshFrontendDerivedState();
         }
         host.persistTabSessionState();
-
-        if (pendingQuickFixPrompt != null && pendingQuickFixCallback != null) {
-            LOG.info("Processing pending QuickFix message after frontend ready");
-            String prompt = pendingQuickFixPrompt;
-            MessageCallback callback = pendingQuickFixCallback;
-            pendingQuickFixPrompt = null;
-            pendingQuickFixCallback = null;
-            ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                executePendingQuickFix(prompt, callback);
-            });
-        }
 
         host.getStreamCoalescer().flush(null);
     }

@@ -29,7 +29,6 @@
         <h2>使用方法</h2>
         <ul>
             <li>从右侧边栏打开 OpenCode 工具窗口（需已安装 <code>opencode</code> CLI）</li>
-            <li>选中代码后使用 <kbd>Ctrl+Alt+K</kbd>（Win/Linux）或 <kbd>Cmd+Alt+K</kbd>（Mac）发送给 AI</li>
             <li>插件会自动启动或复用本地 <code>opencode serve</code> 服务（默认端口 4096，可用 OPENCODE_PORT 覆盖）</li>
         </ul>
 
@@ -37,9 +36,6 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
-    <!-- Git support — required for Commit AI to run a real `git diff`.
-         Git4Idea is bundled in all JetBrains IDEs that support Git. -->
-    <depends>Git4Idea</depends>
     <!-- JCEF is a separate platform module in IntelliJ IDEA 2026.2+, but older
          IDEs may provide JCEF from the platform without exposing this module. -->
     <depends optional="true" config-file="jcef-features.xml">com.intellij.modules.jcef</depends>
@@ -75,147 +71,4 @@
         <notificationGroup id="OpenCode Buddy Notifications" displayType="BALLOON"/>
     </extensions>
 
-    <actions>
-        <!-- Action to send selected code to CC GUI -->
-        <action id="OpenCodeBuddy.SendSelectionToTerminalAction"
-                class="com.opencodebuddy.action.editor.SendSelectionToTerminalAction"
-                icon="/icons/opencode-icon.svg">
-            <!-- Add to editor context menu (displayed at the top) -->
-            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt K"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt K"/>
-            <keyboard-shortcut keymap="macOS" first-keystroke="meta alt K"/>
-        </action>
-
-        <!-- Copy AI Reference Action -->
-        <action id="OpenCodeBuddy.CopySelectionReferenceAction"
-                class="com.opencodebuddy.action.editor.CopySelectionReferenceAction"
-                icon="/icons/opencode-icon.svg">
-            <add-to-group group-id="EditorPopupMenu"
-                           anchor="after"
-                           relative-to-action="OpenCodeBuddy.SendSelectionToTerminalAction"/>
-        </action>
-
-        <!-- Quick Fix with Claude Action -->
-        <action id="OpenCodeBuddy.QuickFixWithClaudeAction"
-                class="com.opencodebuddy.action.editor.QuickFixWithClaudeAction"
-                icon="/icons/opencode-icon.svg">
-            <add-to-group group-id="EditorPopupMenu"
-                           anchor="after"
-                           relative-to-action="OpenCodeBuddy.SendSelectionToTerminalAction"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift Q"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift Q"/>
-            <keyboard-shortcut keymap="macOS" first-keystroke="meta shift Q"/>
-        </action>
-
-        <!-- Create New Tab Action (can be invoked via Find Action or programmatically) -->
-        <action id="OpenCodeBuddy.CreateNewTabAction"
-                class="com.opencodebuddy.action.tab.CreateNewTabAction"
-                icon="AllIcons.General.Add"/>
-
-        <!-- Rename Tab Action -->
-        <action id="OpenCodeBuddy.RenameTabAction"
-                class="com.opencodebuddy.action.tab.RenameTabAction"
-                icon="AllIcons.Actions.Edit"/>
-
-        <!-- Detach Tab Action -->
-        <action id="OpenCodeBuddy.DetachTabAction"
-                class="com.opencodebuddy.action.tab.DetachTabAction"
-                icon="AllIcons.Actions.MoveToWindow"/>
-
-        <!-- Save As Template Action -->
-        <action id="OpenCodeBuddy.SaveAsTemplateAction"
-                class="com.opencodebuddy.action.SaveAsTemplateAction"
-                icon="/icons/opencode-icon.svg"/>
-
-        <!-- Create From Template Action -->
-        <action id="OpenCodeBuddy.CreateFromTemplateAction"
-                class="com.opencodebuddy.action.CreateFromTemplateAction"
-                icon="AllIcons.Actions.AddMulticaret"/>
-
-        <!-- Open DevTools Action for JCEF debugging -->
-        <action id="OpenCodeBuddy.OpenDevToolsAction"
-                class="com.opencodebuddy.action.dev.OpenDevToolsAction"
-                icon="AllIcons.Xml.Browsers.Chromium"/>
-
-        <!-- Action to send file path from the file tree to the input box -->
-        <action id="OpenCodeBuddy.SendFilePathToInputAction"
-                class="com.opencodebuddy.action.editor.SendFilePathToInputAction"
-                icon="/icons/opencode-icon.svg">
-            <!-- Add to project file tree and editor tab context menus -->
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
-            <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
-        </action>
-
-        <!-- Action to send the selected console text to CC GUI -->
-        <action id="OpenCodeBuddy.SendConsoleSelectionToInputAction"
-                class="com.opencodebuddy.action.console.SendConsoleSelectionToInputAction"
-                icon="/icons/opencode-icon.svg">
-            <add-to-group group-id="ConsoleView.PopupMenu" anchor="last"/>
-        </action>
-
-        <!-- Generate Commit Message with AI Action -->
-        <action id="OpenCodeBuddy.GenerateCommitMessageAction"
-                class="com.opencodebuddy.action.vcs.GenerateCommitMessageAction"
-                icon="/icons/logo-16.png">
-            <!-- Add to VCS Commit toolbar -->
-            <add-to-group group-id="Vcs.MessageActionGroup" anchor="last"/>
-        </action>
-
-        <!-- Chat tool window clipboard actions (scoped to CCG tool window) -->
-        <action id="OpenCodeBuddy.ChatCopyAction"
-                class="com.opencodebuddy.action.ChatCopyAction"
-                text="Copy (Chat Window)"
-                description="Copy selected text in Claude chat window">
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl C"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta C"/>
-            <keyboard-shortcut keymap="macOS" first-keystroke="meta C"/>
-        </action>
-        <action id="OpenCodeBuddy.ChatCutAction"
-                class="com.opencodebuddy.action.ChatCutAction"
-                text="Cut (Chat Window)"
-                description="Cut selected text in Claude chat window">
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl X"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta X"/>
-            <keyboard-shortcut keymap="macOS" first-keystroke="meta X"/>
-        </action>
-        <action id="OpenCodeBuddy.ChatPasteAction"
-                class="com.opencodebuddy.action.ChatPasteAction"
-                text="Paste (Chat Window)"
-                description="Paste clipboard text in Claude chat window">
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl V"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta V"/>
-            <keyboard-shortcut keymap="macOS" first-keystroke="meta V"/>
-        </action>
-
-        <!-- Chat tool window send action (no default shortcut; dynamically managed by SendShortcutSync) -->
-        <action id="OpenCodeBuddy.ChatSendAction"
-                class="com.opencodebuddy.action.ChatSendAction"
-                text="Send Message (Chat Window)"
-                description="Send message in Claude chat window"/>
-
-        <!-- Chat tool window newline action (Shift+Enter always newline; Ctrl+Enter dynamically managed by SendShortcutSync) -->
-        <action id="OpenCodeBuddy.ChatNewlineAction"
-                class="com.opencodebuddy.action.ChatNewlineAction"
-                text="Insert Newline (Chat Window)"
-                description="Insert newline in Claude chat window input">
-            <keyboard-shortcut keymap="$default" first-keystroke="shift ENTER"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="shift ENTER"/>
-            <keyboard-shortcut keymap="macOS" first-keystroke="shift ENTER"/>
-        </action>
-
-        <!--
-          Hide CC GUI Panel. A standalone action with NO default keyboard shortcut: users may bind one
-          in Settings | Keymap to hide the tool window while focus is in the IDE (e.g. the editor).
-          NOTE: The Shift+Esc shortcut that hides the panel while focus is INSIDE the webview is
-          implemented separately in WebviewInitializer via a JS keydown listener
-          (document.addEventListener -> JBCefJSQuery -> ToolWindow.hide()); it does NOT go through this
-          action. Shift+Esc is intentionally not registered here to avoid clashing with the IDE's
-          built-in HideActiveWindow shortcut.
-        -->
-        <action id="OpenCodeBuddy.HidePanelAction"
-                class="com.opencodebuddy.action.HidePanelAction"
-                text="Hide CC GUI Panel"
-                description="Hide the CC GUI tool window panel"/>
-    </actions>
 </idea-plugin>

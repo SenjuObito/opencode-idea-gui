@@ -4,7 +4,6 @@ import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.settings.TabStateService;
 import com.opencodebuddy.startup.BridgePreloader;
 import com.opencodebuddy.ui.detached.DetachedWindowManager;
-import com.opencodebuddy.util.PlatformUtils;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAware;
@@ -147,15 +146,6 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         return windows;
     }
 
-    private static String resolveRestoredTabName(@NotNull TabStateService tabStateService, int index) {
-        String savedName = tabStateService.getTabName(index);
-        if (savedName != null && !savedName.isEmpty()) {
-            LOG.info("[TabManager] Restored tab " + index + " name from storage: " + savedName);
-            return savedName;
-        }
-        return TAB_NAME_PREFIX + (index + 1);
-    }
-
     private static void cleanupWindowProcesses(@NotNull ClaudeChatWindow window) {
         try {
             if (window.getOpenCodeSDKBridge() != null) {
@@ -213,6 +203,10 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
         registerShutdownHook();
 
+        // 开屏一定是新会话：先丢掉上次的标签布局与每标签会话绑定，避免任何残留
+        // sessionId 被重新挂上。旧会话仍在 opencode 服务端，历史列表随时可打开。
+        resetPersistedTabState(project);
+
         ContentFactory contentFactory = ContentFactory.getInstance();
         ContentManager contentManager = toolWindow.getContentManager();
 
@@ -238,7 +232,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
 
                         if (ready != null && ready) {
                             LOG.info("[ToolWindow] ai-bridge ready, replacing loading panel with chat window");
-                            replaceLoadingPanelWithChatWindow(project, contentFactory, contentManager, loadingContent);
+                            replaceLoadingPanelWithChatWindow(project, contentManager, loadingContent);
                         } else {
                             LOG.error("[ToolWindow] ai-bridge preparation failed");
                             updateLoadingPanelWithError(loadingPanel, "AI Bridge preparation failed. Please restart IDE.");
@@ -262,45 +256,6 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             });
         }
 
-        if (PlatformUtils.isPluginDevMode()) {
-            com.intellij.openapi.actionSystem.AnAction devToolsAction =
-                    com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                            .getAction("OpenCodeBuddy.OpenDevToolsAction");
-            if (devToolsAction != null) {
-                toolWindow.setTitleActions(java.util.List.of(devToolsAction));
-            }
-        }
-
-        com.intellij.openapi.actionSystem.AnAction renameTabAction =
-                com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                        .getAction("OpenCodeBuddy.RenameTabAction");
-        com.intellij.openapi.actionSystem.AnAction detachTabAction =
-                com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                        .getAction("OpenCodeBuddy.DetachTabAction");
-        com.intellij.openapi.actionSystem.AnAction saveAsTemplateAction =
-                com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                        .getAction("OpenCodeBuddy.SaveAsTemplateAction");
-        com.intellij.openapi.actionSystem.AnAction createFromTemplateAction =
-                com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                        .getAction("OpenCodeBuddy.CreateFromTemplateAction");
-
-        com.intellij.openapi.actionSystem.DefaultActionGroup gearActions =
-                new com.intellij.openapi.actionSystem.DefaultActionGroup();
-        if (renameTabAction != null) {
-            gearActions.add(renameTabAction);
-        }
-        if (detachTabAction != null) {
-            gearActions.add(detachTabAction);
-        }
-        if (saveAsTemplateAction != null) {
-            gearActions.addSeparator();
-            gearActions.add(saveAsTemplateAction);
-        }
-        if (createFromTemplateAction != null) {
-            gearActions.add(createFromTemplateAction);
-        }
-        toolWindow.setAdditionalGearActions(gearActions);
-
         registerProjectCloseListener(project);
 
         contentManager.addContentManagerListener(new ContentManagerListener() {
@@ -319,7 +274,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                 ClaudeChatWindow window = contentToWindowMap.get(event.getContent());
                 if (window != null) {
                     window.onTabActivated();
-                    window.loadRestoredHistoryIfNeeded();
+                    window.resyncSessionFromServerIfNeeded();
                 }
             }
 
@@ -432,78 +387,68 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         loadingPanel.repaint();
     }
 
+    /**
+     * 用聊天窗口替换启动占位面板。与 {@link #createChatWindowContent} 同一条约定：
+     * 一个全新会话，不恢复任何标签或会话绑定。
+     */
     private void replaceLoadingPanelWithChatWindow(
             @NotNull Project project,
-            ContentFactory contentFactory,
             ContentManager contentManager,
             Content loadingContent
     ) {
-        TabStateService tabStateService = TabStateService.getInstance(project);
-        int savedTabCount = tabStateService.getTabCount();
-        LOG.info("[TabManager] Restoring " + savedTabCount + " tabs from storage");
-
         ClaudeChatWindow firstChatWindow = new ClaudeChatWindow(project, false);
-        String firstTabName = resolveRestoredTabName(tabStateService, 0);
-        TabStateService.TabSessionState firstSavedState = tabStateService.getTabSessionState(0);
+        String firstTabName = TAB_NAME_PREFIX + "1";
 
         loadingContent.setComponent(firstChatWindow.getContent());
         loadingContent.setDisplayName(firstTabName);
         firstChatWindow.setParentContent(loadingContent);
         loadingContent.setDisposer(firstChatWindow::dispose);
-        restoreTabSessionState(firstSavedState, 0, firstChatWindow, true);
-
-        for (int i = 1; i < savedTabCount; i++) {
-            ClaudeChatWindow chatWindow = new ClaudeChatWindow(project, true);
-            String tabName = resolveRestoredTabName(tabStateService, i);
-            TabStateService.TabSessionState savedState = tabStateService.getTabSessionState(i);
-
-            Content content = contentFactory.createContent(chatWindow.getContent(), tabName, false);
-            chatWindow.setParentContent(content);
-            content.setDisposer(chatWindow::dispose);
-            contentManager.addContent(content);
-            restoreTabSessionState(savedState, i, chatWindow, false);
-        }
 
         updateTabCloseableState(contentManager);
     }
 
+    /**
+     * 打开工具窗口时创建的唯一一个对话标签。
+     *
+     * 刻意不读任何持久化的标签状态：窗口每次打开都是一个全新会话，与 VS Code 插件
+     * 一致。此前的实现会按落盘的 tabCount 重建多个标签，并把每个标签的 sessionId
+     * 重新绑定后拉取历史消息，于是"打开插件"就等于"回到上次那段对话"。
+     *
+     * 旧会话仍然完整保存在 opencode 服务端，可从历史列表随时重新打开，不会丢。
+     */
     private void createChatWindowContent(
             @NotNull Project project,
             ContentFactory contentFactory,
             ContentManager contentManager
     ) {
-        TabStateService tabStateService = TabStateService.getInstance(project);
-        int savedTabCount = tabStateService.getTabCount();
-        LOG.info("[TabManager] Restoring " + savedTabCount + " tabs from storage");
+        ClaudeChatWindow chatWindow = new ClaudeChatWindow(project, false);
+        String tabName = TAB_NAME_PREFIX + "1";
 
-        for (int i = 0; i < savedTabCount; i++) {
-            boolean isFirstTab = (i == 0);
-            ClaudeChatWindow chatWindow = new ClaudeChatWindow(project, !isFirstTab);
-            String tabName = resolveRestoredTabName(tabStateService, i);
-            TabStateService.TabSessionState savedState = tabStateService.getTabSessionState(i);
-
-            Content content = contentFactory.createContent(chatWindow.getContent(), tabName, false);
-            chatWindow.setParentContent(content);
-            chatWindow.setOriginalTabName(tabName);
-            content.setDisposer(chatWindow::dispose);
-            contentManager.addContent(content);
-            restoreTabSessionState(savedState, i, chatWindow, isFirstTab);
-        }
+        Content content = contentFactory.createContent(chatWindow.getContent(), tabName, false);
+        chatWindow.setParentContent(content);
+        chatWindow.setOriginalTabName(tabName);
+        content.setDisposer(chatWindow::dispose);
+        contentManager.addContent(content);
 
         updateTabCloseableState(contentManager);
     }
 
-    private void restoreTabSessionState(
-            TabStateService.TabSessionState savedState,
-            int tabIndex,
-            ClaudeChatWindow chatWindow,
-            boolean loadImmediately
-    ) {
-        if (savedState == null) {
-            return;
+    /**
+     * 丢弃上次的标签布局与每标签会话绑定。
+     *
+     * 开屏既然固定为新会话，这些数据就没有读者了；留着只会在排障时误导（一个
+     * 「绑着旧 sessionId」的持久化状态看起来像是应该被恢复的）。{@link TabHandler}
+     * 新增标签时读的 tab 名也一并清掉，避免旧名字被翻出来复用。
+     */
+    private static void resetPersistedTabState(@NotNull Project project) {
+        try {
+            TabStateService tabStateService = TabStateService.getInstance(project);
+            tabStateService.clearAllTabNames();
+            tabStateService.saveTabCount(1);
+            LOG.info("[TabManager] Cleared persisted tab state for a fresh start");
+        } catch (Exception e) {
+            LOG.warn("[TabManager] Failed to reset persisted tab state: " + e.getMessage());
         }
-        chatWindow.restorePersistedTabSessionState(savedState, loadImmediately);
-        LOG.info("[TabManager] Restored tab " + tabIndex + " session binding from storage");
     }
 
     private static synchronized void registerShutdownHook() {

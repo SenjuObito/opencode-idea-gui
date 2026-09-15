@@ -56,7 +56,8 @@ donations are welcome — they help cover those costs.
 Install the plugin, then open **View → Tool Windows → OpenCode** (it lives in the right sidebar stripe). The
 plugin reuses an `opencode serve` instance when one is already running and otherwise starts its own.
 
-![Chat window](media/home.png)
+<img src="media/home.png" width="400" alt="Chat window">
+
 *The screenshot shows the UI in Simplified Chinese.*
 
 The chat window contains:
@@ -88,7 +89,8 @@ sidebar holds **Basic Configuration** (theme, language, fonts, diff theme, chat 
 Management**, **Commands (Prompts)**, **Usage Statistics**, **MCP Servers**, **Skills**, **Other Settings** and
 **Sponsor**. Persistent state is stored under `~/.opencodebuddy`.
 
-![Settings page](media/settings.png)
+<img src="media/settings.png" width="400" alt="Settings page">
+
 *Settings → Basic Configuration → Appearance; UI labels are in Simplified Chinese.*
 
 ## Requirements
@@ -183,7 +185,7 @@ If you find this useful, consider supporting:
 
 | WeChat | Alipay | PayPal |
 |:---:|:---:|:---:|
-| ![WeChat](webview/src/assets/images/wallet.png) | ![Alipay](webview/src/assets/images/wallet-alipay.png) | <img src="webview/src/assets/images/wallet-paypal.png" width="600" /> |
+| <img src="webview/src/assets/images/wallet.png" width="200" alt="WeChat"> | <img src="webview/src/assets/images/wallet-alipay.png" width="200" alt="Alipay"> | <img src="webview/src/assets/images/wallet-paypal.png" width="200" alt="PayPal"> |
 
 ## Acknowledgements
 

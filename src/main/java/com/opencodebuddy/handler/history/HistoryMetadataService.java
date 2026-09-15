@@ -2,6 +2,7 @@ package com.opencodebuddy.handler.history;
 
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
+import com.opencodebuddy.util.JsUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -19,9 +20,11 @@ class HistoryMetadataService {
     private static final Gson GSON = new Gson();
 
     private final HandlerContext context;
+    private final HistoryLoadService historyLoadService;
 
-    HistoryMetadataService(HandlerContext context) {
+    HistoryMetadataService(HandlerContext context, HistoryLoadService historyLoadService) {
         this.context = context;
+        this.historyLoadService = historyLoadService;
     }
 
     /**
@@ -48,28 +51,47 @@ class HistoryMetadataService {
 
     /**
      * Update session title on OpenCode server.
+     * Mirrors the vscode host (HistoryHandler.handleUpdateTitle): incomplete payloads are
+     * ignored silently, and a successful write is echoed back to the webview before the
+     * history list is refreshed.
      */
-    void handleUpdateTitle(String content) {
+    void handleUpdateTitle(String content, String provider) {
         CompletableFuture.runAsync(() -> {
             try {
                 LOG.info("[HistoryHandler] ========== 更新会话标题 ==========");
 
                 // Parse JSON from frontend to extract sessionId and title/customTitle
                 JsonObject request = GSON.fromJson(content, JsonObject.class);
-                String sessionId = request.get("sessionId").getAsString();
-                String title = request.has("customTitle") && !request.get("customTitle").isJsonNull()
+                String sessionId = request != null && request.has("sessionId") && !request.get("sessionId").isJsonNull()
+                        ? request.get("sessionId").getAsString() : "";
+                String title = request != null && request.has("customTitle") && !request.get("customTitle").isJsonNull()
                         ? request.get("customTitle").getAsString()
-                        : (request.has("title") && !request.get("title").isJsonNull() ? request.get("title").getAsString() : "");
+                        : (request != null && request.has("title") && !request.get("title").isJsonNull()
+                                ? request.get("title").getAsString() : "");
+
+                if (sessionId.isEmpty() || title.isEmpty()) {
+                    LOG.warn("[HistoryHandler] 更新标题参数不完整，已忽略: sessionId=" + sessionId
+                            + ", title=" + title);
+                    return;
+                }
 
                 LOG.info("[HistoryHandler] SessionId: " + sessionId);
                 LOG.info("[HistoryHandler] Title: " + title);
 
                 String projectPath = context.resolveEffectiveWorkingDirectory();
                 OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
-                if (bridge != null) {
-                    bridge.updateSessionTitle(sessionId, title, projectPath).join();
-                    LOG.info("[HistoryHandler] 标题更新成功: sessionId=" + sessionId);
+                if (bridge == null) {
+                    LOG.warn("[HistoryHandler] OpenCodeSDKBridge is null，跳过标题更新");
+                    return;
                 }
+
+                bridge.updateSessionTitle(sessionId, title, projectPath).join();
+                LOG.info("[HistoryHandler] 标题更新成功: sessionId=" + sessionId);
+
+                // Echo the persisted title back so the visible header switches over, then
+                // reload the history payload so the row reflects the server-side value.
+                context.callJavaScript("updateSessionTitle", JsUtils.escapeJs(sessionId), JsUtils.escapeJs(title));
+                historyLoadService.handleLoadHistoryData(provider);
 
             } catch (Exception e) {
                 LOG.error("[HistoryHandler] 更新标题失败: " + e.getMessage(), e);

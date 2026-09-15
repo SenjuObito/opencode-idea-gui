@@ -48,7 +48,7 @@ public class HistoryHandler extends BaseMessageHandler {
         this.historyDeleteService = new HistoryDeleteService(context, historyLoadService);
         this.historyExportService = new HistoryExportService(context);
         this.historyMessageInjector = new HistoryMessageInjector(context);
-        this.historyMetadataService = new HistoryMetadataService(context);
+        this.historyMetadataService = new HistoryMetadataService(context, historyLoadService);
     }
 
     public void setSessionLoadCallback(SessionLoadCallback callback) {
@@ -90,7 +90,7 @@ public class HistoryHandler extends BaseMessageHandler {
                 return true;
             case "update_title":
                 LOG.info("[HistoryHandler] 处理: update_title");
-                historyMetadataService.handleUpdateTitle(content);
+                historyMetadataService.handleUpdateTitle(content, currentProvider);
                 return true;
             case "delete_title":
                 LOG.info("[HistoryHandler] 处理: delete_title, sessionId=" + content);

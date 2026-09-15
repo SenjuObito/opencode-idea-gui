@@ -62,7 +62,7 @@ public class CodeSnippetManager {
                         toolWindow.show(null);
                         scheduleCodeSnippetRetry(project, selectionInfo, 3);
                     } else {
-                        LOG.error("Cannot find CCG tool window");
+                        LOG.error("Cannot find OpenCode tool window");
                     }
                 } catch (Exception e) {
                     LOG.error("Error opening tool window: " + e.getMessage());
@@ -125,7 +125,7 @@ public class CodeSnippetManager {
                         toolWindow.show(null);
                         scheduleFileReferencesRetry(project, immutablePaths, 3);
                     } else {
-                        LOG.error("Cannot find CCG tool window");
+                        LOG.error("Cannot find OpenCode tool window");
                     }
                 } catch (Exception e) {
                     LOG.error("Error opening tool window: " + e.getMessage());

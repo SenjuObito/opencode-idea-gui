@@ -59,7 +59,7 @@ public class TabHandler extends BaseMessageHandler {
                         .getToolWindow(ClaudeSDKToolWindow.TOOL_WINDOW_ID);
                 if (toolWindow == null) {
                     LOG.error("[TabHandler] Tool window not found");
-                    callJavaScript("addErrorMessage", escapeJs("无法找到 CCG 工具窗口"));
+                    callJavaScript("addErrorMessage", escapeJs("无法找到 OpenCode 工具窗口"));
                     return;
                 }
 

@@ -84,3 +84,4 @@ logs/*.log
 # Playwright MCP local test artifacts
 .playwright-mcp/
 hs_err_pid*.log
+.workbuddy/

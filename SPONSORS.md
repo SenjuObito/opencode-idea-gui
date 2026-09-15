@@ -3,12 +3,12 @@
 <table>
   <tr>
     <td align="center">
-      <img src="./media/wallet.png" width="200" alt="Alipay">
+      <img src="./media/wallet.png" width="200" alt="WeChat">
       <br>
       <b>WeChat</b>
     </td>
     <td align="center">
-      <img src="./media/wallet-alipay.png" width="200" alt="WeChat">
+      <img src="./media/wallet-alipay.png" width="200" alt="Alipay">
       <br>
       <b>Alipay</b>
     </td>

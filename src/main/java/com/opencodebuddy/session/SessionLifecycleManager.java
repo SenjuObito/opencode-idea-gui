@@ -1,7 +1,6 @@
 package com.opencodebuddy.session;
 
 import com.opencodebuddy.bridge.NodeDetector;
-import com.opencodebuddy.model.SessionTemplate;
 import com.opencodebuddy.settings.CodemossSettingsService;
 import com.opencodebuddy.handler.UsagePushService;
 import com.opencodebuddy.handler.core.HandlerContext;
@@ -123,69 +122,6 @@ public class SessionLifecycleManager {
                 host.callJavaScript("historyLoadComplete");
                 host.callJavaScript("updateStatus",
                         JsUtils.escapeJs("Failed to create new session: " + ex.getMessage()));
-            });
-            return null;
-        });
-    }
-
-    /**
-     * Create a new session from a template, interrupting the old one first.
-     */
-    public void createNewSessionFromTemplate(SessionTemplate template) {
-        LOG.info("Creating new session from template: " + template.getName());
-
-        ClaudeSession oldSession = host.getSession();
-
-        host.invalidateSessionCallbacks();
-        long clearBarrierSeq = host.getStreamCoalescer().resetStreamState();
-        host.callJavaScript("clearMessages", String.valueOf(clearBarrierSeq));
-
-        CompletableFuture<Void> interruptFuture = oldSession != null
-                ? oldSession.interrupt()
-                : CompletableFuture.completedFuture(null);
-
-        interruptFuture.thenRun(() -> {
-            if (oldSession != null) {
-                String oldEpoch = oldSession.getRuntimeSessionEpoch();
-                LOG.info("[Lifecycle] Requested daemon runtime reset for old epoch=" + oldEpoch);
-            }
-            LOG.info("Old session interrupted, creating new session from template");
-
-            ApplicationManager.getApplication().invokeLater(() -> {
-                host.callJavaScript("onStreamEnd");
-                host.callJavaScript("showLoading", "false");
-            });
-
-            ClaudeSession newSession = createDefaultSession();
-
-            // Apply template settings
-            if (template.getPermissionMode() != null) {
-                newSession.setPermissionMode(template.getPermissionMode());
-            }
-            if (template.getProvider() != null) {
-                newSession.setProvider(template.getProvider());
-            }
-            if (template.getModel() != null) {
-                newSession.setModel(template.getModel());
-            }
-            if (template.getReasoningEffort() != null) {
-                newSession.setReasoningEffort(template.getReasoningEffort());
-            }
-            newSession.getState().setPsiContextEnabled(template.isPsiContextEnabled());
-
-            LOG.info("Applied template settings to new session: provider=" + template.getProvider()
-                    + ", model=" + template.getModel() + ", mode=" + template.getPermissionMode());
-
-            String workingDirectory = template.getCwd() != null && !template.getCwd().trim().isEmpty()
-                    ? template.getCwd() : determineWorkingDirectory();
-            completeNewSessionBootstrap(newSession, workingDirectory,
-                    "New session created from template successfully, working directory: ");
-        }).exceptionally(ex -> {
-            LOG.error("Failed to create new session from template: " + ex.getMessage(), ex);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                host.callJavaScript("historyLoadComplete");
-                host.callJavaScript("updateStatus",
-                        JsUtils.escapeJs("Failed to create new session from template: " + ex.getMessage()));
             });
             return null;
         });

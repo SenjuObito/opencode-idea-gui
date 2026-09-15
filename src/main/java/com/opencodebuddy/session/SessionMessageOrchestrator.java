@@ -11,6 +11,7 @@ import com.intellij.openapi.project.Project;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * Owns session-history loading and post-send message reconciliation.
@@ -161,6 +162,7 @@ public class SessionMessageOrchestrator {
 
                 LOG.debug("Received " + serverMessages.size() + " messages from server");
 
+                state.setError(null);
                 state.clearMessages();
                 for (JsonObject msg : serverMessages) {
                     ClaudeSession.Message message = messageParser.parseServerMessage(msg);
@@ -174,6 +176,12 @@ public class SessionMessageOrchestrator {
             } catch (Exception e) {
                 state.setError(e.getMessage());
                 LOG.error("Error loading session: " + e.getMessage(), e);
+                // 关键：把失败传出去。此前异常在这里被吞掉、future 正常完成，调用方
+                // 只能看到「加载成功但消息为空」，于是留下一个「sessionId 已绑定 +
+                // 消息为空」的幽灵状态 —— 用户一发送消息就会被追加到旧会话，旧对话
+                // 整份冒出来（表现为「打开是空的，发一条旧对话立刻出现」）。
+                // 现在失败可被调用方识别，用于重试或解除绑定。
+                throw new CompletionException(e);
             } finally {
                 state.setLoading(false);
                 callbackFacade.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());

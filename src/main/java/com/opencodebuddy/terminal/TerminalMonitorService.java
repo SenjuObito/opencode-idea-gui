@@ -5,10 +5,6 @@ import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessListener;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.actionSystem.ActionGroup;
-import com.intellij.openapi.actionSystem.ActionManager;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
@@ -19,12 +15,10 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener;
-import com.intellij.terminal.JBTerminalWidget;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentManager;
 import com.intellij.ui.content.ContentManagerEvent;
 import com.intellij.ui.content.ContentManagerListener;
-import com.jediterm.terminal.ui.TerminalActionProvider;
 import kotlin.Unit;
 import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.NotNull;
@@ -41,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.stream.Collectors;
 
 /**
  * Service to monitor terminal output and user input (echoed).
@@ -65,7 +58,6 @@ import java.util.stream.Collectors;
 public class TerminalMonitorService implements ProjectActivity {
 
     private static final Logger LOG = Logger.getInstance(TerminalMonitorService.class);
-    private static final String EDITOR_POPUP_MENU = "EditorPopupMenu";
 
     /**
      * Tracked terminal widgets using WeakHashMap to prevent memory leaks.
@@ -73,8 +65,6 @@ public class TerminalMonitorService implements ProjectActivity {
      * Wrapped with synchronizedSet for thread-safe access.
      */
     private static final Set<Object> monitoredWidgets =
-            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
-    private static final Set<Object> legacyActionInstalledWidgets =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     /**
@@ -88,7 +78,6 @@ public class TerminalMonitorService implements ProjectActivity {
     private static final class ProjectMonitorState {
         private final CheckedDisposable listenerDisposable;
         private ContentManager attachedContentManager;
-        private boolean actionDiagnosticsLogged;
 
         private ProjectMonitorState(@NotNull String locationHash) {
             this.listenerDisposable = Disposer.newCheckedDisposable("TerminalMonitorService:" + locationHash);
@@ -123,18 +112,11 @@ public class TerminalMonitorService implements ProjectActivity {
         ApplicationManager.getApplication().invokeLater(() -> {
             if (project.isDisposed() || state.listenerDisposable.isDisposed()) { return; }
 
-            ensureReworkedTerminalMenuRegistration();
-
             ToolWindow terminalWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal");
             if (terminalWindow == null) { return; }
 
             ContentManager contentManager = terminalWindow.getContentManager();
             if (contentManager.isDisposed()) { return; }
-
-            if (!state.actionDiagnosticsLogged) {
-                logTerminalActionRegistration();
-                state.actionDiagnosticsLogged = true;
-            }
 
             // Attach listener to ContentManager to detect new tabs (Terminals)
             if (state.attachedContentManager != contentManager) {
@@ -204,14 +186,12 @@ public class TerminalMonitorService implements ProjectActivity {
             LOG.debug("Failed to get terminal widget title", e);
         }
         LOG.debug("Monitoring terminal widget: " + title + " (Class: " + widget.getClass().getName() + ")");
-        installLegacySendAction(widget);
 
         // Handle disposal
         if (widget instanceof Disposable) {
             Disposer.register((Disposable) widget, () -> {
                 LOG.debug("Terminal widget disposed: " + TerminalMonitorService.getWidgetTitle(widget));
                 monitoredWidgets.remove(widget);
-                legacyActionInstalledWidgets.remove(widget);
                 buffers.remove(widget);
             });
         }
@@ -652,86 +632,4 @@ public class TerminalMonitorService implements ProjectActivity {
         return Collections.emptyList();
     }
 
-    private static void logTerminalActionRegistration() {
-        if (!LOG.isDebugEnabled()) {
-            return;
-        }
-        try {
-            ActionManager actionManager = ActionManager.getInstance();
-            AnAction action = actionManager.getAction(SendTerminalSelectionToInputAction.ACTION_ID);
-            LOG.debug("[TerminalSend] action registered=" + (action != null)
-                    + ", class=" + (action == null ? "null" : action.getClass().getName()));
-            logGroupMembership(actionManager, SendTerminalSelectionToInputAction.TERMINAL_OUTPUT_CONTEXT_MENU);
-            logGroupMembership(actionManager, SendTerminalSelectionToInputAction.TERMINAL_PROMPT_CONTEXT_MENU);
-            logGroupMembership(actionManager, SendTerminalSelectionToInputAction.TERMINAL_REWORKED_CONTEXT_MENU);
-            logGroupMembership(actionManager, EDITOR_POPUP_MENU);
-        } catch (Exception e) {
-            LOG.warn("[TerminalSend] Failed to log action registration diagnostics", e);
-        }
-    }
-
-    private static void ensureReworkedTerminalMenuRegistration() {
-        try {
-            ActionManager actionManager = ActionManager.getInstance();
-            boolean addedOutput = SendTerminalSelectionToInputAction.registerForTerminalContextMenu(
-                    actionManager, SendTerminalSelectionToInputAction.TERMINAL_OUTPUT_CONTEXT_MENU);
-            boolean addedPrompt = SendTerminalSelectionToInputAction.registerForTerminalContextMenu(
-                    actionManager, SendTerminalSelectionToInputAction.TERMINAL_PROMPT_CONTEXT_MENU);
-            boolean addedReworked = SendTerminalSelectionToInputAction.registerForTerminalContextMenu(
-                    actionManager, SendTerminalSelectionToInputAction.TERMINAL_REWORKED_CONTEXT_MENU);
-            if (addedOutput || addedPrompt || addedReworked) {
-                LOG.info("[TerminalSend] Registered send action into terminal context menus at runtime");
-            }
-        } catch (Exception | LinkageError e) {
-            LOG.debug("[TerminalSend] Failed to register terminal context menu action", e);
-        }
-    }
-
-    private static void logGroupMembership(@NotNull ActionManager actionManager, @NotNull String groupId) {
-        AnAction groupAction = actionManager.getAction(groupId);
-        if (!(groupAction instanceof ActionGroup)) {
-            LOG.debug("[TerminalSend] group missing or not ActionGroup: " + groupId);
-            return;
-        }
-
-        List<String> childIds = Arrays.stream(resolveActionGroupChildren((ActionGroup) groupAction))
-                .map(child -> actionManager.getId(child))
-                .collect(Collectors.toList());
-        LOG.debug("[TerminalSend] group=" + groupId
-                + ", containsSendAction=" + childIds.contains(SendTerminalSelectionToInputAction.ACTION_ID)
-                + ", childCount=" + childIds.size()
-                + ", sampleChildren=" + childIds.stream().limit(12).collect(Collectors.toList()));
-    }
-
-    private static AnAction[] resolveActionGroupChildren(@NotNull ActionGroup group) {
-        try {
-            Method getChildren = group.getClass().getMethod("getChildren", AnActionEvent.class);
-            Object children = getChildren.invoke(group, new Object[]{null});
-            return children instanceof AnAction[] ? (AnAction[]) children : new AnAction[0];
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-            LOG.debug("[TerminalSend] Failed to resolve action group children", e);
-            return new AnAction[0];
-        }
-    }
-
-    private static void installLegacySendAction(@NotNull Object widget) {
-        if (!(widget instanceof JBTerminalWidget) || legacyActionInstalledWidgets.contains(widget)) {
-            return;
-        }
-        if (!"org.jetbrains.plugins.terminal.ShellTerminalWidget".equals(widget.getClass().getName())) {
-            return;
-        }
-
-        JBTerminalWidget terminalWidget = (JBTerminalWidget) widget;
-        try {
-            TerminalActionProvider currentNext = terminalWidget.getTerminalPanel().getNextProvider();
-            terminalWidget.getTerminalPanel().setNextProvider(
-                    new LegacyTerminalSendActionProvider(terminalWidget, currentNext)
-            );
-            legacyActionInstalledWidgets.add(widget);
-            LOG.info("[TerminalSend] Installed legacy terminal action provider for " + widget.getClass().getName());
-        } catch (Exception e) {
-            LOG.warn("[TerminalSend] Failed to install legacy terminal action provider", e);
-        }
-    }
 }

@@ -78,16 +78,4 @@ public class OpenCodeBuddyBundleI18nTest {
             }
         }
     }
-
-    @Test
-    public void testActionAndTemplateBranding() throws IOException {
-        for (String suffix : LOCALE_SUFFIXES) {
-            Properties props = loadBundleProperties(suffix);
-            String sendToGui = props.getProperty("action.sendToGui.text");
-            if (sendToGui != null) {
-                assertFalse("action.sendToGui.text in bundle " + suffix + " should NOT contain 'Claude'",
-                        sendToGui.toLowerCase(Locale.ROOT).contains("claude"));
-            }
-        }
-    }
 }

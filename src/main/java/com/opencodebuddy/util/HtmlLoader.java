@@ -98,12 +98,11 @@ public class HtmlLoader {
 
     /**
      * Inject per-tab provider/model into the HTML so the WebView can prefer
-     * the backend-restored values over the global localStorage snapshot.
+     * the backend values over the global localStorage snapshot.
      *
      * Without this, every tab in a multi-tab setup hydrates from the same
      * localStorage key ("model-selection-state") and clobbers the per-tab
-     * provider that ClaudeChatWindow.restorePersistedTabSessionState already
-     * applied to the session — see issue #1353.
+     * provider the backend already applied to the session — see issue #1353.
      *
      * Both arguments may be null/empty. Null/empty values are injected as
      * empty strings; the frontend treats an empty string as "no backend

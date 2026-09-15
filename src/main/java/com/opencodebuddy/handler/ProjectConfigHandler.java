@@ -4,7 +4,6 @@ import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.settings.CodemossSettingsService;
-import com.opencodebuddy.action.SendShortcutSync;
 import com.opencodebuddy.util.FontConfigService;
 import com.opencodebuddy.util.ThemeConfigService;
 import com.google.gson.Gson;
@@ -282,7 +281,6 @@ public class ProjectConfigHandler {
                 sendShortcut = "enter";
             }
             PropertiesComponent.getInstance().setValue(SEND_SHORTCUT_PROPERTY_KEY, sendShortcut);
-            SendShortcutSync.sync(sendShortcut);
             LOG.info("[ProjectConfigHandler] Set send shortcut: " + sendShortcut);
             pushJson("window.updateSendShortcut", jsonOf("sendShortcut", sendShortcut));
         } catch (Exception e) {

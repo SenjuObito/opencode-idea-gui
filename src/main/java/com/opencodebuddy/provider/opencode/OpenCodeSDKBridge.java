@@ -15,6 +15,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * OpenCode bridge backed by the persistent ai-bridge daemon.
@@ -328,6 +329,11 @@ public class OpenCodeSDKBridge {
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
         params.addProperty("directory", cwd != null ? cwd : "");
         JsonArray entries = new JsonArray();
+        // 失败必须传出去：过去 onError/onComplete 都是空实现，thenApply 又无条件
+        // 返回「已收集到的部分条目」，于是 daemon/serve 未就绪导致的查询失败被静默
+        // 降级成「这个会话没有消息」——打开标签页得到一片空白，且没有任何提示，
+        // 用户一发送消息旧对话又整份冒出来。
+        AtomicReference<String> failure = new AtomicReference<>();
         return request("opencode.listMessages", params, new DaemonBridge.DaemonOutputCallback() {
             @Override
             public void onLine(String line) {
@@ -353,14 +359,26 @@ public class OpenCodeSDKBridge {
 
             @Override
             public void onError(String error) {
+                if (error != null && !error.isBlank()) {
+                    failure.compareAndSet(null, error);
+                }
             }
 
             @Override
             public void onComplete(boolean success) {
+                if (!success) {
+                    failure.compareAndSet(null, "opencode.listMessages did not complete successfully");
+                }
             }
-        }).thenApply(success -> entries);
+        }).thenApply(success -> {
+            String error = failure.get();
+            if (error != null || !success) {
+                throw new IllegalStateException(
+                        error != null ? error : "opencode.listMessages failed");
+            }
+            return entries;
+        });
     }
-
     public CompletableFuture<JsonElement> getSessionInfo(String sessionId, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");

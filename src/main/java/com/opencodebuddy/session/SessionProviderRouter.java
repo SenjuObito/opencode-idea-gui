@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -58,6 +59,13 @@ public class SessionProviderRouter {
      * Load session messages for history restore, converted into the
      * Claude-compatible message shape the Java session layer understands.
      * Blocking (bounded) — callers run on a background executor.
+     *
+     * 失败不再被压成空列表：`return List.of()` 会让「查询失败」和「会话确实没有
+     * 消息」变成同一个结果，调用方据此把失败的恢复当成空会话展示（打开标签页
+     * 一片空白、无提示），而 Java 侧仍绑着那个 sessionId —— 用户一发送消息就会
+     * 被追加到旧会话，旧对话整份冒出来。现在失败抛出，由调用方决定重试或降级。
+     *
+     * @throws SessionMessageLoadException 查询超时或 daemon 返回失败时
      */
     public List<JsonObject> getSessionMessages(String provider, String sessionId, String cwd) {
         if (openCodeSDKBridge == null || sessionId == null || sessionId.isBlank()) {
@@ -69,7 +77,21 @@ public class SessionProviderRouter {
                     .get(60, TimeUnit.SECONDS);
             return OpenCodeMessageConverter.convert(element);
         } catch (Exception e) {
-            return List.of();
+            throw new SessionMessageLoadException(
+                    "Failed to load messages for session " + sessionId + ": " + describe(e), e);
+        }
+    }
+
+    private static String describe(Throwable e) {
+        Throwable cause = (e instanceof ExecutionException && e.getCause() != null) ? e.getCause() : e;
+        String message = cause.getMessage();
+        return (message == null || message.isBlank()) ? cause.getClass().getSimpleName() : message;
+    }
+
+    /** 会话消息加载失败（区别于「会话没有消息」）。 */
+    public static class SessionMessageLoadException extends RuntimeException {
+        public SessionMessageLoadException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 }

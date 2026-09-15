@@ -52,7 +52,7 @@ Gemini购买了Pro套餐，DeepSeek花费约￥82.15。
 安装插件后，通过 **View → Tool Windows → OpenCode** 打开（默认在右侧边栏）。若本机已有 `opencode serve`
 在运行则直接复用，否则插件会自行启动一个。
 
-![聊天主界面截图](media/home.png)
+<img src="media/home.png" width="400" alt="聊天主界面截图">
 
 聊天窗口包含：
 
@@ -81,7 +81,7 @@ Gemini购买了Pro套餐，DeepSeek花费约￥82.15。
 diff 主题、聊天背景色）、**供应商管理**、**命令（提示词）**、**使用统计**、**MCP 服务器**、**Skills**、
 **其他设置** 和 **赞赏支持**。持久化数据存放在 `~/.opencodebuddy`。
 
-![设置页截图](media/settings.png)
+<img src="media/settings.png" width="400" alt="设置页截图">
 
 ## 环境要求
 
@@ -173,7 +173,7 @@ util/ utils/   字体、i18n、token 用量、平台辅助
 
 | 微信 | 支付宝 | PayPal |
 |:---:|:---:|:---:|
-| ![微信赞赏](webview/src/assets/images/wallet.png) | ![支付宝赞赏](webview/src/assets/images/wallet-alipay.png) | <img src="webview/src/assets/images/wallet-paypal.png" width="600" /> |
+| <img src="webview/src/assets/images/wallet.png" width="200" alt="微信赞赏码"> | <img src="webview/src/assets/images/wallet-alipay.png" width="200" alt="支付宝赞赏码"> | <img src="webview/src/assets/images/wallet-paypal.png" width="200" alt="PayPal"> |
 
 ## 致谢
 

@@ -1,6 +1,5 @@
 package com.opencodebuddy.ui.toolwindow;
 
-import com.opencodebuddy.action.SendShortcutSync;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.handler.history.HistoryHandler;
 import com.opencodebuddy.handler.core.MessageDispatcher;
@@ -8,7 +7,6 @@ import com.opencodebuddy.handler.PermissionHandler;
 import com.opencodebuddy.permission.PermissionService;
 import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
-import com.opencodebuddy.provider.common.MessageCallback;
 import com.opencodebuddy.session.ClaudeSession;
 import com.opencodebuddy.session.SessionCallbackAdapter;
 import com.opencodebuddy.session.SessionLifecycleManager;
@@ -53,7 +51,9 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
@@ -139,7 +139,8 @@ public class ClaudeChatWindow {
     private final PendingFileReferencesBuffer pendingFileReferencesBuffer =
             new PendingFileReferencesBuffer();
     private volatile boolean slashCommandsFetched = false;
-    private final AtomicBoolean restoredHistoryLoadStarted = new AtomicBoolean(false);
+    /** 每个窗口只发起一次「从服务端重新同步会话」；失败收尾时会重置以允许再试。 */
+    private final AtomicBoolean sessionResyncStarted = new AtomicBoolean(false);
 
     // Shared serializer for structured bridges (Gson instances are thread-safe).
     private static final Gson GSON = new Gson();
@@ -433,7 +434,6 @@ public class ClaudeChatWindow {
             registerInstance();
         }
         chatWindowDelegate.initializeStatusBar();
-        SendShortcutSync.syncFromSettings();
     }
 
     // ==================== Public API ====================
@@ -1415,93 +1415,110 @@ public class ClaudeChatWindow {
         return sessionLifecycleManager;
     }
 
-    public void restorePersistedTabSessionState(TabStateService.TabSessionState savedState) {
-        if (savedState == null || session == null) {
-            return;
-        }
-
-        if (savedState.permissionMode != null && !savedState.permissionMode.trim().isEmpty()) {
-            session.setPermissionMode(savedState.permissionMode);
-        }
-        if (savedState.provider != null && !savedState.provider.trim().isEmpty()) {
-            session.setProvider(savedState.provider);
-            // HandlerContext keeps its own currentProvider (read by
-            // getCurrentProvider() and by handlers that don't go through the
-            // session). Sync it here so the backend stays consistent until the
-            // webview echoes its own provider selection — without this, the
-            // very first message in a restored Codex tab still routes to the
-            // Claude bridge until the frontend's localStorage hydration sends
-            // set_provider, which itself can be wrong on multi-tab restarts
-            // (issue #1353).
-            if (handlerContext != null) {
-                handlerContext.setCurrentProvider(savedState.provider);
-            }
-        }
-        if (savedState.model != null && !savedState.model.trim().isEmpty()) {
-            session.setModel(savedState.model);
-            // ModelProviderHandler also reads the handler-owned model to detect
-            // real transitions. Keep both authorities aligned before frontend
-            // startup sync so a restored non-default model is not mistaken for
-            // a switch that invalidates the freshly loaded usage snapshot.
-            if (handlerContext != null) {
-                handlerContext.setCurrentModel(savedState.model);
-            }
-        }
-        if (savedState.reasoningEffort != null && !savedState.reasoningEffort.trim().isEmpty()) {
-            session.setReasoningEffort(savedState.reasoningEffort);
-        }
-
-        String restoredSessionId = isNonEmpty(savedState.sessionId) ? savedState.sessionId : null;
-        String restoredCwd = isNonEmpty(savedState.cwd) ? savedState.cwd : session.getCwd();
-        session.setSessionInfo(restoredSessionId, restoredCwd);
-        persistTabSessionState();
-
-        LOG.info("[TabRestore] Restored tab session state: provider=" + savedState.provider
-                + ", sessionId=" + savedState.sessionId + ", cwd=" + savedState.cwd + ")");
-    }
-
-    public void restorePersistedTabSessionState(TabStateService.TabSessionState savedState, boolean loadImmediately) {
-        restorePersistedTabSessionState(savedState);
-        if (TabSessionRestorePolicy.shouldLoadImmediately(savedState, loadImmediately)) {
-            loadRestoredHistoryIfNeeded(savedState);
-        }
-    }
-
-    public void loadRestoredHistoryIfNeeded() {
+    /**
+     * Webview 重载或标签页重新激活后，把当前会话从服务端重新同步一次。
+     *
+     * 这里已经没有「开屏恢复」语义了：工具窗口打开时必定是全新会话（见
+     * {@code ClaudeSDKToolWindow.createChatWindowContent}），sessionId 只可能来自
+     * 用户自己发过消息、或从历史列表主动打开过某段会话。
+     *
+     * 因此判据收紧为「本窗口还没有任何消息、且会话空闲」。{@code loadFromServer()}
+     * 会先 clearMessages 再灌入服务端快照，若视图里已有内容（尤其正在流式输出），
+     * 重载会直接把它们抹掉。
+     */
+    public void resyncSessionFromServerIfNeeded() {
         if (session == null || !frontendReady) {
             return;
         }
 
         TabStateService.TabSessionState currentState = new TabStateService.TabSessionState();
         currentState.sessionId = session.getSessionId();
-        loadRestoredHistoryIfNeeded(currentState);
+        resyncSessionFromServerIfNeeded(currentState);
     }
 
-    private void loadRestoredHistoryIfNeeded(TabStateService.TabSessionState savedState) {
+    /** 重新同步的退避节奏：服务端 transcript 可能还没惰性加载出来。 */
+    private static final int RESYNC_MAX_ATTEMPTS = 3;
+    private static final long RESYNC_RETRY_DELAY_MS = 600;
+
+    private void resyncSessionFromServerIfNeeded(TabStateService.TabSessionState savedState) {
         if (!TabSessionRestorePolicy.shouldStartHistoryLoad(savedState, frontendReady) || session == null) {
             return;
         }
-        if (!restoredHistoryLoadStarted.compareAndSet(false, true)) {
+        // 视图里已经有消息就绝不重载 —— 见方法头注释。
+        if (session.isBusy() || session.isLoading() || !session.getMessages().isEmpty()) {
+            return;
+        }
+        if (!sessionResyncStarted.compareAndSet(false, true)) {
             return;
         }
 
-        ClaudeSession restoringSession = session;
-        restoringSession.loadFromServer().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
-            if (!disposed && session == restoringSession) {
-                callJavaScript("historyLoadComplete",
-                        String.valueOf(restoringSession.getMessages().size()));
+        ClaudeSession targetSession = session;
+        resyncSessionFromServerWithRetry(targetSession, RESYNC_MAX_ATTEMPTS);
+    }
+
+    /**
+     * 重新同步会话消息，失败或为空时退避重试。
+     *
+     * {@code opencode.listMessages} 在 daemon/serve 尚未就绪时会失败，而失败曾被
+     * 静默压成「加载成功但消息为空」，留下一个「sessionId 已绑定 + 消息为空」的
+     * 幽灵状态：界面看着是新会话，用户一发送消息就被追加到旧会话，旧对话整份冒出来。
+     * 现在失败与「成功但为空」都能被识别，用于重试或解除绑定。
+     *
+     * @param attemptsLeft 含本次在内的剩余尝试次数
+     */
+    private void resyncSessionFromServerWithRetry(ClaudeSession targetSession, int attemptsLeft) {
+        targetSession.loadFromServer().whenComplete((ignored, ex) -> {
+            if (disposed || session != targetSession) {
+                return;
             }
-        })).exceptionally(ex -> {
-            LOG.warn("[TabRestore] Failed to load persisted tab history: " + ex.getMessage(), ex);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                if (!disposed) {
-                    callJavaScript("historyLoadComplete");
-                    callJavaScript("addErrorMessage",
-                            JsUtils.escapeJs("Failed to restore session history: " + ex.getMessage()));
-                }
-            });
-            return null;
+            // 进入这里的前提是本窗口没有任何消息（见 resyncSessionFromServerIfNeeded
+            // 的前置判断），所以「成功但为空」同样可疑 —— transcript 还没惰性加载完成
+            // —— 与真实失败一起重试。
+            boolean failed = ex != null;
+            boolean empty = !failed && targetSession.getMessages().isEmpty();
+            if ((failed || empty) && attemptsLeft > 1) {
+                LOG.warn("[SessionResync] Session messages not available yet (attempt "
+                        + (RESYNC_MAX_ATTEMPTS - attemptsLeft + 1) + "/" + RESYNC_MAX_ATTEMPTS
+                        + "), retrying: " + (failed ? ex.getMessage() : "empty result"));
+                CompletableFuture.delayedExecutor(RESYNC_RETRY_DELAY_MS, TimeUnit.MILLISECONDS)
+                        .execute(() -> resyncSessionFromServerWithRetry(targetSession, attemptsLeft - 1));
+                return;
+            }
+            ApplicationManager.getApplication().invokeLater(
+                    () -> settleSessionResync(targetSession, failed ? ex : null, empty));
         });
+    }
+
+    /**
+     * 重新同步收尾。
+     *
+     * 重试用尽仍拿不到消息时解除会话绑定，绝不留一个「绑着 sessionId 却没有消息」
+     * 的状态 —— 否则用户下一条消息会被追加到那段会话，旧对话整份回到界面上。该会话
+     * 仍保存在 opencode 服务端，可从历史列表重新打开，不会丢。
+     */
+    private void settleSessionResync(ClaudeSession targetSession, Throwable failure, boolean empty) {
+        if (disposed || session != targetSession) {
+            return;
+        }
+        if (failure == null && !empty) {
+            callJavaScript("historyLoadComplete", String.valueOf(targetSession.getMessages().size()));
+            return;
+        }
+
+        LOG.warn("[SessionResync] Giving up on session messages: "
+                + (failure != null ? failure.getMessage() : "empty result"));
+        // 解除绑定：下一次发送会开一条新会话，不会把旧会话的整份消息带回来。
+        targetSession.setSessionInfo(null, targetSession.getCwd());
+        persistTabSessionState();
+        // 允许切回本标签页时再试一次 —— 本次失败不代表以后不行。
+        sessionResyncStarted.set(false);
+
+        String detail = (failure != null && failure.getMessage() != null)
+                ? ": " + failure.getMessage() : "";
+        callJavaScript("historyLoadComplete");
+        callJavaScript("addErrorMessage", JsUtils.escapeJs(
+                "Failed to load session messages" + detail
+                        + ". Starting a new session; the previous conversation is still available in History."));
     }
 
     public void addCodeSnippetFromExternal(String selectionInfo) {
@@ -1564,7 +1581,7 @@ public class ClaudeChatWindow {
                             browser, transition.epoch(), 0L, "frontend_ready"),
                     this::isWebviewActive,
                     () -> tryConsumePendingSurfaceRefresh("frontend_ready"),
-                    this::loadRestoredHistoryIfNeeded
+                    this::resyncSessionFromServerIfNeeded
             );
         });
     }
@@ -1672,7 +1689,7 @@ public class ClaudeChatWindow {
             Runnable requestPublication,
             BooleanSupplier webviewActive,
             Runnable tryPublish,
-            Runnable loadRestoredHistory
+            Runnable postReadyWork
     ) {
         if (disposed) {
             return;
@@ -1683,7 +1700,7 @@ public class ClaudeChatWindow {
                 tryPublish.run();
             }
         }
-        loadRestoredHistory.run();
+        postReadyWork.run();
     }
 
     /**
@@ -2066,10 +2083,6 @@ public class ClaudeChatWindow {
         chatWindowDelegate.updateTabLoadingState(loading);
     }
 
-    public void sendQuickFixMessage(String prompt, boolean isQuickFix, MessageCallback callback) {
-        chatWindowDelegate.sendQuickFixMessage(prompt, isQuickFix, callback);
-    }
-
     public void executeJavaScriptCode(String jsCode) {
         JBCefBrowser targetBrowser = this.browser;
         if (this.disposed || targetBrowser == null) {
@@ -2259,8 +2272,8 @@ public class ClaudeChatWindow {
         // Re-sync the exposed sessionId with the freshly bound session so a stale
         // AI session ID from a previous session is not exposed via getSessionId().
         // Falling back to permissionServiceKey (never null after construction)
-        // keeps the exposed ID stable for consumers like DetachTabAction, which
-        // skips DetachedWindowManager registration on a null ID.
+        // keeps the exposed ID stable for consumers that skip floating-window
+        // registration on a null ID.
         this.sessionId = resolveExposedSessionId(session.getSessionId(), this.permissionServiceKey);
 
         if (this.sessionCallbackAdapter != null) {
@@ -2701,10 +2714,6 @@ public class ClaudeChatWindow {
         snapshot.reasoningEffort = session.getReasoningEffort();
 
         TabStateService.getInstance(project).saveTabSessionState(tabIndex, snapshot);
-    }
-
-    private boolean isNonEmpty(String value) {
-        return value != null && !value.trim().isEmpty();
     }
 
     /**

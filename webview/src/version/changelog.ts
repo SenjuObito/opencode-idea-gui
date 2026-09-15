@@ -13,8 +13,8 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
-    version: '1.0.0-opencode.1',
-    date: '2026-09-06',
+    version: '0.0.1',
+    date: '2026-09-15',
     content: {
       en: `OpenCode Buddy — an opencode-only build of the plugin.
 

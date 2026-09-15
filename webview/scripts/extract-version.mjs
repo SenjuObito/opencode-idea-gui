@@ -15,27 +15,29 @@ const buildGradlePath = path.join(projectRoot, 'build.gradle');
 // Read the build.gradle file
 const buildGradleContent = fs.readFileSync(buildGradlePath, 'utf8');
 
-// Extract the version number
-// Look for a line like: version = '0.1.0-beta3'
-let versionMatch = buildGradleContent.match(/^version\s*=\s*'(.+)'$/m);
-if (!versionMatch) {
-  // If the regex above fails, try a fallback approach
-  const lines = buildGradleContent.split('\n');
-  const versionLine = lines.find(line => line.trim().startsWith('version ='));
-  if (versionLine) {
-    const match = versionLine.match(/version\s*=\s*'(.+)'/);
-    if (match) {
-      versionMatch = match;
-    }
-  }
-}
-if (!versionMatch) {
-  console.error('Error: Could not find version in build.gradle');
-  process.exit(1);
-}
+// The version the release is cut under: Gradle's buildWebview task sets
+// RELEASE_VERSION from the tag the Build Plugin workflow passed as
+// -PreleaseVersion, so the version shown in the UI matches the git tag.
+// A plain `npm run build` has no tag to go by and falls back to build.gradle.
+let version;
+const injectedVersion = process.env.RELEASE_VERSION;
 
-const version = versionMatch[1];
-console.log(`Found version: ${version}`);
+if (injectedVersion) {
+  version = injectedVersion;
+  console.log(`Using RELEASE_VERSION from Gradle: ${version}`);
+} else {
+  // build.gradle: version = findProperty('releaseVersion') ?: '1.0.0-opencode.1'
+  // The fallback literal is the last quoted string on the line — any earlier
+  // ones are property names passed to findProperty().
+  const versionLine = buildGradleContent.match(/^version\s*=(.*)$/m);
+  const quoted = versionLine && versionLine[1].match(/'[^']+'/g);
+  if (!quoted || quoted.length === 0) {
+    console.error('Error: Could not find version in build.gradle');
+    process.exit(1);
+  }
+  version = quoted[quoted.length - 1].slice(1, -1);
+  console.log(`Found version in build.gradle: ${version}`);
+}
 
 // Create the version file for the webview
 const versionDir = path.join(__dirname, '../src/version');

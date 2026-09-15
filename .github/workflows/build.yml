@@ -1,6 +1,7 @@
 name: Build Plugin
 
-# Releases are cut from version tags only, e.g. v1.0.0-opencode.1.
+# Releases are cut from version tags only, e.g. v0.0.1. The tag is the version:
+# it is handed to Gradle as -PreleaseVersion, so no build.gradle edit is needed.
 # Branch pushes do NOT build here — use the Tests workflow / a local
 # `./gradlew buildPlugin` for that. Re-running a failed release is done from the
 # Actions UI ("Re-run jobs"), not by pushing another commit.
@@ -42,25 +43,39 @@ jobs:
         working-directory: ai-bridge
         run: npm ci
 
-      # The tag is the release version, so it must equal build.gradle's version —
-      # otherwise the shipped jar (and the plugin zip name) would carry a stale
-      # version while the GitHub release claims a newer one. Fail loudly instead.
-      - name: Verify tag matches plugin version
+      # The tag is the release version. Strip the leading `v` and hand the rest
+      # to Gradle, which names the plugin zip after it and forwards it to the
+      # webview build (as RELEASE_VERSION) so the version shown in the UI tracks
+      # the same tag. Nothing has to be edited in build.gradle to cut a release.
+      - name: Resolve release version
+        id: version
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION=$(grep -E "^version[[:space:]]*=" build.gradle | head -n 1 | sed -E "s/^version[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/")
-          echo "tag=$TAG build.gradle version=$VERSION"
-          if [ -z "$VERSION" ]; then
-            echo "::error::Could not read version from build.gradle"
-            exit 1
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            if [ -z "$VERSION" ] || [ "$VERSION" = "${GITHUB_REF_NAME}" ]; then
+              echo "::error::Tag ${GITHUB_REF_NAME} is not of the form v<version>."
+              exit 1
+            fi
+            echo "Releasing tag ${GITHUB_REF_NAME} as version $VERSION"
+          else
+            # Manual workflow_dispatch run: no tag to take a version from, so
+            # build with whatever build.gradle carries.
+            VERSION=""
+            echo "Not a tag ref (${GITHUB_REF_TYPE}) — using build.gradle's version"
           fi
-          if [ "v$VERSION" != "$TAG" ]; then
-            echo "::error::Tag $TAG does not match build.gradle version $VERSION — bump the version (or fix the tag) and re-tag."
-            exit 1
-          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build Plugin
-        run: ./gradlew buildPlugin
+        env:
+          # Passed via env rather than interpolated into the script, so a tag
+          # can never inject shell syntax into the run block.
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          if [ -n "$RELEASE_VERSION" ]; then
+            ./gradlew buildPlugin "-PreleaseVersion=$RELEASE_VERSION"
+          else
+            ./gradlew buildPlugin
+          fi
 
       - name: Locate plugin zip
         id: extract

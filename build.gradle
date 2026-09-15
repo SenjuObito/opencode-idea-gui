@@ -42,9 +42,15 @@ tasks.named('checkstyleTest') {
 }
 
 group = 'com.senjuobito.opencode-buddy'
-// Must stay in sync with the CHANGELOG.md top entry and the release tag (`v<version>`);
-// the Build Plugin workflow fails the run when the tag and this value disagree.
-version = '1.0.0-opencode.1'
+// The release tag is the source of truth: the Build Plugin workflow strips the
+// leading `v` off the tag and passes it as -PreleaseVersion, so the plugin zip
+// name and the webview's bundled APP_VERSION always match the tag that
+// triggered the build. The literal below is only the fallback for local builds
+// (`./gradlew buildPlugin`) and for manual workflow_dispatch runs, which have
+// no tag. Add the released version as the CHANGELOG.md top heading too — the
+// release notes are looked up there by version, and fall back to the git log
+// when the heading is missing.
+version = findProperty('releaseVersion') ?: '0.0.1'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -413,6 +419,11 @@ tasks.register('buildWebview', Exec) {
 
         println "Using custom Node.js path: ${localNodePath}"
     }
+
+    // npm runs the `prebuild` script (webview/scripts/extract-version.mjs)
+    // before `build`, and that script prefers this over build.gradle's literal
+    // so the version shown in the webview UI matches the release tag.
+    environment 'RELEASE_VERSION', version.toString()
 
     if (System.getProperty('os.name').toLowerCase().contains('windows')) {
         commandLine 'cmd', '/c', npmCommand, 'run', 'build'

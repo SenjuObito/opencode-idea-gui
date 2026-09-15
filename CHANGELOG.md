@@ -8,7 +8,7 @@ Release body. Consumers of this file:
 - `tools/extract-release-notes.mjs` → GitHub Release body (emits the English half
   under an `### English` heading, which the changelog dialog splits on)
 
-## 1.0.0-opencode.1 (2026-09-06)
+## 0.0.1 (2026-09-15)
 
 中文：
 

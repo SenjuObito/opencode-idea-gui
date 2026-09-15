@@ -5,6 +5,9 @@ import com.opencodebuddy.bridge.EnvironmentConfigurator;
 import com.opencodebuddy.bridge.NodeDetector;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
+import com.opencodebuddy.handler.provider.ModelProviderHandler;
+import com.opencodebuddy.provider.ModelContextWindowCatalog;
+import com.opencodebuddy.session.ClaudeSession;
 import com.opencodebuddy.startup.BridgePreloader;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -281,7 +284,13 @@ public class CliModelsHandler extends BaseMessageHandler {
                 return null;
             }
             JsonObject payload = gson.fromJson(json, JsonObject.class);
-            return payloadHasModels(payload) ? payload : null;
+            if (!payloadHasModels(payload)) {
+                return null;
+            }
+            // The persisted list may predate this build and lack limit metadata;
+            // merging is a no-op then and a real warm-up otherwise.
+            ModelContextWindowCatalog.getInstance().updateFromModelsPayload(payload);
+            return payload;
         } catch (Exception e) {
             LOG.debug("[CliModels] Ignoring unreadable model cache: " + e.getMessage());
             return null;
@@ -297,7 +306,37 @@ public class CliModelsHandler extends BaseMessageHandler {
     }
 
     private void pushPayload(JsonObject payload) {
+        // Teach the context-window catalog before the webview sees the list, so
+        // the very next usage push resolves the real model limit.
+        boolean catalogChanged = ModelContextWindowCatalog.getInstance().updateFromModelsPayload(payload);
         callJavaScript("window.setCliModels", escapeJs(gson.toJson(payload)));
+        republishUsageIfLimitChanged(catalogChanged);
+    }
+
+    /**
+     * Re-send the retained usage snapshot once the catalog learned a model's real
+     * context window.
+     *
+     * <p>Session restore and webview recovery can resolve a limit while the model
+     * catalog is still cold, which publishes the hardcoded 200k fallback. When the
+     * list (fresh or cached) arrives moments later, the already-rendered usage ring
+     * would stay wrong until the next turn — so republish when the catalog moved.
+     * A session with no usage snapshot yet pushes nothing and stays untouched.</p>
+     */
+    private void republishUsageIfLimitChanged(boolean catalogChanged) {
+        if (!catalogChanged) {
+            return;
+        }
+        try {
+            ClaudeSession session = context.getSession();
+            if (session == null) {
+                return;
+            }
+            int limit = ModelProviderHandler.getModelContextLimit(session.getProvider(), session.getModel());
+            new UsagePushService(context).pushCurrentUsageIfAvailable(limit);
+        } catch (Exception e) {
+            LOG.debug("[CliModels] Usage republish skipped: " + e.getMessage());
+        }
     }
 
     private JsonObject extractJsonObject(String raw) {

@@ -203,7 +203,10 @@ public class OpenCodeMessageHandler implements MessageCallback {
             turnUsage.addProperty("output_tokens", output + readInt(usage, "reasoning_tokens"));
 
             int usedTokens = input + cacheRead + cacheCreation;
-            int maxTokens = ModelProviderHandler.getModelContextLimit(state.getModel());
+            // Provider-aware lookup: the single-argument overload would skip the
+            // user's custom windows and the live model catalog.
+            int maxTokens = ModelProviderHandler.getModelContextLimit(
+                    state.getProvider(), state.getModel());
             callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
 
             boolean updated = attachUsageToLastAssistant(turnUsage);

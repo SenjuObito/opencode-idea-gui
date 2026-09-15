@@ -4,6 +4,7 @@ import com.opencodebuddy.handler.UsagePushService;
 import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.opencodebuddy.provider.CustomModelContextWindowProvider;
+import com.opencodebuddy.provider.ModelContextWindowCatalog;
 import com.opencodebuddy.util.TokenUsageUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -171,9 +172,28 @@ public class ModelProviderHandler {
         return 200_000;
     }
 
+    /**
+     * Resolve a model's context window, preferring real provider metadata over
+     * the hardcoded table.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>{@code customModelContextWindows} — explicit user configuration</li>
+     *   <li>{@link ModelContextWindowCatalog} — the live opencode model list
+     *       (models.dev {@code limit.context})</li>
+     *   <li>{@link #getModelContextLimit(String)} — bracketed capacity suffix,
+     *       then the hardcoded table, then the 200k default</li>
+     * </ol>
+     *
+     * <p>Ids carrying an explicit capacity suffix miss the catalog by design and
+     * fall through to the suffix parser, so {@code model[1m]} keeps winning over
+     * whatever the catalog reports for the bare id.</p>
+     */
     public static int getModelContextLimit(String provider, String model) {
         return CustomModelContextWindowProvider.getInstance()
                 .getContextWindow(provider, model)
-                .orElseGet(() -> getModelContextLimit(model));
+                .orElseGet(() -> ModelContextWindowCatalog.getInstance()
+                        .getContextWindow(model)
+                        .orElseGet(() -> getModelContextLimit(model)));
     }
 }

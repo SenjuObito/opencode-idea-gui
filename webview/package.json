@@ -8,7 +8,7 @@
     "prebuild": "node scripts/extract-version.mjs && node scripts/extract-changelog.mjs",
     "build": "tsc && vite build",
     "postbuild": "node scripts/copy-dist.mjs",
-    "test": "node scripts/run-tests.mjs",
+    "test": "vitest run",
     "test:e2e": "playwright test",
     "preview": "vite preview"
   },

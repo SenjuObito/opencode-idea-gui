@@ -26,12 +26,21 @@ vi.mock('../hooks/useDialogCountdownTimeout', () => ({
   },
 }));
 
+// The returned functions must keep a stable identity across renders: the
+// component lists setDialogHeight in an effect dep array, so a fresh vi.fn()
+// per render re-runs that effect forever and the test OOMs.
+const dialogResize = vi.hoisted(() => ({
+  dialogRef: { current: null } as { current: HTMLDivElement | null },
+  setDialogHeight: vi.fn(),
+  handleResizeStart: vi.fn(),
+}));
+
 vi.mock('../hooks/useDialogResize', () => ({
   useDialogResize: () => ({
-    dialogRef: { current: null },
+    dialogRef: dialogResize.dialogRef,
     dialogHeight: null,
-    setDialogHeight: vi.fn(),
-    handleResizeStart: vi.fn(),
+    setDialogHeight: dialogResize.setDialogHeight,
+    handleResizeStart: dialogResize.handleResizeStart,
   }),
 }));
 

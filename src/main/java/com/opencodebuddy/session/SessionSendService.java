@@ -44,6 +44,14 @@ public class SessionSendService {
     }
 
     public void updateSessionStateForSend(ClaudeSession.Message userMessage, String normalizedInput) {
+        // A pending revert is applied by the server at the start of this very
+        // prompt (SessionRevert.cleanup drops everything from the revert point
+        // onward). Trim the same range locally BEFORE publishing, so the snapshot
+        // the webview receives never re-introduces the voided turn — otherwise
+        // those messages reappear until the message.removed events land.
+        if (state.trimMessagesFromRevertBoundary()) {
+            LOG.info("[Revert] Trimmed session state from the revert boundary before send");
+        }
         state.addMessage(userMessage);
         callbackFacade.notifyMessageUpdate(state.getMessages());
 

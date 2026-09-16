@@ -77,6 +77,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
             case "todo_updated" -> handleTodoUpdated(content);
             case "session_title" -> handleSessionTitle(content);
             case "revert_state" -> handleRevertState(content);
+            case "message_removed" -> handleMessagesRemoved(content);
             case "session_compact_result" -> handleSessionCompactResult(content);
             default -> LOG.debug("OpenCodeMessageHandler: Unhandled message type: " + type);
         }
@@ -381,21 +382,102 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
     private void handleRevertState(String jsonContent) {
         LOG.debug("[OpenCode] revert state: " + jsonContent);
-        if (jsonContent == null || !jsonContent.startsWith("{")) {
+        if (jsonContent == null || jsonContent.isBlank()) {
             return;
         }
         try {
-            JsonObject payload = com.google.gson.JsonParser.parseString(jsonContent).getAsJsonObject();
-            boolean hasRevert = payload.has("hasRevert") && payload.get("hasRevert").getAsBoolean();
+            JsonObject payload = parseJsonObjectLeniently(jsonContent.trim());
+            if (payload == null) {
+                return;
+            }
+            boolean hasRevert = payload.has("hasRevert") && !payload.get("hasRevert").isJsonNull()
+                    && payload.get("hasRevert").getAsBoolean();
+            // Carries the opencode message id the revert is anchored to. The webview
+            // needs it to slice the transcript at the right boundary; without it the
+            // placeholder bar falls back to "last user message" and mis-anchors.
+            String messageId = stringOrNull(payload, "messageId");
             if (hasRevert) {
-                state.setRevertState(new SessionState.RevertState(""));
+                state.setRevertState(new SessionState.RevertState(messageId != null ? messageId : ""));
             } else {
                 state.setRevertState(null);
             }
-            callbackHandler.notifyRevertStateUpdate(hasRevert);
+            callbackHandler.notifyRevertStateUpdate(hasRevert, messageId);
             callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
         } catch (Exception e) {
             LOG.warn("[OpenCode] Failed to parse revert_state: " + jsonContent, e);
+        }
+    }
+
+    /**
+     * Handle an authoritative server-side message deletion.
+     *
+     * <p>opencode's revert only writes a "void from here on" pointer. The real
+     * deletion happens at the start of the next prompt, where
+     * {@code SessionRevert.cleanup} drops every message from the revert point
+     * onward and publishes one {@code message.removed} per message.</p>
+     *
+     * <p>Mirroring that removal here is what keeps the host in sync with the
+     * server. Without it the host keeps carrying the voided messages, and the
+     * snapshot it pushes on the next send re-injects them into the webview — the
+     * "reverted messages come back to life" symptom.</p>
+     */
+    private void handleMessagesRemoved(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        try {
+            JsonObject payload = parseJsonObjectLeniently(jsonContent.trim());
+            if (payload == null) {
+                return;
+            }
+            // This daemon stream is scoped per directory, so a removal belonging to a
+            // sibling session must not touch the active one.
+            String sessionId = stringOrNull(payload, "sessionID");
+            String currentSessionId = state.getSessionId();
+            if (sessionId != null && currentSessionId != null && !sessionId.equals(currentSessionId)) {
+                LOG.debug("[OpenCode] Ignoring message_removed for another session: " + sessionId);
+                return;
+            }
+            String messageId = stringOrNull(payload, "messageID");
+            if (messageId == null || messageId.isBlank()) {
+                return;
+            }
+            java.util.List<String> ids = java.util.List.of(messageId);
+            if (!state.removeMessagesByIds(ids)) {
+                LOG.debug("[OpenCode] message_removed matched nothing in state: " + messageId);
+                return;
+            }
+            LOG.info("[OpenCode] Removed reverted message from session state: " + messageId);
+            // Order matters: tell the webview to drop it first, then push the
+            // (already shorter) snapshot. The early removal keeps the webview's list
+            // length in step with the snapshot so its shrink-protection does not
+            // restore the voided tail.
+            callbackHandler.notifyMessagesRemoved(ids);
+            callbackHandler.notifyMessageUpdate(state.getMessages());
+        } catch (Exception e) {
+            LOG.warn("[OpenCode] Failed to parse message_removed: " + jsonContent, e);
+        }
+    }
+
+    /**
+     * Parse a marker payload that should be a JSON object, tolerating a legacy
+     * double-encoded form (a JSON string literal wrapping the object). Returns
+     * null when neither shape yields an object.
+     */
+    private static JsonObject parseJsonObjectLeniently(String raw) {
+        try {
+            return com.google.gson.JsonParser.parseString(raw).getAsJsonObject();
+        } catch (Exception ignored) {
+            // Fall through to the string-literal form.
+        }
+        try {
+            String decoded = new com.google.gson.Gson().fromJson(raw, String.class);
+            if (decoded == null || decoded.isBlank()) {
+                return null;
+            }
+            return com.google.gson.JsonParser.parseString(decoded).getAsJsonObject();
+        } catch (Exception ignored) {
+            return null;
         }
     }
 

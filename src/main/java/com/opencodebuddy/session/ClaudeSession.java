@@ -182,6 +182,20 @@ public class ClaudeSession {
         default void onRevertStateUpdate(boolean hasRevert) {
             onRevertStateUpdate(hasRevert, null);
         }
+
+        /**
+         * The server authoritatively removed these messages from the session.
+         *
+         * <p>A revert is only a "void from here on" marker; the real deletion happens
+         * server-side on the next prompt (SessionRevert.cleanup), which publishes
+         * {@code message.removed} per message. The frontend must drop those ids from
+         * its local list as soon as the signal arrives — the follow-up snapshot is
+         * shorter by exactly these messages, and without the early removal the
+         * shrink-protection path would restore the voided tail instead of letting it
+         * disappear.</p>
+         */
+        default void onMessagesRemoved(List<String> messageIds) {
+        }
     }
 
     public ClaudeSession(

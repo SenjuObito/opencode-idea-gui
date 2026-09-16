@@ -72,4 +72,122 @@ public class SessionStateTest {
         SessionState state = new SessionState();
         Assert.assertEquals("opencode-default", state.getModel());
     }
+
+    // ── Revert cleanup sync (message.removed mirroring) ──
+
+    @Test
+    public void removeMessagesByIdsDropsMessagesCarryingTheIdInRaw() {
+        SessionState state = new SessionState();
+        state.addMessage(messageWithRaw("u1", null));
+        state.addMessage(messageWithRaw("a1", null));
+        state.addMessage(messageWithRaw("u2", null));
+
+        Assert.assertTrue(state.removeMessagesByIds(java.util.Collections.singletonList("a1")));
+
+        java.util.List<ClaudeSession.Message> left = state.getMessages();
+        Assert.assertEquals(2, left.size());
+        Assert.assertEquals("u1", left.get(0).raw.get("id").getAsString());
+        Assert.assertEquals("u2", left.get(1).raw.get("id").getAsString());
+    }
+
+    @Test
+    public void removeMessagesByIdsMatchesRewindPatchedUuid() {
+        SessionState state = new SessionState();
+        // Rewind-patched user messages carry the provider id as raw.uuid, not raw.id.
+        state.addMessage(messageWithRaw(null, "msg_uuid"));
+
+        Assert.assertTrue(state.removeMessagesByIds(java.util.Collections.singletonList("msg_uuid")));
+        Assert.assertTrue(state.getMessages().isEmpty());
+    }
+
+    @Test
+    public void removeMessagesByIdsReturnsFalseWhenNothingMatches() {
+        SessionState state = new SessionState();
+        state.addMessage(messageWithRaw("u1", null));
+
+        Assert.assertFalse(state.removeMessagesByIds(java.util.Collections.singletonList("nope")));
+        Assert.assertEquals(1, state.getMessages().size());
+    }
+
+    @Test
+    public void removeMessagesByIdsIgnoresMessagesWithoutRaw() {
+        SessionState state = new SessionState();
+        state.addMessage(new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "no raw"));
+
+        // Must not throw on a null raw payload.
+        Assert.assertFalse(state.removeMessagesByIds(java.util.Collections.singletonList("u1")));
+        Assert.assertEquals(1, state.getMessages().size());
+    }
+
+    @Test
+    public void removeMessagesByIdsIgnoresEmptyInput() {
+        SessionState state = new SessionState();
+        state.addMessage(messageWithRaw("u1", null));
+
+        Assert.assertFalse(state.removeMessagesByIds(null));
+        Assert.assertFalse(state.removeMessagesByIds(java.util.Collections.emptyList()));
+        Assert.assertEquals(1, state.getMessages().size());
+    }
+
+    @Test
+    public void trimMessagesFromRevertBoundaryDropsBoundaryAndEverythingAfter() {
+        SessionState state = new SessionState();
+        state.addMessage(messageWithRaw("u1", null));
+        state.addMessage(messageWithRaw("a1", null));
+        state.addMessage(messageWithRaw("u2", null));
+        state.addMessage(messageWithRaw("a2", null));
+        state.setRevertState(new SessionState.RevertState("u2"));
+
+        // Inclusive of the boundary: the server removes from it onward (no partID).
+        Assert.assertTrue(state.trimMessagesFromRevertBoundary());
+
+        java.util.List<ClaudeSession.Message> left = state.getMessages();
+        Assert.assertEquals(2, left.size());
+        Assert.assertEquals("u1", left.get(0).raw.get("id").getAsString());
+        Assert.assertEquals("a1", left.get(1).raw.get("id").getAsString());
+    }
+
+    @Test
+    public void trimMessagesFromRevertBoundaryIsNoOpWithoutRevert() {
+        SessionState state = new SessionState();
+        state.addMessage(messageWithRaw("u1", null));
+
+        Assert.assertFalse(state.trimMessagesFromRevertBoundary());
+        Assert.assertEquals(1, state.getMessages().size());
+    }
+
+    @Test
+    public void trimMessagesFromRevertBoundaryIsNoOpWhenBoundaryIdIsBlank() {
+        SessionState state = new SessionState();
+        state.addMessage(messageWithRaw("u1", null));
+        // The daemon used to emit REVERT_STATE without an id; that path must stay harmless.
+        state.setRevertState(new SessionState.RevertState(""));
+
+        Assert.assertFalse(state.trimMessagesFromRevertBoundary());
+        Assert.assertEquals(1, state.getMessages().size());
+    }
+
+    @Test
+    public void trimMessagesFromRevertBoundaryIsNoOpWhenBoundaryAbsentLocally() {
+        SessionState state = new SessionState();
+        state.addMessage(messageWithRaw("u1", null));
+        // Boundary points at a message this host never loaded — leave the list alone,
+        // the authoritative message.removed events still correct it.
+        state.setRevertState(new SessionState.RevertState("u9"));
+
+        Assert.assertFalse(state.trimMessagesFromRevertBoundary());
+        Assert.assertEquals(1, state.getMessages().size());
+    }
+
+    /** Build a message whose raw payload carries the given provider id (raw.id / raw.uuid). */
+    private static ClaudeSession.Message messageWithRaw(String id, String uuid) {
+        com.google.gson.JsonObject raw = new com.google.gson.JsonObject();
+        if (id != null) {
+            raw.addProperty("id", id);
+        }
+        if (uuid != null) {
+            raw.addProperty("uuid", uuid);
+        }
+        return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "text", raw);
+    }
 }

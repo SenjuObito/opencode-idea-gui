@@ -1,6 +1,7 @@
 package com.opencodebuddy.session;
 
 
+import com.google.gson.JsonObject;
 import com.opencodebuddy.util.PlatformUtils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -389,6 +390,88 @@ public class SessionState {
      */
     public void clearMessages() {
         messages.clear();
+    }
+
+    /**
+     * Remove every message whose provider id matches one of {@code messageIds}.
+     *
+     * <p>This is the counterpart to the server's authoritative deletion: opencode
+     * applies a pending revert at the start of the next prompt and drops the
+     * messages from the revert point onward. The host previously had no way to
+     * express "remove one message" — only append or clear — so it kept the voided
+     * messages and re-pushed them on the following send.</p>
+     *
+     * <p>The provider id lives in {@link ClaudeSession.Message#raw}: the history
+     * converter stamps opencode's message id there as {@code id}, while
+     * rewind-patched user messages may carry it as {@code uuid}. Both spellings are
+     * checked so a removal matches however the message was recorded.</p>
+     *
+     * @return {@code true} when at least one message was removed
+     */
+    public boolean removeMessagesByIds(List<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) {
+            return false;
+        }
+        Set<String> ids = new HashSet<>(messageIds);
+        synchronized (messages) {
+            return messages.removeIf(message -> matchesAnyProviderId(message, ids));
+        }
+    }
+
+    /**
+     * Drop every message from the active revert boundary onward.
+     *
+     * <p>Called right before a new user message is appended, mirroring what the
+     * server is about to do: a pending revert is applied at the start of the next
+     * prompt, so everything from the boundary on is about to disappear
+     * server-side. Trimming locally first means the snapshot handed to the webview
+     * never re-introduces the voided turn — without it those messages flash back
+     * for the whole round trip until {@code message.removed} arrives.</p>
+     *
+     * <p>No-op when there is no revert, or when the boundary id is unknown or not
+     * present locally — in that case the authoritative {@code message.removed}
+     * events still correct the state.</p>
+     *
+     * @return {@code true} when at least one message was trimmed
+     */
+    public boolean trimMessagesFromRevertBoundary() {
+        RevertState revert = this.revertState;
+        if (revert == null) {
+            return false;
+        }
+        String boundaryId = revert.messageId;
+        if (boundaryId == null || boundaryId.isBlank()) {
+            return false;
+        }
+        Set<String> ids = Collections.singleton(boundaryId);
+        synchronized (messages) {
+            int idx = -1;
+            for (int i = 0; i < messages.size(); i++) {
+                if (matchesAnyProviderId(messages.get(i), ids)) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0) {
+                return false;
+            }
+            // Inclusive of the boundary: the server removes from the boundary
+            // message onward when no partID is set (SessionRevert.cleanup).
+            messages.subList(idx, messages.size()).clear();
+            return true;
+        }
+    }
+
+    /** Whether the message carries any of the given provider ids in its raw payload. */
+    private static boolean matchesAnyProviderId(ClaudeSession.Message message, Set<String> ids) {
+        if (message == null || message.raw == null) {
+            return false;
+        }
+        JsonObject raw = message.raw;
+        if (raw.has("id") && !raw.get("id").isJsonNull() && ids.contains(raw.get("id").getAsString())) {
+            return true;
+        }
+        return raw.has("uuid") && !raw.get("uuid").isJsonNull() && ids.contains(raw.get("uuid").getAsString());
     }
 
     /**

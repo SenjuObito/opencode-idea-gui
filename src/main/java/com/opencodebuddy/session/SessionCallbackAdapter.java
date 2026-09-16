@@ -490,6 +490,38 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
     }
 
     /**
+     * Forward a server-side message deletion to the webview.
+     *
+     * <p>The payload is a bare JSON array of opencode message ids, matching the
+     * shape the webview's {@code onMessagesRemoved} handler parses. It is sent
+     * BEFORE the follow-up {@code updateMessages} snapshot, so the webview's list
+     * has already shrunk by the time the (also shorter) snapshot lands — which is
+     * what stops its shrink-protection from restoring the voided tail.</p>
+     */
+    @Override
+    public void onMessagesRemoved(java.util.List<String> messageIds) {
+        if (isInactive() || messageIds == null || messageIds.isEmpty()) {
+            return;
+        }
+        com.google.gson.JsonArray payload = new com.google.gson.JsonArray();
+        for (String id : messageIds) {
+            if (id != null && !id.isBlank()) {
+                payload.add(id);
+            }
+        }
+        if (payload.isEmpty()) {
+            return;
+        }
+        final String jsonStr = payload.toString();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            jsTarget.callJavaScript("onMessagesRemoved", jsonStr);
+        });
+    }
+
+    /**
      * Dispose internal resources. Call when the parent window is disposed.
      */
     public void dispose() {

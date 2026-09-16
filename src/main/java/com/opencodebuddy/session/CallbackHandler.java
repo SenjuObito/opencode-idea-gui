@@ -207,4 +207,18 @@ public class CallbackHandler {
     public void notifyRevertStateUpdate(boolean hasRevert) {
         notifyRevertStateUpdate(hasRevert, null);
     }
+
+    /**
+     * Notify that the server removed these messages from the session.
+     *
+     * <p>Driven by opencode's {@code message.removed} events, emitted when a
+     * pending revert is finally applied (cleanup runs at the start of the next
+     * prompt). Carries opencode message ids — the same ids the frontend matches
+     * against {@code message.id} / {@code raw.id} / {@code raw.uuid}.</p>
+     */
+    public void notifyMessagesRemoved(List<String> messageIds) {
+        if (callback != null && messageIds != null && !messageIds.isEmpty()) {
+            callback.onMessagesRemoved(messageIds);
+        }
+    }
 }

@@ -128,6 +128,13 @@ public final class OpenCodeMarkerParser {
             return;
         }
 
+        if (line.startsWith("[MESSAGE_REMOVED]")) {
+            // Authoritative server-side deletion (opencode revert cleanup). Payload
+            // is a bare JSON object: {"sessionID": "...", "messageID": "..."}.
+            callback.onMessage("message_removed", stripSeparator(line, "[MESSAGE_REMOVED]").trim());
+            return;
+        }
+
         if (line.startsWith("[SESSION_TITLE]")) {
             String payload = stripSeparator(line, "[SESSION_TITLE]").trim();
             String decoded = decodeJsonStringPayload(payload);

@@ -196,8 +196,21 @@ public class WindowEventHandler extends BaseMessageHandler {
     }
 
     private void handleUnshareSession(String sessionId) {
-        requestDaemonJson("unshareSession", () -> singleSessionParams(sessionId),
-                (success, chunks) -> callJavaScript("onShareSuccess", ""));
+        requestDaemonJson("unshareSession", () -> singleSessionParams(sessionId), new ResponseHandler() {
+            @Override
+            public void onError(String error) {
+                callJavaScript("onUnshareError", error != null ? error : "");
+            }
+
+            @Override
+            public void onComplete(boolean success, java.util.List<String> chunks) {
+                if (success) {
+                    callJavaScript("onUnshareSuccess", "");
+                } else {
+                    callJavaScript("onUnshareError", "");
+                }
+            }
+        });
     }
 
     private void handleRevertSession(String messageId) {

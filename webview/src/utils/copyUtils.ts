@@ -157,10 +157,9 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
 // ── 宿主侧剪贴板通道 ─────────────────────────────────────────────────────
 //
-// VS Code webview 里 navigator.clipboard 受 clipboard-write 权限策略限制、
-// execCommand('copy') 需要焦点+选区，都不可靠。关键复制（分享链接等）
-// 改走宿主 vscode.env.clipboard：webview 发 `copy_to_clipboard` 事件，
-// 宿主写完后回推 `onCopyToClipboardResult('true'|'false')`。
+// Webview 里 navigator.clipboard 受权限策略限制、execCommand('copy') 需要焦点+选区，
+// 都不可靠。关键复制（分享链接等）走宿主（Java Toolkit Clipboard）：
+// webview 发 `write_clipboard` 事件，宿主写完后回推 `onCopyToClipboardResult('true'|'false')`。
 
 let hostCopyWaiter: ((ok: boolean) => void) | null = null;
 
@@ -173,8 +172,8 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * 通过宿主（vscode.env.clipboard）复制文本。
- * 2s 超时按成功兜底 —— 宿主 env.clipboard 写入实际不会失败，
+ * 通过宿主复制文本。
+ * 2s 超时按成功兜底 —— 宿主剪贴板写入实际不会失败，
  * 超时只可能是 ack 丢失，不应向用户报假错误。
  */
 export function copyViaHost(text: string): Promise<boolean> {
@@ -190,7 +189,7 @@ export function copyViaHost(text: string): Promise<boolean> {
     hostCopyWaiter = finish;
     window.setTimeout(() => finish(true), 2000);
 
-    if (!sendBridgeEvent('copy_to_clipboard', text)) {
+    if (!sendBridgeEvent('write_clipboard', text)) {
       finish(false);
     }
   });

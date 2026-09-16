@@ -713,6 +713,16 @@ interface Window {
   onShareError?: (detail?: string) => void;
 
   /**
+   * Unshare session success callback
+   */
+  onUnshareSuccess?: () => void;
+
+  /**
+   * Unshare session failure callback - receives optional daemon error detail
+   */
+  onUnshareError?: (detail?: string) => void;
+
+  /**
    * Fork session success callback - receives JSON `{ sessionId: <new session id> }`
    */
   onForkSuccess?: (json: string) => void;

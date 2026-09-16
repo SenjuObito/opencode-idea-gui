@@ -26,6 +26,7 @@
     "optional": "可选"
   },
   "chat": {
+    "exportMarkdown": "导出会话为 Markdown",
     "sendMessage": "向 {{provider}} 发送消息",
     "createNewSession": "创建新会话",
     "confirmNewSession": "当前会话已有消息，确定要创建新会话吗？",
@@ -127,6 +128,8 @@
     "shareTooltip": "分享会话",
     "unshareTooltip": "取消分享会话",
     "shareSuccess": "链接已复制到剪贴板",
+    "unshareSuccess": "已取消分享会话",
+    "unshareFailed": "取消分享失败",
     "attachmentFile": "[附件: {{fileName}}]",
     "unknownFile": "未知文件",
     "attachmentsUploaded": "[已上传附件]",

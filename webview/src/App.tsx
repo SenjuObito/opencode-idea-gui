@@ -492,6 +492,9 @@ const App = () => {
       addToast(`${t('chat.forkFailed')}${detail ? `: ${detail}` : ''}`, 'error');
     };
     window.onShareSuccess = (url: string) => {
+      if (!url) {
+        return;
+      }
       console.debug('[App] onShareSuccess, copying url to clipboard');
       setSharePending(false);
       setIsShared(true);
@@ -526,6 +529,19 @@ const App = () => {
         return;
       }
       addToast(reason ? `${t('chat.shareFailed')}: ${reason}` : t('chat.shareFailed'), 'error');
+    };
+    window.onUnshareSuccess = () => {
+      console.debug('[App] onUnshareSuccess');
+      setSharePending(false);
+      setIsShared(false);
+      setShareUrl(null);
+      addToast(t('chat.unshareSuccess', { defaultValue: '已取消分享会话' }), 'info');
+    };
+    window.onUnshareError = (detail?: string) => {
+      console.warn('[App] onUnshareError', detail);
+      setSharePending(false);
+      const reason = (detail ?? '').trim();
+      addToast(reason ? `${t('chat.unshareFailed', { defaultValue: '取消分享失败' })}: ${reason}` : t('chat.unshareFailed', { defaultValue: '取消分享失败' }), 'error');
     };
     window.onRevertError = (json: string) => {
       let op = 'undo';
@@ -604,6 +620,8 @@ const App = () => {
       delete window.onForkError;
       delete window.onShareSuccess;
       delete window.onShareError;
+      delete window.onUnshareSuccess;
+      delete window.onUnshareError;
       delete window.onRevertError;
       delete window.onRevertStateUpdate;
       delete window.onMessagesRemoved;
@@ -931,6 +949,11 @@ const App = () => {
         onShare={handleShare}
         onUnshare={handleUnshare}
         onForkAll={handleForkFull}
+        onExport={() => {
+          if (currentSessionId) {
+            exportHistorySession(currentSessionId, sessionTitle);
+          }
+        }}
       />
 
       {currentView === 'settings' ? (

@@ -26,6 +26,7 @@
     "optional": "Optional"
   },
   "chat": {
+    "exportMarkdown": "Export as Markdown",
     "sendMessage": "Send message to {{provider}}",
     "createNewSession": "Create New Session",
     "confirmNewSession": "Current session has messages. Are you sure you want to create a new session?",
@@ -127,6 +128,8 @@
     "shareTooltip": "Share session",
     "unshareTooltip": "Unshare session",
     "shareSuccess": "Link copied to clipboard",
+    "unshareSuccess": "Session unshared",
+    "unshareFailed": "Failed to unshare session",
     "attachmentFile": "[Attachment: {{fileName}}]",
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[Attachments Uploaded]",

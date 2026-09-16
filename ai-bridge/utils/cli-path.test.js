@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isWindowsCmdShim,
+  needsShellOnWindows,
   selectWindowsWhereMatch,
   resolveWindowsSpawnableBin,
+  commonCliBinDirs,
 } from './cli-path.js';
 
 test('isWindowsCmdShim detects .cmd/.bat only on win32-style paths', () => {
@@ -110,3 +112,57 @@ test('resolveWindowsSpawnableBin handles paths with spaces', () => {
 // commonCliBinDirs tests were removed together with those helpers: cli-path.js
 // is now opencode-only (no OMP/Pi providers, no cmd-shim spawn wrapper), so
 // importing them only produced "does not provide an export named …" errors.
+
+test('needsShellOnWindows forces a shell for .cmd/.bat and bare names on win32', () => {
+  const orig = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  try {
+    assert.equal(needsShellOnWindows('opencode.cmd'), true);
+    assert.equal(needsShellOnWindows('opencode.bat'), true);
+    // Bare command name: Node cannot resolve via PATHEXT without a shell.
+    assert.equal(needsShellOnWindows('opencode'), true);
+    // Absolute paths and extensions are left to CreateProcess directly.
+    assert.equal(needsShellOnWindows('C:\\x\\opencode'), false);
+    assert.equal(needsShellOnWindows('C:\\x\\opencode.exe'), false);
+  } finally {
+    Object.defineProperty(process, 'platform', orig);
+  }
+});
+
+test('needsShellOnWindows is always false off win32', () => {
+  const orig = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+  try {
+    assert.equal(needsShellOnWindows('opencode'), false);
+    assert.equal(needsShellOnWindows('opencode.cmd'), false);
+  } finally {
+    Object.defineProperty(process, 'platform', orig);
+  }
+});
+
+test('commonCliBinDirs covers pnpm global and Scoop on Windows', () => {
+  const orig = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  try {
+    const dirs = commonCliBinDirs('C:\\Users\\test');
+    assert.ok(dirs.some((d) => /pnpm$/i.test(d)), 'should include pnpm global dir');
+    assert.ok(dirs.some((d) => /scoop[\\/]shims$/i.test(d)), 'should include Scoop shims');
+    assert.ok(dirs.some((d) => /Roaming[\\/]npm$/i.test(d)), 'should include npm global dir');
+  } finally {
+    Object.defineProperty(process, 'platform', orig);
+  }
+});
+
+test('commonCliBinDirs covers pnpm global on POSIX', () => {
+  const orig = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+  try {
+    const dirs = commonCliBinDirs('/home/test');
+    assert.ok(
+      dirs.some((d) => /\.local[\\/]share[\\/]pnpm$/.test(d)),
+      'should include ~/.local/share/pnpm',
+    );
+  } finally {
+    Object.defineProperty(process, 'platform', orig);
+  }
+});

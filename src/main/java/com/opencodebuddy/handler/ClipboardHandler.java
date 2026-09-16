@@ -19,7 +19,7 @@ import java.awt.datatransfer.StringSelection;
 public class ClipboardHandler extends BaseMessageHandler {
 
     private static final Logger LOG = Logger.getInstance(ClipboardHandler.class);
-    private static final String[] SUPPORTED_TYPES = {"read_clipboard", "write_clipboard"};
+    private static final String[] SUPPORTED_TYPES = {"read_clipboard", "write_clipboard", "copy_to_clipboard"};
 
     private static final long MIN_READ_INTERVAL_MS = 200;
     private static final int MAX_CLIPBOARD_WRITE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -42,7 +42,7 @@ public class ClipboardHandler extends BaseMessageHandler {
                 handleReadClipboard();
                 yield true;
             }
-            case "write_clipboard" -> {
+            case "write_clipboard", "copy_to_clipboard" -> {
                 handleWriteClipboard(content);
                 yield true;
             }
@@ -81,6 +81,7 @@ public class ClipboardHandler extends BaseMessageHandler {
     private void handleWriteClipboard(String content) {
         if (content != null && content.length() > MAX_CLIPBOARD_WRITE_SIZE) {
             LOG.warn("Clipboard write rejected: content too large (" + content.length() + " chars)");
+            callJavaScript("window.onCopyToClipboardResult", "false");
             return;
         }
         // Dispatch clipboard access to EDT to avoid blocking the CEF browser thread.
@@ -88,9 +89,11 @@ public class ClipboardHandler extends BaseMessageHandler {
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
                 Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-                clipboard.setContents(new StringSelection(content), null);
+                clipboard.setContents(new StringSelection(content != null ? content : ""), null);
+                callJavaScript("window.onCopyToClipboardResult", "true");
             } catch (Exception e) {
                 LOG.warn("Failed to write clipboard", e);
+                callJavaScript("window.onCopyToClipboardResult", "false");
             }
         }, ModalityState.any());
     }

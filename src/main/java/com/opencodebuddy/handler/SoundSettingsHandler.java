@@ -221,7 +221,7 @@ public class SoundSettingsHandler {
                             response.addProperty("enabled", enabled);
                             response.addProperty("selectedSound", "custom");
                             response.addProperty("customSoundPath", path);
-                            context.callJavaScript("window.updateSoundNotificationConfig",
+                            context.broadcastToAll("window.updateSoundNotificationConfig",
                                 context.escapeJs(gson.toJson(response)));
                             context.callJavaScript("window.showSuccessI18n",
                                 context.escapeJs("settings.basic.soundNotification.customSoundSaved"));
@@ -268,7 +268,7 @@ public class SoundSettingsHandler {
             response.addProperty("onlyWhenUnfocused", finalOnlyWhenUnfocused);
             response.addProperty("selectedSound", finalSelectedSound);
             response.addProperty("customSoundPath", finalCustomPath);
-            context.callJavaScript("window.updateSoundNotificationConfig", context.escapeJs(gson.toJson(response)));
+            context.broadcastToAll("window.updateSoundNotificationConfig", context.escapeJs(gson.toJson(response)));
         });
     }
 }

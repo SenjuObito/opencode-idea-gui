@@ -155,7 +155,7 @@ export function registerWindowCallbacks(
   //
   // Cross-session safety is enforced by three layers, so this handler does
   // not re-check sessionId (which is not part of the taskEvent payload):
-  //   1. Java ClaudeChatWindow.titleEventListener drops events whose sessionId
+  //   1. Java OpencodeBuddyChatWindow.titleEventListener drops events whose sessionId
   //      does not match the active session.
   //   2. beginSessionTransition (useSessionManagement) clears taskEvents on
   //      session switch, so stale entries from the prior session cannot linger.

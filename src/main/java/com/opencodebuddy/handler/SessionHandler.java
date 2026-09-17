@@ -3,10 +3,10 @@ package com.opencodebuddy.handler;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.bridge.NodeDetector;
 import com.opencodebuddy.model.NodeDetectionResult;
-import com.opencodebuddy.notifications.ClaudeNotifier;
+import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.session.SessionState;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -35,7 +35,7 @@ public class SessionHandler extends BaseMessageHandler {
             "send_message_with_attachments",
             "interrupt_session",
             "restart_session"
-            // Note: create_new_session should not be handled here; it should be handled by ClaudeSDKToolWindow.createNewSession()
+            // Note: create_new_session should not be handled here; it should be handled by OpencodeBuddyToolWindow.createNewSession()
     };
 
     public SessionHandler(HandlerContext context) {
@@ -200,14 +200,14 @@ public class SessionHandler extends BaseMessageHandler {
 
                 var project = context.getProject();
                 if (project != null) {
-                    ClaudeNotifier.setWaiting(project);
+                    OpencodeNotifier.setWaiting(project);
                 }
 
                 context.getSession().sendShell(command)
                         .exceptionally(ex -> {
                             LOG.error("Failed to execute shell command", ex);
                             if (project != null) {
-                                ClaudeNotifier.showError(project, "Shell failed: " + ex.getMessage());
+                                OpencodeNotifier.showError(project, "Shell failed: " + ex.getMessage());
                             }
                             ApplicationManager.getApplication().invokeLater(() -> {
                                 callJavaScript("addErrorMessage", escapeJs("Shell 执行失败: " + ex.getMessage()));
@@ -230,7 +230,7 @@ public class SessionHandler extends BaseMessageHandler {
             // Capture project for use in async callbacks
             var project = context.getProject();
             if (project != null) {
-                ClaudeNotifier.setWaiting(project);
+                OpencodeNotifier.setWaiting(project);
             }
 
             // [FIX] Pass agent prompt and file tags directly to session
@@ -244,16 +244,16 @@ public class SessionHandler extends BaseMessageHandler {
                     if (project != null
                             && "codex".equals(session.getProvider())
                             && !session.isManuallyInterrupted()) {
-                        ClaudeNotifier.showSuccess(
+                        OpencodeNotifier.showSuccess(
                             project,
-                            ClaudeNotifier.buildTitleFromSession(session),
-                            ClaudeNotifier.buildPreviewFromSession(session, "Task completed"));
+                            OpencodeNotifier.buildTitleFromSession(session),
+                            OpencodeNotifier.buildPreviewFromSession(session, "Task completed"));
                     }
                 })
                 .exceptionally(ex -> {
                     LOG.error("Failed to send message", ex);
                     if (project != null) {
-                        ClaudeNotifier.showError(project, "Task failed: " + ex.getMessage());
+                        OpencodeNotifier.showError(project, "Task failed: " + ex.getMessage());
                     }
                     ApplicationManager.getApplication().invokeLater(() -> {
                         callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
@@ -275,7 +275,7 @@ public class SessionHandler extends BaseMessageHandler {
                                   ? payload.get("text").getAsString()
                                   : "";
 
-            java.util.List<ClaudeSession.Attachment> atts = new java.util.ArrayList<>();
+            java.util.List<OpencodeSession.Attachment> atts = new java.util.ArrayList<>();
             if (payload != null && payload.has("attachments") && payload.get("attachments").isJsonArray()) {
                 JsonArray arr = payload.getAsJsonArray("attachments");
                 for (int i = 0; i < arr.size(); i++) {
@@ -289,7 +289,7 @@ public class SessionHandler extends BaseMessageHandler {
                     String data = a.has("data") && !a.get("data").isJsonNull()
                                           ? a.get("data").getAsString()
                                           : "";
-                    atts.add(new ClaudeSession.Attachment(fileName, mediaType, data));
+                    atts.add(new OpencodeSession.Attachment(fileName, mediaType, data));
                 }
             }
 
@@ -354,7 +354,7 @@ public class SessionHandler extends BaseMessageHandler {
      */
     private void sendMessageWithAttachments(
         String prompt,
-        List<ClaudeSession.Attachment> attachments,
+        List<OpencodeSession.Attachment> attachments,
         String agentPrompt,
         java.util.List<String> fileTagPaths,
         String requestedPermissionMode,
@@ -397,7 +397,7 @@ public class SessionHandler extends BaseMessageHandler {
             // Capture project for use in async callbacks
             var project = context.getProject();
             if (project != null) {
-                ClaudeNotifier.setWaiting(project);
+                OpencodeNotifier.setWaiting(project);
             }
 
             // [FIX] Pass agent prompt and file tags directly to session
@@ -411,16 +411,16 @@ public class SessionHandler extends BaseMessageHandler {
                     if (project != null
                             && "codex".equals(session.getProvider())
                             && !session.isManuallyInterrupted()) {
-                        ClaudeNotifier.showSuccess(
+                        OpencodeNotifier.showSuccess(
                             project,
-                            ClaudeNotifier.buildTitleFromSession(session),
-                            ClaudeNotifier.buildPreviewFromSession(session, "Task completed"));
+                            OpencodeNotifier.buildTitleFromSession(session),
+                            OpencodeNotifier.buildPreviewFromSession(session, "Task completed"));
                     }
                 })
                 .exceptionally(ex -> {
                     LOG.error("Failed to send message with attachments", ex);
                     if (project != null) {
-                        ClaudeNotifier.showError(project, "Task failed: " + ex.getMessage());
+                        OpencodeNotifier.showError(project, "Task failed: " + ex.getMessage());
                     }
                     ApplicationManager.getApplication().invokeLater(() -> {
                         callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));

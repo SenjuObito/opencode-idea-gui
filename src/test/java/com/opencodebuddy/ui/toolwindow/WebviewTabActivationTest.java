@@ -38,7 +38,7 @@ public class WebviewTabActivationTest {
         browserComponent.setSize(640, 480);
         AtomicBoolean frontendRepainted = new AtomicBoolean(false);
 
-        assertTrue(ClaudeChatWindow.refreshActivatedWebview(
+        assertTrue(OpencodeBuddyChatWindow.refreshActivatedWebview(
                 new JPanel(), browserComponent, cefBrowser, false,
                 () -> frontendRepainted.set(true)));
 
@@ -64,7 +64,7 @@ public class WebviewTabActivationTest {
         browserComponent.setSize(800, 600);
         AtomicBoolean frontendRepainted = new AtomicBoolean(false);
 
-        assertTrue(ClaudeChatWindow.refreshActivatedWebview(
+        assertTrue(OpencodeBuddyChatWindow.refreshActivatedWebview(
                 new JPanel(), browserComponent, cefBrowser, true,
                 () -> frontendRepainted.set(true)));
 
@@ -85,7 +85,7 @@ public class WebviewTabActivationTest {
         nativeComponent.setBounds(0, 0, 800, 600);
         nativeComponent.startRecording();
 
-        assertTrue(ClaudeChatWindow.forceOsrSurfacePaint(
+        assertTrue(OpencodeBuddyChatWindow.forceOsrSurfacePaint(
                 new JPanel(), new JPanel(), nativeComponent));
 
         assertTrue(nativeComponent.repainted);
@@ -100,7 +100,7 @@ public class WebviewTabActivationTest {
         nativeComponent.setBounds(0, 0, 800, 600);
         nativeComponent.startRecording();
 
-        assertFalse(ClaudeChatWindow.forceOsrSurfacePaint(
+        assertFalse(OpencodeBuddyChatWindow.forceOsrSurfacePaint(
                 new JPanel(), new JPanel(), nativeComponent));
 
         assertEquals(0, nativeComponent.immediatePaintCount);
@@ -109,22 +109,22 @@ public class WebviewTabActivationTest {
     /** Verifies active-state selection for managed tabs, pre-binding windows, and detached windows. */
     @Test
     public void resolvesManagedAndDetachedWebviewActivity() {
-        assertTrue(ClaudeChatWindow.resolveWebviewActive(true, true, false, false));
-        assertFalse(ClaudeChatWindow.resolveWebviewActive(true, false, true, true));
-        assertTrue(ClaudeChatWindow.resolveWebviewActive(false, false, false, false));
-        assertTrue(ClaudeChatWindow.resolveWebviewActive(false, false, true, true));
-        assertFalse(ClaudeChatWindow.resolveWebviewActive(false, false, true, false));
+        assertTrue(OpencodeBuddyChatWindow.resolveWebviewActive(true, true, false, false));
+        assertFalse(OpencodeBuddyChatWindow.resolveWebviewActive(true, false, true, true));
+        assertTrue(OpencodeBuddyChatWindow.resolveWebviewActive(false, false, false, false));
+        assertTrue(OpencodeBuddyChatWindow.resolveWebviewActive(false, false, true, true));
+        assertFalse(OpencodeBuddyChatWindow.resolveWebviewActive(false, false, true, false));
     }
 
     /** Verifies the first active ready transition requests and publishes before history restoration. */
     @Test
     public void repaintsActiveWebviewOnFirstFrontendReadyTransition() {
         List<String> calls = new ArrayList<>();
-        ClaudeChatWindow.FrontendReadyTransitionTracker tracker =
-                new ClaudeChatWindow.FrontendReadyTransitionTracker();
-        ClaudeChatWindow.FrontendReadyTransition transition = tracker.update(true);
+        OpencodeBuddyChatWindow.FrontendReadyTransitionTracker tracker =
+                new OpencodeBuddyChatWindow.FrontendReadyTransitionTracker();
+        OpencodeBuddyChatWindow.FrontendReadyTransition transition = tracker.update(true);
 
-        ClaudeChatWindow.completeFrontendReadyUiUpdate(
+        OpencodeBuddyChatWindow.completeFrontendReadyUiUpdate(
                 false,
                 transition.becameReady(),
                 () -> tracker.isCurrentReady(transition.epoch()),
@@ -142,14 +142,14 @@ public class WebviewTabActivationTest {
     public void staleReadyTaskCannotRepaintNewGeneration() {
         AtomicInteger repaintCount = new AtomicInteger();
         AtomicInteger historyCount = new AtomicInteger();
-        ClaudeChatWindow.FrontendReadyTransitionTracker tracker =
-                new ClaudeChatWindow.FrontendReadyTransitionTracker();
+        OpencodeBuddyChatWindow.FrontendReadyTransitionTracker tracker =
+                new OpencodeBuddyChatWindow.FrontendReadyTransitionTracker();
 
-        ClaudeChatWindow.FrontendReadyTransition firstReady = tracker.update(true);
+        OpencodeBuddyChatWindow.FrontendReadyTransition firstReady = tracker.update(true);
         tracker.update(false);
-        ClaudeChatWindow.FrontendReadyTransition secondReady = tracker.update(true);
+        OpencodeBuddyChatWindow.FrontendReadyTransition secondReady = tracker.update(true);
 
-        ClaudeChatWindow.completeFrontendReadyUiUpdate(
+        OpencodeBuddyChatWindow.completeFrontendReadyUiUpdate(
                 false,
                 firstReady.becameReady(),
                 () -> tracker.isCurrentReady(firstReady.epoch()),
@@ -157,7 +157,7 @@ public class WebviewTabActivationTest {
                 () -> true,
                 repaintCount::incrementAndGet,
                 historyCount::incrementAndGet);
-        ClaudeChatWindow.completeFrontendReadyUiUpdate(
+        OpencodeBuddyChatWindow.completeFrontendReadyUiUpdate(
                 false,
                 secondReady.becameReady(),
                 () -> tracker.isCurrentReady(secondReady.epoch()),
@@ -175,13 +175,13 @@ public class WebviewTabActivationTest {
     public void duplicateReadyKeepsFirstTaskEligibleWithoutSecondRepaint() {
         AtomicInteger repaintCount = new AtomicInteger();
         AtomicInteger historyCount = new AtomicInteger();
-        ClaudeChatWindow.FrontendReadyTransitionTracker tracker =
-                new ClaudeChatWindow.FrontendReadyTransitionTracker();
+        OpencodeBuddyChatWindow.FrontendReadyTransitionTracker tracker =
+                new OpencodeBuddyChatWindow.FrontendReadyTransitionTracker();
 
-        ClaudeChatWindow.FrontendReadyTransition firstReady = tracker.update(true);
-        ClaudeChatWindow.FrontendReadyTransition duplicateReady = tracker.update(true);
+        OpencodeBuddyChatWindow.FrontendReadyTransition firstReady = tracker.update(true);
+        OpencodeBuddyChatWindow.FrontendReadyTransition duplicateReady = tracker.update(true);
 
-        ClaudeChatWindow.completeFrontendReadyUiUpdate(
+        OpencodeBuddyChatWindow.completeFrontendReadyUiUpdate(
                 false,
                 firstReady.becameReady(),
                 () -> tracker.isCurrentReady(firstReady.epoch()),
@@ -189,7 +189,7 @@ public class WebviewTabActivationTest {
                 () -> true,
                 repaintCount::incrementAndGet,
                 historyCount::incrementAndGet);
-        ClaudeChatWindow.completeFrontendReadyUiUpdate(
+        OpencodeBuddyChatWindow.completeFrontendReadyUiUpdate(
                 false,
                 duplicateReady.becameReady(),
                 () -> tracker.isCurrentReady(duplicateReady.epoch()),
@@ -208,11 +208,11 @@ public class WebviewTabActivationTest {
         AtomicInteger requestCount = new AtomicInteger();
         AtomicInteger publishCount = new AtomicInteger();
         AtomicInteger historyCount = new AtomicInteger();
-        ClaudeChatWindow.FrontendReadyTransitionTracker tracker =
-                new ClaudeChatWindow.FrontendReadyTransitionTracker();
-        ClaudeChatWindow.FrontendReadyTransition transition = tracker.update(true);
+        OpencodeBuddyChatWindow.FrontendReadyTransitionTracker tracker =
+                new OpencodeBuddyChatWindow.FrontendReadyTransitionTracker();
+        OpencodeBuddyChatWindow.FrontendReadyTransition transition = tracker.update(true);
 
-        ClaudeChatWindow.completeFrontendReadyUiUpdate(
+        OpencodeBuddyChatWindow.completeFrontendReadyUiUpdate(
                 false,
                 transition.becameReady(),
                 () -> tracker.isCurrentReady(transition.epoch()),
@@ -229,8 +229,8 @@ public class WebviewTabActivationTest {
     /** Verifies an OSR activation presents cached pixels without creating publication work. */
     @Test
     public void activationConsumesOneCachedSurfacePresentation() {
-        ClaudeChatWindow.SurfacePresentationCoordinator coordinator =
-                new ClaudeChatWindow.SurfacePresentationCoordinator();
+        OpencodeBuddyChatWindow.SurfacePresentationCoordinator coordinator =
+                new OpencodeBuddyChatWindow.SurfacePresentationCoordinator();
         Object browserIdentity = new Object();
         Object cefBrowserIdentity = new Object();
         AtomicInteger presentationCount = new AtomicInteger();
@@ -255,8 +255,8 @@ public class WebviewTabActivationTest {
     /** Verifies an unmapped cached surface stays pending until a later showing event. */
     @Test
     public void retainsCachedPresentationUntilNativeChildIsShowing() {
-        ClaudeChatWindow.SurfacePresentationCoordinator coordinator =
-                new ClaudeChatWindow.SurfacePresentationCoordinator();
+        OpencodeBuddyChatWindow.SurfacePresentationCoordinator coordinator =
+                new OpencodeBuddyChatWindow.SurfacePresentationCoordinator();
         Object browserIdentity = new Object();
         Object cefBrowserIdentity = new Object();
         AtomicInteger presentationCount = new AtomicInteger();
@@ -290,24 +290,24 @@ public class WebviewTabActivationTest {
     @Test
     public void selectsActivationActionWithoutCreatingOsrPublicationWork() {
         assertEquals(
-                ClaudeChatWindow.TabActivationSurfaceAction.PUBLISH_PENDING,
-                ClaudeChatWindow.decideTabActivationSurfaceAction(true, true, true));
+                OpencodeBuddyChatWindow.TabActivationSurfaceAction.PUBLISH_PENDING,
+                OpencodeBuddyChatWindow.decideTabActivationSurfaceAction(true, true, true));
         assertEquals(
-                ClaudeChatWindow.TabActivationSurfaceAction.PRESENT_CACHED,
-                ClaudeChatWindow.decideTabActivationSurfaceAction(true, true, false));
+                OpencodeBuddyChatWindow.TabActivationSurfaceAction.PRESENT_CACHED,
+                OpencodeBuddyChatWindow.decideTabActivationSurfaceAction(true, true, false));
         assertEquals(
-                ClaudeChatWindow.TabActivationSurfaceAction.WINDOWED_REFRESH,
-                ClaudeChatWindow.decideTabActivationSurfaceAction(true, false, false));
+                OpencodeBuddyChatWindow.TabActivationSurfaceAction.WINDOWED_REFRESH,
+                OpencodeBuddyChatWindow.decideTabActivationSurfaceAction(true, false, false));
         assertEquals(
-                ClaudeChatWindow.TabActivationSurfaceAction.NONE,
-                ClaudeChatWindow.decideTabActivationSurfaceAction(false, false, false));
+                OpencodeBuddyChatWindow.TabActivationSurfaceAction.NONE,
+                OpencodeBuddyChatWindow.decideTabActivationSurfaceAction(false, false, false));
     }
 
     /** Verifies only the current browser and epoch can complete deferred pending work. */
     @Test
     public void completesPendingSurfaceRefreshForCurrentPageOnly() {
-        ClaudeChatWindow.SurfaceRefreshCoordinator coordinator =
-                new ClaudeChatWindow.SurfaceRefreshCoordinator();
+        OpencodeBuddyChatWindow.SurfaceRefreshCoordinator coordinator =
+                new OpencodeBuddyChatWindow.SurfaceRefreshCoordinator();
         Object browserIdentity = new Object();
         coordinator.request(browserIdentity, 11L, "history_render_complete");
 
@@ -324,7 +324,7 @@ public class WebviewTabActivationTest {
         AtomicInteger repaintCount = new AtomicInteger();
         AtomicInteger historyCount = new AtomicInteger();
 
-        ClaudeChatWindow.completeFrontendReadyUiUpdate(
+        OpencodeBuddyChatWindow.completeFrontendReadyUiUpdate(
                 true,
                 true,
                 () -> true,
@@ -345,11 +345,11 @@ public class WebviewTabActivationTest {
     @Test
     public void requestsCurrentSurfaceAfterRestoredHistoryRendering() {
         AtomicInteger refreshCount = new AtomicInteger();
-        ClaudeChatWindow.FrontendReadyTransitionTracker tracker =
-                new ClaudeChatWindow.FrontendReadyTransitionTracker();
-        ClaudeChatWindow.FrontendReadyTransition ready = tracker.update(true);
+        OpencodeBuddyChatWindow.FrontendReadyTransitionTracker tracker =
+                new OpencodeBuddyChatWindow.FrontendReadyTransitionTracker();
+        OpencodeBuddyChatWindow.FrontendReadyTransition ready = tracker.update(true);
 
-        ClaudeChatWindow.completeHistoryRenderUiUpdate(
+        OpencodeBuddyChatWindow.completeHistoryRenderUiUpdate(
                 false,
                 () -> tracker.isCurrentReady(ready.epoch()),
                 refreshCount::incrementAndGet);
@@ -361,13 +361,13 @@ public class WebviewTabActivationTest {
     @Test
     public void staleHistoryRenderTaskCannotRefreshNewGeneration() {
         AtomicInteger refreshCount = new AtomicInteger();
-        ClaudeChatWindow.FrontendReadyTransitionTracker tracker =
-                new ClaudeChatWindow.FrontendReadyTransitionTracker();
-        ClaudeChatWindow.FrontendReadyTransition oldReady = tracker.update(true);
+        OpencodeBuddyChatWindow.FrontendReadyTransitionTracker tracker =
+                new OpencodeBuddyChatWindow.FrontendReadyTransitionTracker();
+        OpencodeBuddyChatWindow.FrontendReadyTransition oldReady = tracker.update(true);
         tracker.update(false);
         tracker.update(true);
 
-        ClaudeChatWindow.completeHistoryRenderUiUpdate(
+        OpencodeBuddyChatWindow.completeHistoryRenderUiUpdate(
                 false,
                 () -> tracker.isCurrentReady(oldReady.epoch()),
                 refreshCount::incrementAndGet);
@@ -380,7 +380,7 @@ public class WebviewTabActivationTest {
     public void skipsHistoryRenderRefreshAfterDisposal() {
         AtomicInteger refreshCount = new AtomicInteger();
 
-        ClaudeChatWindow.completeHistoryRenderUiUpdate(
+        OpencodeBuddyChatWindow.completeHistoryRenderUiUpdate(
                 true,
                 () -> true,
                 refreshCount::incrementAndGet);
@@ -394,21 +394,21 @@ public class WebviewTabActivationTest {
         Object browser = new Object();
         Object cefBrowser = new Object();
 
-        assertTrue(ClaudeChatWindow.historyRenderOwnerMatches(
+        assertTrue(OpencodeBuddyChatWindow.historyRenderOwnerMatches(
                 browser, cefBrowser, 4, browser, cefBrowser, 4));
-        assertFalse(ClaudeChatWindow.historyRenderOwnerMatches(
+        assertFalse(OpencodeBuddyChatWindow.historyRenderOwnerMatches(
                 browser, cefBrowser, 4, new Object(), cefBrowser, 4));
-        assertFalse(ClaudeChatWindow.historyRenderOwnerMatches(
+        assertFalse(OpencodeBuddyChatWindow.historyRenderOwnerMatches(
                 browser, cefBrowser, 4, browser, new Object(), 4));
-        assertFalse(ClaudeChatWindow.historyRenderOwnerMatches(
+        assertFalse(OpencodeBuddyChatWindow.historyRenderOwnerMatches(
                 browser, cefBrowser, 4, browser, cefBrowser, 5));
     }
 
     /** Verifies a hidden surface request remains pending and is consumed exactly once when eligible. */
     @Test
     public void retainsHiddenSurfaceRefreshUntilItCanBeConsumed() {
-        ClaudeChatWindow.SurfaceRefreshCoordinator coordinator =
-                new ClaudeChatWindow.SurfaceRefreshCoordinator();
+        OpencodeBuddyChatWindow.SurfaceRefreshCoordinator coordinator =
+                new OpencodeBuddyChatWindow.SurfaceRefreshCoordinator();
         Object browserIdentity = new Object();
         AtomicInteger refreshCount = new AtomicInteger();
         coordinator.request(browserIdentity, 3L, "history_render_complete");
@@ -435,8 +435,8 @@ public class WebviewTabActivationTest {
     /** Verifies a failed native resize keeps its request pending for a later lifecycle event. */
     @Test
     public void retainsSurfaceRefreshWhenNativeResizeDoesNotRun() {
-        ClaudeChatWindow.SurfaceRefreshCoordinator coordinator =
-                new ClaudeChatWindow.SurfaceRefreshCoordinator();
+        OpencodeBuddyChatWindow.SurfaceRefreshCoordinator coordinator =
+                new OpencodeBuddyChatWindow.SurfaceRefreshCoordinator();
         Object browserIdentity = new Object();
         coordinator.request(browserIdentity, 5L, "history_render_complete");
 
@@ -448,8 +448,8 @@ public class WebviewTabActivationTest {
     /** Verifies component lifecycle callbacks cannot re-enter an in-progress native refresh. */
     @Test
     public void preventsSurfaceRefreshReentry() {
-        ClaudeChatWindow.SurfaceRefreshCoordinator coordinator =
-                new ClaudeChatWindow.SurfaceRefreshCoordinator();
+        OpencodeBuddyChatWindow.SurfaceRefreshCoordinator coordinator =
+                new OpencodeBuddyChatWindow.SurfaceRefreshCoordinator();
         Object browserIdentity = new Object();
         AtomicBoolean nestedConsumed = new AtomicBoolean(true);
         coordinator.request(browserIdentity, 9L, "history_render_complete");
@@ -472,8 +472,8 @@ public class WebviewTabActivationTest {
     /** Verifies a request owned by an obsolete browser or ready epoch is discarded. */
     @Test
     public void discardsSurfaceRefreshOwnedByObsoletePage() {
-        ClaudeChatWindow.SurfaceRefreshCoordinator coordinator =
-                new ClaudeChatWindow.SurfaceRefreshCoordinator();
+        OpencodeBuddyChatWindow.SurfaceRefreshCoordinator coordinator =
+                new OpencodeBuddyChatWindow.SurfaceRefreshCoordinator();
         Object oldBrowser = new Object();
         coordinator.request(oldBrowser, 7L, "history_render_complete");
 
@@ -488,23 +488,23 @@ public class WebviewTabActivationTest {
     /** Verifies wrapper and real native-child visibility, root state, and geometry gate refresh. */
     @Test
     public void requiresStableVisibleGeometryForSurfaceRefresh() {
-        assertTrue(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertTrue(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 true, true, true, true, true, true, false, 800, 600));
-        assertFalse(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertFalse(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 false, true, true, true, true, true, false, 800, 600));
-        assertFalse(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertFalse(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 true, false, true, true, true, true, false, 800, 600));
-        assertFalse(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertFalse(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 true, true, false, true, true, true, false, 800, 600));
-        assertFalse(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertFalse(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 true, true, true, false, true, true, false, 800, 600));
-        assertFalse(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertFalse(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 true, true, true, true, false, true, false, 800, 600));
-        assertFalse(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertFalse(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 true, true, true, true, true, false, false, 800, 600));
-        assertFalse(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertFalse(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 true, true, true, true, true, true, true, 800, 600));
-        assertFalse(ClaudeChatWindow.isSurfaceRefreshEligible(
+        assertFalse(OpencodeBuddyChatWindow.isSurfaceRefreshEligible(
                 true, true, true, true, true, true, false, 0, 600));
     }
 
@@ -520,7 +520,7 @@ public class WebviewTabActivationTest {
         CefBrowser cefBrowser = createCefBrowser(nativeComponent, calls, resized);
         AtomicBoolean frontendRepainted = new AtomicBoolean(false);
 
-        assertFalse(ClaudeChatWindow.refreshActivatedWebview(
+        assertFalse(OpencodeBuddyChatWindow.refreshActivatedWebview(
                 new JPanel(), new JPanel(), cefBrowser, true,
                 () -> frontendRepainted.set(true)));
 
@@ -532,15 +532,15 @@ public class WebviewTabActivationTest {
     /** Verifies replacing a phase-A timeout for the same attempt invalidates the older runnable. */
     @Test
     public void replacesTimeoutOnlyForTheSameExactAttempt() {
-        ClaudeChatWindow.SurfaceAttemptTimeoutOwner owner =
-                new ClaudeChatWindow.SurfaceAttemptTimeoutOwner();
+        OpencodeBuddyChatWindow.SurfaceAttemptTimeoutOwner owner =
+                new OpencodeBuddyChatWindow.SurfaceAttemptTimeoutOwner();
         Object attempt = new Object();
         Runnable phaseATimeout = () -> { };
         Runnable phaseBTimeout = () -> { };
 
-        ClaudeChatWindow.SurfaceAttemptTimeoutOwner.InstallResult first =
+        OpencodeBuddyChatWindow.SurfaceAttemptTimeoutOwner.InstallResult first =
                 owner.install(attempt, phaseATimeout);
-        ClaudeChatWindow.SurfaceAttemptTimeoutOwner.InstallResult second =
+        OpencodeBuddyChatWindow.SurfaceAttemptTimeoutOwner.InstallResult second =
                 owner.install(attempt, phaseBTimeout);
 
         assertTrue(first.accepted());
@@ -553,8 +553,8 @@ public class WebviewTabActivationTest {
     /** Verifies a late callback from A cannot cancel B after A timed out and handed off. */
     @Test
     public void lateAttemptCannotRemoveNewerAttemptTimeout() {
-        ClaudeChatWindow.SurfaceAttemptTimeoutOwner owner =
-                new ClaudeChatWindow.SurfaceAttemptTimeoutOwner();
+        OpencodeBuddyChatWindow.SurfaceAttemptTimeoutOwner owner =
+                new OpencodeBuddyChatWindow.SurfaceAttemptTimeoutOwner();
         Object attemptA = new Object();
         Object attemptB = new Object();
         Runnable timeoutA = () -> { };
@@ -572,8 +572,8 @@ public class WebviewTabActivationTest {
     /** Verifies a different active attempt cannot have its timeout replaced before release. */
     @Test
     public void rejectsTimeoutReplacementOwnedByAnotherAttempt() {
-        ClaudeChatWindow.SurfaceAttemptTimeoutOwner owner =
-                new ClaudeChatWindow.SurfaceAttemptTimeoutOwner();
+        OpencodeBuddyChatWindow.SurfaceAttemptTimeoutOwner owner =
+                new OpencodeBuddyChatWindow.SurfaceAttemptTimeoutOwner();
         Object attemptA = new Object();
         Object attemptB = new Object();
         Runnable timeoutA = () -> { };

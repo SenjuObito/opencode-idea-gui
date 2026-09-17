@@ -84,7 +84,7 @@ public class SkillHandler extends BaseMessageHandler {
             String skillsJson = GSON.toJson(skills);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.updateSkills", escapeJs(skillsJson));
+                broadcastToAll("window.updateSkills", escapeJs(skillsJson));
             });
         } catch (Exception e) {
             LOG.error("[SkillHandler] Failed to get all skills: " + e.getMessage(), e);

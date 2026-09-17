@@ -31,15 +31,15 @@ public class SessionContextService {
         this.project = project;
     }
 
-    public ClaudeSession.Message buildUserMessage(String normalizedInput, List<ClaudeSession.Attachment> attachments) {
-        ClaudeSession.Message userMessage = new ClaudeSession.Message(ClaudeSession.Message.Type.USER, normalizedInput);
+    public OpencodeSession.Message buildUserMessage(String normalizedInput, List<OpencodeSession.Attachment> attachments) {
+        OpencodeSession.Message userMessage = new OpencodeSession.Message(OpencodeSession.Message.Type.USER, normalizedInput);
 
         try {
             JsonArray contentArr = new JsonArray();
             String userDisplayText = normalizedInput;
 
             if (attachments != null && !attachments.isEmpty()) {
-                for (ClaudeSession.Attachment att : attachments) {
+                for (OpencodeSession.Attachment att : attachments) {
                     if (isImageAttachment(att)) {
                         contentArr.add(createImageBlock(att));
                     } else if (att != null) {
@@ -64,7 +64,7 @@ public class SessionContextService {
             userMessage.raw = rawUser;
             userMessage.content = userDisplayText;
 
-            LOG.info("[ClaudeSession] Created user message: content="
+            LOG.info("[OpencodeSession] Created user message: content="
                     + (userDisplayText.length() > 50 ? userDisplayText.substring(0, 50) + "..." : userDisplayText)
                     + ", hasRaw=true, contentBlocks=" + contentArr.size());
         } catch (ProcessCanceledException e) {
@@ -76,7 +76,7 @@ public class SessionContextService {
         return userMessage;
     }
 
-    public String buildCodexContextAppend(JsonObject openedFilesJson, List<String> fileTagPaths) {
+    public String buildSessionContextAppend(JsonObject openedFilesJson, List<String> fileTagPaths) {
         StringBuilder sb = new StringBuilder();
         boolean hasContent = false;
 
@@ -236,6 +236,11 @@ public class SessionContextService {
         return hasContent ? sb.toString() : "";
     }
 
+    @Deprecated
+    public String buildCodexContextAppend(JsonObject openedFilesJson, List<String> fileTagPaths) {
+        return buildSessionContextAppend(openedFilesJson, fileTagPaths);
+    }
+
     private String processReferences(
             String input,
             String protocol,
@@ -345,7 +350,7 @@ public class SessionContextService {
         });
     }
 
-    private boolean isImageAttachment(ClaudeSession.Attachment att) {
+    private boolean isImageAttachment(OpencodeSession.Attachment att) {
         if (att == null) {
             return false;
         }
@@ -353,7 +358,7 @@ public class SessionContextService {
         return mediaType.startsWith("image/") && att.data != null;
     }
 
-    private JsonObject createImageBlock(ClaudeSession.Attachment att) {
+    private JsonObject createImageBlock(OpencodeSession.Attachment att) {
         JsonObject imageBlock = new JsonObject();
         imageBlock.addProperty("type", "image");
 
@@ -366,7 +371,7 @@ public class SessionContextService {
         return imageBlock;
     }
 
-    private JsonObject createAttachmentBlock(ClaudeSession.Attachment att) {
+    private JsonObject createAttachmentBlock(OpencodeSession.Attachment att) {
         JsonObject block = new JsonObject();
         block.addProperty("type", "attachment");
         String filename = att != null && att.fileName != null ? att.fileName : "attachment";
@@ -387,11 +392,11 @@ public class SessionContextService {
         return textBlock;
     }
 
-    private String generateAttachmentSummary(List<ClaudeSession.Attachment> attachments) {
+    private String generateAttachmentSummary(List<OpencodeSession.Attachment> attachments) {
         int imageCount = 0;
         List<String> names = new ArrayList<>();
 
-        for (ClaudeSession.Attachment att : attachments) {
+        for (OpencodeSession.Attachment att : attachments) {
             if (att != null && att.fileName != null && !att.fileName.isEmpty()) {
                 names.add(att.fileName);
             }

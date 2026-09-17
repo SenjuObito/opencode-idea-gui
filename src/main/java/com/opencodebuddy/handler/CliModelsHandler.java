@@ -7,7 +7,7 @@ import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.handler.provider.ModelProviderHandler;
 import com.opencodebuddy.provider.ModelContextWindowCatalog;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.startup.BridgePreloader;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -328,7 +328,7 @@ public class CliModelsHandler extends BaseMessageHandler {
             return;
         }
         try {
-            ClaudeSession session = context.getSession();
+            OpencodeSession session = context.getSession();
             if (session == null) {
                 return;
             }

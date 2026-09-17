@@ -1,5 +1,7 @@
 package com.opencodebuddy.ui.toolwindow;
 
+import com.opencodebuddy.action.tab.CreateNewTabAction;
+import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.settings.TabStateService;
 import com.opencodebuddy.startup.BridgePreloader;
@@ -38,28 +40,31 @@ import java.util.concurrent.TimeoutException;
  * Claude SDK chat tool window.
  * Implements DumbAware to allow usage during index building.
  */
-public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
+public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
 
-    private static final Logger LOG = Logger.getInstance(ClaudeSDKToolWindow.class);
+    private static final Logger LOG = Logger.getInstance(OpencodeBuddyToolWindow.class);
     public static final String TOOL_WINDOW_ID = "OpenCode";
     public static final String TOOL_WINDOW_DISPLAY_NAME = "OpenCode Buddy";
-    private static final Map<Project, ClaudeChatWindow> instances = new ConcurrentHashMap<>();
-    private static final Map<Content, ClaudeChatWindow> contentToWindowMap = new ConcurrentHashMap<>();
+    private static final Map<Project, OpencodeBuddyChatWindow> instances = new ConcurrentHashMap<>();
+    private static final Map<Content, OpencodeBuddyChatWindow> contentToWindowMap = new ConcurrentHashMap<>();
     private static volatile boolean shutdownHookRegistered = false;
-    private static final String TAB_NAME_PREFIX = "AI";
-    /** Matches tab names like "AI1", "AI1..." (answering) or "AI1 (completed)" — extracts the numeric part. */
+    /** Matches tab names with numeric suffixes (e.g., "标签页 1", "Tab 1", "AI1", "标签页 1...") — extracts the numeric part. */
     private static final java.util.regex.Pattern TAB_NAME_PATTERN =
-            java.util.regex.Pattern.compile("^" + TAB_NAME_PREFIX + "(\\d+)");
+            java.util.regex.Pattern.compile("(?:^|[^0-9])(\\d+)(?:\\.{3}|\\s*\\([^)]+\\))?$");
     private static final Set<Content> detachingContents =
             Collections.newSetFromMap(new ConcurrentHashMap<>());
 
-    public static ClaudeChatWindow getChatWindow(Project project) {
+    public static OpencodeBuddyChatWindow getChatWindow(Project project) {
         return instances.get(project);
+    }
+
+    public static String getDefaultTabName(int index) {
+        return OpenCodeBuddyBundle.message("tab.defaultName", index);
     }
 
     public static String getNextTabName(ToolWindow toolWindow) {
         if (toolWindow == null) {
-            return TAB_NAME_PREFIX + "1";
+            return getDefaultTabName(1);
         }
 
         ContentManager contentManager = toolWindow.getContentManager();
@@ -70,8 +75,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             if (displayName == null) {
                 continue;
             }
-            // Extract the leading number after the "AI" prefix so status suffixes
-            // like "AI1..." (answering) or "AI1 (completed)" still count.
+            // Extract the numeric part so status suffixes like "..." (answering) or "(completed)" still count.
             java.util.regex.Matcher matcher = TAB_NAME_PATTERN.matcher(displayName);
             if (matcher.find()) {
                 try {
@@ -84,12 +88,12 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             }
         }
 
-        return TAB_NAME_PREFIX + (maxNumber + 1);
+        return getDefaultTabName(maxNumber + 1);
     }
 
-    static void registerWindow(Project project, ClaudeChatWindow window) {
+    static void registerWindow(Project project, OpencodeBuddyChatWindow window) {
         synchronized (instances) {
-            ClaudeChatWindow oldInstance = instances.get(project);
+            OpencodeBuddyChatWindow oldInstance = instances.get(project);
             if (oldInstance != null && oldInstance != window) {
                 LOG.warn("Window instance already exists for project " + project.getName() + ", replacing old instance");
                 oldInstance.dispose();
@@ -98,7 +102,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         }
     }
 
-    static void unregisterWindow(Project project, ClaudeChatWindow window) {
+    static void unregisterWindow(Project project, OpencodeBuddyChatWindow window) {
         synchronized (instances) {
             if (instances.get(project) == window) {
                 instances.remove(project);
@@ -106,7 +110,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         }
     }
 
-    static void registerContentMapping(Content content, ClaudeChatWindow window) {
+    static void registerContentMapping(Content content, OpencodeBuddyChatWindow window) {
         contentToWindowMap.put(content, window);
     }
 
@@ -114,13 +118,13 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         contentToWindowMap.remove(content);
     }
 
-    private static Set<ClaudeChatWindow> collectProjectChatWindows(@NotNull Project project) {
-        Set<ClaudeChatWindow> windows = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-        ClaudeChatWindow mainWindow = instances.get(project);
+    private static Set<OpencodeBuddyChatWindow> collectProjectChatWindows(@NotNull Project project) {
+        Set<OpencodeBuddyChatWindow> windows = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        OpencodeBuddyChatWindow mainWindow = instances.get(project);
         if (mainWindow != null) {
             windows.add(mainWindow);
         }
-        for (ClaudeChatWindow window : contentToWindowMap.values()) {
+        for (OpencodeBuddyChatWindow window : contentToWindowMap.values()) {
             if (window != null && project.equals(window.getProject())) {
                 windows.add(window);
             }
@@ -134,19 +138,68 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
      * Returns all chat windows belonging to the given project, including tab windows
      * and detached floating windows.
      */
-    public static Set<ClaudeChatWindow> getAllChatWindowsForProject(@NotNull Project project) {
+    public static Set<OpencodeBuddyChatWindow> getAllChatWindowsForProject(@NotNull Project project) {
         return collectProjectChatWindows(project);
     }
 
-    private static Set<ClaudeChatWindow> collectAllChatWindows() {
-        Set<ClaudeChatWindow> windows = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    private static Set<OpencodeBuddyChatWindow> collectAllChatWindows() {
+        Set<OpencodeBuddyChatWindow> windows = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         windows.addAll(instances.values());
         windows.addAll(contentToWindowMap.values());
         windows.addAll(DetachedWindowManager.getAllDetachedChatWindows());
         return windows;
     }
 
-    private static void cleanupWindowProcesses(@NotNull ClaudeChatWindow window) {
+    /**
+     * Broadcast a JavaScript call to all active OpencodeBuddyChatWindow instances across all projects.
+     *
+     * @param excludeContext optional HandlerContext to skip, may be null
+     * @param functionName JavaScript function to call
+     * @param args arguments to pass to the JavaScript function
+     */
+    public static void broadcastToAllChatWindows(HandlerContext excludeContext, String functionName, String... args) {
+        Set<OpencodeBuddyChatWindow> windows = collectAllChatWindows();
+        for (OpencodeBuddyChatWindow window : windows) {
+            if (window != null && !window.isDisposed()) {
+                if (excludeContext == null || window.getHandlerContext() != excludeContext) {
+                    window.callJavaScript(functionName, args);
+                }
+            }
+        }
+    }
+
+    public static void broadcastToAllChatWindows(String functionName, String... args) {
+        broadcastToAllChatWindows(null, functionName, args);
+    }
+
+    /**
+     * Broadcast a JavaScript call to all active OpencodeBuddyChatWindow instances belonging to a specific project.
+     *
+     * @param project target project, if null broadcasts to all
+     * @param excludeContext optional HandlerContext to skip, may be null
+     * @param functionName JavaScript function to call
+     * @param args arguments to pass to the JavaScript function
+     */
+    public static void broadcastToProjectChatWindows(Project project, HandlerContext excludeContext, String functionName, String... args) {
+        if (project == null) {
+            broadcastToAllChatWindows(excludeContext, functionName, args);
+            return;
+        }
+        Set<OpencodeBuddyChatWindow> windows = collectProjectChatWindows(project);
+        for (OpencodeBuddyChatWindow window : windows) {
+            if (window != null && !window.isDisposed()) {
+                if (excludeContext == null || window.getHandlerContext() != excludeContext) {
+                    window.callJavaScript(functionName, args);
+                }
+            }
+        }
+    }
+
+    public static void broadcastToProjectChatWindows(Project project, String functionName, String... args) {
+        broadcastToProjectChatWindows(project, null, functionName, args);
+    }
+
+    private static void cleanupWindowProcesses(@NotNull OpencodeBuddyChatWindow window) {
         try {
             if (window.getOpenCodeSDKBridge() != null) {
                 window.getOpenCodeSDKBridge().stopDaemon();
@@ -157,12 +210,12 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
     }
 
     private static void disposeProjectChatWindows(@NotNull Project project) {
-        Set<ClaudeChatWindow> windows = collectProjectChatWindows(project);
+        Set<OpencodeBuddyChatWindow> windows = collectProjectChatWindows(project);
         if (windows.isEmpty()) {
             return;
         }
         LOG.info("[ToolWindow] Disposing " + windows.size() + " chat window(s) for project: " + project.getName());
-        for (ClaudeChatWindow window : new HashSet<>(windows)) {
+        for (OpencodeBuddyChatWindow window : new HashSet<>(windows)) {
             if (window != null && !window.isDisposed()) {
                 try {
                     window.dispose();
@@ -175,7 +228,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
 
     /**
      * Mark a Content as being detached (moving to a floating window).
-     * This prevents the contentRemoved listener from disposing the associated ClaudeChatWindow.
+     * This prevents the contentRemoved listener from disposing the associated OpencodeBuddyChatWindow.
      */
     public static void markContentAsDetaching(Content content) {
         detachingContents.add(content);
@@ -189,7 +242,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         return detachingContents.contains(content);
     }
 
-    public static ClaudeChatWindow getChatWindowForContent(Content content) {
+    public static OpencodeBuddyChatWindow getChatWindowForContent(Content content) {
         return content != null ? contentToWindowMap.get(content) : null;
     }
 
@@ -201,6 +254,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
 
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
+        toolWindow.setTitleActions(java.util.List.of(new CreateNewTabAction()));
         registerShutdownHook();
 
         // 开屏一定是新会话：先丢掉上次的标签布局与每标签会话绑定，避免任何残留
@@ -216,7 +270,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         } else {
             LOG.info("[ToolWindow] ai-bridge not ready, showing loading panel");
             JPanel loadingPanel = createLoadingPanel();
-            Content loadingContent = contentFactory.createContent(loadingPanel, TAB_NAME_PREFIX + "1", false);
+            Content loadingContent = contentFactory.createContent(loadingPanel, getDefaultTabName(1), false);
             contentManager.addContent(loadingContent);
 
             ApplicationManager.getApplication().executeOnPooledThread(() -> {
@@ -271,7 +325,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                 if (contentManager.getSelectedContent() != event.getContent()) {
                     return;
                 }
-                ClaudeChatWindow window = contentToWindowMap.get(event.getContent());
+                OpencodeBuddyChatWindow window = contentToWindowMap.get(event.getContent());
                 if (window != null) {
                     window.onTabActivated();
                     window.resyncSessionFromServerIfNeeded();
@@ -293,9 +347,9 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                 TabStateService tabStateService = TabStateService.getInstance(project);
                 tabStateService.onTabRemoved(removedIndex);
 
-                ClaudeChatWindow window = contentToWindowMap.get(removedContent);
+                OpencodeBuddyChatWindow window = contentToWindowMap.get(removedContent);
                 if (window != null) {
-                    LOG.info("[TabManager] Disposing ClaudeChatWindow for removed tab: "
+                    LOG.info("[TabManager] Disposing OpencodeBuddyChatWindow for removed tab: "
                         + removedContent.getDisplayName());
                     window.dispose();
                 }
@@ -396,8 +450,8 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             ContentManager contentManager,
             Content loadingContent
     ) {
-        ClaudeChatWindow firstChatWindow = new ClaudeChatWindow(project, false);
-        String firstTabName = TAB_NAME_PREFIX + "1";
+        OpencodeBuddyChatWindow firstChatWindow = new OpencodeBuddyChatWindow(project, false);
+        String firstTabName = getDefaultTabName(1);
 
         loadingContent.setComponent(firstChatWindow.getContent());
         loadingContent.setDisplayName(firstTabName);
@@ -421,8 +475,8 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             ContentFactory contentFactory,
             ContentManager contentManager
     ) {
-        ClaudeChatWindow chatWindow = new ClaudeChatWindow(project, false);
-        String tabName = TAB_NAME_PREFIX + "1";
+        OpencodeBuddyChatWindow chatWindow = new OpencodeBuddyChatWindow(project, false);
+        String tabName = getDefaultTabName(1);
 
         Content content = contentFactory.createContent(chatWindow.getContent(), tabName, false);
         chatWindow.setParentContent(content);
@@ -463,7 +517,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             ExecutorService executor = Executors.newSingleThreadExecutor();
             try {
                 Future<?> future = executor.submit(() -> {
-                    for (ClaudeChatWindow window : collectAllChatWindows()) {
+                    for (OpencodeBuddyChatWindow window : collectAllChatWindows()) {
                         if (window != null) {
                             cleanupWindowProcesses(window);
                         }

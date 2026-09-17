@@ -9,7 +9,7 @@ public class LegacyToolWindowCompatibilityTest {
     @Test
     public void legacyToolWindowClassRemainsAssignableToCurrentImplementation() {
         assertTrue(
-            com.opencodebuddy.ui.toolwindow.ClaudeSDKToolWindow.class
+            com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow.class
                 .isAssignableFrom(ClaudeSDKToolWindow.class)
         );
     }

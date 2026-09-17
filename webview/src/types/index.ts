@@ -1,4 +1,5 @@
-export type ClaudeRole = 'user' | 'assistant' | 'error' | 'task_notification' | 'notification' | 'compact_notification' | string;
+export type OpencodeRole = 'user' | 'assistant' | 'error' | 'task_notification' | 'notification' | 'compact_notification' | string;
+export type ClaudeRole = OpencodeRole;
 
 export type ToolInput = Record<string, unknown>;
 
@@ -44,7 +45,7 @@ export function isCompactSummaryMetadata(obj: unknown): obj is CompactSummaryMet
   return true;
 }
 
-export type ClaudeContentBlock =
+export type OpencodeContentBlock =
   | { type: 'text'; text?: string }
   | { type: 'thinking'; thinking?: string; text?: string }
   | { type: 'tool_use'; id?: string; name?: string; input?: ToolInput }
@@ -53,6 +54,7 @@ export type ClaudeContentBlock =
   | { type: 'task_notification'; icon: string; summary: string; status: string; detail?: string }
   | { type: 'compact_notification'; headerText: string; items: CompactNotificationItem[]; status?: 'success' | 'failure'; detail?: string }
   | { type: 'compact_summary'; title: string; content: string; metadata?: CompactSummaryMetadata };
+export type ClaudeContentBlock = OpencodeContentBlock;
 
 export interface ToolResultBlock {
   type: 'tool_result';
@@ -62,11 +64,12 @@ export interface ToolResultBlock {
   [key: string]: unknown;
 }
 
-export type ClaudeContentOrResultBlock = ClaudeContentBlock | ToolResultBlock;
+export type OpencodeContentOrResultBlock = OpencodeContentBlock | ToolResultBlock;
+export type ClaudeContentOrResultBlock = OpencodeContentOrResultBlock;
 
-export interface ClaudeRawMessage {
-  content?: string | ClaudeContentOrResultBlock[];
-  message?: { content?: string | ClaudeContentOrResultBlock[] };
+export interface OpencodeRawMessage {
+  content?: string | OpencodeContentOrResultBlock[];
+  message?: { content?: string | OpencodeContentOrResultBlock[] };
   type?: string;
   /** Origin indicates message source - used to filter synthetic messages */
   origin?: { kind: string };
@@ -75,12 +78,13 @@ export interface ClaudeRawMessage {
   isCompactSummary?: boolean;
   [key: string]: unknown;
 }
+export type ClaudeRawMessage = OpencodeRawMessage;
 
 /** Represents a single message in the chat conversation. */
-export interface ClaudeMessage {
-  type: ClaudeRole;
+export interface OpencodeMessage {
+  type: OpencodeRole;
   content?: string;
-  raw?: ClaudeRawMessage | string;
+  raw?: OpencodeRawMessage | string;
   timestamp?: string;
   isStreaming?: boolean;
   isOptimistic?: boolean;
@@ -93,6 +97,7 @@ export interface ClaudeMessage {
   __turnId?: number;
   [key: string]: unknown;
 }
+export type ClaudeMessage = OpencodeMessage;
 
 
 export interface TodoItem {

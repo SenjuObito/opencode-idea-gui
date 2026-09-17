@@ -2,8 +2,8 @@ package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
 
-import com.opencodebuddy.notifications.ClaudeNotifier;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.notifications.OpencodeNotifier;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.util.TokenUsageUtils;
 import com.opencodebuddy.util.IgnoreRuleMatcher;
 import com.opencodebuddy.settings.CodemossSettingsService;
@@ -39,14 +39,14 @@ public class UsagePushService {
      */
     public void pushUsageUpdateAfterModelChange(int newMaxTokens) {
         try {
-            ClaudeSession session = context.getSession();
+            OpencodeSession session = context.getSession();
             if (session == null) {
                 clearUsageDisplay();
                 return;
             }
 
             // Extract the latest usage information from the current session
-            List<ClaudeSession.Message> messages = session.getMessages();
+            List<OpencodeSession.Message> messages = session.getMessages();
             JsonObject lastUsage = TokenUsageUtils.findLastUsageFromSessionMessages(
                     messages,
                     context.getCurrentProvider()
@@ -77,7 +77,7 @@ public class UsagePushService {
      */
     public boolean pushCurrentUsageIfAvailable(int fallbackMaxTokens) {
         try {
-            ClaudeSession session = context.getSession();
+            OpencodeSession session = context.getSession();
             if (session == null) {
                 return false;
             }
@@ -131,7 +131,7 @@ public class UsagePushService {
 
     void clearStatusBarUsage() {
         if (context.getProject() != null) {
-            ClaudeNotifier.clearTokenUsage(context.getProject());
+            OpencodeNotifier.clearTokenUsage(context.getProject());
         }
     }
 

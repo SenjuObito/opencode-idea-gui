@@ -1,7 +1,7 @@
 package com.opencodebuddy.notifications;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.util.SoundNotificationService;
 import com.opencodebuddy.util.SystemNotificationService;
 import com.google.gson.JsonArray;
@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 /**
  * Simple utility to update the Claude Status Bar Widget and show notifications.
  */
-public class ClaudeNotifier {
+public class OpencodeNotifier {
 
     // Pre-compiled patterns for {@link #condenseForToast}, reused across notifications.
     private static final Pattern CODE_FENCE_OPEN = Pattern.compile("```[a-zA-Z0-9_+\\-]*\\n");
@@ -65,7 +65,7 @@ public class ClaudeNotifier {
      * so the toast falls back to the i18n default.
      */
     @Nullable
-    public static String buildTitleFromSession(@Nullable ClaudeSession session) {
+    public static String buildTitleFromSession(@Nullable OpencodeSession session) {
         if (session == null) {
             return null;
         }
@@ -87,18 +87,18 @@ public class ClaudeNotifier {
      * (or any other read failure) causes us to fall back gracefully rather than
      * propagate the error into the completion callback.
      */
-    public static String buildPreviewFromSession(@Nullable ClaudeSession session, String fallback) {
+    public static String buildPreviewFromSession(@Nullable OpencodeSession session, String fallback) {
         if (session == null) {
             return fallback;
         }
         try {
-            List<ClaudeSession.Message> messages = session.getMessages();
+            List<OpencodeSession.Message> messages = session.getMessages();
             if (messages == null || messages.isEmpty()) {
                 return fallback;
             }
             for (int i = messages.size() - 1; i >= 0; i--) {
-                ClaudeSession.Message m = messages.get(i);
-                if (m == null || m.type != ClaudeSession.Message.Type.ASSISTANT) {
+                OpencodeSession.Message m = messages.get(i);
+                if (m == null || m.type != OpencodeSession.Message.Type.ASSISTANT) {
                     continue;
                 }
                 // Prefer the last text block from raw JSON: in tool-use turns the
@@ -150,7 +150,7 @@ public class ClaudeNotifier {
      * @return the last text block's content, or {@code null} if unavailable.
      */
     @Nullable
-    private static String extractLastTextFromRaw(@NotNull ClaudeSession.Message m) {
+    private static String extractLastTextFromRaw(@NotNull OpencodeSession.Message m) {
         JsonObject raw = m.raw;
         if (raw == null || !raw.has("message") || !raw.get("message").isJsonObject()) {
             return null;
@@ -193,7 +193,7 @@ public class ClaudeNotifier {
     public static void setTokenUsage(@NotNull Project project, int usedTokens, int maxTokens) {
         String tokenInfo = formatTokenUsage(usedTokens, maxTokens);
         ApplicationManager.getApplication().invokeLater(() -> {
-            ClaudeStatusBarWidget widget = ClaudeStatusBarWidget.Factory.getWidget(project);
+            OpencodeStatusBarWidget widget = OpencodeStatusBarWidget.Factory.getWidget(project);
             if (widget != null) {
                 widget.setTokenInfo(tokenInfo);
             }
@@ -220,21 +220,21 @@ public class ClaudeNotifier {
     
     public static void setModel(@NotNull Project project, String model) {
         ApplicationManager.getApplication().invokeLater(() -> {
-            ClaudeStatusBarWidget widget = ClaudeStatusBarWidget.Factory.getWidget(project);
+            OpencodeStatusBarWidget widget = OpencodeStatusBarWidget.Factory.getWidget(project);
             if (widget != null) { widget.setModel(model); }
         });
     }
 
     public static void setMode(@NotNull Project project, String mode) {
         ApplicationManager.getApplication().invokeLater(() -> {
-            ClaudeStatusBarWidget widget = ClaudeStatusBarWidget.Factory.getWidget(project);
+            OpencodeStatusBarWidget widget = OpencodeStatusBarWidget.Factory.getWidget(project);
             if (widget != null) { widget.setMode(mode); }
         });
     }
 
     public static void setAgent(@NotNull Project project, String agent) {
         ApplicationManager.getApplication().invokeLater(() -> {
-            ClaudeStatusBarWidget widget = ClaudeStatusBarWidget.Factory.getWidget(project);
+            OpencodeStatusBarWidget widget = OpencodeStatusBarWidget.Factory.getWidget(project);
             if (widget != null) { widget.setAgent(agent); }
         });
     }
@@ -247,7 +247,7 @@ public class ClaudeNotifier {
 
     private static void update(@NotNull Project project, String status, String details) {
         ApplicationManager.getApplication().invokeLater(() -> {
-            ClaudeStatusBarWidget widget = ClaudeStatusBarWidget.Factory.getWidget(project);
+            OpencodeStatusBarWidget widget = OpencodeStatusBarWidget.Factory.getWidget(project);
             if (widget != null) {
                 widget.updateStatus(status, details);
             }
@@ -256,7 +256,7 @@ public class ClaudeNotifier {
 
     private static void show(@NotNull Project project, String text, String tooltip, long duration) {
         ApplicationManager.getApplication().invokeLater(() -> {
-            ClaudeStatusBarWidget widget = ClaudeStatusBarWidget.Factory.getWidget(project);
+            OpencodeStatusBarWidget widget = OpencodeStatusBarWidget.Factory.getWidget(project);
             if (widget != null) {
                 widget.show(text, tooltip, duration);
             }

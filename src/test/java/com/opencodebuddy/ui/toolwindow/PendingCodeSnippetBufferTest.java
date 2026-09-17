@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Unit tests for {@link PendingCodeSnippetBuffer}, the defer-until-frontend-ready
- * buffer extracted from {@code ClaudeChatWindow} (PR #1206 follow-up).
+ * buffer extracted from {@code OpencodeBuddyChatWindow} (PR #1206 follow-up).
  */
 public class PendingCodeSnippetBufferTest {
 
@@ -52,7 +52,7 @@ public class PendingCodeSnippetBufferTest {
 
     @Test
     public void concurrentFlushEmitsDeferredSnippetExactlyOnce() throws InterruptedException {
-        // ClaudeChatWindow registers setFrontendReady on two delegates; both call
+        // OpencodeBuddyChatWindow registers setFrontendReady on two delegates; both call
         // flushPendingCodeSnippet(). This proves the atomic swap hands the snippet
         // to exactly one caller even under concurrent flushes — the bug the original
         // volatile check-then-act could not guarantee.

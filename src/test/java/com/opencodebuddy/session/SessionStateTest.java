@@ -84,7 +84,7 @@ public class SessionStateTest {
 
         Assert.assertTrue(state.removeMessagesByIds(java.util.Collections.singletonList("a1")));
 
-        java.util.List<ClaudeSession.Message> left = state.getMessages();
+        java.util.List<OpencodeSession.Message> left = state.getMessages();
         Assert.assertEquals(2, left.size());
         Assert.assertEquals("u1", left.get(0).raw.get("id").getAsString());
         Assert.assertEquals("u2", left.get(1).raw.get("id").getAsString());
@@ -112,7 +112,7 @@ public class SessionStateTest {
     @Test
     public void removeMessagesByIdsIgnoresMessagesWithoutRaw() {
         SessionState state = new SessionState();
-        state.addMessage(new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "no raw"));
+        state.addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "no raw"));
 
         // Must not throw on a null raw payload.
         Assert.assertFalse(state.removeMessagesByIds(java.util.Collections.singletonList("u1")));
@@ -141,7 +141,7 @@ public class SessionStateTest {
         // Inclusive of the boundary: the server removes from it onward (no partID).
         Assert.assertTrue(state.trimMessagesFromRevertBoundary());
 
-        java.util.List<ClaudeSession.Message> left = state.getMessages();
+        java.util.List<OpencodeSession.Message> left = state.getMessages();
         Assert.assertEquals(2, left.size());
         Assert.assertEquals("u1", left.get(0).raw.get("id").getAsString());
         Assert.assertEquals("a1", left.get(1).raw.get("id").getAsString());
@@ -180,7 +180,7 @@ public class SessionStateTest {
     }
 
     /** Build a message whose raw payload carries the given provider id (raw.id / raw.uuid). */
-    private static ClaudeSession.Message messageWithRaw(String id, String uuid) {
+    private static OpencodeSession.Message messageWithRaw(String id, String uuid) {
         com.google.gson.JsonObject raw = new com.google.gson.JsonObject();
         if (id != null) {
             raw.addProperty("id", id);
@@ -188,6 +188,6 @@ public class SessionStateTest {
         if (uuid != null) {
             raw.addProperty("uuid", uuid);
         }
-        return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "text", raw);
+        return new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "text", raw);
     }
 }

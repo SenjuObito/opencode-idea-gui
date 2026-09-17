@@ -1,6 +1,6 @@
 package com.opencodebuddy.ui.detached;
 
-import com.opencodebuddy.ui.toolwindow.ClaudeChatWindow;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyChatWindow;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
@@ -118,7 +118,7 @@ public class DetachedWindowManager {
     @Nullable
     public static DetachedChatFrame getDetachedFrame(
             @NotNull Project project,
-            @NotNull ClaudeChatWindow chatWindow) {
+            @NotNull OpencodeBuddyChatWindow chatWindow) {
         Map<String, DetachedChatFrame> projectWindows = detachedWindows.get(projectKey(project));
         if (projectWindows == null) {
             return null;
@@ -162,7 +162,7 @@ public class DetachedWindowManager {
                             entry.getKey(), frame.getOriginalTabName()));
 
                     // Dispose the chat window resources (Node.js processes, browser, session, etc.)
-                    ClaudeChatWindow chatWindow = frame.getChatWindow();
+                    OpencodeBuddyChatWindow chatWindow = frame.getChatWindow();
                     if (chatWindow != null && !chatWindow.isDisposed()) {
                         chatWindow.dispose();
                     }
@@ -191,20 +191,20 @@ public class DetachedWindowManager {
     }
 
     /**
-     * Collect all ClaudeChatWindow instances from detached windows for a project.
+     * Collect all OpencodeBuddyChatWindow instances from detached windows for a project.
      *
      * @param project The project
-     * @return a set of ClaudeChatWindow instances in detached windows for the project
+     * @return a set of OpencodeBuddyChatWindow instances in detached windows for the project
      */
     @NotNull
-    public static Set<ClaudeChatWindow> getAllDetachedChatWindows(@NotNull Project project) {
-        Set<ClaudeChatWindow> windows = new HashSet<>();
+    public static Set<OpencodeBuddyChatWindow> getAllDetachedChatWindows(@NotNull Project project) {
+        Set<OpencodeBuddyChatWindow> windows = new HashSet<>();
         Map<String, DetachedChatFrame> projectWindows = detachedWindows.get(projectKey(project));
         if (projectWindows == null) {
             return windows;
         }
         for (DetachedChatFrame frame : projectWindows.values()) {
-            ClaudeChatWindow chatWindow = frame.getChatWindow();
+            OpencodeBuddyChatWindow chatWindow = frame.getChatWindow();
             if (chatWindow != null) {
                 windows.add(chatWindow);
             }
@@ -213,17 +213,17 @@ public class DetachedWindowManager {
     }
 
     /**
-     * Collect all ClaudeChatWindow instances from detached windows across all projects.
+     * Collect all OpencodeBuddyChatWindow instances from detached windows across all projects.
      * Used by the shutdown hook to ensure all Node.js processes are cleaned up.
      *
-     * @return a set of all ClaudeChatWindow instances in detached windows
+     * @return a set of all OpencodeBuddyChatWindow instances in detached windows
      */
     @NotNull
-    public static Set<ClaudeChatWindow> getAllDetachedChatWindows() {
-        Set<ClaudeChatWindow> windows = new HashSet<>();
+    public static Set<OpencodeBuddyChatWindow> getAllDetachedChatWindows() {
+        Set<OpencodeBuddyChatWindow> windows = new HashSet<>();
         for (Map<String, DetachedChatFrame> projectWindows : detachedWindows.values()) {
             for (DetachedChatFrame frame : projectWindows.values()) {
-                ClaudeChatWindow chatWindow = frame.getChatWindow();
+                OpencodeBuddyChatWindow chatWindow = frame.getChatWindow();
                 if (chatWindow != null) {
                     windows.add(chatWindow);
                 }
@@ -248,7 +248,7 @@ public class DetachedWindowManager {
                     for (Map.Entry<String, DetachedChatFrame> entry : projectWindows.entrySet()) {
                         try {
                             DetachedChatFrame frame = entry.getValue();
-                            ClaudeChatWindow chatWindow = frame.getChatWindow();
+                            OpencodeBuddyChatWindow chatWindow = frame.getChatWindow();
                             if (chatWindow != null && !chatWindow.isDisposed()) {
                                 chatWindow.dispose();
                             }

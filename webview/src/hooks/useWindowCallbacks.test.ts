@@ -1665,7 +1665,7 @@ describe('useWindowCallbacks integration', () => {
 
     // NOTE: The legacy `onPermissionDenied still marks unresolved tool_use`
     // test was removed. It asserted that onPermissionDenied works in isolation,
-    // but the backend (ClaudeChatWindow.interruptDueToPermissionDenial) ALWAYS
+    // but the backend (OpencodeBuddyChatWindow.interruptDueToPermissionDenial) ALWAYS
     // calls onStreamEnd immediately after onPermissionDenied in the same EDT
     // block, so the isolated scenario never happens in production. The real
     // sequence is now covered by the integration test in the
@@ -2201,7 +2201,7 @@ describe('useWindowCallbacks integration', () => {
 
   // ===== onPermissionDenied → onStreamEnd integration =====
   //
-  // The backend (ClaudeChatWindow.interruptDueToPermissionDenial) ALWAYS calls
+  // The backend (OpencodeBuddyChatWindow.interruptDueToPermissionDenial) ALWAYS calls
   // onStreamEnd immediately after onPermissionDenied in the same EDT block.
   // onPermissionDenied is therefore a no-op in production; the interrupted-tool
   // scan is owned by onStreamEnd's merged updater. These tests simulate the real

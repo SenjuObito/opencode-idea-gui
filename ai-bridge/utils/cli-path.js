@@ -169,6 +169,54 @@ function whichOnPath(binaryName) {
   }
 }
 
+function resolveDirectoryToBinary(dirPath, binaryName) {
+  if (!dirPath || typeof dirPath !== 'string') return null;
+  const trimmed = dirPath.trim();
+  if (!trimmed) return null;
+  const win = process.platform === 'win32';
+  const exes = win
+    ? [`${binaryName}.cmd`, `${binaryName}.bat`, `${binaryName}.exe`, binaryName]
+    : [binaryName];
+  try {
+    if (existsSync(trimmed)) {
+      const st = fsStatSync(trimmed);
+      if (st && st.isDirectory()) {
+        for (const exe of exes) {
+          const candidate = join(trimmed, exe);
+          if (existsSync(candidate)) {
+            console.error(`[cli-path] Found binary in configured directory: ${candidate}`);
+            return candidate;
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore filesystem errors
+  }
+  return null;
+}
+
+function fsStatSync(p) {
+  try {
+    return importFsStat(p);
+  } catch {
+    return null;
+  }
+}
+
+function importFsStat(p) {
+  try {
+    const { statSync } = require('fs');
+    return statSync(p);
+  } catch {
+    try {
+      return existsSync(p) ? { isDirectory: () => false } : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
 /**
  * @param {object} options
  * @param {string} options.binaryName - e.g. "grok" | "kimi" | "opencode"
@@ -179,6 +227,8 @@ function whichOnPath(binaryName) {
  */
 export function resolveCliPath({ binaryName, envKeys = [], homeCandidates = [] }) {
   const win = process.platform === 'win32';
+  console.error(`[cli-path] Resolving binary '${binaryName}' on platform '${process.platform}'...`);
+
   // npm global installs on Windows ship `.cmd` shims, not `.exe`.
   const exeNames = win
     ? [`${binaryName}.cmd`, `${binaryName}.bat`, `${binaryName}.exe`, binaryName]
@@ -186,12 +236,21 @@ export function resolveCliPath({ binaryName, envKeys = [], homeCandidates = [] }
 
   const envOverride = firstNonEmpty(...envKeys.map((key) => process.env[key]));
   if (envOverride) {
+    console.error(`[cli-path] Found env override for ${binaryName}: ${envOverride}`);
+    // If override is a directory, look for binary inside it
+    const fromDir = resolveDirectoryToBinary(envOverride, binaryName);
+    if (fromDir) {
+      return resolveWindowsSpawnableBin(fromDir);
+    }
     return resolveWindowsSpawnableBin(envOverride);
   }
 
   // `where <name>` (no extension) honors PATHEXT; we then prefer .cmd/.exe.
   const fromPath = whichOnPath(binaryName);
-  if (fromPath) return resolveWindowsSpawnableBin(fromPath);
+  if (fromPath) {
+    console.error(`[cli-path] Found ${binaryName} on PATH: ${fromPath}`);
+    return resolveWindowsSpawnableBin(fromPath);
+  }
 
   const home = homedir();
   for (const template of homeCandidates) {
@@ -200,10 +259,45 @@ export function resolveCliPath({ binaryName, envKeys = [], homeCandidates = [] }
         .replace('{home}', home)
         .replace('{bin}', exeName)
         .replace('{name}', binaryName);
-      if (pathExists(resolved)) return resolveWindowsSpawnableBin(resolved);
+      if (pathExists(resolved)) {
+        console.error(`[cli-path] Found ${binaryName} in candidate path: ${resolved}`);
+        return resolveWindowsSpawnableBin(resolved);
+      }
     }
   }
 
+  // Extra Windows scans: NVM-windows and FNM version directories
+  if (win && home) {
+    const extraDirs = [];
+    const appData = process.env.APPDATA || join(home, 'AppData', 'Roaming');
+    const localAppData = process.env.LOCALAPPDATA || join(home, 'AppData', 'Local');
+    
+    // NVM Windows: %APPDATA%\nvm\v*\
+    const nvmHome = process.env.NVM_HOME || join(appData, 'nvm');
+    if (pathExists(nvmHome)) {
+      try {
+        const { readdirSync } = require('fs');
+        const entries = readdirSync(nvmHome, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory() && entry.name.startsWith('v')) {
+            extraDirs.push(join(nvmHome, entry.name));
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    for (const dir of extraDirs) {
+      const hit = resolveDirectoryToBinary(dir, binaryName);
+      if (hit) {
+        console.error(`[cli-path] Found ${binaryName} in version manager path: ${hit}`);
+        return resolveWindowsSpawnableBin(hit);
+      }
+    }
+  }
+
+  console.error(`[cli-path] ${binaryName} not found in specific paths; falling back to bare name '${binaryName}'`);
   return binaryName;
 }
 

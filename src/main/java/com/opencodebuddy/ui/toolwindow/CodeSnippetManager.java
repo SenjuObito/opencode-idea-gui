@@ -23,12 +23,12 @@ public class CodeSnippetManager {
 
     private static final Logger LOG = Logger.getInstance(CodeSnippetManager.class);
 
-    private final Map<Project, ClaudeChatWindow> instances;
-    private final Map<Content, ClaudeChatWindow> contentToWindowMap;
+    private final Map<Project, OpencodeBuddyChatWindow> instances;
+    private final Map<Content, OpencodeBuddyChatWindow> contentToWindowMap;
 
     public CodeSnippetManager(
-            Map<Project, ClaudeChatWindow> instances,
-            Map<Content, ClaudeChatWindow> contentToWindowMap
+            Map<Project, OpencodeBuddyChatWindow> instances,
+            Map<Content, OpencodeBuddyChatWindow> contentToWindowMap
     ) {
         this.instances = instances;
         this.contentToWindowMap = contentToWindowMap;
@@ -45,7 +45,7 @@ public class CodeSnippetManager {
         }
 
         // Try to get the currently selected tab's window first
-        ClaudeChatWindow window = getSelectedTabWindow(project);
+        OpencodeBuddyChatWindow window = getSelectedTabWindow(project);
 
         // Fallback to instances map if no selected tab window found
         if (window == null) {
@@ -111,7 +111,7 @@ public class CodeSnippetManager {
         }
         List<String> immutablePaths = Collections.unmodifiableList(snapshot);
 
-        ClaudeChatWindow window = getSelectedTabWindow(project);
+        OpencodeBuddyChatWindow window = getSelectedTabWindow(project);
         if (window == null) {
             window = instances.get(project);
         }
@@ -151,9 +151,9 @@ public class CodeSnippetManager {
     }
 
     /**
-     * Get the ClaudeChatWindow for the currently selected tab.
+     * Get the OpencodeBuddyChatWindow for the currently selected tab.
      */
-    private ClaudeChatWindow getSelectedTabWindow(Project project) {
+    private OpencodeBuddyChatWindow getSelectedTabWindow(Project project) {
         if (project == null || project.isDisposed()) {
             return null;
         }
@@ -168,7 +168,7 @@ public class CodeSnippetManager {
             Content selectedContent = contentManager.getSelectedContent();
 
             if (selectedContent != null) {
-                ClaudeChatWindow window = contentToWindowMap.get(selectedContent);
+                OpencodeBuddyChatWindow window = contentToWindowMap.get(selectedContent);
                 if (window != null) {
                     LOG.debug("[MultiTab] Found window for selected tab: " + selectedContent.getDisplayName());
                     return window;
@@ -199,7 +199,7 @@ public class CodeSnippetManager {
                     return;
                 }
 
-                ClaudeChatWindow retryWindow = getSelectedTabWindow(project);
+                OpencodeBuddyChatWindow retryWindow = getSelectedTabWindow(project);
 
                 if (retryWindow == null) {
                     retryWindow = instances.get(project);
@@ -230,7 +230,7 @@ public class CodeSnippetManager {
                     return;
                 }
 
-                ClaudeChatWindow retryWindow = getSelectedTabWindow(project);
+                OpencodeBuddyChatWindow retryWindow = getSelectedTabWindow(project);
                 if (retryWindow == null) {
                     retryWindow = instances.get(project);
                 }

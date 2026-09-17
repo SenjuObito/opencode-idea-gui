@@ -4,7 +4,7 @@ package com.opencodebuddy.ui.toolwindow;
  * Serializes webview message dispatch against tool-window disposal.
  *
  * <p>The JCEF UI thread calls {@link #runInDispatch(Runnable)} for each inbound message; the EDT
- * calls {@link #beginTeardown()} at the start of {@code ClaudeChatWindow.dispose()}. Both contend
+ * calls {@link #beginTeardown()} at the start of {@code OpencodeBuddyChatWindow.dispose()}. Both contend
  * the same monitor, so teardown waits for any in-flight dispatch to finish before flipping
  * {@code disposed}, and no dispatch can start once teardown has begun.</p>
  *

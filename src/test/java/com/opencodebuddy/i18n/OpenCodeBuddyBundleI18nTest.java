@@ -78,4 +78,14 @@ public class OpenCodeBuddyBundleI18nTest {
             }
         }
     }
+
+    @Test
+    public void testTabDefaultNameInAllBundles() throws IOException {
+        for (String suffix : LOCALE_SUFFIXES) {
+            Properties props = loadBundleProperties(suffix);
+            String val = props.getProperty("tab.defaultName");
+            assertNotNull("Bundle " + suffix + " missing key: tab.defaultName", val);
+            assertTrue("Bundle " + suffix + " tab.defaultName should contain {0} placeholder", val.contains("{0}"));
+        }
+    }
 }

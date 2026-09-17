@@ -4,7 +4,7 @@ import com.opencodebuddy.bridge.NodeDetector;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.model.NodeDetectionResult;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.session.SessionState;
 import com.opencodebuddy.startup.BridgePreloader;
 import com.opencodebuddy.util.FontConfigService;
@@ -135,7 +135,7 @@ public class WebviewInitializer {
 
         // Check if bridge extraction is in progress (non-blocking check)
         if (sharedResolver.isExtractionInProgress()) {
-            LOG.info("[ClaudeSDKToolWindow] Bridge extraction in progress, showing loading panel...");
+            LOG.info("[OpencodeBuddyToolWindow] Bridge extraction in progress, showing loading panel...");
             showLoadingPanel();
 
             // Register async callback to reinitialize when extraction completes
@@ -224,7 +224,7 @@ public class WebviewInitializer {
 
         if (!checkEnvironment()) {
             if (sharedResolver.isExtractionInProgress()) {
-                LOG.info("[ClaudeSDKToolWindow] checkEnvironment failed but extraction in progress, showing loading panel...");
+                LOG.info("[OpencodeBuddyToolWindow] checkEnvironment failed but extraction in progress, showing loading panel...");
                 showLoadingPanel();
                 sharedResolver.getExtractionFuture().thenAcceptAsync(ready -> {
                     if (ready) {
@@ -237,7 +237,7 @@ public class WebviewInitializer {
             }
 
             if (sharedResolver.isExtractionComplete()) {
-                LOG.info("[ClaudeSDKToolWindow] checkEnvironment failed but extraction just completed, retrying initialization with exponential backoff...");
+                LOG.info("[OpencodeBuddyToolWindow] checkEnvironment failed but extraction just completed, retrying initialization with exponential backoff...");
                 retryCheckEnvironmentWithBackoff(0);
                 showLoadingPanel();
                 return;
@@ -1079,7 +1079,7 @@ public class WebviewInitializer {
             OpenCodeBuddyBundle.message("toolwindow.extractingDesc")
         );
         replaceMainContent(panel);
-        LOG.info("[ClaudeSDKToolWindow] Showing loading panel while bridge extracts...");
+        LOG.info("[OpencodeBuddyToolWindow] Showing loading panel while bridge extracts...");
     }
 
     private void invokeLaterForToolWindow(@NotNull Runnable runnable) {
@@ -1096,7 +1096,7 @@ public class WebviewInitializer {
      */
     private void reinitializeAfterExtraction() {
         invokeLaterForToolWindow(() -> {
-            LOG.info("[ClaudeSDKToolWindow] Bridge extraction complete, reinitializing UI...");
+            LOG.info("[OpencodeBuddyToolWindow] Bridge extraction complete, reinitializing UI...");
             JPanel mainPanel = host.getMainPanel();
             mainPanel.removeAll();
             createUIComponents();
@@ -1113,13 +1113,13 @@ public class WebviewInitializer {
         final int[] BACKOFF_DELAYS_MS = {100, 200, 400};
 
         if (attempt >= MAX_RETRIES) {
-            LOG.warn("[ClaudeSDKToolWindow] All " + MAX_RETRIES + " retry attempts failed after extraction completion");
+            LOG.warn("[OpencodeBuddyToolWindow] All " + MAX_RETRIES + " retry attempts failed after extraction completion");
             invokeLaterForToolWindow(this::showErrorPanel);
             return;
         }
 
         int delayMs = BACKOFF_DELAYS_MS[attempt];
-        LOG.info("[ClaudeSDKToolWindow] Retry attempt " + (attempt + 1) + "/" + MAX_RETRIES + ", waiting " + delayMs + "ms...");
+        LOG.info("[OpencodeBuddyToolWindow] Retry attempt " + (attempt + 1) + "/" + MAX_RETRIES + ", waiting " + delayMs + "ms...");
 
         CompletableFuture.runAsync(() -> {
             try {
@@ -1130,7 +1130,7 @@ public class WebviewInitializer {
         }).thenRun(() -> {
             invokeLaterForToolWindow(() -> {
                 if (checkEnvironment()) {
-                    LOG.info("[ClaudeSDKToolWindow] Retry attempt " + (attempt + 1) + " succeeded after extraction completion");
+                    LOG.info("[OpencodeBuddyToolWindow] Retry attempt " + (attempt + 1) + " succeeded after extraction completion");
                     reinitializeAfterExtraction();
                 } else {
                     retryCheckEnvironmentWithBackoff(attempt + 1);
@@ -1295,7 +1295,7 @@ public class WebviewInitializer {
 
         // Each tab reads the same localStorage snapshot. Preserve the session's
         // provider and model on both initial load and watchdog recovery.
-        ClaudeSession session = host.getHandlerContext() != null
+        OpencodeSession session = host.getHandlerContext() != null
                 ? host.getHandlerContext().getSession() : null;
         String tabProvider = session != null ? session.getProvider() : null;
         String tabModel = session != null ? session.getModel() : null;

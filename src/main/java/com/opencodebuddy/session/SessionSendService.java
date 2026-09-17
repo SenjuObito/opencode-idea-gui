@@ -1,7 +1,7 @@
 package com.opencodebuddy.session;
 
 import com.opencodebuddy.settings.CodemossSettingsService;
-import com.opencodebuddy.notifications.ClaudeNotifier;
+import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Owns message-send orchestration while ClaudeSession remains the public session facade.
+ * Owns message-send orchestration while OpencodeSession remains the public session facade.
  * OpenCode-only build: a single daemon-backed provider.
  */
 public class SessionSendService {
@@ -43,7 +43,7 @@ public class SessionSendService {
         contextCollector.setAutoOpenFileEnabled(readAutoOpenFileEnabled());
     }
 
-    public void updateSessionStateForSend(ClaudeSession.Message userMessage, String normalizedInput) {
+    public void updateSessionStateForSend(OpencodeSession.Message userMessage, String normalizedInput) {
         // A pending revert is applied by the server at the start of this very
         // prompt (SessionRevert.cleanup drops everything from the revert point
         // onward). Trim the same range locally BEFORE publishing, so the snapshot
@@ -68,14 +68,14 @@ public class SessionSendService {
         state.setError(null);
         state.setBusy(true);
         state.setLoading(true);
-        ClaudeNotifier.setWaiting(project);
+        OpencodeNotifier.setWaiting(project);
         callbackFacade.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
     }
 
     public CompletableFuture<Void> sendMessageToProvider(
             String channelId,
             String input,
-            List<ClaudeSession.Attachment> attachments,
+            List<OpencodeSession.Attachment> attachments,
             JsonObject openedFilesJson,
             String externalAgentPrompt,
             List<String> fileTagPaths,
@@ -164,7 +164,7 @@ public class SessionSendService {
     private CompletableFuture<Void> sendToOpenCode(
             String channelId,
             String input,
-            List<ClaudeSession.Attachment> attachments,
+            List<OpencodeSession.Attachment> attachments,
             JsonObject openedFilesJson,
             String agentPrompt,
             List<String> fileTagPaths,
@@ -190,7 +190,7 @@ public class SessionSendService {
         } else {
             commandName = null;
             commandArguments = null;
-            String contextAppend = contextService.buildCodexContextAppend(openedFilesJson, fileTagPaths);
+            String contextAppend = contextService.buildSessionContextAppend(openedFilesJson, fileTagPaths);
             finalInput = (input != null ? input : "") + contextAppend;
             if (agentPrompt != null && !agentPrompt.isEmpty()) {
                 finalInput = finalInput + "\n\n## Agent Role and Instructions\n\n" + agentPrompt;

@@ -4,7 +4,7 @@ import com.opencodebuddy.handler.provider.ModelProviderHandler;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.provider.common.MessageCallback;
 import com.opencodebuddy.provider.common.SDKResult;
-import com.opencodebuddy.session.ClaudeSession.Message;
+import com.opencodebuddy.session.OpencodeSession.Message;
 import com.opencodebuddy.util.UsageCostCalculator;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
@@ -270,7 +270,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
             // opencode permission dialogs: permission ids (per_...) are consumed
             // by OpencodePermissionRegistry, keyed by the permissionId (channelId)
-            // so the decision funnel in ClaudeSession can resolve the request.
+            // so the decision funnel in OpencodeSession can resolve the request.
             String channelId = permissionId != null ? permissionId : "";
 
             // The daemon maps opencode's {permission, patterns} onto

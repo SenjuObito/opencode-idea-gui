@@ -6,7 +6,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
-public class ClaudeChatWindowSessionPreferencesTest {
+public class OpencodeBuddyChatWindowSessionPreferencesTest {
 
     @Test
     public void shouldCopyProviderPreferencesWithoutConversationState() {
@@ -22,7 +22,7 @@ public class ClaudeChatWindowSessionPreferencesTest {
         target.setSessionId("new-session");
         target.setCwd("C:/target-project");
 
-        ClaudeChatWindow.copySessionPreferences(source, target);
+        OpencodeBuddyChatWindow.copySessionPreferences(source, target);
 
         assertEquals("codex", target.getProvider());
         assertEquals("gpt-5.6-sol", target.getModel());
@@ -43,7 +43,7 @@ public class ClaudeChatWindowSessionPreferencesTest {
         target.setModel("stale-model");
         target.setReasoningEffort("high");
 
-        ClaudeChatWindow.copySessionPreferences(source, target);
+        OpencodeBuddyChatWindow.copySessionPreferences(source, target);
 
         assertNull(target.getModel());
         assertNull(target.getReasoningEffort());

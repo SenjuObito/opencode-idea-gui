@@ -30,6 +30,8 @@ export interface ChatHeaderProps {
   onShare?: () => void;
   /** Callback to unshare the session */
   onUnshare?: () => void;
+  /** Callback to create a new chat tab in the IDE tool window */
+  onNewTab?: () => void;
   /** Fork the entire conversation into a new session */
   onForkAll?: () => void;
   /** Export current session as Markdown */
@@ -42,6 +44,7 @@ export function ChatHeader({
   t,
   onBack,
   onNewSession,
+  onNewTab,
   onHistory,
   onSettings,
   onOpenSearch,
@@ -109,6 +112,29 @@ export function ChatHeader({
     }
     commitEdit();
   }, [commitEdit]);
+
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [moreMenuOpen]);
 
   if (currentView === 'settings') {
     return null;
@@ -211,6 +237,16 @@ export function ChatHeader({
             <button className="icon-button" onClick={onNewSession} data-tooltip={t('common.newSession')}>
               <span className="codicon codicon-plus" />
             </button>
+            {onNewTab && (
+              <button
+                className="icon-button"
+                onClick={onNewTab}
+                data-tooltip={t('common.newTab', { defaultValue: 'New Tab' })}
+                aria-label={t('common.newTab', { defaultValue: 'New Tab' })}
+              >
+                <span className="codicon codicon-multiple-windows" />
+              </button>
+            )}
             {onOpenSearch && (
               <button
                 className="icon-button"
@@ -221,16 +257,6 @@ export function ChatHeader({
                 <span className="codicon codicon-search" />
               </button>
             )}
-            {onExport && (
-              <button
-                className="icon-button"
-                onClick={onExport}
-                data-tooltip={t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}
-                aria-label={t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}
-              >
-                <span className="codicon codicon-arrow-down" />
-              </button>
-            )}
             <button
               className="icon-button"
               onClick={onHistory}
@@ -238,13 +264,46 @@ export function ChatHeader({
             >
               <span className="codicon codicon-history" />
             </button>
-            <button
-              className="icon-button"
-              onClick={onSettings}
-              data-tooltip={t('common.settings')}
-            >
-              <span className="codicon codicon-settings-gear" />
-            </button>
+            <div className="header-more-menu-wrapper" ref={moreMenuRef}>
+              <button
+                className={`icon-button ${moreMenuOpen ? 'active' : ''}`}
+                onClick={() => setMoreMenuOpen((prev) => !prev)}
+                data-tooltip={t('common.more', { defaultValue: 'More options' })}
+                aria-label={t('common.more', { defaultValue: 'More options' })}
+                aria-haspopup="menu"
+                aria-expanded={moreMenuOpen}
+              >
+                <span className="codicon codicon-ellipsis" />
+              </button>
+              {moreMenuOpen && (
+                <div className="menu-dropdown header-dropdown-menu" role="menu">
+                  {onExport && (
+                    <button
+                      className="menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        onExport();
+                      }}
+                    >
+                      <span className="codicon codicon-markdown" />
+                      <span>{t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}</span>
+                    </button>
+                  )}
+                  <button
+                    className="menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      onSettings();
+                    }}
+                  >
+                    <span className="codicon codicon-settings-gear" />
+                    <span>{t('common.settings', { defaultValue: 'Settings' })}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>

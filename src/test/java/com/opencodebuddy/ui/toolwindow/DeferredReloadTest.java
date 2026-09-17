@@ -15,7 +15,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests for {@link ClaudeChatWindow.DeferredReload} — the coordinator that
+ * Tests for {@link OpencodeBuddyChatWindow.DeferredReload} — the coordinator that
  * parks a session_updated reload arriving during an active stream and drains it
  * at stream end.
  *
@@ -30,16 +30,16 @@ public class DeferredReloadTest {
 
     @Test
     public void reconcilesCompletedGrokTurnsFromFinalHistory() {
-        assertTrue(ClaudeChatWindow.shouldReconcileTranscriptAtStreamEnd("grok", "session-1"));
-        assertFalse(ClaudeChatWindow.shouldReconcileTranscriptAtStreamEnd("grok", ""));
-        assertFalse(ClaudeChatWindow.shouldReconcileTranscriptAtStreamEnd("claude", "session-1"));
+        assertTrue(OpencodeBuddyChatWindow.shouldReconcileTranscriptAtStreamEnd("grok", "session-1"));
+        assertFalse(OpencodeBuddyChatWindow.shouldReconcileTranscriptAtStreamEnd("grok", ""));
+        assertFalse(OpencodeBuddyChatWindow.shouldReconcileTranscriptAtStreamEnd("claude", "session-1"));
     }
 
     // ── Park + take-and-clear ────────────────────────────────────────────────
 
     @Test
     public void deferThenTakeReturnsTargetAndClears() {
-        ClaudeChatWindow.DeferredReload d = new ClaudeChatWindow.DeferredReload();
+        OpencodeBuddyChatWindow.DeferredReload d = new OpencodeBuddyChatWindow.DeferredReload();
         assertFalse("nothing parked initially", d.hasPending());
 
         d.defer("session-A");
@@ -51,7 +51,7 @@ public class DeferredReloadTest {
 
     @Test
     public void secondTakeAfterDrainReturnsNull() {
-        ClaudeChatWindow.DeferredReload d = new ClaudeChatWindow.DeferredReload();
+        OpencodeBuddyChatWindow.DeferredReload d = new OpencodeBuddyChatWindow.DeferredReload();
         d.defer("session-A");
         d.takeIfRunnable(false);
 
@@ -60,7 +60,7 @@ public class DeferredReloadTest {
 
     @Test
     public void takeWithNothingDeferredReturnsNull() {
-        ClaudeChatWindow.DeferredReload d = new ClaudeChatWindow.DeferredReload();
+        OpencodeBuddyChatWindow.DeferredReload d = new OpencodeBuddyChatWindow.DeferredReload();
         assertNull("draining an empty coordinator is a no-op", d.takeIfRunnable(false));
     }
 
@@ -70,7 +70,7 @@ public class DeferredReloadTest {
     public void overlappingDefersCollapseToLatest() {
         // Several background completions arriving during one stream must collapse
         // into a single reload reflecting the latest JSONL — not a burst of reloads.
-        ClaudeChatWindow.DeferredReload d = new ClaudeChatWindow.DeferredReload();
+        OpencodeBuddyChatWindow.DeferredReload d = new OpencodeBuddyChatWindow.DeferredReload();
         d.defer("session-A");
         d.defer("session-B");
         d.defer("session-C");
@@ -86,7 +86,7 @@ public class DeferredReloadTest {
         // A disposed window must not run the reload — but the parked id must not
         // be left behind either, or a later drain on a reused coordinator could
         // resurrect it.
-        ClaudeChatWindow.DeferredReload d = new ClaudeChatWindow.DeferredReload();
+        OpencodeBuddyChatWindow.DeferredReload d = new OpencodeBuddyChatWindow.DeferredReload();
         d.defer("session-A");
 
         assertNull("disposed window does not run the deferred reload", d.takeIfRunnable(true));
@@ -96,7 +96,7 @@ public class DeferredReloadTest {
     @Test
     public void deferAfterDisposedTakeCanStillRunWhenAlive() {
         // Defensive: a fresh defer after a disposed-drain is independent.
-        ClaudeChatWindow.DeferredReload d = new ClaudeChatWindow.DeferredReload();
+        OpencodeBuddyChatWindow.DeferredReload d = new OpencodeBuddyChatWindow.DeferredReload();
         d.defer("stale");
         d.takeIfRunnable(true); // disposed → dropped
 
@@ -113,7 +113,7 @@ public class DeferredReloadTest {
         // stream-end hook drains. Invariant: every id that is ever taken was
         // deferred, and no id is taken twice. (Coalescing means not every
         // deferred id is taken — that's fine; we assert no phantom/duplicate.)
-        final ClaudeChatWindow.DeferredReload d = new ClaudeChatWindow.DeferredReload();
+        final OpencodeBuddyChatWindow.DeferredReload d = new OpencodeBuddyChatWindow.DeferredReload();
         final int rounds = 20_000;
         final ConcurrentHashMap<String, Integer> takenCounts = new ConcurrentHashMap<>();
         final AtomicInteger deferSeq = new AtomicInteger();
@@ -174,35 +174,35 @@ public class DeferredReloadTest {
     public void safetyDrainsWhenParkedAndStreamIdle() {
         // The orphan-rescue case: something is parked, the stream is no longer
         // active, and no onStreamEnded edge arrived for this defer — drain now.
-        assertEquals(ClaudeChatWindow.SafetyDrainAction.DRAIN,
-                ClaudeChatWindow.decideDeferredReloadSafety(false, true, false));
+        assertEquals(OpencodeBuddyChatWindow.SafetyDrainAction.DRAIN,
+                OpencodeBuddyChatWindow.decideDeferredReloadSafety(false, true, false));
     }
 
     @Test
     public void safetyRechecksWhileStreamStillActive() {
         // Parked but a stream is active: reloading now would race the streaming
         // append, so wait and re-check rather than drain.
-        assertEquals(ClaudeChatWindow.SafetyDrainAction.RECHECK_LATER,
-                ClaudeChatWindow.decideDeferredReloadSafety(false, true, true));
+        assertEquals(OpencodeBuddyChatWindow.SafetyDrainAction.RECHECK_LATER,
+                OpencodeBuddyChatWindow.decideDeferredReloadSafety(false, true, true));
     }
 
     @Test
     public void safetyStopsWhenNothingParked() {
         // The fast onStreamEnded path already drained it: nothing to do, and the
         // poll must stop (both idle and still-streaming variants).
-        assertEquals(ClaudeChatWindow.SafetyDrainAction.DONE,
-                ClaudeChatWindow.decideDeferredReloadSafety(false, false, false));
-        assertEquals(ClaudeChatWindow.SafetyDrainAction.DONE,
-                ClaudeChatWindow.decideDeferredReloadSafety(false, false, true));
+        assertEquals(OpencodeBuddyChatWindow.SafetyDrainAction.DONE,
+                OpencodeBuddyChatWindow.decideDeferredReloadSafety(false, false, false));
+        assertEquals(OpencodeBuddyChatWindow.SafetyDrainAction.DONE,
+                OpencodeBuddyChatWindow.decideDeferredReloadSafety(false, false, true));
     }
 
     @Test
     public void safetyStopsWhenDisposedEvenIfParked() {
         // A disposed window must never drive a reload, parked or not.
-        assertEquals(ClaudeChatWindow.SafetyDrainAction.DONE,
-                ClaudeChatWindow.decideDeferredReloadSafety(true, true, false));
-        assertEquals(ClaudeChatWindow.SafetyDrainAction.DONE,
-                ClaudeChatWindow.decideDeferredReloadSafety(true, true, true));
+        assertEquals(OpencodeBuddyChatWindow.SafetyDrainAction.DONE,
+                OpencodeBuddyChatWindow.decideDeferredReloadSafety(true, true, false));
+        assertEquals(OpencodeBuddyChatWindow.SafetyDrainAction.DONE,
+                OpencodeBuddyChatWindow.decideDeferredReloadSafety(true, true, true));
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

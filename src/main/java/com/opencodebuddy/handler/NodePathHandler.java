@@ -179,15 +179,16 @@ public class NodePathHandler {
                     response.addProperty("path", finalPathToSend);
                     response.addProperty("version", finalVersionToSend);
                     response.addProperty("minVersion", NodeDetector.MIN_NODE_MAJOR_VERSION);
-                    context.callJavaScript("window.updateNodePath", context.escapeJs(gson.toJson(response)));
 
                     if (successFlag) {
+                        context.broadcastToAll("window.updateNodePath", context.escapeJs(gson.toJson(response)));
                         // Trigger environment re-check, no IDE restart needed
                         context.callJavaScript("window.showSwitchSuccess", context.escapeJs("Node.js 路径已保存并生效,无需重启IDE"));
 
                         // Notify DependencySection to re-check Node.js environment
                         context.callJavaScript("window.checkNodeEnvironment");
                     } else {
+                        context.callJavaScript("window.updateNodePath", context.escapeJs(gson.toJson(response)));
                         String msg = failureMsgFinal != null ? failureMsgFinal : "无法验证指定的 Node.js 路径";
                         context.callJavaScript("window.showError", context.escapeJs("保存的 Node.js 路径无效: " + msg));
                     }

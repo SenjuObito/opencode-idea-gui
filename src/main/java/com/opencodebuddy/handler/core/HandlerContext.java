@@ -1,8 +1,9 @@
 package com.opencodebuddy.handler.core;
 
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.jcef.JBCefBrowser;
@@ -27,7 +28,7 @@ public class HandlerContext {
     private volatile Runnable contentActivator = () -> { };
 
     // Mutable state accessed via getters/setters — volatile for thread safety
-    private volatile ClaudeSession session;
+    private volatile OpencodeSession session;
     private volatile JBCefBrowser browser;
     private volatile String currentModel;
     private volatile String currentProvider = DEFAULT_PROVIDER;
@@ -95,7 +96,7 @@ public class HandlerContext {
         return settingsService.getEffectiveWorkingDirectory(basePath);
     }
 
-    public ClaudeSession getSession() {
+    public OpencodeSession getSession() {
         return session;
     }
 
@@ -138,7 +139,7 @@ public class HandlerContext {
     }
 
     // Setters
-    public void setSession(ClaudeSession session) {
+    public void setSession(OpencodeSession session) {
         this.session = session;
     }
 
@@ -165,6 +166,22 @@ public class HandlerContext {
     // JavaScript callback proxy methods
     public void callJavaScript(String functionName, String... args) {
         jsCallback.callJavaScript(functionName, args);
+    }
+
+    /**
+     * Broadcast JavaScript call to the current window and all other active chat windows across all projects.
+     */
+    public void broadcastToAll(String functionName, String... args) {
+        callJavaScript(functionName, args);
+        OpencodeBuddyToolWindow.broadcastToAllChatWindows(this, functionName, args);
+    }
+
+    /**
+     * Broadcast JavaScript call to the current window and all other active chat windows belonging to the current project.
+     */
+    public void broadcastToProject(String functionName, String... args) {
+        callJavaScript(functionName, args);
+        OpencodeBuddyToolWindow.broadcastToProjectChatWindows(this.project, this, functionName, args);
     }
 
     public String escapeJs(String str) {

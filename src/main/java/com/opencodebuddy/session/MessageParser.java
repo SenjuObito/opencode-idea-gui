@@ -16,7 +16,7 @@ public class MessageParser {
     /**
      * Parse a server-returned message.
      */
-    public ClaudeSession.Message parseServerMessage(JsonObject msg) {
+    public OpencodeSession.Message parseServerMessage(JsonObject msg) {
         String type = msg.has("type") ? msg.get("type").getAsString() : null;
         JsonObject rawMessage = resolveRawMessage(msg);
 
@@ -27,7 +27,7 @@ public class MessageParser {
 
         // Filter out sidechain messages (subagent transcripts) so they never
         // enter the main session list. This mirrors the isSidechain filter
-        // ClaudeSessionLiteReader applies on history reload, keeping reloaded
+        // OpencodeSessionLiteReader applies on history reload, keeping reloaded
         // history consistent with the live stream (whose subagent messages are
         // already filtered upstream by ai-bridge's parent_tool_use_id check).
         // parseServerMessage runs on the history-reload path, so this is a
@@ -63,17 +63,17 @@ public class MessageParser {
             // Check if it contains a tool_result
             if (sanitized == null || sanitized.trim().isEmpty()) {
                 if (hasToolResult(rawMessage)) {
-                    return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "[tool_result]", rawMessage);
+                    return new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "[tool_result]", rawMessage);
                 }
                 if (hasImageContent(rawMessage) || hasAttachmentContent(rawMessage)) {
-                    return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "", rawMessage);
+                    return new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "", rawMessage);
                 }
                 return null;
             }
-            return new ClaudeSession.Message(ClaudeSession.Message.Type.USER, sanitized, rawMessage);
+            return new OpencodeSession.Message(OpencodeSession.Message.Type.USER, sanitized, rawMessage);
         } else if ("assistant".equals(type)) {
             String content = extractMessageContent(msg);
-            return new ClaudeSession.Message(ClaudeSession.Message.Type.ASSISTANT, content, rawMessage);
+            return new OpencodeSession.Message(OpencodeSession.Message.Type.ASSISTANT, content, rawMessage);
         }
 
         return null;

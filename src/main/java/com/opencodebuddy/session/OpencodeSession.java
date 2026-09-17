@@ -19,9 +19,9 @@ import java.util.concurrent.CompletionException;
  * Session management for Claude conversations.
  * Maintains state and message history for a single chat session.
  */
-public class ClaudeSession {
+public class OpencodeSession {
 
-    private static final Logger LOG = Logger.getInstance(ClaudeSession.class);
+    private static final Logger LOG = Logger.getInstance(OpencodeSession.class);
 
     private final Gson gson = new Gson();
     private final Project project;
@@ -30,7 +30,7 @@ public class ClaudeSession {
 
     /**
      * Flag set when the user manually interrupts the current turn (clicks Stop).
-     * Checked by {@link com.opencodebuddy.ui.toolwindow.ClaudeChatWindow#onStreamEnded()}
+     * Checked by {@link com.opencodebuddy.ui.toolwindow.OpencodeBuddyChatWindow#onStreamEnded()}
      * to suppress the task-completion notification sound for manual stops.
      * Reset to {@code false} at the start of each new {@link #send} call.
      */
@@ -198,7 +198,7 @@ public class ClaudeSession {
         }
     }
 
-    public ClaudeSession(
+    public OpencodeSession(
             Project project,
             OpenCodeSDKBridge openCodeSDKBridge
     ) {

@@ -110,7 +110,7 @@ public class WindowEventHandler extends BaseMessageHandler {
             return;
         }
 
-        com.opencodebuddy.session.ClaudeSession session = context.getSession();
+        com.opencodebuddy.session.OpencodeSession session = context.getSession();
         if (session != null && session.isBusy()) {
             LOG.warn("[fork] skipped: session busy");
             callJavaScript("onForkError", "session busy");
@@ -309,7 +309,7 @@ public class WindowEventHandler extends BaseMessageHandler {
         boolean hasRevert = revertObj != null;
         LOG.info("[revert-state] hasRevert=" + hasRevert + " messageId=" + messageId);
 
-        com.opencodebuddy.session.ClaudeSession session = context.getSession();
+        com.opencodebuddy.session.OpencodeSession session = context.getSession();
         if (session != null) {
             session.setRevertState(hasRevert ? new com.opencodebuddy.session.SessionState.RevertState(messageId != null ? messageId : "") : null);
         }
@@ -424,7 +424,7 @@ public class WindowEventHandler extends BaseMessageHandler {
     }
 
     private String sessionIdOrEmpty() {
-        com.opencodebuddy.session.ClaudeSession session = context.getSession();
+        com.opencodebuddy.session.OpencodeSession session = context.getSession();
         String id = session != null ? session.getSessionId() : null;
         return id != null ? id : "";
     }

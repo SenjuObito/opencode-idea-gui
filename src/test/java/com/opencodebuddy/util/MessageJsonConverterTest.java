@@ -1,6 +1,6 @@
 package com.opencodebuddy.util;
 
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -44,8 +44,8 @@ public class MessageJsonConverterTest {
         raw.add("turnUsage", turnUsage);
         raw.addProperty("turnCostUsd", 0.0123);
 
-        ClaudeSession.Message sessionMessage = new ClaudeSession.Message(
-                ClaudeSession.Message.Type.ASSISTANT,
+        OpencodeSession.Message sessionMessage = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ASSISTANT,
                 "Hello from Claude",
                 raw
         );

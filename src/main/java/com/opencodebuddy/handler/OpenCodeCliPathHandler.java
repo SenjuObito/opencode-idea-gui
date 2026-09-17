@@ -96,9 +96,12 @@ public class OpenCodeCliPathHandler {
                 props.setValue(DaemonBridge.OPENCODE_CLI_PATH_PROPERTY_KEY, path);
             }
             LOG.info("[OpenCodeCliPathHandler] Saved opencode CLI path: " + (path.isEmpty() ? "(cleared)" : path));
-            ApplicationManager.getApplication().invokeLater(() ->
-                context.callJavaScript("window.showSuccess", context.escapeJs("opencode CLI path saved"))
-            );
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("path", path);
+                context.broadcastToAll("window.updateOpencodeCliPath", context.escapeJs(gson.toJson(response)));
+                context.callJavaScript("window.showSuccess", context.escapeJs("opencode CLI path saved"));
+            });
         } catch (Exception e) {
             LOG.error("[OpenCodeCliPathHandler] Failed to save opencode CLI path: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() ->

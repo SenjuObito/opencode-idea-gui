@@ -69,4 +69,46 @@ describe('ChatHeader share controls', () => {
     expect(screen.queryByLabelText('chat.copyShareLinkTooltip')).toBeNull();
     expect(screen.queryByLabelText('chat.unshareTooltip')).toBeNull();
   });
+
+  it('renders new tab button and triggers onNewTab when clicked', () => {
+    const onNewTab = vi.fn();
+    render(<ChatHeader {...defaultProps} onNewTab={onNewTab} />);
+
+    const newTabBtn = screen.getByLabelText('common.newTab');
+    expect(newTabBtn).toBeTruthy();
+
+    fireEvent.click(newTabBtn);
+    expect(onNewTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders more options menu and triggers export and settings from secondary menu', () => {
+    const onExport = vi.fn();
+    const onSettings = vi.fn();
+    render(<ChatHeader {...defaultProps} onExport={onExport} onSettings={onSettings} />);
+
+    const moreBtn = screen.getByLabelText('common.more');
+    expect(moreBtn).toBeTruthy();
+
+    // Menu should be closed initially
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    // Click more button to open menu
+    fireEvent.click(moreBtn);
+    expect(screen.getByRole('menu')).toBeTruthy();
+
+    // Find export button and click
+    const exportItem = screen.getByText('chat.exportMarkdown');
+    fireEvent.click(exportItem);
+    expect(onExport).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    // Open menu again and test settings
+    fireEvent.click(moreBtn);
+    expect(screen.getByRole('menu')).toBeTruthy();
+
+    const settingsItem = screen.getByText('common.settings');
+    fireEvent.click(settingsItem);
+    expect(onSettings).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
 });

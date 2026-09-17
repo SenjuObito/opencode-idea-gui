@@ -37,7 +37,7 @@ public class ThemeConfigService {
     // Written from window-registration threads, read from the LafManager/EDT thread.
     private static volatile boolean listenerRegistered = false;
 
-    // Multi-callback support: each ClaudeChatWindow registers its own callback so that
+    // Multi-callback support: each OpencodeBuddyChatWindow registers its own callback so that
     // theme changes are delivered to every open session, not just the last one registered.
     // CopyOnWriteArraySet ensures safe iteration on the LafManager thread without explicit locking.
     private static final CopyOnWriteArraySet<RegisteredCallback> themeChangeCallbacks = new CopyOnWriteArraySet<>();
@@ -101,7 +101,7 @@ public class ThemeConfigService {
     /**
      * Register a theme change listener and return a handle for later unregistration.
      *
-     * <p>Each {@link com.opencodebuddy.ui.toolwindow.ClaudeChatWindow ClaudeChatWindow}
+     * <p>Each {@link com.opencodebuddy.ui.toolwindow.OpencodeBuddyChatWindow OpencodeBuddyChatWindow}
      * registers its own callback so that theme changes are delivered to <em>every</em> open
      * session, not just the last one registered. The returned handle should be passed to
      * {@link #unregisterThemeChangeListener(RegisteredCallback)} when the window is disposed
@@ -139,7 +139,7 @@ public class ThemeConfigService {
     /**
      * Unregister a previously registered theme change callback.
      *
-     * <p>Should be called when a {@link com.opencodebuddy.ui.toolwindow.ClaudeChatWindow}
+     * <p>Should be called when a {@link com.opencodebuddy.ui.toolwindow.OpencodeBuddyChatWindow}
      * is disposed, so that theme changes no longer attempt to call JavaScript on a disposed
      * webview (which logs the warning "Cannot call JS function window.onIdeThemeChanged: disposed=true").
      *
@@ -220,7 +220,7 @@ public class ThemeConfigService {
             LOG.info("[ThemeConfig] Theme changed to: " + (currentIsDark ? "DARK" : "LIGHT")
                     + ", notifying " + themeChangeCallbacks.size() + " webview(s)");
 
-            // Notify all registered callbacks (one per open ClaudeChatWindow)
+            // Notify all registered callbacks (one per open OpencodeBuddyChatWindow)
             for (RegisteredCallback rc : themeChangeCallbacks) {
                 try {
                     rc.getCallback().onThemeChanged(config);

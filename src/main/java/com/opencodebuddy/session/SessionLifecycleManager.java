@@ -40,9 +40,9 @@ public class SessionLifecycleManager {
 
         OpenCodeSDKBridge getOpenCodeSDKBridge();
 
-        ClaudeSession getSession();
+        OpencodeSession getSession();
 
-        void setSession(ClaudeSession session);
+        void setSession(OpencodeSession session);
 
         HandlerContext getHandlerContext();
 
@@ -79,8 +79,8 @@ public class SessionLifecycleManager {
     public void createNewSession() {
         LOG.info("Creating new session...");
 
-        ClaudeSession oldSession = host.getSession();
-        ClaudeSession defaultSession = createDefaultSession();
+        OpencodeSession oldSession = host.getSession();
+        OpencodeSession defaultSession = createDefaultSession();
         String previousPermissionMode = (oldSession != null) ? oldSession.getPermissionMode() : defaultSession.getPermissionMode();
         String previousProvider = (oldSession != null) ? oldSession.getProvider() : defaultSession.getProvider();
         String previousModel = (oldSession != null) ? oldSession.getModel() : defaultSession.getModel();
@@ -107,7 +107,7 @@ public class SessionLifecycleManager {
                 host.callJavaScript("showLoading", "false");
             });
 
-            ClaudeSession newSession = createDefaultSession();
+            OpencodeSession newSession = createDefaultSession();
             newSession.setPermissionMode(previousPermissionMode);
             newSession.setProvider(previousProvider);
             newSession.setModel(previousModel);
@@ -149,7 +149,7 @@ public class SessionLifecycleManager {
     public void loadHistorySession(String sessionId, String projectPath, String provider, String model) {
         LOG.info("Loading history session: " + sessionId + " from project: " + projectPath);
 
-        ClaudeSession oldSession = host.getSession();
+        OpencodeSession oldSession = host.getSession();
         String previousPermissionMode;
         String previousProvider;
         String previousModel;
@@ -161,7 +161,7 @@ public class SessionLifecycleManager {
         } else {
             PropertiesComponent props = PropertiesComponent.getInstance();
             String savedMode = props.getValue(PERMISSION_MODE_PROPERTY_KEY);
-            ClaudeSession defaultSession = createDefaultSession();
+            OpencodeSession defaultSession = createDefaultSession();
             previousPermissionMode = (savedMode != null && !savedMode.trim().isEmpty())
                                              ? savedMode.trim() : defaultSession.getPermissionMode();
             previousProvider = defaultSession.getProvider();
@@ -189,7 +189,7 @@ public class SessionLifecycleManager {
                         + oldEpoch);
             }
 
-            ClaudeSession newSession = createDefaultSession();
+            OpencodeSession newSession = createDefaultSession();
             newSession.setPermissionMode(previousPermissionMode);
             newSession.setProvider(provider != null && !provider.trim().isEmpty() ? provider : previousProvider);
             newSession.setModel(modelToRestore);
@@ -239,7 +239,7 @@ public class SessionLifecycleManager {
      * {@code historyLoadComplete} with the message count. Ensures the transcript
      * is not lost when the frontend holds {@code __sessionTransitioning} until complete.
      */
-    private void completeHistoryLoadAfterCoalescerFlush(ClaudeSession loadedSession) {
+    private void completeHistoryLoadAfterCoalescerFlush(OpencodeSession loadedSession) {
         if (host.isDisposed()) {
             return;
         }
@@ -258,7 +258,7 @@ public class SessionLifecycleManager {
         });
     }
 
-    private void syncRevertState(ClaudeSession session) {
+    private void syncRevertState(OpencodeSession session) {
         if (session == null) {
             return;
         }
@@ -307,7 +307,7 @@ public class SessionLifecycleManager {
      * Merges built-in commands with local and dynamic OpenCode daemon commands.
      */
     public void fetchSlashCommandsOnStartup() {
-        ClaudeSession currentSession = host.getSession();
+        OpencodeSession currentSession = host.getSession();
         String cwd = currentSession != null ? currentSession.getCwd() : null;
         if (cwd == null) {
             cwd = host.getProject().getBasePath();
@@ -410,7 +410,7 @@ public class SessionLifecycleManager {
         try {
             String currentMode = "default";
 
-            ClaudeSession currentSession = host.getSession();
+            OpencodeSession currentSession = host.getSession();
             if (currentSession != null) {
                 String sessionMode = currentSession.getPermissionMode();
                 if (sessionMode != null && !sessionMode.trim().isEmpty()) {
@@ -442,13 +442,13 @@ public class SessionLifecycleManager {
         return com.opencodebuddy.util.EditorFileUtils.getCurrentEditorFilePath(this.host.getProject());
     }
 
-    private ClaudeSession createDefaultSession() {
-        return new ClaudeSession(
+    private OpencodeSession createDefaultSession() {
+        return new OpencodeSession(
                 host.getProject(),
                 host.getOpenCodeSDKBridge());
     }
 
-    private void completeNewSessionBootstrap(ClaudeSession newSession, String workingDirectory, String successLogPrefix) {
+    private void completeNewSessionBootstrap(OpencodeSession newSession, String workingDirectory, String successLogPrefix) {
         host.clearPendingPermissionRequests();
         host.clearPermissionDecisionMemory();
         host.setSession(newSession);

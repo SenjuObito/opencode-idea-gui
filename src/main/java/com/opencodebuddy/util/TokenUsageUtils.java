@@ -1,6 +1,6 @@
 package com.opencodebuddy.util;
 
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.google.gson.JsonObject;
 
 import java.util.List;
@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * Utility class for token usage calculation across providers.
  * Centralizes provider-aware token extraction and usage JSON lookup
- * — used by MessageJsonConverter, SettingsHandler, and ClaudeSession.
+ * — used by MessageJsonConverter, SettingsHandler, and OpencodeSession.
  */
 public final class TokenUsageUtils {
 
@@ -136,18 +136,18 @@ public final class TokenUsageUtils {
      * Find the last usage JSON from a list of parsed session messages.
      * Scans from end to find the last assistant message with usage data.
      */
-    public static JsonObject findLastUsageFromSessionMessages(List<ClaudeSession.Message> messages) {
+    public static JsonObject findLastUsageFromSessionMessages(List<OpencodeSession.Message> messages) {
         return findLastUsageFromSessionMessages(messages, null);
     }
 
     public static JsonObject findLastUsageFromSessionMessages(
-            List<ClaudeSession.Message> messages,
+            List<OpencodeSession.Message> messages,
             String provider
     ) {
         boolean preferRootUsage = "codex".equals(provider);
         for (int i = messages.size() - 1; i >= 0; i--) {
-            ClaudeSession.Message msg = messages.get(i);
-            if (msg.type != ClaudeSession.Message.Type.ASSISTANT || msg.raw == null) { continue; }
+            OpencodeSession.Message msg = messages.get(i);
+            if (msg.type != OpencodeSession.Message.Type.ASSISTANT || msg.raw == null) { continue; }
             JsonObject rootUsage = msg.raw.has("usage") && msg.raw.get("usage").isJsonObject()
                     ? msg.raw.getAsJsonObject("usage") : null;
             if (preferRootUsage && rootUsage != null) {
@@ -178,11 +178,11 @@ public final class TokenUsageUtils {
      * Historical per-turn accounting remains intact because turnUsage and turnCostUsd
      * are deliberately not touched.
      */
-    public static void clearContextUsageFromSessionMessages(List<ClaudeSession.Message> messages) {
+    public static void clearContextUsageFromSessionMessages(List<OpencodeSession.Message> messages) {
         if (messages == null) {
             return;
         }
-        for (ClaudeSession.Message message : messages) {
+        for (OpencodeSession.Message message : messages) {
             if (message == null || message.raw == null) {
                 continue;
             }

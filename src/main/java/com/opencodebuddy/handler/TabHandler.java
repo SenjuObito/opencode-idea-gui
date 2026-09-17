@@ -3,8 +3,8 @@ package com.opencodebuddy.handler;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
-import com.opencodebuddy.ui.toolwindow.ClaudeChatWindow;
-import com.opencodebuddy.ui.toolwindow.ClaudeSDKToolWindow;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyChatWindow;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow;
 import com.opencodebuddy.settings.TabStateService;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -15,20 +15,32 @@ import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.content.ContentManager;
 
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.util.function.Consumer;
+
 /**
- * Tab management handler
- * Handles creating new chat tabs in the tool window
+ * Tab management handler.
+ * Handles creating new chat tabs and updating tab titles in the tool window.
  */
 public class TabHandler extends BaseMessageHandler {
 
     private static final Logger LOG = Logger.getInstance(TabHandler.class);
 
     private static final String[] SUPPORTED_TYPES = {
-        "create_new_tab"
+        "create_new_tab",
+        "update_tab_title"
     };
 
+    private final Consumer<String> tabTitleUpdater;
+
     public TabHandler(HandlerContext context) {
+        this(context, null);
+    }
+
+    public TabHandler(HandlerContext context, Consumer<String> tabTitleUpdater) {
         super(context);
+        this.tabTitleUpdater = tabTitleUpdater;
     }
 
     @Override
@@ -43,7 +55,28 @@ public class TabHandler extends BaseMessageHandler {
             handleCreateNewTab();
             return true;
         }
+        if ("update_tab_title".equals(type)) {
+            LOG.debug("[TabHandler] Processing update_tab_title");
+            handleUpdateTabTitle(content);
+            return true;
+        }
         return false;
+    }
+
+    private void handleUpdateTabTitle(String content) {
+        String title = content;
+        if (title != null && title.startsWith("{") && title.endsWith("}")) {
+            try {
+                JsonObject json = JsonParser.parseString(title).getAsJsonObject();
+                if (json.has("title") && !json.get("title").isJsonNull()) {
+                    title = json.get("title").getAsString();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (tabTitleUpdater != null) {
+            tabTitleUpdater.accept(title);
+        }
     }
 
     /**
@@ -56,7 +89,7 @@ public class TabHandler extends BaseMessageHandler {
             try {
                 // Get the tool window
                 ToolWindow toolWindow = ToolWindowManager.getInstance(project)
-                        .getToolWindow(ClaudeSDKToolWindow.TOOL_WINDOW_ID);
+                        .getToolWindow(OpencodeBuddyToolWindow.TOOL_WINDOW_ID);
                 if (toolWindow == null) {
                     LOG.error("[TabHandler] Tool window not found");
                     callJavaScript("addErrorMessage", escapeJs("无法找到 OpenCode 工具窗口"));
@@ -65,15 +98,15 @@ public class TabHandler extends BaseMessageHandler {
 
                 ContentManager contentManager = toolWindow.getContentManager();
                 Content selectedContent = contentManager.getSelectedContent();
-                ClaudeChatWindow sourceWindow = selectedContent == null
+                OpencodeBuddyChatWindow sourceWindow = selectedContent == null
                         ? null
-                        : ClaudeSDKToolWindow.getChatWindowForContent(selectedContent);
+                        : OpencodeBuddyToolWindow.getChatWindowForContent(selectedContent);
                 if (sourceWindow == null) {
-                    sourceWindow = ClaudeSDKToolWindow.getChatWindow(project);
+                    sourceWindow = OpencodeBuddyToolWindow.getChatWindow(project);
                 }
 
                 // Create a new chat window instance with skipRegister=true (don't replace the main instance)
-                ClaudeChatWindow newChatWindow = new ClaudeChatWindow(project, true);
+                OpencodeBuddyChatWindow newChatWindow = new OpencodeBuddyChatWindow(project, true);
                 newChatWindow.inheritSessionPreferencesFrom(sourceWindow);
 
                 // Get tab index before adding content
@@ -89,7 +122,7 @@ public class TabHandler extends BaseMessageHandler {
                     tabName = savedName;
                     LOG.info("[TabHandler] Restored tab name from storage: " + tabName);
                 } else {
-                    tabName = ClaudeSDKToolWindow.getNextTabName(toolWindow);
+                    tabName = OpencodeBuddyToolWindow.getNextTabName(toolWindow);
                 }
 
                 // Create and add the new tab content

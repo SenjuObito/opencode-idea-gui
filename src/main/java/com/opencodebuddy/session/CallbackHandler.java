@@ -9,16 +9,16 @@ import java.util.List;
  * Dispatches various session callback notifications.
  */
 public class CallbackHandler {
-    private ClaudeSession.SessionCallback callback;
+    private OpencodeSession.SessionCallback callback;
 
-    public void setCallback(ClaudeSession.SessionCallback callback) {
+    public void setCallback(OpencodeSession.SessionCallback callback) {
         this.callback = callback;
     }
 
     /**
      * Notify of a message update.
      */
-    public void notifyMessageUpdate(List<ClaudeSession.Message> messages) {
+    public void notifyMessageUpdate(List<OpencodeSession.Message> messages) {
         if (callback != null) {
             callback.onMessageUpdate(messages);
         }

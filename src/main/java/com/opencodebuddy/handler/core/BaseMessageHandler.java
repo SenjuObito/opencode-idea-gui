@@ -13,10 +13,24 @@ public abstract class BaseMessageHandler implements MessageHandler {
     }
 
     /**
-     * Call a JavaScript function.
+     * Call a JavaScript function on the current window.
      */
     protected void callJavaScript(String functionName, String... args) {
         context.callJavaScript(functionName, args);
+    }
+
+    /**
+     * Broadcast a JavaScript call to the current window and all other active chat windows across all projects.
+     */
+    protected void broadcastToAll(String functionName, String... args) {
+        context.broadcastToAll(functionName, args);
+    }
+
+    /**
+     * Broadcast a JavaScript call to the current window and all other active chat windows belonging to the current project.
+     */
+    protected void broadcastToProject(String functionName, String... args) {
+        context.broadcastToProject(functionName, args);
     }
 
     /**

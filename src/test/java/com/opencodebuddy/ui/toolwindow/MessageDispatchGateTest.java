@@ -22,7 +22,7 @@ import static org.junit.Assert.assertTrue;
  * schedule an async {@code session.send} after {@code dispose()} had already run process cleanup.
  *
  * <p>The gate is pure Java with no platform dependencies, so these tests run without constructing a
- * full {@code ClaudeChatWindow} (which needs a Project, JBCefBrowser, etc.). {@code ClaudeChatWindow}
+ * full {@code OpencodeBuddyChatWindow} (which needs a Project, JBCefBrowser, etc.). {@code OpencodeBuddyChatWindow}
  * delegates its dispatch/dispose exclusion to this gate, so the contract proven here is the one the
  * JCEF callback path relies on.
  */

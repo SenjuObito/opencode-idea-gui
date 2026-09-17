@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Minimalist StatusBar widget for Claude AI
  */
-public class ClaudeStatusBarWidget implements CustomStatusBarWidget, StatusBarWidget, Disposable {
+public class OpencodeStatusBarWidget implements CustomStatusBarWidget, StatusBarWidget, Disposable {
     private final Project project;
     private StatusBar statusBar;
     private JLabel label;
@@ -45,13 +45,13 @@ public class ClaudeStatusBarWidget implements CustomStatusBarWidget, StatusBarWi
     // Track disposed state to prevent operations after disposal
     private volatile boolean disposed = false;
 
-    public ClaudeStatusBarWidget(Project project) {
+    public OpencodeStatusBarWidget(Project project) {
         this.project = project;
     }
 
     @Override
     public @NotNull String ID() {
-        return "ClaudeStatusBarWidget";
+        return "OpencodeStatusBarWidget";
     }
 
     @Override
@@ -252,7 +252,7 @@ public class ClaudeStatusBarWidget implements CustomStatusBarWidget, StatusBarWi
     public static class Factory implements StatusBarWidgetFactory {
         @Override
         public @NotNull String getId() {
-            return "ClaudeStatusBarWidget";
+            return "OpencodeStatusBarWidget";
         }
 
         @Override
@@ -272,7 +272,7 @@ public class ClaudeStatusBarWidget implements CustomStatusBarWidget, StatusBarWi
 
         @Override
         public @NotNull StatusBarWidget createWidget(@NotNull Project project) {
-            return new ClaudeStatusBarWidget(project);
+            return new OpencodeStatusBarWidget(project);
         }
 
         @Override
@@ -281,11 +281,11 @@ public class ClaudeStatusBarWidget implements CustomStatusBarWidget, StatusBarWi
         }
 
         @Nullable
-        public static ClaudeStatusBarWidget getWidget(@NotNull Project project) {
+        public static OpencodeStatusBarWidget getWidget(@NotNull Project project) {
             StatusBar statusBar = WindowManager.getInstance().getStatusBar(project);
             if (statusBar != null) {
-                StatusBarWidget widget = statusBar.getWidget("ClaudeStatusBarWidget");
-                if (widget instanceof ClaudeStatusBarWidget) { return (ClaudeStatusBarWidget) widget; }
+                StatusBarWidget widget = statusBar.getWidget("OpencodeStatusBarWidget");
+                if (widget instanceof OpencodeStatusBarWidget) { return (OpencodeStatusBarWidget) widget; }
             }
             return null;
         }

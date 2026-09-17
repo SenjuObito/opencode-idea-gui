@@ -52,6 +52,18 @@ public class ProjectConfigHandler {
             context.callJavaScript(jsCallback, context.escapeJs(json)));
     }
 
+    private void broadcastJsonToAll(String jsCallback, JsonElement payload) {
+        String json = gson.toJson(payload);
+        ApplicationManager.getApplication().invokeLater(() ->
+            context.broadcastToAll(jsCallback, context.escapeJs(json)));
+    }
+
+    private void broadcastJsonToProject(String jsCallback, JsonElement payload) {
+        String json = gson.toJson(payload);
+        ApplicationManager.getApplication().invokeLater(() ->
+            context.broadcastToProject(jsCallback, context.escapeJs(json)));
+    }
+
     private void showError(String message) {
         ApplicationManager.getApplication().invokeLater(() ->
             context.callJavaScript("window.showError", context.escapeJs(message)));
@@ -113,7 +125,7 @@ public class ProjectConfigHandler {
             boolean enabled = readBoolean(json, field, defaultValue);
             mutation.accept(enabled);
             LOG.info("[ProjectConfigHandler] Set " + logLabel + ": " + enabled);
-            pushJson(jsCallback, jsonOf(field, enabled));
+            broadcastJsonToAll(jsCallback, jsonOf(field, enabled));
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set " + logLabel + ": " + e.getMessage(), e);
             showError(errorMessage);
@@ -125,7 +137,7 @@ public class ProjectConfigHandler {
                                             String logLabel, ThrowingProjectBooleanConsumer mutation,
                                             String jsCallback, String errorMessage) {
         try {
-            String projectPath = context.getProject().getBasePath();
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
             if (projectPath == null) {
                 showError("Unable to resolve project path");
                 return;
@@ -134,7 +146,7 @@ public class ProjectConfigHandler {
             boolean enabled = readBoolean(json, field, defaultValue);
             mutation.accept(projectPath, enabled);
             LOG.info("[ProjectConfigHandler] Set " + logLabel + ": " + enabled);
-            pushJson(jsCallback, jsonOf(field, enabled));
+            broadcastJsonToProject(jsCallback, jsonOf(field, enabled));
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set " + logLabel + ": " + e.getMessage(), e);
             showError(errorMessage + ": " + e.getMessage());
@@ -164,7 +176,7 @@ public class ProjectConfigHandler {
 
     public void handleSetWorkingDirectory(String content) {
         try {
-            String projectPath = context.getProject().getBasePath();
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
             if (projectPath == null) {
                 showError("Unable to resolve project path");
                 return;
@@ -184,6 +196,8 @@ public class ProjectConfigHandler {
             settingsService.setCustomWorkingDirectory(projectPath, customWorkingDir);
             LOG.info("[ProjectConfigHandler] Set custom working directory: " + customWorkingDir);
             showSuccess("Working directory config saved");
+            JsonObject payload = jsonOf("customWorkingDir", customWorkingDir != null ? customWorkingDir : "");
+            broadcastJsonToProject("window.updateWorkingDirectory", payload);
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set working directory: " + e.getMessage(), e);
             showError("Failed to save working directory config: " + e.getMessage());
@@ -193,7 +207,7 @@ public class ProjectConfigHandler {
     public void handleGetStreamingEnabled() {
         respondWithJson("window.updateStreamingEnabled",
             () -> {
-                String projectPath = context.getProject().getBasePath();
+                String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
                 boolean enabled = projectPath == null || settingsService.getStreamingEnabled(projectPath);
                 return jsonOf("streamingEnabled", enabled);
             },
@@ -211,7 +225,7 @@ public class ProjectConfigHandler {
     public void handleGetAutoOpenFileEnabled() {
         respondWithJson("window.updateAutoOpenFileEnabled",
             () -> {
-                String projectPath = context.getProject().getBasePath();
+                String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
                 boolean enabled = projectPath != null && settingsService.getAutoOpenFileEnabled(projectPath);
                 return jsonOf("autoOpenFileEnabled", enabled);
             },
@@ -238,7 +252,7 @@ public class ProjectConfigHandler {
             JsonObject response = setPermissionDialogTimeoutAndCreateResponse(content);
             LOG.info("[ProjectConfigHandler] Set permission dialog timeout: "
                     + response.get("permissionDialogTimeoutSeconds").getAsInt() + "s");
-            pushJson("window.updatePermissionDialogTimeout", response);
+            broadcastJsonToAll("window.updatePermissionDialogTimeout", response);
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set permission dialog timeout; errorClass="
                     + e.getClass().getSimpleName(), e);
@@ -282,7 +296,7 @@ public class ProjectConfigHandler {
             }
             PropertiesComponent.getInstance().setValue(SEND_SHORTCUT_PROPERTY_KEY, sendShortcut);
             LOG.info("[ProjectConfigHandler] Set send shortcut: " + sendShortcut);
-            pushJson("window.updateSendShortcut", jsonOf("sendShortcut", sendShortcut));
+            broadcastJsonToAll("window.updateSendShortcut", jsonOf("sendShortcut", sendShortcut));
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set send shortcut: " + e.getMessage(), e);
             showError("Failed to save send shortcut setting: " + e.getMessage());
@@ -292,7 +306,7 @@ public class ProjectConfigHandler {
     public void handleGetCommitPrompt() {
         try {
             String commitPrompt = settingsService.getCommitPrompt();
-            String projectPath = context.getProject().getBasePath();
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
             String projectCommitPrompt = projectPath != null
                     ? settingsService.getProjectCommitPrompt(projectPath)
                     : "";
@@ -330,7 +344,7 @@ public class ProjectConfigHandler {
             JsonObject response = new JsonObject();
             response.addProperty("commitPrompt", validatedPrompt);
             response.addProperty("saved", true);
-            pushJson("window.updateCommitPrompt", response);
+            broadcastJsonToAll("window.updateCommitPrompt", response);
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set commit prompt: " + e.getMessage(), e);
             showError("Failed to save commit prompt: " + e.getMessage());
@@ -406,7 +420,7 @@ public class ProjectConfigHandler {
                     : new JsonObject();
             // Full models map (claude/codex/grok/kimi/opencode/pi) — matches chat CLI list.
             setter.apply(provider, models);
-            pushJson(jsCallback, getter.get());
+            broadcastJsonToAll(jsCallback, getter.get());
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] " + errorLogMessage + ": " + e.getMessage(), e);
             showError(OpenCodeBuddyBundle.message(errorBundleKey, e.getMessage()));
@@ -415,7 +429,7 @@ public class ProjectConfigHandler {
 
     public void handleGetProjectCommitPrompt() {
         try {
-            String projectPath = context.getProject().getBasePath();
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
             String projectCommitPrompt = projectPath != null
                     ? settingsService.getProjectCommitPrompt(projectPath)
                     : "";
@@ -427,7 +441,7 @@ public class ProjectConfigHandler {
 
     public void handleSetProjectCommitPrompt(String content) {
         try {
-            String projectPath = context.getProject().getBasePath();
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
             if (projectPath == null) {
                 showError("Cannot resolve project path");
                 return;
@@ -455,7 +469,7 @@ public class ProjectConfigHandler {
             JsonObject response = new JsonObject();
             response.addProperty("projectCommitPrompt", validatedPrompt);
             response.addProperty("saved", true);
-            pushJson("window.updateProjectCommitPrompt", response);
+            broadcastJsonToProject("window.updateProjectCommitPrompt", response);
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to set project commit prompt: " + e.getMessage(), e);
             showError("Failed to save project commit prompt: " + e.getMessage());
@@ -750,8 +764,8 @@ public class ProjectConfigHandler {
         try {
             String uiFontConfigJson = FontConfigService.getResolvedUiFontConfigJson(settingsService);
             ApplicationManager.getApplication().invokeLater(() -> {
-                context.callJavaScript("window.onUiFontConfigReceived", context.escapeJs(uiFontConfigJson));
-                context.callJavaScript("window.applyUiFontConfig", context.escapeJs(uiFontConfigJson));
+                context.broadcastToAll("window.onUiFontConfigReceived", context.escapeJs(uiFontConfigJson));
+                context.broadcastToAll("window.applyUiFontConfig", context.escapeJs(uiFontConfigJson));
             });
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to dispatch UI font config: " + e.getMessage(), e);
@@ -762,8 +776,8 @@ public class ProjectConfigHandler {
         try {
             String codeFontConfigJson = FontConfigService.getResolvedCodeFontConfigJson(settingsService);
             ApplicationManager.getApplication().invokeLater(() -> {
-                context.callJavaScript("window.onCodeFontConfigReceived", context.escapeJs(codeFontConfigJson));
-                context.callJavaScript("window.applyCodeFontConfig", context.escapeJs(codeFontConfigJson));
+                context.broadcastToAll("window.onCodeFontConfigReceived", context.escapeJs(codeFontConfigJson));
+                context.broadcastToAll("window.applyCodeFontConfig", context.escapeJs(codeFontConfigJson));
             });
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to dispatch code font config: " + e.getMessage(), e);

@@ -1,7 +1,7 @@
 package com.opencodebuddy.session;
 
 import com.opencodebuddy.handler.SettingsHandler;
-import com.opencodebuddy.notifications.ClaudeNotifier;
+import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.util.TokenUsageUtils;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -54,7 +54,7 @@ public class SessionMessageOrchestrator {
                 historyAccess,
                 (usedTokens, maxTokens) -> {
                     if (project != null) {
-                        ClaudeNotifier.setTokenUsage(project, usedTokens, maxTokens);
+                        OpencodeNotifier.setTokenUsage(project, usedTokens, maxTokens);
                     }
                     callbackFacade.notifyUsageUpdate(usedTokens, maxTokens);
                 },
@@ -118,7 +118,7 @@ public class SessionMessageOrchestrator {
                     return;
                 }
 
-                ClaudeSession.Message matchedMessage = patchMatchingUserMessage(latestClaudeUserMessage);
+                OpencodeSession.Message matchedMessage = patchMatchingUserMessage(latestClaudeUserMessage);
                 if (matchedMessage != null && matchedMessage.raw != null && matchedMessage.raw.has("uuid")) {
                     callbackFacade.notifyUserMessageUuidPatched(
                             matchedMessage.content != null ? matchedMessage.content : "",
@@ -165,7 +165,7 @@ public class SessionMessageOrchestrator {
                 state.setError(null);
                 state.clearMessages();
                 for (JsonObject msg : serverMessages) {
-                    ClaudeSession.Message message = messageParser.parseServerMessage(msg);
+                    OpencodeSession.Message message = messageParser.parseServerMessage(msg);
                     if (message != null) {
                         state.addMessage(message);
                     }
@@ -194,7 +194,7 @@ public class SessionMessageOrchestrator {
         });
     }
 
-    private ClaudeSession.Message patchMatchingUserMessage(JsonObject historyMessage) {
+    private OpencodeSession.Message patchMatchingUserMessage(JsonObject historyMessage) {
         if (!historyMessage.has("type") || !"user".equals(historyMessage.get("type").getAsString())) {
             return null;
         }
@@ -208,10 +208,10 @@ public class SessionMessageOrchestrator {
         }
 
         String uuid = historyMessage.get("uuid").getAsString();
-        List<ClaudeSession.Message> localMessages = state.getMessagesReference();
+        List<OpencodeSession.Message> localMessages = state.getMessagesReference();
         for (int i = localMessages.size() - 1; i >= 0; i--) {
-            ClaudeSession.Message localMsg = localMessages.get(i);
-            if (localMsg.type != ClaudeSession.Message.Type.USER) {
+            OpencodeSession.Message localMsg = localMessages.get(i);
+            if (localMsg.type != OpencodeSession.Message.Type.USER) {
                 continue;
             }
             synchronized (localMsg) {
@@ -246,11 +246,11 @@ public class SessionMessageOrchestrator {
         return raw;
     }
 
-    private ClaudeSession.Message findLatestUnresolvedUserMessage() {
-        List<ClaudeSession.Message> messages = state.getMessagesReference();
+    private OpencodeSession.Message findLatestUnresolvedUserMessage() {
+        List<OpencodeSession.Message> messages = state.getMessagesReference();
         for (int i = messages.size() - 1; i >= 0; i--) {
-            ClaudeSession.Message message = messages.get(i);
-            if (message.type != ClaudeSession.Message.Type.USER) {
+            OpencodeSession.Message message = messages.get(i);
+            if (message.type != OpencodeSession.Message.Type.USER) {
                 continue;
             }
             if (message.content == null || message.content.isEmpty() || "[tool_result]".equals(message.content)) {
@@ -309,7 +309,7 @@ public class SessionMessageOrchestrator {
      * 在 state 里已经装好解析后的消息之后，从最后一条带用量的助手消息重推一次
      * used/max。没有历史用量则什么都不推，让前端保持原样，而不是把 0 当成真值。</p>
      *
-     * <p>取值走 {@code state.getMessages()}（{@link ClaudeSession.Message#raw} 层），
+     * <p>取值走 {@code state.getMessages()}（{@link OpencodeSession.Message#raw} 层），
      * 因为 opencode 的 token 快照位于 {@code raw.tokens}；早期版本误传
      * {@link OpenCodeMessageConverter} 的外层对象（用量埋在 {@code raw} 里），
      * 导致 {@code findLastUsageFromRawMessages} 恒为 null、用量环永远显示 0%。</p>

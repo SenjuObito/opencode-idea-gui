@@ -72,9 +72,9 @@ public class StreamMessageCoalescer {
     // not against updateSequence: updateSequence only means "newer data is queued", which
     // is not a reason to drop the in-flight frame. See sendToWebView for why that matters.
     private volatile long lastPushedSequence = 0L;
-    private volatile List<ClaudeSession.Message> pendingMessages = null;
-    private volatile List<ClaudeSession.Message> lastSnapshot = null;
-    private volatile List<ClaudeSession.Message> lastDeliveredSnapshot = null;
+    private volatile List<OpencodeSession.Message> pendingMessages = null;
+    private volatile List<OpencodeSession.Message> lastSnapshot = null;
+    private volatile List<OpencodeSession.Message> lastDeliveredSnapshot = null;
 
     private final JsCallbackTarget callbackTarget;
 
@@ -98,7 +98,7 @@ public class StreamMessageCoalescer {
     }
 
     record MessageTransport(
-            List<ClaudeSession.Message> messages,
+            List<OpencodeSession.Message> messages,
             int baseIndex,
             boolean tailUpdate
     ) {}
@@ -110,13 +110,13 @@ public class StreamMessageCoalescer {
     /**
      * Enqueue a message update for coalesced delivery.
      */
-    public void enqueue(List<ClaudeSession.Message> messages) {
+    public void enqueue(List<OpencodeSession.Message> messages) {
         if (callbackTarget.isDisposed()) {
             return;
         }
         // Defensive copy: the caller's list may be mutated on another thread,
         // so we snapshot it here to guarantee a consistent read in sendToWebView.
-        final List<ClaudeSession.Message> snapshot = List.copyOf(messages);
+        final List<OpencodeSession.Message> snapshot = List.copyOf(messages);
         synchronized (lock) {
             pendingMessages = snapshot;
         }
@@ -195,7 +195,7 @@ public class StreamMessageCoalescer {
             return;
         }
 
-        final List<ClaudeSession.Message> snapshot;
+        final List<OpencodeSession.Message> snapshot;
         final long sequence;
         synchronized (lock) {
             updateAlarm.cancelAllRequests();
@@ -277,7 +277,7 @@ public class StreamMessageCoalescer {
         }
 
         updateAlarm.addRequest(() -> {
-            final List<ClaudeSession.Message> snapshot;
+            final List<OpencodeSession.Message> snapshot;
             final long sequence;
             synchronized (lock) {
                 updateScheduled = false;
@@ -306,14 +306,14 @@ public class StreamMessageCoalescer {
     }
 
     private void sendToWebView(
-            List<ClaudeSession.Message> messages,
+            List<OpencodeSession.Message> messages,
             long sequence,
             LongConsumer afterSendOnEdt
     ) {
         // Keep the snapshot for potential re-flush after webview reload/recreate.
         // Only a snapshot actually dispatched to the WebView can prove whether
         // the omitted prefix is stable enough for an indexed tail update.
-        final List<ClaudeSession.Message> deliveredSnapshot;
+        final List<OpencodeSession.Message> deliveredSnapshot;
         synchronized (lock) {
             deliveredSnapshot = lastDeliveredSnapshot;
             lastSnapshot = messages;
@@ -322,7 +322,7 @@ public class StreamMessageCoalescer {
         MessageTransport transport = selectMessageTransport(messages, deliveredSnapshot);
         final boolean tailUpdate = transport.tailUpdate();
         final int tailBaseIndex = transport.baseIndex();
-        final List<ClaudeSession.Message> transportMessages = transport.messages();
+        final List<OpencodeSession.Message> transportMessages = transport.messages();
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             final int payloadChars;
@@ -447,8 +447,8 @@ public class StreamMessageCoalescer {
         });
     }
 
-    static MessageTransport selectMessageTransport(List<ClaudeSession.Message> messages,
-                                                    List<ClaudeSession.Message> previousMessages) {
+    static MessageTransport selectMessageTransport(List<OpencodeSession.Message> messages,
+                                                    List<OpencodeSession.Message> previousMessages) {
         boolean longConversation = messages.size() > LONG_CONVERSATION_THRESHOLD;
         int candidateBaseIndex = longConversation
                 ? Math.max(0, messages.size() - LONG_CONVERSATION_TAIL_SIZE) : 0;
@@ -457,13 +457,13 @@ public class StreamMessageCoalescer {
                 && hasSamePrefix(previousMessages, messages, candidateBaseIndex));
         boolean tailUpdate = longConversation && stablePrefix;
         int baseIndex = tailUpdate ? candidateBaseIndex : 0;
-        List<ClaudeSession.Message> transportMessages = tailUpdate
+        List<OpencodeSession.Message> transportMessages = tailUpdate
                 ? List.copyOf(messages.subList(baseIndex, messages.size())) : messages;
         return new MessageTransport(transportMessages, baseIndex, tailUpdate);
     }
 
-    private static boolean hasSamePrefix(List<ClaudeSession.Message> previousMessages,
-                                         List<ClaudeSession.Message> messages,
+    private static boolean hasSamePrefix(List<OpencodeSession.Message> previousMessages,
+                                         List<OpencodeSession.Message> messages,
                                          int prefixLength) {
         if (previousMessages.size() < prefixLength) {
             return false;

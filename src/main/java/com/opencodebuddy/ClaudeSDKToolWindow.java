@@ -5,5 +5,5 @@ package com.opencodebuddy;
  * factory lived in the root package. Keep the old class name loadable so cached
  * IDE metadata does not fail with ClassNotFoundException during upgrade.
  */
-public class ClaudeSDKToolWindow extends com.opencodebuddy.ui.toolwindow.ClaudeSDKToolWindow {
+public class ClaudeSDKToolWindow extends com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow {
 }

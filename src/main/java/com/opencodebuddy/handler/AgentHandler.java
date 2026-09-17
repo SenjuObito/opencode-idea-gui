@@ -122,7 +122,7 @@ public class AgentHandler extends BaseMessageHandler {
                         }
                         String agentsJson = gson.toJson(resultAgents);
                         ApplicationManager.getApplication().invokeLater(() -> {
-                            callJavaScript("window.updateAgents", escapeJs(agentsJson));
+                            broadcastToAll("window.updateAgents", escapeJs(agentsJson));
                         });
                         return;
                     }
@@ -146,7 +146,7 @@ public class AgentHandler extends BaseMessageHandler {
             String agentsJson = gson.toJson(agents);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.updateAgents", escapeJs(agentsJson));
+                broadcastToAll("window.updateAgents", escapeJs(agentsJson));
             });
         } catch (Exception e) {
             LOG.error("[AgentHandler] Failed to get agents: " + e.getMessage(), e);
@@ -323,12 +323,12 @@ public class AgentHandler extends BaseMessageHandler {
                 if (agent != null) {
                     result.add("agent", agent);
                     String agentName = agent.has("name") ? agent.get("name").getAsString() : "Unknown Agent";
-                    com.opencodebuddy.notifications.ClaudeNotifier.setAgent(context.getProject(), agentName);
+                    com.opencodebuddy.notifications.OpencodeNotifier.setAgent(context.getProject(), agentName);
                 } else {
-                    com.opencodebuddy.notifications.ClaudeNotifier.setAgent(context.getProject(), "");
+                    com.opencodebuddy.notifications.OpencodeNotifier.setAgent(context.getProject(), "");
                 }
             } else {
-                com.opencodebuddy.notifications.ClaudeNotifier.setAgent(context.getProject(), "");
+                com.opencodebuddy.notifications.OpencodeNotifier.setAgent(context.getProject(), "");
             }
 
             String resultJson = gson.toJson(result);
@@ -420,7 +420,7 @@ public class AgentHandler extends BaseMessageHandler {
                         gson.toJson(exportData, writer);
                         LOG.info("[AgentHandler] Successfully exported " + agents.size() + " agents to: " + fileToSave.getAbsolutePath());
 
-                        com.opencodebuddy.notifications.ClaudeNotifier.showSuccess(
+                        com.opencodebuddy.notifications.OpencodeNotifier.showSuccess(
                                 context.getProject(),
                                 "Exported " + agents.size() + " agents to " + fileToSave.getName()
                         );
@@ -430,7 +430,7 @@ public class AgentHandler extends BaseMessageHandler {
                 }
             } catch (Exception e) {
                 LOG.error("[AgentHandler] Failed to export agents: " + e.getMessage(), e);
-                com.opencodebuddy.notifications.ClaudeNotifier.showError(
+                com.opencodebuddy.notifications.OpencodeNotifier.showError(
                         context.getProject(),
                         "Failed to export agents: " + e.getMessage()
                 );
@@ -528,7 +528,7 @@ public class AgentHandler extends BaseMessageHandler {
                 }
             } catch (Exception e) {
                 LOG.error("[AgentHandler] Failed to import agents file: " + e.getMessage(), e);
-                com.opencodebuddy.notifications.ClaudeNotifier.showError(
+                com.opencodebuddy.notifications.OpencodeNotifier.showError(
                         context.getProject(),
                         "Failed to load import file: " + e.getMessage()
                 );
@@ -568,7 +568,7 @@ public class AgentHandler extends BaseMessageHandler {
                 String message = String.format("Imported %d agents (%d new, %d updated, %d skipped)",
                         imported + updated, imported, updated, skipped);
 
-                com.opencodebuddy.notifications.ClaudeNotifier.showSuccess(
+                com.opencodebuddy.notifications.OpencodeNotifier.showSuccess(
                         context.getProject(),
                         message
                 );
@@ -584,7 +584,7 @@ public class AgentHandler extends BaseMessageHandler {
         } catch (Exception e) {
             LOG.error("[AgentHandler] Failed to save imported agents: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() -> {
-                com.opencodebuddy.notifications.ClaudeNotifier.showError(
+                com.opencodebuddy.notifications.OpencodeNotifier.showError(
                         context.getProject(),
                         "Failed to import agents: " + e.getMessage()
                 );

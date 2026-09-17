@@ -97,39 +97,94 @@ export async function findBinary() {
 }
 
 /**
- * Poll the server URL until it responds or the timeout elapses.
- * Checks every 300ms with a 2s per-request connect timeout.
- *
+ * Probe a single HTTP URL with a quick timeout.
  * @param {string} url
- * @param {number} timeoutMs
+ * @param {number} [timeoutMs]
  * @returns {Promise<boolean>}
  */
-function waitForReady(url, timeoutMs) {
-  const start = Date.now();
-
-  const poll = () => new Promise((resolve) => {
-    const elapsed = Date.now() - start;
-    if (elapsed >= timeoutMs) {
-      resolve(false);
-      return;
-    }
-
+function probeUrl(url, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    let resolved = false;
     const req = http.get(url, (res) => {
-      // Any HTTP response (including 404) means the server is listening
-      res.resume(); // consume response body
-      resolve(true);
+      res.resume();
+      if (!resolved) {
+        resolved = true;
+        resolve(true);
+      }
     });
 
     req.on('error', () => {
-      // Connection refused or similar — not ready yet
-      setTimeout(() => resolve(poll()), 300);
+      if (!resolved) {
+        resolved = true;
+        resolve(false);
+      }
     });
 
-    req.setTimeout(2000, () => {
+    req.setTimeout(timeoutMs, () => {
       req.destroy();
-      setTimeout(() => resolve(poll()), 300);
+      if (!resolved) {
+        resolved = true;
+        resolve(false);
+      }
     });
   });
+}
+
+/**
+ * Probe candidate URLs across IPv4 (127.0.0.1), localhost, and IPv6 ([::1]).
+ * @param {number} port
+ * @param {string[]} [extraUrls]
+ * @param {number} [timeoutMs]
+ * @returns {Promise<string | null>} Responsive URL or null
+ */
+async function findResponsiveServerUrl(port, extraUrls = [], timeoutMs = 1500) {
+  const candidates = [];
+  if (process.env.OPENCODE_URL) {
+    candidates.push(process.env.OPENCODE_URL);
+  }
+  // IPv4 first (most reliable on Windows), then localhost, then IPv6
+  candidates.push(`http://127.0.0.1:${port}`);
+  candidates.push(`http://localhost:${port}`);
+  candidates.push(`http://[::1]:${port}`);
+  for (const u of extraUrls) {
+    if (u && !candidates.includes(u)) candidates.push(u);
+  }
+
+  for (const cand of candidates) {
+    console.error(`[opencode-serve-manager] Probing existing server candidate: ${cand}`);
+    const alive = await probeUrl(cand, timeoutMs);
+    if (alive) {
+      console.error(`[opencode-serve-manager] Found active server at ${cand}`);
+      return cand;
+    }
+  }
+  return null;
+}
+
+/**
+ * Poll candidate server URLs until any responds or the timeout elapses.
+ * @param {number} port
+ * @param {Set<string>} dynamicUrls
+ * @param {number} timeoutMs
+ * @returns {Promise<string | null>}
+ */
+function waitForAnyReady(port, dynamicUrls, timeoutMs) {
+  const start = Date.now();
+
+  const poll = async () => {
+    const elapsed = Date.now() - start;
+    if (elapsed >= timeoutMs) {
+      return null;
+    }
+
+    const found = await findResponsiveServerUrl(port, Array.from(dynamicUrls), 500);
+    if (found) {
+      return found;
+    }
+
+    await new Promise((r) => setTimeout(r, 300));
+    return poll();
+  };
 
   return poll();
 }
@@ -141,7 +196,7 @@ function waitForReady(url, timeoutMs) {
  * existing URL is returned.
  *
  * @param {number} [port] TCP port to listen on (default 4096)
- * @returns {Promise<string>} The server URL (e.g. http://localhost:4096)
+ * @returns {Promise<string>} The server URL (e.g. http://127.0.0.1:4096)
  * @throws If the binary cannot be found, the process exits early, or startup times out.
  */
 export async function start(port = 4096) {
@@ -159,34 +214,31 @@ export async function start(port = 4096) {
 }
 
 async function doStart(port) {
+  console.error(`[opencode-serve-manager] Checking for existing opencode serve on port ${port}...`);
+
+  // 1. Dual-stack check for already running server (127.0.0.1, localhost, ::1)
+  const existingUrl = await findResponsiveServerUrl(port, [], 1000);
+  if (existingUrl) {
+    console.error(`[opencode-serve-manager] Reusing existing server on ${existingUrl}`);
+    _serverUrl = existingUrl;
+    _started = true;
+    return existingUrl;
+  }
+
+  // 2. Binary discovery
+  console.error(`[opencode-serve-manager] No existing server found; locating opencode binary...`);
   const binary = await findBinary();
   if (!binary) {
     const installHint = process.platform === 'win32'
-      ? '安装方法: npm install -g opencode-ai'
+      ? '安装方法: npm install -g opencode-ai 或在设置中指定 opencode 路径'
       : '安装方法: curl -fsSL https://opencode.ai/install | bash';
     throw new Error(
-      `找不到 opencode 二进制文件。请确认 opencode 已安装。\n${installHint}`
+      `找不到 opencode 可执行文件。请确认 opencode 已全局安装并在 PATH 中，或在插件设置中指定路径。\n${installHint}`
     );
   }
 
-  const url = `http://localhost:${port}`;
+  console.error(`[opencode-serve-manager] Starting: "${binary}" serve --port ${port}`);
 
-  // If something is already serving on the port (e.g. the user started
-  // `opencode serve` manually, or another daemon owns it), reuse it instead of
-  // spawning a duplicate that would fail to bind. This also makes `preconnect`
-  // cheap when serve is already warm.
-  if (await waitForReady(url, 1500)) {
-    console.error(`[opencode-serve-manager] Reusing existing server on ${url}`);
-    _serverUrl = url;
-    _started = true;
-    return url;
-  }
-
-  console.error(`[opencode-serve-manager] Starting: ${binary} serve --port ${port}`);
-
-  // Windows .cmd/.bat shims (and bare command names) require a shell so
-  // PATHEXT can resolve the real executable. Enrich PATH with common user bin
-  // dirs (pnpm global, Scoop shims, …) that an IDE-launched process often lacks.
   const spawnEnv = { ...process.env };
   enrichPathWithBinDirs(spawnEnv, commonCliBinDirs(homedir()));
   const spawnOpts = {
@@ -200,8 +252,10 @@ async function doStart(port) {
   return new Promise((resolve, reject) => {
     const child = cp.spawn(binary, ['serve', '--port', String(port)], spawnOpts);
     _process = child;
+    console.error(`[opencode-serve-manager] Process spawned (PID: ${child.pid})`);
 
     let settled = false;
+    const dynamicUrls = new Set();
 
     const settle = (value, isError) => {
       if (settled) return;
@@ -212,9 +266,8 @@ async function doStart(port) {
       } else {
         _serverUrl = value;
         _started = true;
-        // A stable run resets the auto-restart backoff so a future crash gets a
-        // fresh retry budget instead of inheriting a near-exhausted counter.
         _restartAttempts = 0;
+        console.error(`[opencode-serve-manager] Successfully bound to opencode serve: ${value}`);
         resolve(value);
       }
     };
@@ -224,19 +277,43 @@ async function doStart(port) {
       settle('opencode serve 启动超时（15 秒）', true);
     }, 15_000);
 
-    // Log stderr for debugging
+    // Drain & log stdout (critical on Windows to avoid pipe buffer deadlock)
+    let stdoutBuf = '';
+    child.stdout?.on('data', (data) => {
+      const chunk = data.toString('utf-8');
+      stdoutBuf += chunk;
+      for (const line of chunk.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          console.error(`[opencode-serve-manager:stdout] ${trimmed}`);
+          // Extract port if server printed listening message
+          const match = trimmed.match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0):(\d+)/i);
+          if (match && match[1]) {
+            const detectedPort = Number(match[1]);
+            dynamicUrls.add(`http://127.0.0.1:${detectedPort}`);
+            dynamicUrls.add(`http://localhost:${detectedPort}`);
+            console.error(`[opencode-serve-manager] Detected listening port from stdout: ${detectedPort}`);
+          }
+        }
+      }
+    });
+
+    // Drain & log stderr
     let stderrBuf = '';
     child.stderr?.on('data', (data) => {
-      stderrBuf += data.toString('utf-8');
-      const lines = stderrBuf.split('\n').filter((l) => l.trim());
-      if (lines.length > 0) {
-        console.error(`[opencode-serve-manager:stderr] ${lines.slice(-1)[0]}`);
+      const chunk = data.toString('utf-8');
+      stderrBuf += chunk;
+      for (const line of chunk.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          console.error(`[opencode-serve-manager:stderr] ${trimmed}`);
+        }
       }
     });
 
     // Process errors (e.g. spawn ENOENT, permission denied)
     child.on('error', (err) => {
-      console.error(`[opencode-serve-manager] process error: ${err.message}`);
+      console.error(`[opencode-serve-manager] Process error: ${err.message}`);
       if (err.code === 'ENOENT') {
         settle(`找不到可执行文件: ${binary}`, true);
       } else {
@@ -246,18 +323,16 @@ async function doStart(port) {
 
     // Unexpected early exit
     child.on('exit', (code, signal) => {
-      console.error(`[opencode-serve-manager] exited: code=${code} signal=${signal}`);
+      console.error(`[opencode-serve-manager] Process exited: code=${code} signal=${signal}`);
       if (!settled) {
-        settle(`opencode 意外退出（退出码: ${code ?? signal}）`, true);
+        const tail = (stderrBuf || stdoutBuf).split('\n').filter((l) => l.trim()).slice(-5).join('; ');
+        const detail = tail ? ` (输出: ${tail})` : '';
+        settle(`opencode 意外退出（退出码: ${code ?? signal}）${detail}`, true);
       } else {
-        // Normal exit after a successful start (e.g. stop()) — clear state.
         if (_process === child) {
           _process = null;
           _serverUrl = null;
         }
-        // Steady-state crash (started successfully, not an intentional stop):
-        // schedule a backoff auto-restart so the bridge self-heals without
-        // waiting for the next outgoing request.
         if (_started && !_stopRequested) {
           scheduleAutoRestart();
         } else if (_stopRequested) {
@@ -266,14 +341,13 @@ async function doStart(port) {
       }
     });
 
-    // Start polling the health endpoint
-    waitForReady(url, 15_000)
-      .then((ready) => {
-        if (ready) {
-          _serverUrl = url;
-          settle(url, false);
+    // Start polling all candidate URLs (IPv4, localhost, IPv6, dynamic)
+    waitForAnyReady(port, dynamicUrls, 15_000)
+      .then((readyUrl) => {
+        if (readyUrl) {
+          settle(readyUrl, false);
         } else {
-          settle('opencode serve 未能就绪（超时）', true);
+          settle('opencode serve 未能就绪（超时 15 秒）', true);
         }
       })
       .catch((err) => {

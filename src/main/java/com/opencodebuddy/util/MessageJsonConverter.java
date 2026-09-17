@@ -2,7 +2,7 @@ package com.opencodebuddy.util;
 
 import com.opencodebuddy.handler.SettingsHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -32,10 +32,10 @@ public class MessageJsonConverter {
     /**
      * Convert a list of session messages to JSON string for webview transport.
      */
-    public static String convertMessagesToJson(List<ClaudeSession.Message> messages) {
+    public static String convertMessagesToJson(List<OpencodeSession.Message> messages) {
         Gson gson = new Gson();
         JsonArray messagesArray = new JsonArray();
-        for (ClaudeSession.Message msg : messages) {
+        for (OpencodeSession.Message msg : messages) {
             JsonObject msgObj = new JsonObject();
             msgObj.addProperty("type", msg.type.toString().toLowerCase());
             msgObj.addProperty("timestamp", msg.timestamp);
@@ -324,7 +324,7 @@ public class MessageJsonConverter {
      * Extract usage info from messages and push update to the webview.
      */
     public static void pushUsageUpdateFromMessages(
-            List<ClaudeSession.Message> messages,
+            List<OpencodeSession.Message> messages,
             HandlerContext handlerContext,
             JBCefBrowser browser,
             boolean disposed

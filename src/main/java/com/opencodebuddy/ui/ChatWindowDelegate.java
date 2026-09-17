@@ -1,7 +1,7 @@
 package com.opencodebuddy.ui;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.settings.CodemossSettingsService;
 import com.opencodebuddy.handler.AgentHandler;
 import com.opencodebuddy.handler.ClipboardHandler;
@@ -72,7 +72,7 @@ public class ChatWindowDelegate {
     public interface DelegateHost {
         Project getProject();
         OpenCodeSDKBridge getOpenCodeSDKBridge();
-        ClaudeSession getSession();
+        OpencodeSession getSession();
         CodemossSettingsService getSettingsService();
         JPanel getMainPanel();
         JBCefBrowser getBrowser();
@@ -102,6 +102,7 @@ public class ChatWindowDelegate {
         void setSlashCommandsFetched(boolean fetched);
         void setFetchedSlashCommandsCount(int count);
         void persistTabSessionState();
+        void updateTabTitle(String title);
 
         /**
          * Soft-reload the currently active session's transcript without interrupting
@@ -155,12 +156,12 @@ public class ChatWindowDelegate {
             String savedMode = props.getValue(PERMISSION_MODE_PROPERTY_KEY);
             if (savedMode != null && !savedMode.trim().isEmpty()) {
                 String mode = savedMode.trim();
-                ClaudeSession session = host.getSession();
+                OpencodeSession session = host.getSession();
                 if (session != null) {
                     session.setPermissionMode(mode);
                     host.persistTabSessionState();
                     LOG.info("Loaded permission mode from settings: " + mode);
-                    com.opencodebuddy.notifications.ClaudeNotifier.setMode(host.getProject(), mode);
+                    com.opencodebuddy.notifications.OpencodeNotifier.setMode(host.getProject(), mode);
                 }
             }
         } catch (Exception e) {
@@ -254,7 +255,7 @@ public class ChatWindowDelegate {
         messageDispatcher.registerHandler(new DiffHandler(handlerContext));
         messageDispatcher.registerHandler(new AgentHandler(handlerContext));
         messageDispatcher.registerHandler(new CommandsHandler(handlerContext));
-        messageDispatcher.registerHandler(new TabHandler(handlerContext));
+        messageDispatcher.registerHandler(new TabHandler(handlerContext, host::updateTabTitle));
         messageDispatcher.registerHandler(new RewindHandler(handlerContext));
         messageDispatcher.registerHandler(new UndoFileHandler(handlerContext));
         messageDispatcher.registerHandler(new CliModelsHandler(handlerContext));
@@ -321,7 +322,7 @@ public class ChatWindowDelegate {
 
         HistoryHandler historyHandler = new HistoryHandler(handlerContext);
         historyHandler.setSessionLoadCallback((sessionId, projectPath, provider, model) -> {
-            ClaudeSession current = host.getSession();
+            OpencodeSession current = host.getSession();
             boolean sameSession = current != null
                     && sessionId != null
                     && sessionId.equals(current.getSessionId())
@@ -350,12 +351,12 @@ public class ChatWindowDelegate {
             Project project = host.getProject();
             if (project == null || host.isDisposed()) { return; }
 
-            ClaudeSession session = host.getSession();
+            OpencodeSession session = host.getSession();
             String mode = session != null ? session.getPermissionMode() : "default";
-            com.opencodebuddy.notifications.ClaudeNotifier.setMode(project, mode);
+            com.opencodebuddy.notifications.OpencodeNotifier.setMode(project, mode);
 
             String model = session != null ? session.getModel() : "claude-sonnet-5";
-            com.opencodebuddy.notifications.ClaudeNotifier.setModel(project, model);
+            com.opencodebuddy.notifications.OpencodeNotifier.setModel(project, model);
 
             try {
                 CodemossSettingsService settingsService = host.getSettingsService();
@@ -364,7 +365,7 @@ public class ChatWindowDelegate {
                     JsonObject agent = settingsService.getAgent(selectedId);
                     if (agent != null) {
                         String agentName = agent.has("name") ? agent.get("name").getAsString() : "Agent";
-                        com.opencodebuddy.notifications.ClaudeNotifier.setAgent(project, agentName);
+                        com.opencodebuddy.notifications.OpencodeNotifier.setAgent(project, agentName);
                     }
                 }
             } catch (Exception e) {
@@ -472,7 +473,7 @@ public class ChatWindowDelegate {
      * authoritative for provider and model selection during watchdog recovery.
      */
     private void pushCurrentTabStateToFrontend() {
-        ClaudeSession session = host.getSession();
+        OpencodeSession session = host.getSession();
         if (session == null || host.isDisposed()) {
             return;
         }
@@ -513,7 +514,7 @@ public class ChatWindowDelegate {
      * loading history and must not overwrite a valid frontend value with a synthetic zero.
      */
     private void refreshFrontendDerivedState() {
-        ClaudeSession session = host.getSession();
+        OpencodeSession session = host.getSession();
         HandlerContext context = host.getHandlerContext();
         if (session == null || context == null || host.isDisposed()) {
             return;
@@ -540,7 +541,7 @@ public class ChatWindowDelegate {
     }
 
     private void replayCurrentSessionStateToFrontend() {
-        ClaudeSession session = host.getSession();
+        OpencodeSession session = host.getSession();
         if (session == null || host.isDisposed()) {
             return;
         }
@@ -551,7 +552,7 @@ public class ChatWindowDelegate {
                 host.callJavaScript("setSessionId", JsUtils.escapeJs(sessionId));
             }
 
-            List<ClaudeSession.Message> messages = session.getMessages();
+            List<OpencodeSession.Message> messages = session.getMessages();
             if (!messages.isEmpty()) {
                 String messagesJson = MessageJsonConverter.convertMessagesToJson(messages);
                 host.callJavaScript("updateMessages", JsUtils.escapeJs(messagesJson));

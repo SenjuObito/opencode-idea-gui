@@ -16,11 +16,11 @@ import static org.junit.Assert.assertTrue;
  * navigated away on the EDT.
  *
  * <p>The decision logic is extracted into the pure static
- * {@link ClaudeChatWindow#decideReloadCompletion} so it can be tested without
- * constructing a full ClaudeChatWindow (which needs a Project, JBCefBrowser,
+ * {@link OpencodeBuddyChatWindow#decideReloadCompletion} so it can be tested without
+ * constructing a full OpencodeBuddyChatWindow (which needs a Project, JBCefBrowser,
  * etc.).
  */
-public class ClaudeChatWindowReloadCoalescingTest {
+public class OpencodeBuddyChatWindowReloadCoalescingTest {
 
     // =========================================================================
     // Happy path: pending follow-up collapses into another reload
@@ -30,7 +30,7 @@ public class ClaudeChatWindowReloadCoalescingTest {
     public void pendingFollowUpOnSameLiveSessionRunsAgain() {
         assertTrue(
                 "a pending reload for the same live session should trigger a follow-up reload",
-                ClaudeChatWindow.decideReloadCompletion(
+                OpencodeBuddyChatWindow.decideReloadCompletion(
                         /* pending */ true,
                         /* disposed */ false,
                         /* sessionMatches */ true));
@@ -48,7 +48,7 @@ public class ClaudeChatWindowReloadCoalescingTest {
         // wrong session's history through the new session's callback adapter.
         assertFalse(
                 "a pending reload bound to a session the user navigated away from must not re-run",
-                ClaudeChatWindow.decideReloadCompletion(
+                OpencodeBuddyChatWindow.decideReloadCompletion(
                         /* pending */ true,
                         /* disposed */ false,
                         /* sessionMatches */ false));
@@ -59,7 +59,7 @@ public class ClaudeChatWindowReloadCoalescingTest {
         // Nothing queued → finish. The in-flight flag is cleared by the caller.
         assertFalse(
                 "no pending reload should finish the coalescing cycle",
-                ClaudeChatWindow.decideReloadCompletion(
+                OpencodeBuddyChatWindow.decideReloadCompletion(
                         /* pending */ false,
                         /* disposed */ false,
                         /* sessionMatches */ true));
@@ -72,7 +72,7 @@ public class ClaudeChatWindowReloadCoalescingTest {
         // are torn down.
         assertFalse(
                 "a disposed window must not re-run a reload even if a follow-up is pending",
-                ClaudeChatWindow.decideReloadCompletion(
+                OpencodeBuddyChatWindow.decideReloadCompletion(
                         /* pending */ true,
                         /* disposed */ true,
                         /* sessionMatches */ true));
@@ -92,25 +92,25 @@ public class ClaudeChatWindowReloadCoalescingTest {
     @Test
     public void allConditionsFalseFinishes() {
         // (false, false, false): nothing pending, live, no match → finish.
-        assertFalse(ClaudeChatWindow.decideReloadCompletion(false, false, false));
+        assertFalse(OpencodeBuddyChatWindow.decideReloadCompletion(false, false, false));
     }
 
     @Test
     public void pendingAloneInsufficientWhenDisposed() {
         // (true, true, false): pending is set, but disposed + no match → finish.
-        assertFalse(ClaudeChatWindow.decideReloadCompletion(true, true, false));
+        assertFalse(OpencodeBuddyChatWindow.decideReloadCompletion(true, true, false));
     }
 
     @Test
     public void disposedWithoutPendingFinishes() {
         // (false, true, false): disposed, nothing pending → finish.
-        assertFalse(ClaudeChatWindow.decideReloadCompletion(false, true, false));
+        assertFalse(OpencodeBuddyChatWindow.decideReloadCompletion(false, true, false));
     }
 
     @Test
     public void disposedAndMatchButNoPendingFinishes() {
         // (false, true, true): session matches and window was live at start,
         // but no pending follow-up → finish.
-        assertFalse(ClaudeChatWindow.decideReloadCompletion(false, true, true));
+        assertFalse(OpencodeBuddyChatWindow.decideReloadCompletion(false, true, true));
     }
 }

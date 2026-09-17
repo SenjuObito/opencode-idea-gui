@@ -1,6 +1,6 @@
 package com.opencodebuddy.session;
 
-import com.opencodebuddy.notifications.ClaudeNotifier;
+import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.intellij.openapi.project.Project;
 
@@ -22,18 +22,18 @@ public class SessionCallbackFacade {
         return callbackHandler;
     }
 
-    public void setCallback(ClaudeSession.SessionCallback callback) {
+    public void setCallback(OpencodeSession.SessionCallback callback) {
         callbackHandler.setCallback(callback);
     }
 
-    public void notifyMessageUpdate(List<ClaudeSession.Message> messages) {
+    public void notifyMessageUpdate(List<OpencodeSession.Message> messages) {
         callbackHandler.notifyMessageUpdate(messages);
     }
 
     public void notifyStateChange(boolean busy, boolean loading, String error) {
         callbackHandler.notifyStateChange(busy, loading, error);
         if (project != null && error != null && !error.isEmpty()) {
-            ClaudeNotifier.showError(project, error);
+            OpencodeNotifier.showError(project, error);
         }
     }
 

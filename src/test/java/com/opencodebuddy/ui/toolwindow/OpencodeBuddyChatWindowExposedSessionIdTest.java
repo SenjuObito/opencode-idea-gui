@@ -13,23 +13,23 @@ import static org.junit.Assert.assertEquals;
  * registration on a null ID, and dispose-time PermissionService cleanup keys
  * off a stable identifier.
  */
-public class ClaudeChatWindowExposedSessionIdTest {
+public class OpencodeBuddyChatWindowExposedSessionIdTest {
 
     private static final String PERMISSION_KEY = "permission-key-uuid";
 
     @Test
     public void freshSessionFallsBackToPermissionServiceKey() {
         assertEquals(PERMISSION_KEY,
-                ClaudeChatWindow.resolveExposedSessionId(null, PERMISSION_KEY));
+                OpencodeBuddyChatWindow.resolveExposedSessionId(null, PERMISSION_KEY));
         assertEquals(PERMISSION_KEY,
-                ClaudeChatWindow.resolveExposedSessionId("", PERMISSION_KEY));
+                OpencodeBuddyChatWindow.resolveExposedSessionId("", PERMISSION_KEY));
         assertEquals(PERMISSION_KEY,
-                ClaudeChatWindow.resolveExposedSessionId("   ", PERMISSION_KEY));
+                OpencodeBuddyChatWindow.resolveExposedSessionId("   ", PERMISSION_KEY));
     }
 
     @Test
     public void historyLoadedSessionExposesItsOwnId() {
         assertEquals("history-session-42",
-                ClaudeChatWindow.resolveExposedSessionId("history-session-42", PERMISSION_KEY));
+                OpencodeBuddyChatWindow.resolveExposedSessionId("history-session-42", PERMISSION_KEY));
     }
 }

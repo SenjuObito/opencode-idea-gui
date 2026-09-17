@@ -1,6 +1,6 @@
 package com.opencodebuddy.util;
 
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.google.gson.JsonObject;
 import org.junit.Test;
 
@@ -58,8 +58,8 @@ public class TokenUsageUtilsTest {
         raw.add("message", message);
         raw.add("usage", currentUsage);
 
-        ClaudeSession.Message assistant = new ClaudeSession.Message(
-                ClaudeSession.Message.Type.ASSISTANT,
+        OpencodeSession.Message assistant = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ASSISTANT,
                 "",
                 raw
         );
@@ -105,8 +105,8 @@ public class TokenUsageUtilsTest {
         nestedMessage.add("usage", usage(9000));
         raw.add("message", nestedMessage);
 
-        ClaudeSession.Message assistant = new ClaudeSession.Message(
-                ClaudeSession.Message.Type.ASSISTANT, "answer", raw);
+        OpencodeSession.Message assistant = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ASSISTANT, "answer", raw);
 
         TokenUsageUtils.clearContextUsageFromSessionMessages(List.of(assistant));
 
@@ -148,8 +148,8 @@ public class TokenUsageUtilsTest {
         tokens.add("cache", cache1);
         raw1.add("tokens", tokens);
 
-        ClaudeSession.Message assistant1 = new ClaudeSession.Message(
-                ClaudeSession.Message.Type.ASSISTANT, "first", raw1);
+        OpencodeSession.Message assistant1 = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ASSISTANT, "first", raw1);
 
         JsonObject raw2 = new JsonObject();
         JsonObject turnUsage = new JsonObject();
@@ -158,8 +158,8 @@ public class TokenUsageUtilsTest {
         turnUsage.addProperty("cache_creation_input_tokens", 800);
         raw2.add("turnUsage", turnUsage);
 
-        ClaudeSession.Message assistant2 = new ClaudeSession.Message(
-                ClaudeSession.Message.Type.ASSISTANT, "second", raw2);
+        OpencodeSession.Message assistant2 = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ASSISTANT, "second", raw2);
 
         JsonObject found = TokenUsageUtils.findLastUsageFromSessionMessages(
                 List.of(assistant1, assistant2), "opencode");

@@ -27,7 +27,7 @@ public class SessionMessageOrchestratorTest {
         state.setCwd("/workspace");
 
         JsonObject localRaw = new JsonObject();
-        ClaudeSession.Message localUserMessage = new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "Explain this diff", localRaw);
+        OpencodeSession.Message localUserMessage = new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "Explain this diff", localRaw);
         state.addMessage(localUserMessage);
 
         RecordingCallback callback = new RecordingCallback();
@@ -66,7 +66,7 @@ public class SessionMessageOrchestratorTest {
 
         JsonObject localRaw = new JsonObject();
         localRaw.addProperty("uuid", "existing-uuid");
-        state.addMessage(new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "Explain this diff", localRaw));
+        state.addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "Explain this diff", localRaw));
 
         RecordingHistoryAccess historyAccess = new RecordingHistoryAccess();
         SessionCallbackFacade callbackFacade = new SessionCallbackFacade(null);
@@ -121,8 +121,8 @@ public class SessionMessageOrchestratorTest {
         assertEquals(1, historyAccess.providerHistoryRequests.get());
         assertFalse(state.isLoading());
         assertEquals(2, state.getMessages().size());
-        assertEquals(ClaudeSession.Message.Type.USER, state.getMessages().get(0).type);
-        assertEquals(ClaudeSession.Message.Type.ASSISTANT, state.getMessages().get(1).type);
+        assertEquals(OpencodeSession.Message.Type.USER, state.getMessages().get(0).type);
+        assertEquals(OpencodeSession.Message.Type.ASSISTANT, state.getMessages().get(1).type);
         assertEquals("The stack trace points to SessionSendService.", state.getMessages().get(1).content);
         assertEquals(1, callback.messageUpdates.size());
         assertTrue(callback.stateChanges.contains("false:false:null"));
@@ -311,7 +311,7 @@ public class SessionMessageOrchestratorTest {
         orchestrator.loadFromServer().join();
 
         assertEquals(1, state.getMessages().size());
-        ClaudeSession.Message restored = state.getMessages().get(0);
+        OpencodeSession.Message restored = state.getMessages().get(0);
         assertEquals("Tool: glob", restored.content);
         assertFalse(restored.raw.has("raw"));
         assertEquals("tool_use", restored.raw.getAsJsonArray("content")
@@ -507,14 +507,14 @@ public class SessionMessageOrchestratorTest {
         }
     }
 
-    private static final class RecordingCallback implements ClaudeSession.SessionCallback {
-        private final List<List<ClaudeSession.Message>> messageUpdates = new ArrayList<>();
+    private static final class RecordingCallback implements OpencodeSession.SessionCallback {
+        private final List<List<OpencodeSession.Message>> messageUpdates = new ArrayList<>();
         private final List<String> stateChanges = new ArrayList<>();
         private final List<String> messageUuidPatches = new ArrayList<>();
         private final List<String> usageUpdates = new ArrayList<>();
 
         @Override
-        public void onMessageUpdate(List<ClaudeSession.Message> messages) {
+        public void onMessageUpdate(List<OpencodeSession.Message> messages) {
             messageUpdates.add(messages);
         }
 

@@ -2,7 +2,7 @@ package com.opencodebuddy.handler.history;
 
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -129,7 +129,7 @@ class HistoryDeleteService {
     }
 
     static CompletableFuture<Void> quiesceActiveSessionForDeletion(
-            ClaudeSession session,
+            OpencodeSession session,
             Collection<String> sessionIds,
             String currentProvider
     ) {

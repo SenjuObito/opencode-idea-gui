@@ -919,6 +919,16 @@ const App = () => {
 
   const statusPanelExpanded = !userCollapsedRef.current;
 
+  // Synchronize dynamic sessionTitle to IDE ToolWindow Tab display name
+  useEffect(() => {
+    const isDefaultNewSession = !sessionTitle || sessionTitle === t('common.newSession');
+    if (isDefaultNewSession) {
+      sendBridgeEvent('update_tab_title', '');
+    } else {
+      sendBridgeEvent('update_tab_title', sessionTitle);
+    }
+  }, [sessionTitle, t]);
+
   // ── Render ──
   return (
     <>
@@ -929,6 +939,7 @@ const App = () => {
         t={t}
         onBack={() => setCurrentView('chat')}
         onNewSession={createNewSession}
+        onNewTab={() => sendBridgeEvent('create_new_tab')}
         onHistory={() => setCurrentView('history')}
         onSettings={() => {
           setSettingsInitialTab(undefined);

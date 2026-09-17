@@ -8,7 +8,7 @@ import com.google.gson.JsonParser;
 import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.common.MessageCallback;
 import com.opencodebuddy.provider.common.SDKResult;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.utils.PluginFileLogger;
 import com.intellij.openapi.diagnostic.Logger;
 
@@ -164,7 +164,7 @@ public class OpenCodeSDKBridge {
             String cwd,
             String model,
             String reasoningEffort,
-            List<ClaudeSession.Attachment> attachments,
+            List<OpencodeSession.Attachment> attachments,
             String permissionMode,
             String agent,
             String command,
@@ -549,9 +549,9 @@ public class OpenCodeSDKBridge {
         return requestJson("opencode.getContextUsage", params);
     }
 
-    private JsonArray buildAttachmentArray(List<ClaudeSession.Attachment> attachments) {
+    private JsonArray buildAttachmentArray(List<OpencodeSession.Attachment> attachments) {
         JsonArray arr = new JsonArray();
-        for (ClaudeSession.Attachment attachment : attachments) {
+        for (OpencodeSession.Attachment attachment : attachments) {
             if (attachment == null) {
                 continue;
             }

@@ -112,7 +112,7 @@ public class SessionState {
     private String error = null;
 
     // Message history
-    private final List<ClaudeSession.Message> messages = new ArrayList<>();
+    private final List<OpencodeSession.Message> messages = new ArrayList<>();
 
     // Session metadata — cwd is written in handler thread before send(), read inside send();
     // the happens-before from CompletableFuture.runAsync guarantees visibility, so volatile is not required.
@@ -174,11 +174,11 @@ public class SessionState {
         return error;
     }
 
-    public List<ClaudeSession.Message> getMessages() {
+    public List<OpencodeSession.Message> getMessages() {
         return new ArrayList<>(messages);
     }
 
-    public List<ClaudeSession.Message> getMessagesReference() {
+    public List<OpencodeSession.Message> getMessagesReference() {
         return messages;
     }
 
@@ -381,7 +381,7 @@ public class SessionState {
     /**
      * Add a message to the history.
      */
-    public void addMessage(ClaudeSession.Message message) {
+    public void addMessage(OpencodeSession.Message message) {
         messages.add(message);
     }
 
@@ -401,7 +401,7 @@ public class SessionState {
      * express "remove one message" — only append or clear — so it kept the voided
      * messages and re-pushed them on the following send.</p>
      *
-     * <p>The provider id lives in {@link ClaudeSession.Message#raw}: the history
+     * <p>The provider id lives in {@link OpencodeSession.Message#raw}: the history
      * converter stamps opencode's message id there as {@code id}, while
      * rewind-patched user messages may carry it as {@code uuid}. Both spellings are
      * checked so a removal matches however the message was recorded.</p>
@@ -463,7 +463,7 @@ public class SessionState {
     }
 
     /** Whether the message carries any of the given provider ids in its raw payload. */
-    private static boolean matchesAnyProviderId(ClaudeSession.Message message, Set<String> ids) {
+    private static boolean matchesAnyProviderId(OpencodeSession.Message message, Set<String> ids) {
         if (message == null || message.raw == null) {
             return false;
         }

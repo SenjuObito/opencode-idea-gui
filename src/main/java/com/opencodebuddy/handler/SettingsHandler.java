@@ -128,7 +128,7 @@ public class SettingsHandler extends BaseMessageHandler {
 
     /**
      * Register theme change listener.
-     * Uses the multi-callback API so that every open ClaudeChatWindow receives
+     * Uses the multi-callback API so that every open OpencodeBuddyChatWindow receives
      * theme change notifications. The returned handle is stored for clean
      * unregistration in {@link #dispose()}.
      */
@@ -142,7 +142,7 @@ public class SettingsHandler extends BaseMessageHandler {
 
     /**
      * Unregister the theme change callback to prevent notifications to a disposed webview.
-     * Should be called when the owning ClaudeChatWindow is disposed.
+     * Should be called when the owning OpencodeBuddyChatWindow is disposed.
      */
     public void dispose() {
         if (themeCallbackHandle != null) {
@@ -391,7 +391,7 @@ public class SettingsHandler extends BaseMessageHandler {
                     context.getSettingsService().setUiPreferences(patch);
                     JsonObject currentPrefs = context.getSettingsService().getUiPreferences();
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        callJavaScript("window.applyUiPreferences", escapeJs(currentPrefs.toString()));
+                        broadcastToAll("window.applyUiPreferences", escapeJs(currentPrefs.toString()));
                     });
                 } catch (Exception e) {
                     LOG.warn("[SettingsHandler] Failed to set ui_preferences: " + e.getMessage());
@@ -455,7 +455,7 @@ public class SettingsHandler extends BaseMessageHandler {
 
     private void pushLanguageConfig() {
         JsonObject languageConfig = LanguageConfigService.getLanguageConfig(context.getSettingsService());
-        callJavaScript("window.applyIdeaLanguageConfig", escapeJs(languageConfig.toString()));
+        broadcastToAll("window.applyIdeaLanguageConfig", escapeJs(languageConfig.toString()));
     }
 
     /**

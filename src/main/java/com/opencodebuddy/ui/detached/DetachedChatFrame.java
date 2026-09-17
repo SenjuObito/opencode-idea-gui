@@ -1,8 +1,8 @@
 package com.opencodebuddy.ui.detached;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
-import com.opencodebuddy.ui.toolwindow.ClaudeChatWindow;
-import com.opencodebuddy.ui.toolwindow.ClaudeSDKToolWindow;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyChatWindow;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow;
 import com.intellij.ide.ui.LafManager;
 import com.intellij.ide.ui.LafManagerListener;
 import com.intellij.openapi.Disposable;
@@ -36,7 +36,7 @@ public class DetachedChatFrame extends JFrame {
     private static final Logger LOG = Logger.getInstance(DetachedChatFrame.class);
 
     private final Project project;
-    private final ClaudeChatWindow chatWindow;
+    private final OpencodeBuddyChatWindow chatWindow;
     private final String originalTabName;
     private final int originalTabIndex;
     private final JComponent originalContent;
@@ -51,18 +51,18 @@ public class DetachedChatFrame extends JFrame {
      * @param content The Content to detach
      */
     public DetachedChatFrame(Project project, Content content) {
-        super(ClaudeSDKToolWindow.TOOL_WINDOW_DISPLAY_NAME + " - " + content.getDisplayName());
+        super(OpencodeBuddyToolWindow.TOOL_WINDOW_DISPLAY_NAME + " - " + content.getDisplayName());
         this.project = project;
         this.originalTabName = content.getDisplayName();
-        this.chatWindow = ClaudeSDKToolWindow.getChatWindowForContent(content);
+        this.chatWindow = OpencodeBuddyToolWindow.getChatWindowForContent(content);
 
         if (chatWindow == null) {
-            LOG.error("[DetachedChatFrame] Cannot find ClaudeChatWindow for content: " + originalTabName);
-            throw new IllegalStateException("ClaudeChatWindow not found for content");
+            LOG.error("[DetachedChatFrame] Cannot find OpencodeBuddyChatWindow for content: " + originalTabName);
+            throw new IllegalStateException("OpencodeBuddyChatWindow not found for content");
         }
 
         // Get original tab index before removing from ContentManager
-        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ClaudeSDKToolWindow.TOOL_WINDOW_ID);
+        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(OpencodeBuddyToolWindow.TOOL_WINDOW_ID);
         if (toolWindow != null) {
             ContentManager contentManager = toolWindow.getContentManager();
             this.originalTabIndex = contentManager.getIndexOfContent(content);
@@ -230,7 +230,7 @@ public class DetachedChatFrame extends JFrame {
                 }
 
                 ToolWindow toolWindow = ToolWindowManager.getInstance(this.project)
-                        .getToolWindow(ClaudeSDKToolWindow.TOOL_WINDOW_ID);
+                        .getToolWindow(OpencodeBuddyToolWindow.TOOL_WINDOW_ID);
                 if (toolWindow == null) {
                     LOG.error("[DetachedChatFrame] Tool window not found");
                     Messages.showErrorDialog(
@@ -324,7 +324,7 @@ public class DetachedChatFrame extends JFrame {
     private void syncTabStateWithToolWindow() {
         try {
             ToolWindow toolWindow = ToolWindowManager.getInstance(this.project)
-                    .getToolWindow(ClaudeSDKToolWindow.TOOL_WINDOW_ID);
+                    .getToolWindow(OpencodeBuddyToolWindow.TOOL_WINDOW_ID);
             if (toolWindow != null) {
                 int actualCount = toolWindow.getContentManager().getContentCount();
                 com.opencodebuddy.settings.TabStateService.getInstance(this.project)
@@ -357,9 +357,9 @@ public class DetachedChatFrame extends JFrame {
     }
 
     /**
-     * Get the associated ClaudeChatWindow.
+     * Get the associated OpencodeBuddyChatWindow.
      */
-    public ClaudeChatWindow getChatWindow() {
+    public OpencodeBuddyChatWindow getChatWindow() {
         return chatWindow;
     }
 

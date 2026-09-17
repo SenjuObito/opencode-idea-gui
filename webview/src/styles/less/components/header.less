@@ -91,7 +91,8 @@
     .tooltip-bottom-center(32px);
 }
 
-.icon-button:hover {
+.icon-button:hover,
+.icon-button.active {
     background: var(--color-chat-bars-hover-bg, var(--bg-hover));
     color: var(--color-chat-bars-text, var(--text-secondary));
 }
@@ -103,6 +104,21 @@
 
 .icon-button .codicon {
     font-size: 18px;
+}
+
+.header-more-menu-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.header-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    margin-top: 0;
+    min-width: 170px;
+    z-index: 1000;
 }
 
 /* Session title: editable on hover */

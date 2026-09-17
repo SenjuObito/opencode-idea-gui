@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 public final class UserTextSanitizer {
 
     /**
-     * Section titles produced by SessionContextService#buildCodexContextAppend
+     * Section titles produced by SessionContextService#buildSessionContextAppend
      * and SessionSendService (agent prompt append). Only sections carrying one
      * of these exact headings are removed, so a user typing their own markdown
      * headings survives.

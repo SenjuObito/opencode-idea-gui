@@ -14,7 +14,7 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Integration tests for the {@code onStreamEnded()} host hook on the REAL
- * {@link StreamMessageCoalescer} — the signal ClaudeChatWindow uses to drain a
+ * {@link StreamMessageCoalescer} — the signal OpencodeBuddyChatWindow uses to drain a
  * deferred background-turn reload at the safe point (stream inactive).
  *
  * <p>These drive the production coalescer (not a re-implementation), so they
@@ -90,7 +90,7 @@ public class StreamMessageCoalescerStreamEndHookTest {
 
     @Test
     public void firstLongConversationSnapshotKeepsTheFullPrefix() {
-        List<ClaudeSession.Message> messages = messages(400);
+        List<OpencodeSession.Message> messages = messages(400);
 
         StreamMessageCoalescer.MessageTransport transport =
                 StreamMessageCoalescer.selectMessageTransport(messages, null);
@@ -102,7 +102,7 @@ public class StreamMessageCoalescerStreamEndHookTest {
 
     @Test
     public void thresholdConversationKeepsTheFullSnapshot() {
-        List<ClaudeSession.Message> messages = messages(300);
+        List<OpencodeSession.Message> messages = messages(300);
 
         StreamMessageCoalescer.MessageTransport transport =
                 StreamMessageCoalescer.selectMessageTransport(messages, null);
@@ -114,10 +114,10 @@ public class StreamMessageCoalescerStreamEndHookTest {
 
     @Test
     public void growingConversationWithStablePrefixUsesTail() {
-        List<ClaudeSession.Message> previous = messages(300);
-        List<ClaudeSession.Message> growing = new ArrayList<>(previous);
+        List<OpencodeSession.Message> previous = messages(300);
+        List<OpencodeSession.Message> growing = new ArrayList<>(previous);
         for (int i = 300; i < 400; i++) {
-            growing.add(new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "message-" + i));
+            growing.add(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "message-" + i));
         }
 
         StreamMessageCoalescer.MessageTransport transport =
@@ -130,8 +130,8 @@ public class StreamMessageCoalescerStreamEndHookTest {
 
     @Test
     public void shrinkingConversationForcesAFullRebase() {
-        List<ClaudeSession.Message> previous = messages(400);
-        List<ClaudeSession.Message> compacted = new ArrayList<>(previous.subList(0, 350));
+        List<OpencodeSession.Message> previous = messages(400);
+        List<OpencodeSession.Message> compacted = new ArrayList<>(previous.subList(0, 350));
 
         StreamMessageCoalescer.MessageTransport transport =
                 StreamMessageCoalescer.selectMessageTransport(compacted, previous);
@@ -143,9 +143,9 @@ public class StreamMessageCoalescerStreamEndHookTest {
 
     @Test
     public void replacedPrefixForcesAFullRebase() {
-        List<ClaudeSession.Message> previous = messages(400);
-        List<ClaudeSession.Message> rebuilt = new ArrayList<>(previous);
-        rebuilt.set(10, new ClaudeSession.Message(ClaudeSession.Message.Type.SYSTEM, "summary"));
+        List<OpencodeSession.Message> previous = messages(400);
+        List<OpencodeSession.Message> rebuilt = new ArrayList<>(previous);
+        rebuilt.set(10, new OpencodeSession.Message(OpencodeSession.Message.Type.SYSTEM, "summary"));
 
         StreamMessageCoalescer.MessageTransport transport =
                 StreamMessageCoalescer.selectMessageTransport(rebuilt, previous);
@@ -155,10 +155,10 @@ public class StreamMessageCoalescerStreamEndHookTest {
         assertEquals(rebuilt, transport.messages());
     }
 
-    private static List<ClaudeSession.Message> messages(int count) {
-        List<ClaudeSession.Message> messages = new ArrayList<>();
+    private static List<OpencodeSession.Message> messages(int count) {
+        List<OpencodeSession.Message> messages = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            messages.add(new ClaudeSession.Message(ClaudeSession.Message.Type.USER, "message-" + i));
+            messages.add(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "message-" + i));
         }
         return messages;
     }

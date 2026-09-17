@@ -7,7 +7,7 @@ import com.opencodebuddy.handler.PermissionHandler;
 import com.opencodebuddy.permission.PermissionService;
 import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.session.SessionCallbackAdapter;
 import com.opencodebuddy.session.SessionLifecycleManager;
 import com.opencodebuddy.session.SessionState;
@@ -61,9 +61,9 @@ import java.util.function.BooleanSupplier;
  * Chat window instance. Coordinates UI components, session management,
  * and message dispatching. One instance per tab.
  */
-public class ClaudeChatWindow {
+public class OpencodeBuddyChatWindow {
 
-    private static final Logger LOG = Logger.getInstance(ClaudeChatWindow.class);
+    private static final Logger LOG = Logger.getInstance(OpencodeBuddyChatWindow.class);
     private final JPanel mainPanel;
     private final DaemonBridge daemonBridge;
     private final OpenCodeSDKBridge openCodeSDKBridge;
@@ -73,6 +73,7 @@ public class ClaudeChatWindow {
 
     private Content parentContent;
     private String originalTabName;
+    private String defaultTabName;
     private volatile String sessionId = null;
     // Stable PermissionService routing key, assigned once at construction.
     // Kept separate from sessionId, which is overwritten with AI session IDs
@@ -84,7 +85,7 @@ public class ClaudeChatWindow {
     private volatile JBCefBrowser browser;
     // volatile: read from the daemon reader thread by the session_updated listener
     // and its loadFromServer continuation, while reassigned on the EDT.
-    private volatile ClaudeSession session;
+    private volatile OpencodeSession session;
     private final WebviewWatchdog webviewWatchdog;
     private final StreamMessageCoalescer streamCoalescer;
 
@@ -204,11 +205,11 @@ public class ClaudeChatWindow {
     // stuck on "running".
     private volatile SessionCallbackAdapter sessionCallbackAdapter;
 
-    public ClaudeChatWindow(Project project) {
+    public OpencodeBuddyChatWindow(Project project) {
         this(project, false);
     }
 
-    public ClaudeChatWindow(Project project, boolean skipRegister) {
+    public OpencodeBuddyChatWindow(Project project, boolean skipRegister) {
         this.project = project;
         this.daemonBridge = new DaemonBridge(
                 com.opencodebuddy.bridge.NodeDetector.getInstance(),
@@ -236,7 +237,7 @@ public class ClaudeChatWindow {
         this.streamCoalescer = new StreamMessageCoalescer(new StreamMessageCoalescer.JsCallbackTarget() {
             @Override
             public void callJavaScript(String functionName, String... args) {
-                ClaudeChatWindow.this.callJavaScript(functionName, args);
+                OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
             }
 
             @Override
@@ -256,15 +257,15 @@ public class ClaudeChatWindow {
 
             @Override
             public void onStreamEnded() {
-                ClaudeSession current = ClaudeChatWindow.this.session;
+                OpencodeSession current = OpencodeBuddyChatWindow.this.session;
                 if (current != null && shouldReconcileTranscriptAtStreamEnd(
                         current.getProvider(), current.getSessionId())) {
                     // Grok's live ACP stream can omit file-tool blocks that are present
                     // in chat_history.jsonl. Reuse the proven same-session reload path
                     // once the turn is idle so derived edit statistics use final data.
-                    ClaudeChatWindow.this.deferredReload.defer(current.getSessionId());
+                    OpencodeBuddyChatWindow.this.deferredReload.defer(current.getSessionId());
                 }
-                ClaudeChatWindow.this.drainDeferredReload();
+                OpencodeBuddyChatWindow.this.drainDeferredReload();
             }
         });
 
@@ -278,7 +279,7 @@ public class ClaudeChatWindow {
                 () -> frontendReady
         );
 
-        this.session = new ClaudeSession(project, openCodeSDKBridge);
+        this.session = new OpencodeSession(project, openCodeSDKBridge);
 
         this.chatWindowDelegate = new ChatWindowDelegate(createDelegateHost());
         chatWindowDelegate.loadPermissionModeFromSettings();
@@ -300,12 +301,12 @@ public class ClaudeChatWindow {
             }
 
             @Override
-            public ClaudeSession getSession() {
+            public OpencodeSession getSession() {
                 return session;
             }
 
             @Override
-            public void setSession(ClaudeSession s) {
+            public void setSession(OpencodeSession s) {
                 session = s;
                 persistTabSessionState();
             }
@@ -339,7 +340,7 @@ public class ClaudeChatWindow {
 
             @Override
             public void callJavaScript(String fn, String... args) {
-                ClaudeChatWindow.this.callJavaScript(fn, args);
+                OpencodeBuddyChatWindow.this.callJavaScript(fn, args);
             }
 
             @Override
@@ -354,7 +355,7 @@ public class ClaudeChatWindow {
 
             @Override
             public void setupSessionCallbacks() {
-                ClaudeChatWindow.this.setupSessionCallbacks();
+                OpencodeBuddyChatWindow.this.setupSessionCallbacks();
             }
 
             @Override
@@ -440,14 +441,19 @@ public class ClaudeChatWindow {
 
     public void setParentContent(Content content) {
         if (this.parentContent != null && this.parentContent != content) {
-            ClaudeSDKToolWindow.unregisterContentMapping(this.parentContent);
-            LOG.debug("[MultiTab] Unregistered old Content -> ClaudeChatWindow mapping");
+            OpencodeBuddyToolWindow.unregisterContentMapping(this.parentContent);
+            LOG.debug("[MultiTab] Unregistered old Content -> OpencodeBuddyChatWindow mapping");
         }
 
         this.parentContent = content;
         if (content != null) {
-            ClaudeSDKToolWindow.registerContentMapping(content, this);
-            LOG.debug("[MultiTab] Registered Content -> ClaudeChatWindow mapping for: " + content.getDisplayName());
+            OpencodeBuddyToolWindow.registerContentMapping(content, this);
+            LOG.debug("[MultiTab] Registered Content -> OpencodeBuddyChatWindow mapping for: " + content.getDisplayName());
+
+            if (this.defaultTabName == null && content.getDisplayName() != null) {
+                String name = content.getDisplayName();
+                this.defaultTabName = name.endsWith("...") ? name.substring(0, name.length() - 3) : name;
+            }
 
             if (this.originalTabName == null) {
                 String displayName = content.getDisplayName();
@@ -462,10 +468,46 @@ public class ClaudeChatWindow {
     }
 
     public void setOriginalTabName(String name) {
-        this.originalTabName = (name != null && name.endsWith("..."))
+        String cleaned = (name != null && name.endsWith("..."))
                 ? name.substring(0, name.length() - 3)
                 : name;
+        this.originalTabName = cleaned;
+        if (this.defaultTabName == null && cleaned != null) {
+            this.defaultTabName = cleaned;
+        }
         LOG.debug("[TabLoading] Set original tab name: " + this.originalTabName);
+    }
+
+    /**
+     * Updates the tab display title to reflect the conversation's active title.
+     * Passing an empty or null title resets the tab display name back to the default tab name.
+     */
+    public void updateTabTitle(String rawTitle) {
+        if (disposed) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (disposed || parentContent == null) {
+                return;
+            }
+            if (rawTitle == null || rawTitle.trim().isEmpty()) {
+                String resetName = defaultTabName != null ? defaultTabName : originalTabName;
+                if (resetName != null) {
+                    this.originalTabName = resetName;
+                    parentContent.setDisplayName(resetName);
+                    parentContent.setDescription(null);
+                    LOG.debug("[TabTitle] Reset tab title to default: " + resetName);
+                }
+                return;
+            }
+
+            String title = rawTitle.replaceAll("[\\r\\n]+", " ").trim();
+            String displayName = title.length() > 9 ? title.substring(0, 8) + "..." : title;
+            this.originalTabName = displayName;
+            parentContent.setDisplayName(displayName);
+            parentContent.setDescription(title);
+            LOG.debug("[TabTitle] Updated tab title to: " + displayName + " (full: " + title + ")");
+        });
     }
 
     public boolean isDisposed() {
@@ -500,7 +542,7 @@ public class ClaudeChatWindow {
             if (contentManager != null && contentManager.getIndexOfContent(content) >= 0) {
                 contentManager.setSelectedContent(content);
                 ToolWindow toolWindow = ToolWindowManager.getInstance(project)
-                        .getToolWindow(ClaudeSDKToolWindow.TOOL_WINDOW_ID);
+                        .getToolWindow(OpencodeBuddyToolWindow.TOOL_WINDOW_ID);
                 if (toolWindow != null
                         && toolWindow.getContentManager() == contentManager
                         && !toolWindow.isActive()) {
@@ -1382,7 +1424,7 @@ public class ClaudeChatWindow {
         return ctx != null ? ctx.getCurrentProvider() : "claude";
     }
 
-    public ClaudeSession getSession() {
+    public OpencodeSession getSession() {
         return session;
     }
 
@@ -1390,12 +1432,12 @@ public class ClaudeChatWindow {
      * Copies provider-specific preferences into a newly-created tab without
      * carrying over the source tab's conversation or runtime channel.
      */
-    public void inheritSessionPreferencesFrom(ClaudeChatWindow sourceWindow) {
+    public void inheritSessionPreferencesFrom(OpencodeBuddyChatWindow sourceWindow) {
         if (sourceWindow == null || sourceWindow.session == null || session == null) {
             return;
         }
 
-        ClaudeSession sourceSession = sourceWindow.session;
+        OpencodeSession sourceSession = sourceWindow.session;
         copySessionPreferences(sourceSession.getState(), session.getState());
         if (handlerContext != null) {
             handlerContext.setCurrentProvider(sourceSession.getProvider());
@@ -1419,7 +1461,7 @@ public class ClaudeChatWindow {
      * Webview 重载或标签页重新激活后，把当前会话从服务端重新同步一次。
      *
      * 这里已经没有「开屏恢复」语义了：工具窗口打开时必定是全新会话（见
-     * {@code ClaudeSDKToolWindow.createChatWindowContent}），sessionId 只可能来自
+     * {@code OpencodeBuddyToolWindow.createChatWindowContent}），sessionId 只可能来自
      * 用户自己发过消息、或从历史列表主动打开过某段会话。
      *
      * 因此判据收紧为「本窗口还没有任何消息、且会话空闲」。{@code loadFromServer()}
@@ -1452,7 +1494,7 @@ public class ClaudeChatWindow {
             return;
         }
 
-        ClaudeSession targetSession = session;
+        OpencodeSession targetSession = session;
         resyncSessionFromServerWithRetry(targetSession, RESYNC_MAX_ATTEMPTS);
     }
 
@@ -1466,7 +1508,7 @@ public class ClaudeChatWindow {
      *
      * @param attemptsLeft 含本次在内的剩余尝试次数
      */
-    private void resyncSessionFromServerWithRetry(ClaudeSession targetSession, int attemptsLeft) {
+    private void resyncSessionFromServerWithRetry(OpencodeSession targetSession, int attemptsLeft) {
         targetSession.loadFromServer().whenComplete((ignored, ex) -> {
             if (disposed || session != targetSession) {
                 return;
@@ -1496,7 +1538,7 @@ public class ClaudeChatWindow {
      * 的状态 —— 否则用户下一条消息会被追加到那段会话，旧对话整份回到界面上。该会话
      * 仍保存在 opencode 服务端，可从历史列表重新打开，不会丢。
      */
-    private void settleSessionResync(ClaudeSession targetSession, Throwable failure, boolean empty) {
+    private void settleSessionResync(OpencodeSession targetSession, Throwable failure, boolean empty) {
         if (disposed || session != targetSession) {
             return;
         }
@@ -2106,7 +2148,11 @@ public class ClaudeChatWindow {
     private static final java.util.regex.Pattern SAFE_JS_FUNCTION_NAME =
             java.util.regex.Pattern.compile("^[a-zA-Z_$][a-zA-Z0-9_$.]*$");
 
-    void callJavaScript(String functionName, String... args) {
+    public HandlerContext getHandlerContext() {
+        return handlerContext;
+    }
+
+    public void callJavaScript(String functionName, String... args) {
         JBCefBrowser targetBrowser = this.browser;
         if (this.disposed || targetBrowser == null) {
             LOG.warn("Cannot call JS function " + functionName + ": disposed=" + this.disposed
@@ -2284,7 +2330,7 @@ public class ClaudeChatWindow {
                 new SessionCallbackAdapter.JsTarget() {
                     @Override
                     public void callJavaScript(String functionName, String... args) {
-                        ClaudeChatWindow.this.callJavaScript(functionName, args);
+                        OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
                     }
                 },
                 permissionHandler,
@@ -2304,7 +2350,7 @@ public class ClaudeChatWindow {
         // Calling through sessionCallbackAdapter would silently drop the event
         // if setupSessionCallbacks() is invoked again before the title arrives
         // (adapter.deactivate() → isInactive() → event discarded).
-        // Register only once per ClaudeChatWindow; subsequent setupSessionCallbacks()
+        // Register only once per OpencodeBuddyChatWindow; subsequent setupSessionCallbacks()
         // calls reuse the existing listener so the bridge keeps a single registration
         // per window. The listener is removed in dispose().
         if (this.titleEventListener == null) {
@@ -2315,6 +2361,7 @@ public class ClaudeChatWindow {
                     if (genSessionId != null && title != null) {
                         ApplicationManager.getApplication().invokeLater(() -> {
                             if (!disposed) {
+                                updateTabTitle(title);
                                 callJavaScript("updateSessionTitle",
                                         JsUtils.escapeJs(genSessionId), JsUtils.escapeJs(title));
                             }
@@ -2324,7 +2371,7 @@ public class ClaudeChatWindow {
                     // Handle inter-turn session updates (background task completion)
                     String updatedSessionId = data.has("sessionId") ? data.get("sessionId").getAsString() : null;
                     if (updatedSessionId == null) {
-                        LOG.warn("[ClaudeChatWindow] session_updated event missing sessionId");
+                        LOG.warn("[OpencodeBuddyChatWindow] session_updated event missing sessionId");
                         return;
                     }
 
@@ -2347,11 +2394,11 @@ public class ClaudeChatWindow {
                         // the last fan-out answer with no following stream end — is still
                         // drained once the stream goes idle (see deferredReloadSafetyTick).
                         scheduleDeferredReloadSafetyDrain();
-                        LOG.info("[ClaudeChatWindow] session_updated during active turn, deferring reload to stream end");
+                        LOG.info("[OpencodeBuddyChatWindow] session_updated during active turn, deferring reload to stream end");
                         return;
                     }
 
-                    LOG.info("[ClaudeChatWindow] session_updated for sessionId=" + updatedSessionId + ", reloading from server");
+                    LOG.info("[OpencodeBuddyChatWindow] session_updated for sessionId=" + updatedSessionId + ", reloading from server");
 
                     // Reuse the canonical reload path (same as history-load / rewind):
                     // loadFromServer() reads the session via the bridge, converts each
@@ -2376,7 +2423,7 @@ public class ClaudeChatWindow {
                     String taskSessionId = data.has("sessionId") && data.get("sessionId").isJsonPrimitive()
                             ? data.get("sessionId").getAsString() : null;
                     if (taskSessionId == null) {
-                        LOG.warn("[ClaudeChatWindow] task_event event missing sessionId");
+                        LOG.warn("[OpencodeBuddyChatWindow] task_event event missing sessionId");
                         return;
                     }
                     // Mirror session_updated's guard: drop events that do not match the
@@ -2443,14 +2490,14 @@ public class ClaudeChatWindow {
         if (target == null) {
             return;
         }
-        LOG.info("[ClaudeChatWindow] draining deferred session_updated reload after stream end, sessionId=" + target);
+        LOG.info("[OpencodeBuddyChatWindow] draining deferred session_updated reload after stream end, sessionId=" + target);
         requestSessionReload(target);
     }
 
     /**
      * What the safety backstop should do on a tick. Pure function so the
      * park/stream/dispose state machine is unit-testable without a full
-     * ClaudeChatWindow.
+     * OpencodeBuddyChatWindow.
      *
      * <ul>
      *   <li>{@code DONE} — disposed, or nothing parked (the fast onStreamEnded
@@ -2493,7 +2540,7 @@ public class ClaudeChatWindow {
         boolean streamActive = streamCoalescer != null && streamCoalescer.isStreamActive();
         switch (decideDeferredReloadSafety(disposed, deferredReload.hasPending(), streamActive)) {
             case DRAIN:
-                LOG.info("[ClaudeChatWindow] safety-draining deferred reload (no stream-end edge followed the defer)");
+                LOG.info("[OpencodeBuddyChatWindow] safety-draining deferred reload (no stream-end edge followed the defer)");
                 drainDeferredReload();
                 break;
             case RECHECK_LATER:
@@ -2522,7 +2569,7 @@ public class ClaudeChatWindow {
      * overlapping background completions collapse into a single reload, which is
      * correct because a reload always reflects the latest JSONL. Extracted as a
      * static nested class so the coordination is unit-testable without a full
-     * ClaudeChatWindow (which needs a Project, JBCefBrowser, etc.).
+     * OpencodeBuddyChatWindow (which needs a Project, JBCefBrowser, etc.).
      */
     static final class DeferredReload {
         private String pendingSessionId;
@@ -2573,10 +2620,10 @@ public class ClaudeChatWindow {
         // reload's onMessageUpdate/onStateChange are silently dropped, and the
         // isSessionActive() check in the continuation additionally blocks any
         // follow-up reload. Two independent guards; neither alone is sufficient.
-        ClaudeSession current = session;
+        OpencodeSession current = session;
         current.loadFromServer().whenComplete((v, ex) -> {
             if (ex != null) {
-                LOG.warn("[ClaudeChatWindow] session reload failed", ex);
+                LOG.warn("[OpencodeBuddyChatWindow] session reload failed", ex);
             }
             boolean runAgain;
             synchronized (sessionReloadLock) {
@@ -2601,7 +2648,7 @@ public class ClaudeChatWindow {
      * Pure decision function for what to do when an in-flight
      * {@code loadFromServer()} reload completes. Extracted so the coalescing
      * state machine is unit-testable without constructing a full
-     * ClaudeChatWindow (which needs a Project, JBCefBrowser, etc.).
+     * OpencodeBuddyChatWindow (which needs a Project, JBCefBrowser, etc.).
      *
      * <p>Returns {@code true} (run another reload) only when ALL of:
      * <ul>
@@ -2637,7 +2684,7 @@ public class ClaudeChatWindow {
      * safe from the daemon-reader and loadFromServer() continuation threads.
      */
     private boolean isSessionActive(String sessionId) {
-        ClaudeSession current = session;
+        OpencodeSession current = session;
         if (current == null || sessionId == null) {
             return false;
         }
@@ -2656,10 +2703,10 @@ public class ClaudeChatWindow {
             return;
         }
         if ("claude".equals(session.getProvider()) && session.getError() == null) {
-            com.opencodebuddy.notifications.ClaudeNotifier.showSuccess(
+            com.opencodebuddy.notifications.OpencodeNotifier.showSuccess(
                 project,
-                com.opencodebuddy.notifications.ClaudeNotifier.buildTitleFromSession(session),
-                com.opencodebuddy.notifications.ClaudeNotifier.buildPreviewFromSession(session, "Task completed"));
+                com.opencodebuddy.notifications.OpencodeNotifier.buildTitleFromSession(session),
+                com.opencodebuddy.notifications.OpencodeNotifier.buildPreviewFromSession(session, "Task completed"));
         }
     }
 
@@ -2671,7 +2718,7 @@ public class ClaudeChatWindow {
     }
 
     private void registerInstance() {
-        ClaudeSDKToolWindow.registerWindow(project, this);
+        OpencodeBuddyToolWindow.registerWindow(project, this);
     }
 
     private void interruptDueToPermissionDenial() {
@@ -2679,7 +2726,7 @@ public class ClaudeChatWindow {
             callJavaScript("onPermissionDenied");
             callJavaScript("onStreamEnd");
             callJavaScript("showLoading", "false");
-            com.opencodebuddy.notifications.ClaudeNotifier.clearStatus(project);
+            com.opencodebuddy.notifications.OpencodeNotifier.clearStatus(project);
         }));
     }
 
@@ -2860,11 +2907,11 @@ public class ClaudeChatWindow {
         LOG.info("Starting window resource cleanup, project: " + project.getName());
 
         if (parentContent != null) {
-            ClaudeSDKToolWindow.unregisterContentMapping(parentContent);
-            LOG.debug("[MultiTab] Removed Content -> ClaudeChatWindow mapping during dispose");
+            OpencodeBuddyToolWindow.unregisterContentMapping(parentContent);
+            LOG.debug("[MultiTab] Removed Content -> OpencodeBuddyChatWindow mapping during dispose");
         }
 
-        ClaudeSDKToolWindow.unregisterWindow(project, this);
+        OpencodeBuddyToolWindow.unregisterWindow(project, this);
 
         try {
             if (session != null) { session.interrupt(); }
@@ -2956,7 +3003,7 @@ public class ClaudeChatWindow {
 
             @Override
             public void handleJavaScriptMessage(int pageGeneration, String msg) {
-                ClaudeChatWindow.this.handleJavaScriptMessage(pageGeneration, msg);
+                OpencodeBuddyChatWindow.this.handleJavaScriptMessage(pageGeneration, msg);
             }
 
             @Override
@@ -2976,7 +3023,7 @@ public class ClaudeChatWindow {
 
             @Override
             public boolean isWebviewActive() {
-                return ClaudeChatWindow.this.isWebviewActive();
+                return OpencodeBuddyChatWindow.this.isWebviewActive();
             }
 
             @Override
@@ -3000,7 +3047,7 @@ public class ClaudeChatWindow {
             if (disposed) {
                 return;
             }
-            ClaudeSession current = session;
+            OpencodeSession current = session;
             if (current == null) {
                 callJavaScript("historyLoadComplete", "0");
                 return;
@@ -3012,7 +3059,7 @@ public class ClaudeChatWindow {
             }
             if (streamCoalescer != null && streamCoalescer.isStreamActive()) {
                 deferredReload.defer(currentId);
-                LOG.info("[ClaudeChatWindow] Same-session resume deferred — "
+                LOG.info("[OpencodeBuddyChatWindow] Same-session resume deferred — "
                         + "turn streaming, will reload at stream end, sessionId=" + currentId);
                 // Frontend may have begun a transition (cleared the list). Release the
                 // guard now so a later deferred reload can paint; if the list is empty
@@ -3020,10 +3067,10 @@ public class ClaudeChatWindow {
                 callJavaScript("historyLoadComplete", String.valueOf(current.getMessages().size()));
                 return;
             }
-            LOG.info("[ClaudeChatWindow] Same-session resume soft reload (no interrupt), sessionId=" + currentId);
+            LOG.info("[OpencodeBuddyChatWindow] Same-session resume soft reload (no interrupt), sessionId=" + currentId);
             // Do not only requestSessionReload: that path never signals historyLoadComplete,
             // so a frontend that cleared the list under __sessionTransitioning stays blank.
-            ClaudeSession restoring = current;
+            OpencodeSession restoring = current;
             restoring.loadFromServer().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
                 if (disposed || session != restoring) {
                     callJavaScript("historyLoadComplete", "0");
@@ -3042,7 +3089,7 @@ public class ClaudeChatWindow {
                     syncRevertStateToFrontend(restoring);
                 }
             })).exceptionally(ex -> {
-                LOG.warn("[ClaudeChatWindow] Same-session soft reload failed: " + ex.getMessage(), ex);
+                LOG.warn("[OpencodeBuddyChatWindow] Same-session soft reload failed: " + ex.getMessage(), ex);
                 ApplicationManager.getApplication().invokeLater(() -> {
                     if (!disposed) {
                         callJavaScript("historyLoadComplete");
@@ -3055,7 +3102,7 @@ public class ClaudeChatWindow {
         });
     }
 
-    private void syncRevertStateToFrontend(ClaudeSession restoring) {
+    private void syncRevertStateToFrontend(OpencodeSession restoring) {
         if (restoring == null) {
             return;
         }
@@ -3083,7 +3130,7 @@ public class ClaudeChatWindow {
             }
 
             @Override
-            public ClaudeSession getSession() {
+            public OpencodeSession getSession() {
                 return session;
             }
 
@@ -3119,7 +3166,7 @@ public class ClaudeChatWindow {
 
             @Override
             public void setOriginalTabName(String name) {
-                ClaudeChatWindow.this.setOriginalTabName(name);
+                OpencodeBuddyChatWindow.this.setOriginalTabName(name);
             }
 
             @Override
@@ -3129,12 +3176,12 @@ public class ClaudeChatWindow {
 
             @Override
             public boolean isActiveContent() {
-                return ClaudeChatWindow.this.isActiveContent();
+                return OpencodeBuddyChatWindow.this.isActiveContent();
             }
 
             @Override
             public void activateContent() {
-                ClaudeChatWindow.this.activateContent();
+                OpencodeBuddyChatWindow.this.activateContent();
             }
 
             @Override
@@ -3184,12 +3231,12 @@ public class ClaudeChatWindow {
 
             @Override
             public void callJavaScript(String fn, String... args) {
-                ClaudeChatWindow.this.callJavaScript(fn, args);
+                OpencodeBuddyChatWindow.this.callJavaScript(fn, args);
             }
 
             @Override
             public void interruptDueToPermissionDenial() {
-                ClaudeChatWindow.this.interruptDueToPermissionDenial();
+                OpencodeBuddyChatWindow.this.interruptDueToPermissionDenial();
             }
 
             @Override
@@ -3209,12 +3256,12 @@ public class ClaudeChatWindow {
 
             @Override
             public void onHistoryRenderComplete(long commitEpoch) {
-                ClaudeChatWindow.this.onHistoryRenderComplete(commitEpoch);
+                OpencodeBuddyChatWindow.this.onHistoryRenderComplete(commitEpoch);
             }
 
             @Override
             public void onSurfaceDamageApplied(String token, String phase, boolean applied) {
-                ClaudeChatWindow.this.onSurfaceDamageApplied(token, phase, applied);
+                OpencodeBuddyChatWindow.this.onSurfaceDamageApplied(token, phase, applied);
             }
 
             @Override
@@ -3229,12 +3276,17 @@ public class ClaudeChatWindow {
 
             @Override
             public void persistTabSessionState() {
-                ClaudeChatWindow.this.persistTabSessionState();
+                OpencodeBuddyChatWindow.this.persistTabSessionState();
             }
 
             @Override
             public void reloadActiveSessionMessages() {
-                ClaudeChatWindow.this.reloadActiveSessionMessages();
+                OpencodeBuddyChatWindow.this.reloadActiveSessionMessages();
+            }
+
+            @Override
+            public void updateTabTitle(String title) {
+                OpencodeBuddyChatWindow.this.updateTabTitle(title);
             }
         };
     }

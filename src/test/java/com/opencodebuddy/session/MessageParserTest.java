@@ -29,10 +29,10 @@ public class MessageParserTest {
         raw.addProperty("type", "user");
         raw.add("message", message);
 
-        ClaudeSession.Message parsed = parser.parseServerMessage(raw);
+        OpencodeSession.Message parsed = parser.parseServerMessage(raw);
 
         assertNotNull(parsed);
-        assertEquals(ClaudeSession.Message.Type.USER, parsed.type);
+        assertEquals(OpencodeSession.Message.Type.USER, parsed.type);
         assertEquals("", parsed.content);
         assertEquals(raw, parsed.raw);
     }
@@ -61,10 +61,10 @@ public class MessageParserTest {
         envelope.addProperty("content", "Tool: glob");
         envelope.add("raw", normalizedRaw);
 
-        ClaudeSession.Message parsed = parser.parseServerMessage(envelope);
+        OpencodeSession.Message parsed = parser.parseServerMessage(envelope);
 
         assertNotNull(parsed);
-        assertEquals(ClaudeSession.Message.Type.ASSISTANT, parsed.type);
+        assertEquals(OpencodeSession.Message.Type.ASSISTANT, parsed.type);
         assertEquals("Tool: glob", parsed.content);
         assertEquals(normalizedRaw, parsed.raw);
         assertFalse(parsed.raw.has("raw"));
@@ -91,10 +91,10 @@ public class MessageParserTest {
         envelope.addProperty("content", "");
         envelope.add("raw", normalizedRaw);
 
-        ClaudeSession.Message parsed = parser.parseServerMessage(envelope);
+        OpencodeSession.Message parsed = parser.parseServerMessage(envelope);
 
         assertNotNull(parsed);
-        assertEquals(ClaudeSession.Message.Type.USER, parsed.type);
+        assertEquals(OpencodeSession.Message.Type.USER, parsed.type);
         assertEquals("", parsed.content);
         assertEquals(normalizedRaw, parsed.raw);
     }

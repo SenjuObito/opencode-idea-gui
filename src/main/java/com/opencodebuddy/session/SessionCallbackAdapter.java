@@ -13,11 +13,11 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
- * Named implementation of ClaudeSession.SessionCallback.
+ * Named implementation of OpencodeSession.SessionCallback.
  * Replaces the large anonymous inner class in setupSessionCallbacks().
  * Delegates streaming events to StreamMessageCoalescer and UI events to JavaScript callbacks.
  */
-public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
+public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
 
     private static final Logger LOG = Logger.getInstance(SessionCallbackAdapter.class);
     /** Throttle interval targeting ~30fps to balance responsiveness with UI thread load. */
@@ -89,7 +89,7 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
     }
 
     @Override
-    public void onMessageUpdate(List<ClaudeSession.Message> messages) {
+    public void onMessageUpdate(List<OpencodeSession.Message> messages) {
         // Atomic vs deactivate(): a stale-session reload landing mid-transition
         // must not enqueue with a post-barrier sequence and resurrect the cleared list.
         synchronized (lifecycleLock) {

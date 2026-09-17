@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * ones of whatever session happens to be active in the window when the user
  * clicks the dialog. The daemon-side marker handler registers the request here
  * (from the normalized {@code [PERMISSION_REQUEST]} payload); the decision
- * funnel in {@link ClaudeSession#handlePermissionDecision} consumes the entry
+ * funnel in {@link OpencodeSession#handlePermissionDecision} consumes the entry
  * when the user answers and forwards the reply to the opencode server.</p>
  *
  * <p>Entries are small and self-cleaning: consumed on decision, removed on the

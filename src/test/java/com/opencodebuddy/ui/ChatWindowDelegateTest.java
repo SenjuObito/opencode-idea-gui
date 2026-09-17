@@ -1,7 +1,7 @@
 package com.opencodebuddy.ui;
 
 import com.opencodebuddy.handler.SettingsHandler;
-import com.opencodebuddy.session.ClaudeSession;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.session.SessionLifecycleManager;
 import com.opencodebuddy.session.StreamMessageCoalescer;
 import com.google.gson.JsonObject;
@@ -97,7 +97,7 @@ public class ChatWindowDelegateTest {
             boolean runtimeRecovery,
             List<String> javaScriptCalls
     ) {
-        ClaudeSession session = new ClaudeSession(null, null);
+        OpencodeSession session = new OpencodeSession(null, null);
         session.setProvider("opencode");
         session.setModel("gpt-5.6-sol");
 

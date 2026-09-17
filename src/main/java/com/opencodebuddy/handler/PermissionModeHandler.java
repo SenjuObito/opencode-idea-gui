@@ -81,7 +81,7 @@ public class PermissionModeHandler {
                 PropertiesComponent props = PropertiesComponent.getInstance();
                 props.setValue(PERMISSION_MODE_PROPERTY_KEY, mode);
                 LOG.info("Saved permission mode to settings: " + mode);
-                com.opencodebuddy.notifications.ClaudeNotifier.setMode(this.context.getProject(), mode);
+                com.opencodebuddy.notifications.OpencodeNotifier.setMode(this.context.getProject(), mode);
             } else {
                 LOG.warn("[PermissionModeHandler] WARNING: Session is null! Cannot set permission mode");
             }

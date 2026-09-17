@@ -3,6 +3,7 @@ package com.opencodebuddy.provider.common;
 import com.opencodebuddy.bridge.BridgeDirectoryResolver;
 import com.opencodebuddy.bridge.EnvironmentConfigurator;
 import com.opencodebuddy.bridge.NodeDetector;
+import com.opencodebuddy.utils.PluginFileLogger;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -638,6 +639,7 @@ public class DaemonBridge {
                     context.appendStderrLine(line);
                     LOG.debug("[DaemonBridge:stderr] generation="
                             + context.generation + " " + line);
+                    PluginFileLogger.info("DAEMON", "[stderr gen=" + context.generation + "] " + line);
                 }
             } catch (IOException e) {
                 // Expected on shutdown
@@ -885,7 +887,7 @@ public class DaemonBridge {
                 // Async subagent lifecycle event (task_notification for a
                 // background Agent invoked with run_in_background:true). Emitted
                 // by the ai-bridge perpetual reader's inter-turn branch; dispatch
-                // to listeners exactly like session_updated so ClaudeChatWindow
+                // to listeners exactly like session_updated so OpencodeBuddyChatWindow
                 // can forward it to the frontend.
                 //
                 // Dual delivery path (intentional defense-in-depth): task_* may

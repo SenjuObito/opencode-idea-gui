@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Thread-safe: {@link #offer} and {@link #takePending} use an atomic swap so a
  * deferred snippet is emitted exactly once even when several frontend-ready callbacks
- * fire concurrently. This matters because {@code ClaudeChatWindow} registers
+ * fire concurrently. This matters because {@code OpencodeBuddyChatWindow} registers
  * {@code setFrontendReady} on two separate delegates, both of which flush this buffer.
  */
 final class PendingCodeSnippetBuffer {

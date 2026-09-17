@@ -1,8 +1,8 @@
 package com.opencodebuddy.service;
 
 import com.opencodebuddy.provider.common.DaemonBridge;
-import com.opencodebuddy.ui.toolwindow.ClaudeChatWindow;
-import com.opencodebuddy.ui.toolwindow.ClaudeSDKToolWindow;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyChatWindow;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow;
 import com.opencodebuddy.util.PlatformUtils;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.Service;
@@ -87,9 +87,9 @@ public final class NodeProcessRegistry implements Disposable {
         List<NodeProcessInfo> result = new ArrayList<>();
         Set<Long> knownPids = new HashSet<>();
 
-        Set<ClaudeChatWindow> windows = ClaudeSDKToolWindow.getAllChatWindowsForProject(project);
+        Set<OpencodeBuddyChatWindow> windows = OpencodeBuddyToolWindow.getAllChatWindowsForProject(project);
 
-        for (ClaudeChatWindow window : windows) {
+        for (OpencodeBuddyChatWindow window : windows) {
             if (window == null) {
                 continue;
             }
@@ -264,8 +264,8 @@ public final class NodeProcessRegistry implements Disposable {
      * If no window owns this daemon (e.g., it's an orphan), falls back to {@link #killByPid}.
      */
     public boolean restartDaemonByPid(long pid) {
-        Set<ClaudeChatWindow> windows = ClaudeSDKToolWindow.getAllChatWindowsForProject(project);
-        for (ClaudeChatWindow window : windows) {
+        Set<OpencodeBuddyChatWindow> windows = OpencodeBuddyToolWindow.getAllChatWindowsForProject(project);
+        for (OpencodeBuddyChatWindow window : windows) {
             DaemonBridge daemon = window.getDaemonBridge();
             if (tryRestartDaemon(daemon, daemon != null ? daemon::stop : null, pid)) {
                 return true;
@@ -458,7 +458,7 @@ public final class NodeProcessRegistry implements Disposable {
         return info.command().orElse(null);
     }
 
-    private static @Nullable String safeGetSessionId(ClaudeChatWindow window) {
+    private static @Nullable String safeGetSessionId(OpencodeBuddyChatWindow window) {
         try {
             String sid = window != null ? window.getSessionId() : null;
             return (sid != null && !sid.isEmpty()) ? sid : null;
@@ -467,7 +467,7 @@ public final class NodeProcessRegistry implements Disposable {
         }
     }
 
-    private static String safeGetCurrentProvider(ClaudeChatWindow window) {
+    private static String safeGetCurrentProvider(OpencodeBuddyChatWindow window) {
         try {
             if (window == null) {
                 return "claude";
@@ -479,7 +479,7 @@ public final class NodeProcessRegistry implements Disposable {
         }
     }
 
-    private static @Nullable String resolveTabName(ClaudeChatWindow window) {
+    private static @Nullable String resolveTabName(OpencodeBuddyChatWindow window) {
         try {
             if (window == null) {
                 return null;

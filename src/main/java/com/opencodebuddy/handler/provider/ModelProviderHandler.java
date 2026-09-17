@@ -82,7 +82,7 @@ public class ModelProviderHandler {
             }
 
             if (context.getProject() != null) {
-                com.opencodebuddy.notifications.ClaudeNotifier.setModel(context.getProject(), model);
+                com.opencodebuddy.notifications.OpencodeNotifier.setModel(context.getProject(), model);
             }
 
             int newMaxTokens = getModelContextLimit(FIXED_PROVIDER, model);

@@ -92,7 +92,7 @@ public class McpServerHandler extends BaseMessageHandler {
                 + (projectPath != null ? projectPath : "(no project)"));
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.updateMcpServers", escapeJs(serversJson));
+                broadcastToProject("window.updateMcpServers", escapeJs(serversJson));
             });
         } catch (Exception e) {
             LOG.error("[McpServerHandler] Failed to get MCP servers: " + e.getMessage(), e);

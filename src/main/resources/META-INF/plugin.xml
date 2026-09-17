@@ -50,7 +50,7 @@
         <!-- OpenCode Buddy tool window (includes history feature) -->
         <toolWindow id="OpenCode"
                     anchor="right"
-                    factoryClass="com.opencodebuddy.ui.toolwindow.ClaudeSDKToolWindow"
+                    factoryClass="com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow"
                     icon="/icons/opencode-icon.svg"
                     canCloseContents="true"/>
 
@@ -64,11 +64,18 @@
         <postStartupActivity implementation="com.opencodebuddy.service.RunConfigMonitorService"/>
 
         <!-- StatusBar widget for task notification -->
-        <statusBarWidgetFactory id="ClaudeStatusBarWidget"
-                                implementation="com.opencodebuddy.notifications.ClaudeStatusBarWidget$Factory"/>
+        <statusBarWidgetFactory id="OpencodeStatusBarWidget"
+                                implementation="com.opencodebuddy.notifications.OpencodeStatusBarWidget$Factory"/>
 
         <!-- Notification group for DevTools and other balloon notifications -->
         <notificationGroup id="OpenCode Buddy Notifications" displayType="BALLOON"/>
     </extensions>
+
+    <actions>
+        <!-- Create New Tab Action -->
+        <action id="OpenCodeBuddy.CreateNewTabAction"
+                class="com.opencodebuddy.action.tab.CreateNewTabAction"
+                icon="AllIcons.General.Add"/>
+    </actions>
 
 </idea-plugin>

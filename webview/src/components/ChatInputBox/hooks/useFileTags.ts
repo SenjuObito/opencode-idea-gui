@@ -352,7 +352,7 @@ export function useFileTags({
        * To add a new protocol type:
        * 1. Add protocol check here (e.g., const isNewProtocol = pureFilePath.startsWith('newprotocol://'))
        * 2. Add icon selection in the iconSvg logic below
-       * 3. Update backend ClaudeSession.java processReferences() method
+       * 3. Update backend OpencodeSession.java processReferences() method
        * 4. Import the corresponding icon SVG
        *
        * Future protocol candidates:

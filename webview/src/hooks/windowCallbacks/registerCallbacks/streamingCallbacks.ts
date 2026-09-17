@@ -839,7 +839,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   // Permission denied callback — kept as a no-op for backward compatibility.
   //
-  // The backend (ClaudeChatWindow.interruptDueToPermissionDenial) always calls
+  // The backend (OpencodeBuddyChatWindow.interruptDueToPermissionDenial) always calls
   // onStreamEnd() immediately after this in the same EDT invokeLater block.
   // The merged onStreamEnd updater performs the interrupted-tool scan against
   // the authoritative finalized state, which supersedes anything this handler

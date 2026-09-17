@@ -23,13 +23,13 @@ public class SessionContextServiceTest {
     @Test
     public void buildUserMessageIncludesImageBlockAndTextContent() {
         SessionContextService service = new SessionContextService(null);
-        List<ClaudeSession.Attachment> attachments = List.of(
-                new ClaudeSession.Attachment("diagram.png", "image/png", "base64-data")
+        List<OpencodeSession.Attachment> attachments = List.of(
+                new OpencodeSession.Attachment("diagram.png", "image/png", "base64-data")
         );
 
-        ClaudeSession.Message message = service.buildUserMessage("Please inspect this diagram", attachments);
+        OpencodeSession.Message message = service.buildUserMessage("Please inspect this diagram", attachments);
 
-        assertEquals(ClaudeSession.Message.Type.USER, message.type);
+        assertEquals(OpencodeSession.Message.Type.USER, message.type);
         assertEquals("Please inspect this diagram", message.content);
         JsonArray content = message.raw.getAsJsonObject("message").getAsJsonArray("content");
         assertEquals(2, content.size());
@@ -42,14 +42,14 @@ public class SessionContextServiceTest {
     @Test
     public void buildUserMessageIncludesAttachmentBlockForNonImageFiles() {
         SessionContextService service = new SessionContextService(null);
-        List<ClaudeSession.Attachment> attachments = List.of(
-                new ClaudeSession.Attachment("config.json", "application/json", "{\"key\":\"val\"}"),
-                new ClaudeSession.Attachment("app.ts", "text/plain", "console.log('hi');")
+        List<OpencodeSession.Attachment> attachments = List.of(
+                new OpencodeSession.Attachment("config.json", "application/json", "{\"key\":\"val\"}"),
+                new OpencodeSession.Attachment("app.ts", "text/plain", "console.log('hi');")
         );
 
-        ClaudeSession.Message message = service.buildUserMessage("Check these files", attachments);
+        OpencodeSession.Message message = service.buildUserMessage("Check these files", attachments);
 
-        assertEquals(ClaudeSession.Message.Type.USER, message.type);
+        assertEquals(OpencodeSession.Message.Type.USER, message.type);
         assertEquals("Check these files", message.content);
         JsonArray content = message.raw.getAsJsonObject("message").getAsJsonArray("content");
         assertEquals(3, content.size());
@@ -63,12 +63,12 @@ public class SessionContextServiceTest {
     @Test
     public void buildUserMessageHandlesMixedImageAndTextAttachments() {
         SessionContextService service = new SessionContextService(null);
-        List<ClaudeSession.Attachment> attachments = List.of(
-                new ClaudeSession.Attachment("screenshot.png", "image/png", "img-b64"),
-                new ClaudeSession.Attachment("notes.txt", "text/plain", "hello notes")
+        List<OpencodeSession.Attachment> attachments = List.of(
+                new OpencodeSession.Attachment("screenshot.png", "image/png", "img-b64"),
+                new OpencodeSession.Attachment("notes.txt", "text/plain", "hello notes")
         );
 
-        ClaudeSession.Message message = service.buildUserMessage("Look at these", attachments);
+        OpencodeSession.Message message = service.buildUserMessage("Look at these", attachments);
 
         JsonArray content = message.raw.getAsJsonObject("message").getAsJsonArray("content");
         assertEquals(3, content.size());
@@ -78,7 +78,7 @@ public class SessionContextServiceTest {
     }
 
     @Test
-    public void buildCodexContextAppendReferencesPathsWithoutInliningContent() throws Exception {
+    public void buildSessionContextAppendReferencesPathsWithoutInliningContent() throws Exception {
         File referencedFile = temporaryFolder.newFile("ReferencedExample.java");
         Files.writeString(referencedFile.toPath(), "class ReferencedExample {}", StandardCharsets.UTF_8);
 
@@ -96,7 +96,7 @@ public class SessionContextServiceTest {
 
         SessionContextService service = new SessionContextService(null);
 
-        String context = service.buildCodexContextAppend(
+        String context = service.buildSessionContextAppend(
                 openedFilesJson,
                 List.of(referencedFile.getAbsolutePath(), "terminal://backend-shell")
         );
@@ -116,7 +116,7 @@ public class SessionContextServiceTest {
     }
 
     @Test
-    public void buildCodexContextAppendReferencesActiveFileWithoutContent() throws Exception {
+    public void buildSessionContextAppendReferencesActiveFileWithoutContent() throws Exception {
         File activeFile = temporaryFolder.newFile("ActiveExample.java");
         Files.writeString(activeFile.toPath(), "class ActiveExample {}", StandardCharsets.UTF_8);
 
@@ -125,7 +125,7 @@ public class SessionContextServiceTest {
 
         SessionContextService service = new SessionContextService(null);
 
-        String context = service.buildCodexContextAppend(openedFilesJson, null);
+        String context = service.buildSessionContextAppend(openedFilesJson, null);
 
         assertTrue(context.contains("## User's Current IDE Context"));
         assertTrue(context.contains(activeFile.getAbsolutePath()));

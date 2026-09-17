@@ -24,10 +24,22 @@ public class ClipboardHandler extends BaseMessageHandler {
     private static final long MIN_READ_INTERVAL_MS = 200;
     private static final int MAX_CLIPBOARD_WRITE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+    @FunctionalInterface
+    public interface ClipboardSupplier {
+        Clipboard get() throws Exception;
+    }
+
+    private final ClipboardSupplier clipboardSupplier;
+    private static volatile Clipboard fallbackClipboard;
     private volatile long lastReadTime = 0;
 
     public ClipboardHandler(HandlerContext context) {
+        this(context, () -> Toolkit.getDefaultToolkit().getSystemClipboard());
+    }
+
+    public ClipboardHandler(HandlerContext context, ClipboardSupplier clipboardSupplier) {
         super(context);
+        this.clipboardSupplier = clipboardSupplier != null ? clipboardSupplier : () -> Toolkit.getDefaultToolkit().getSystemClipboard();
     }
 
     @Override
@@ -50,6 +62,22 @@ public class ClipboardHandler extends BaseMessageHandler {
         };
     }
 
+    private Clipboard getClipboard() {
+        try {
+            return clipboardSupplier.get();
+        } catch (Throwable t) {
+            LOG.debug("Unable to obtain system clipboard, falling back to in-memory clipboard: " + t.getMessage());
+            if (fallbackClipboard == null) {
+                synchronized (ClipboardHandler.class) {
+                    if (fallbackClipboard == null) {
+                        fallbackClipboard = new Clipboard("HeadlessFallbackClipboard");
+                    }
+                }
+            }
+            return fallbackClipboard;
+        }
+    }
+
     private void handleReadClipboard() {
         // Rate limiting to prevent clipboard-monitoring abuse (checked synchronously before dispatch)
         long now = System.currentTimeMillis();
@@ -64,8 +92,8 @@ public class ClipboardHandler extends BaseMessageHandler {
         // Use ModalityState.any() so copy works even when a modal dialog (e.g. PermissionDialog) is open.
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-                if (clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
+                Clipboard clipboard = getClipboard();
+                if (clipboard != null && clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
                     String text = (String) clipboard.getData(DataFlavor.stringFlavor);
                     callJavaScript("window.onClipboardRead", escapeJs(text != null ? text : ""));
                 } else {
@@ -88,9 +116,13 @@ public class ClipboardHandler extends BaseMessageHandler {
         // Use ModalityState.any() so copy works even when a modal dialog (e.g. PermissionDialog) is open.
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-                clipboard.setContents(new StringSelection(content != null ? content : ""), null);
-                callJavaScript("window.onCopyToClipboardResult", "true");
+                Clipboard clipboard = getClipboard();
+                if (clipboard != null) {
+                    clipboard.setContents(new StringSelection(content != null ? content : ""), null);
+                    callJavaScript("window.onCopyToClipboardResult", "true");
+                } else {
+                    callJavaScript("window.onCopyToClipboardResult", "false");
+                }
             } catch (Exception e) {
                 LOG.warn("Failed to write clipboard", e);
                 callJavaScript("window.onCopyToClipboardResult", "false");

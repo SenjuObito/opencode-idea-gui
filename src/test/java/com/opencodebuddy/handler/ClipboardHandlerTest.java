@@ -55,6 +55,33 @@ public class ClipboardHandlerTest {
         assertFalse(handler.handle("unknown_type", "test"));
     }
 
+    @Test
+    public void handlesHeadlessExceptionGracefullyWithFallback() {
+        MockJsCallback jsCallback = new MockJsCallback();
+        HandlerContext context = new HandlerContext(null, null, null, jsCallback);
+        ClipboardHandler handler = new ClipboardHandler(context, () -> {
+            throw new java.awt.HeadlessException("Headless mode in CI runner");
+        });
+
+        assertTrue(handler.handle("write_clipboard", "headless-test-text"));
+        assertTrue(jsCallback.calls.contains("window.onCopyToClipboardResult:true"));
+
+        jsCallback.calls.clear();
+        assertTrue(handler.handle("read_clipboard", ""));
+        assertTrue(jsCallback.calls.contains("window.onClipboardRead:headless-test-text"));
+    }
+
+    @Test
+    public void rejectsOversizedContent() {
+        MockJsCallback jsCallback = new MockJsCallback();
+        HandlerContext context = new HandlerContext(null, null, null, jsCallback);
+        ClipboardHandler handler = new ClipboardHandler(context);
+
+        String hugeContent = "x".repeat(11 * 1024 * 1024);
+        assertTrue(handler.handle("write_clipboard", hugeContent));
+        assertTrue(jsCallback.calls.contains("window.onCopyToClipboardResult:false"));
+    }
+
     private static @NotNull Application invokeLaterInlineApplication() {
         return (Application) Proxy.newProxyInstance(
                 Application.class.getClassLoader(),

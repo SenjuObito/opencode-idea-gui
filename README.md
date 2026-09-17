@@ -31,65 +31,67 @@ donations are welcome — they help cover those costs.
 
 ## Features
 
-- **Persistent opencode daemon** — no per-message process spawn. `opencode serve` (default port 4096,
-  overridable with `OPENCODE_PORT`) is started or reused on demand, kept warm across requests, and restarted
-  on crash.
-- **Full chat surface** — streaming text, thinking deltas and tool-call cards with diffs; multi-tab
-  conversations inside the tool window and a detachable window.
-- **Native input** — `@file` mentions, image attachments, one-click send of the editor selection or file path,
-  opencode slash commands (`/init`, `/review`, …), `!shell` commands and a context-compaction flow.
-- **Agent, model & effort** — build / plan mode switching, any provider+model pair from your opencode
-  configuration, and reasoning-effort variants.
-- **Approvals** — permission dialogs (once / always / reject), question prompts and plan approval, all rendered
-  as native panels inside the chat.
-- **Sessions** — local session index with favourites and search, revert / fork / compact, history export.
-- **MCP** — server status and a marketplace for installing/removing MCP servers.
-- **IDE integration** — editor, project-view, editor-tab and console context-menu actions, plus *Generate Commit
-  Message* in the VCS commit toolbar (runs a real `git diff` through Git4Idea).
-- **Fits your IDE** — follows the IDE light/dark theme, can sync the IDE font, and ships a bilingual UI
-  (English / 简体中文).
+- **Multi-Tab & Multi-Session Management** — Open multiple independent conversation tabs inside the IDE tool window. Supports tab renaming, one-click creation, closing, detaching into floating windows, and live "answering / completed" status indicators.
+- **Persistent opencode Daemon** — No per-message process spawning. `opencode serve` (default port 4096, overridable with `OPENCODE_PORT`) runs as a persistent background daemon via `@opencode-ai/sdk` v2 with prewarm, heartbeat, and crash recovery.
+- **Rich Chat Surface** — SSE streamed responses, collapsible thinking deltas, tool-call cards with inline code diffs, generation interruption, and turn-by-turn edit / rewind.
+- **Native Input & Rich Context** — `@filename` fuzzy file search and insertion, image and attachment drag-and-drop / clipboard pasting, opencode slash commands (`/init`, `/review`, …), and `!shell` / `$` command execution.
+- **Agent, Models & Reasoning Effort** — One-click `Build` / `Plan` mode switching, full sync with all Provider + Model options in your local opencode configuration, custom model settings, reasoning-effort (variant) selection, and Always Thinking toggle.
+- **Interactive Approvals & Question Flows** — Native inline dialogs for tool execution / file modification permissions (Once / Always / Reject), Ask User Question interactive forms, and Plan Approval review.
+- **Session History, Search & Markdown Export** — Local session index with search (`Ctrl+F` / `⌘F`), session revert, conversation branching (Fork), context compaction, one-click export to Markdown (`.md`), and OpenCode Web share link generation.
+- **Token Usage & TokenTracker Dashboard** — Real-time token consumption indicator and context window percentage, expandable context usage breakdown, and built-in multi-dimensional TokenTracker dashboard (request count, consumption charts, cost estimation).
+- **MCP Marketplace & Skills** — MCP server status monitoring, tools overview, one-click install/uninstall/configure via the built-in MCP Marketplace, and workspace/managed Skills scanning.
+- **Deep IDE Integration & Customization** — Auto light/dark theme adaptation with the IDE, IDE editor & UI font synchronization (with custom font & size support), status-bar widget for agent status, terminal/console output awareness, and bilingual UI (English / 简体中文).
 
 ## Usage
 
 ### 1. Open the chat window
 
-Install the plugin, then open **View → Tool Windows → OpenCode** (it lives in the right sidebar stripe). The
-plugin reuses an `opencode serve` instance when one is already running and otherwise starts its own.
+Install the plugin, then open **View → Tool Windows → OpenCode** (docked in the right sidebar stripe). The plugin reuses an `opencode serve` instance when one is already running and otherwise starts its own daemon automatically.
 
-<img src="media/home.png" width="400" alt="Chat window">
+<img src="media/home.png" width="600" alt="Chat window">
 
 *The screenshot shows the UI in Simplified Chinese.*
 
 The chat window contains:
 
-- **Tab bar** — one tab per conversation; tabs can be renamed, detached into their own window, or templated.
-- **Message area** — streamed answer, thinking blocks and tool calls, with inline diffs.
-- **Input box** — `@filename` attaches files, `!command` runs a shell command, `/command` runs an opencode
-  command. `Enter` sends, `Shift+Enter` inserts a newline.
-- **Bottom toolbar** — mode (`Build` / `Plan`), model selector, reasoning depth, token usage, attachments, and
-  the gear icon that opens settings.
+- **Top Tab Bar** — Multi-tab concurrent conversations; tabs maintain independent state and can be renamed, closed, detached into floating windows, or saved as templates.
+- **Top Action Bar** — Back navigation, new conversation, new tab (`+`), in-conversation search, session share link, fork conversation, export Markdown, session history, and settings.
+- **Message Area** — Streamed responses, collapsible thinking blocks, tool calls with interactive diffs.
+- **Input Box** — `@filename` attaches files, `/command` runs opencode slash commands, `!command` runs shell commands, image attachments via drag & drop or paste. `Enter` sends, `Shift+Enter` inserts a newline (customizable in settings).
+- **Bottom Toolbar** — `Build` / `Plan` mode switch, Provider & model selector, reasoning effort, Token usage indicator (click to view context breakdown), and settings gear icon.
 
-### 2. Keyboard shortcuts and context menus
+### 2. Common Operations & Interaction Guide
 
-| Action | Shortcut / where |
+| Action / Feature | Description |
 |---|---|
-| Send the selected code to the chat input | `Ctrl+Alt+K` (Windows/Linux) · `⌘⌥K` (macOS), or *Send Selected Code to OpenCode Buddy Plugin* in the editor context menu |
-| Ask opencode to analyse / improve the current code | `Ctrl+Shift+Q` · `⌘⇧Q`, or *Ask OpenCode…* in the editor context menu |
-| Copy an AI reference for the selection | *Copy AI Reference* in the editor context menu |
-| Send a file path to the chat input | *Send File Path to OpenCode Buddy* in the Project view / editor tab context menu |
-| Send console output to the chat input | *Send to OpenCode Buddy* in the console context menu |
-| Generate a commit message | *Generate Commit Message* action in the VCS commit toolbar |
-| Hide the tool window while typing in the chat | `Shift+Esc` |
-| Hide / show the tool window from the IDE | *Hide CC GUI Panel* action — bind a shortcut in **Settings → Keymap** |
+| **Multi-Tab Sessions** | Click `+` in the header or toolbar to add new tabs; each tab runs an isolated session. Detach tabs into floating windows via the tab controls |
+| **File Mentions & Completion** | Type `@` in the input box to trigger fuzzy file search in the project, navigate with arrow keys, and press Enter to insert |
+| **Slash Command Completion** | Type `/` to open the command palette (e.g., `/init`, `/review`, `/compact`, …) |
+| **Quick Shell Execution** | Prefix input with `!` or `$` to execute shell commands directly |
+| **Images & Attachments** | Drag and drop image files directly into the input box or paste from clipboard (`Ctrl+V` / `⌘V`) |
+| **In-Conversation Search** | Click the search icon in the header or press `Ctrl+F` / `⌘F` inside the chat window |
+| **Export Markdown** | Click the document export icon in the header to save the conversation (dialogue, thinking, tool calls, and diffs) as a `.md` file |
+| **Share Session** | Click the share icon in the header to generate an OpenCode Web share link and copy it to clipboard |
+| **Revert & Fork** | Rollback to any previous step (Revert) or branch off into a new session from that point (Fork) |
+| **Approvals & Questions** | Responsive inline cards for permission approvals (once / always / reject) and interactive questionnaire forms |
+| **Token Usage Breakdown** | Click the token percentage pill in the toolbar to inspect model context window usage and prompt/completion breakdowns |
 
 ### 3. Settings
 
-All plugin settings live inside the webview: click the **gear icon** in the top-right of the chat window. The
-sidebar holds **Basic Configuration** (theme, language, fonts, diff theme, chat background), **Provider
-Management**, **Commands (Prompts)**, **Usage Statistics**, **MCP Servers**, **Skills**, **Other Settings** and
-**Sponsor**. Persistent state is stored under `~/.opencodebuddy`.
+Click the **gear icon** in the top-right of the chat window to open Settings. Persistent configuration is stored under `~/.opencodebuddy`:
 
-<img src="media/settings.png" width="400" alt="Settings page">
+- **Basic Configuration**:
+  - **Appearance**: Theme selection (Follow IDE / Light / Dark), font sync (sync with IDE font / custom font file & size), chat background color, user message color, and diff highlighting theme.
+  - **Behavior**: Send shortcut (`Enter` vs `⌘+Enter`), auto open file, diff expanded by default, confirm dialogs (new session / compaction), task completion balloon notifications, question prompts, approval timeouts, and sound notifications.
+  - **Environment**: Node.js path auto-detection & custom path, `opencode` CLI path configuration & validation, custom working directory.
+- **Provider Management**: View and configure opencode providers and models, with support for custom model parameters.
+- **Usage Statistics**: Integrated TokenTracker dashboard with token trends, request frequencies, and cost estimations.
+- **MCP Servers**: Server status monitoring, tool catalog, and the **MCP Marketplace** for installing, configuring, and updating MCP servers.
+- **Skills**: Scan and manage project workspace and global skills.
+- **Other Settings**: History retention limit, prompt cache, and maintenance.
+- **Community & Sponsor**: Version changelog, feedback channels, and sponsor links.
+
+<img src="media/settings.png" width="600" alt="Settings page">
 
 *Settings → Basic Configuration → Appearance; UI labels are in Simplified Chinese.*
 

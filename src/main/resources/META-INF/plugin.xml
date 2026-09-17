@@ -8,31 +8,32 @@
 
     <description><![CDATA[
         <h2>GUI for OpenCode inside your IDE - MIT 100% Open Source</h2>
-        <h2>IDE 内的 OpenCode 可视化 GUI，MIT 100% 开源</h2>
-        <p>OpenCode Buddy 为 <strong>opencode</strong>（开源 AI 编程代理）提供原生 JetBrains 体验：
+        <h2>IDE 内的 OpenCode 可视化 GUI · MIT 100% 开源</h2>
+        <p>OpenCode Buddy 为 <strong>opencode</strong>（开源 AI 编程代理）提供原生 JetBrains IDE 体验：
         通过本地 <code>opencode serve</code> 服务与 <code>@opencode-ai/sdk</code> 通信，
-        不做任何额外云端转发，凭证完全由本机 opencode CLI 管理。</p>
+        无需额外云端中转，配置与凭证完全由本机 opencode CLI 本地管理。</p>
 
         <h2>核心功能 / Features</h2>
         <ul>
-            <li><strong>上下文感知</strong>：@文件引用、图片附件、编辑器选区/文件路径一键发送</li>
-            <li><strong>Agent / 模型选择</strong>：build/plan 模式切换、任意 provider/model 组合、推理力度（variant）</li>
-            <li><strong>斜杠命令</strong>：完整支持 opencode 命令系统（/init, /review, /bash 等）</li>
-            <li><strong>MCP 服务器</strong>：状态查看与市场管理</li>
-            <li><strong>代码 DIFF</strong>：可视化代码对比和文件导航</li>
-            <li><strong>会话回退</strong>：revert / fork / compact</li>
-            <li><strong>会话管理</strong>：历史记录、收藏、搜索和导出</li>
-            <li><strong>主题支持</strong>：深色/浅色主题，支持 IDE 字体同步，中英双语</li>
-            <li><strong>权限控制</strong>：工具调用审批对话框（once / always / reject）</li>
+            <li><strong>多标签多会话</strong>：支持多个会话标签页并发独立运行，支持标签重命名、独立浮动窗口与实时回答状态指示</li>
+            <li><strong>持久化守护进程</strong>：自动启动或复用本地 <code>opencode serve</code> 常驻服务，支持心跳保活与崩溃自愈</li>
+            <li><strong>完整交互界面</strong>：流式响应输出、深度思考折叠增量展示、工具调用卡片与内联代码 Diff 对比</li>
+            <li><strong>原生输入感知</strong>：<code>@</code> 文件智能补全引用、图片及多模态附件拖拽/粘贴、<code>/</code> 原生斜杠命令、<code>!</code> / <code>$</code> 终端命令执行</li>
+            <li><strong>Agent / 模型 / 推理配置</strong>：Build / Plan 模式切换、支持 opencode 配置的全部 Provider + Model、自定义模型添加、推理力度（Reasoning Effort）与 Always Thinking 切换</li>
+            <li><strong>会话管理与导出</strong>：会话全文搜索、消息撤销重试、历史回退（Revert）、会话分支（Fork）、上下文压缩（Compact）、一键导出 Markdown 会话文档、OpenCode Share 链接分享</li>
+            <li><strong>交互审批流程</strong>：文件编辑与命令执行权限审批（Once / Always / Reject）、Ask User Question 表单交互提问、Plan 计划审批</li>
+            <li><strong>MCP 市场与技能</strong>：MCP 服务器状态监控、MCP 市场一键搜索/安装/卸载/配置、Skill 技能扩展管理</li>
+            <li><strong>Token 用量与看板</strong>：实时 Token 消耗指示器、模型上下文窗口占用百分比、上下文分解详情与内置 TokenTracker 统计看板</li>
+            <li><strong>深度 IDE 融合</strong>：明暗主题自适应跟随 IDE、IDE 编辑器与界面字体同步、状态栏小组件、中英双语界面切换</li>
         </ul>
 
         <h2>使用方法</h2>
         <ul>
-            <li>从右侧边栏打开 OpenCode 工具窗口（需已安装 <code>opencode</code> CLI）</li>
-            <li>插件会自动启动或复用本地 <code>opencode serve</code> 服务（默认端口 4096，可用 OPENCODE_PORT 覆盖）</li>
+            <li>从右侧边栏打开 <strong>OpenCode</strong> 工具窗口（需已安装 <code>opencode</code> CLI）</li>
+            <li>插件会自动启动或复用本地 <code>opencode serve</code> 服务（默认端口 4096，可用 <code>OPENCODE_PORT</code> 覆盖）</li>
         </ul>
 
-        <p><em>Keywords: OpenCode, opencode-buddy, AI Coding, Code Generation, Agent</em></p>
+        <p><em>Keywords: OpenCode, opencode-buddy, AI Coding, Code Generation, Agent, Multi-Tab, MCP, TokenTracker</em></p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

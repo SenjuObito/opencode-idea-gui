@@ -6,6 +6,8 @@ import {
   selectWindowsWhereMatch,
   resolveWindowsSpawnableBin,
   commonCliBinDirs,
+  resolveCliPath,
+  resolveOpenCodeCliPath,
 } from './cli-path.js';
 
 test('isWindowsCmdShim detects .cmd/.bat only on win32-style paths', () => {
@@ -165,4 +167,28 @@ test('commonCliBinDirs covers pnpm global on POSIX', () => {
   } finally {
     Object.defineProperty(process, 'platform', orig);
   }
+});
+
+test('resolveCliPath resolves directory override on Windows/POSIX', () => {
+  const origEnv = process.env.OPENCODE_BIN;
+  try {
+    process.env.OPENCODE_BIN = process.cwd();
+    const resolved = resolveCliPath({
+      binaryName: 'node',
+      envKeys: ['OPENCODE_BIN'],
+    });
+    assert.ok(resolved);
+  } finally {
+    if (origEnv !== undefined) {
+      process.env.OPENCODE_BIN = origEnv;
+    } else {
+      delete process.env.OPENCODE_BIN;
+    }
+  }
+});
+
+test('resolveOpenCodeCliPath returns non-empty string', () => {
+  const resolved = resolveOpenCodeCliPath();
+  assert.equal(typeof resolved, 'string');
+  assert.ok(resolved.length > 0);
 });

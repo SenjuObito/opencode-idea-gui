@@ -2268,16 +2268,26 @@ public class OpencodeBuddyChatWindow {
                     logMessage.append(args.get(i).toString());
                 }
 
+                String logStr = logMessage.toString();
                 if ("console.error".equals(logType)) {
-                    LOG.warn(logMessage.toString());
-                    PluginFileLogger.error("WEBVIEW", logMessage.toString());
+                    if (logStr.contains("[Probe]") || logStr.contains("[cardDebug]")) {
+                        LOG.debug(logStr);
+                        PluginFileLogger.debug("WEBVIEW", logStr);
+                    } else {
+                        LOG.warn(logStr);
+                        PluginFileLogger.error("WEBVIEW", logStr);
+                    }
                 } else if ("console.warn".equals(logType)) {
-                    LOG.info(logMessage.toString());
-                    PluginFileLogger.warn("WEBVIEW", logMessage.toString());
+                    if (logStr.contains("[cardDebug]")) {
+                        PluginFileLogger.debug("WEBVIEW", logStr);
+                    } else {
+                        LOG.info(logStr);
+                        PluginFileLogger.warn("WEBVIEW", logStr);
+                    }
                 } else {
-                    LOG.debug(logMessage.toString());
+                    LOG.debug(logStr);
                     PluginFileLogger.throttled("DEBUG", "WEBVIEW", logType,
-                            logMessage.toString(), 1000L);
+                            logStr, 1000L);
                 }
             } catch (Exception e) {
                 LOG.warn("Failed to parse console log: " + e.getMessage());
@@ -2295,6 +2305,11 @@ public class OpencodeBuddyChatWindow {
 
         String type = parts[0];
         String content = parts.length > 1 ? parts[1] : "";
+
+        if ("cardDebug".equals(type)) {
+            PluginFileLogger.info("WEBVIEW", content);
+            return;
+        }
 
         PluginFileLogger.throttled("INFO", "FRONTEND->BACKEND", type,
                 type + " | " + content, 1000L);

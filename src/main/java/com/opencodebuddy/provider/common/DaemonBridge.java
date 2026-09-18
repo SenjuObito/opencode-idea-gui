@@ -637,9 +637,20 @@ public class DaemonBridge {
                         break;
                     }
                     context.appendStderrLine(line);
-                    LOG.debug("[DaemonBridge:stderr] generation="
-                            + context.generation + " " + line);
-                    PluginFileLogger.info("DAEMON", "[stderr gen=" + context.generation + "] " + line);
+                    String trimmed = line.trim();
+                    if (trimmed.startsWith("[LOG:DEBUG] ")) {
+                        PluginFileLogger.debug("DAEMON", trimmed.substring(12));
+                    } else if (trimmed.startsWith("[LOG:INFO] ")) {
+                        PluginFileLogger.info("DAEMON", trimmed.substring(11));
+                    } else if (trimmed.startsWith("[LOG:WARN] ")) {
+                        PluginFileLogger.warn("DAEMON", trimmed.substring(11));
+                    } else if (trimmed.startsWith("[LOG:ERROR] ")) {
+                        PluginFileLogger.error("DAEMON", trimmed.substring(12));
+                    } else {
+                        LOG.debug("[DaemonBridge:stderr] generation="
+                                + context.generation + " " + line);
+                        PluginFileLogger.info("DAEMON", "[stderr gen=" + context.generation + "] " + line);
+                    }
                 }
             } catch (IOException e) {
                 // Expected on shutdown

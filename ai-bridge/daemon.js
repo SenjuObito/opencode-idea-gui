@@ -37,6 +37,7 @@ import {
   abortCurrentTurn,
   getContextUsagePersistent,
 } from './services/opencode/opencode-daemon-service.js';
+import * as serveManager from './services/opencode/opencode-serve-manager.js';
 import { listModels as listOpenCodeModels } from './services/opencode/models-service.js';
 import { isWebviewControlledEnvVar, isDangerousEnvVar } from './config/api-config.js';
 
@@ -261,11 +262,19 @@ console.log = function (...args) {
 
 /**
  * Override console.error to tag stderr output as well.
+ * 日志分级：AI_BRIDGE_LOG_LEVEL=error（生产包由宿主注入）时丢弃 [DEBUG]
+ * 前缀的调试输出——daemon 的 stderr 会被宿主逐行捕获转发，不分级的
+ * 话流式期间每条调试行都会进入宿主日志管道。
  */
+const DAEMON_LOG_LEVEL = process.env.AI_BRIDGE_LOG_LEVEL || 'info';
+
 console.error = function (...args) {
   const text = args
     .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
     .join(' ');
+  if (DAEMON_LOG_LEVEL === 'error' && text.startsWith('[DEBUG]')) {
+    return;
+  }
   const requestId = currentRequestId();
   if (requestId) {
     writeRawLine({ id: requestId, stderr: text });
@@ -373,6 +382,8 @@ async function processRequest(request) {
       type: 'heartbeat',
       ts: Date.now(),
       sdkPreloaded,
+      serveRunning: serveManager.isRunning(),
+      nodeVersion: process.version,
       memoryUsage: process.memoryUsage().heapUsed,
     });
     return;
@@ -387,6 +398,9 @@ async function processRequest(request) {
       pid: process.pid,
       uptime: process.uptime(),
       sdkPreloaded,
+      serveRunning: serveManager.isRunning(),
+      serverUrl: serveManager.getServerUrl(),
+      nodeVersion: process.version,
       memoryUsage: process.memoryUsage(),
     });
     return;
@@ -611,14 +625,15 @@ async function runDaemonMain() {
 
     // Abort bypasses the turn queue — must run immediately to cancel active work.
     if (request.method === 'abort') {
-      const targetId = backgroundStreamRequestId;
+      const targetSessionId = request.params?.sessionId;
+      const targetRequestId = request.params?.requestId;
       _originalStderrWrite(
-        `[daemon] Abort requested, active turn: ${targetId || 'none'}\n`,
+        `[daemon] Abort requested for session=${targetSessionId || 'all'}, request=${targetRequestId || 'none'}\n`,
         'utf8'
       );
-      if (targetId) {
-        abortCurrentTurn().catch((e) => _originalStderrWrite(`[daemon] opencode abort error: ${e.message}\n`, 'utf8'));
-      }
+      abortCurrentTurn(targetSessionId).catch((e) =>
+        _originalStderrWrite(`[daemon] opencode abort error: ${e.message}\n`, 'utf8')
+      );
       writeRawLine({ id: request.id || '0', done: true, success: true });
       return;
     }

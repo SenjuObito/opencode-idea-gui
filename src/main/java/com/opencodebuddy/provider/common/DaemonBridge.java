@@ -796,7 +796,9 @@ public class DaemonBridge {
 
             // Stderr output
             if (obj.has("stderr")) {
-                handler.callback.onStderr(obj.get("stderr").getAsString());
+                String errText = obj.get("stderr").getAsString();
+                PluginFileLogger.info("DAEMON", "[stderr id=" + id + "] " + errText);
+                handler.callback.onStderr(errText);
             }
 
         } catch (Exception e) {

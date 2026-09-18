@@ -989,6 +989,11 @@ interface Window {
   __pendingPlanApprovalDialogRequests?: string[];
 
   /**
+   * Pending error toasts before React window.showToast listener is mounted.
+   */
+  __pendingToasts?: string[];
+
+  /**
    * Pending updateMessages payload before React initialization
    */
   __pendingUpdateMessages?: string | { json: string; sequence?: number | null };

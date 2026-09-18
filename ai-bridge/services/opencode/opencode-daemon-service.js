@@ -48,6 +48,7 @@ import {
 } from '../../utils/cli-image-input.js';
 import * as serveManager from './opencode-serve-manager.js';
 import * as sdk from './opencode-sdk-client.js';
+import { logInfo, logWarn, logError, logDebug } from '../../utils/logger.js';
 import {
   normalizePermissionRequest,
   normalizeQuestionRequest,
@@ -100,13 +101,53 @@ function trackSession(sessionId, info) {
   }
 }
 
+// ── Serve Process Exit & Watchdog Handling ──────────────────────────────────
+// 当 opencode serve 意外退出或崩溃时，立即结算并熔断所有在途活跃 Turn，避免前端死锁
+serveManager.onServeExit(({ code, signal, uptime, stderrTail }) => {
+  const exitMsg = `OpenCode serve 进程异常退出 (退出码: ${code ?? signal ?? 'unknown'}, uptime: ${uptime}ms)`;
+  console.error(`[OpenCodeDaemon:watchdog] Serve process died, settling ${_activeTurns.size} active turn(s)...`);
+  for (const [sessionId, turn] of _activeTurns) {
+    if (turn.settled) continue;
+    console.error(`[OpenCodeDaemon:watchdog] Aborting active turn for sessionId=${sessionId} due to serve process exit`);
+    _settleTurn(turn, { success: false, error: { message: exitMsg } });
+  }
+  // 终止所有 SSE 订阅
+  for (const sub of _sseSubs.values()) {
+    try {
+      sub.controller.abort();
+    } catch {
+      // ignore
+    }
+  }
+  _sseSubs.clear();
+});
+
+const INACTIVITY_TIMEOUT_MS = 45_000;
+let _watchdogTimer = setInterval(async () => {
+  if (_activeTurns.size === 0) return;
+  const now = Date.now();
+  for (const [sessionId, turn] of _activeTurns) {
+    if (turn.settled) continue;
+    const inactiveDuration = now - (turn.lastActivityAt || turn.createdAt || now);
+    if (inactiveDuration > INACTIVITY_TIMEOUT_MS) {
+      console.error(`[OpenCodeDaemon:watchdog] Turn for sessionId=${sessionId} inactive for ${inactiveDuration}ms, probing serve...`);
+      const isAlive = serveManager.isRunning() && await sdk.health();
+      if (!isAlive && !turn.settled) {
+        console.error(`[OpenCodeDaemon:watchdog] Serve is unresponsive/dead. Forcibly failing turn for sessionId=${sessionId}`);
+        _settleTurn(turn, {
+          success: false,
+          error: { message: `OpenCode serve 服务无响应（超时 ${Math.round(inactiveDuration / 1000)} 秒），已自动中断当前生成` },
+        });
+      }
+    }
+  }
+}, 10_000);
+_watchdogTimer.unref();
+
+
 // =============================================================================
 // Small helpers
 // =============================================================================
-
-function logDebug(...args) {
-  console.error('[DEBUG][OpenCodeDaemon]', ...args);
-}
 
 /**
  * Look up the directory for a sessionID from the session registry.
@@ -155,16 +196,8 @@ function resolveModelParam(model) {
 function resolveAgentParam(params) {
   const agent = params?.agent;
   const mode = params?.mode;
-  if (typeof agent === 'string' && agent.trim()) {
-    const trimmed = agent.trim();
-    if (['acceptEdits', 'bypassPermissions', 'dontAsk', 'default', 'autoEdit'].includes(trimmed)) return 'build';
-    return trimmed;
-  }
-  if (typeof mode === 'string' && mode.trim()) {
-    const trimmed = mode.trim();
-    if (['acceptEdits', 'bypassPermissions', 'dontAsk', 'default', 'autoEdit'].includes(trimmed)) return 'build';
-    return trimmed;
-  }
+  if (typeof agent === 'string' && agent.trim()) return agent.trim();
+  if (typeof mode === 'string' && mode.trim()) return mode.trim();
   return undefined;
 }
 
@@ -192,6 +225,9 @@ function tokensToUsage(tokens) {
  * @param {string} directory - working directory to scope the SSE subscription to
  */
 async function _ensureReady(directory) {
+  // Reset auto-restart budget whenever user actively initiates a request
+  serveManager.resetRestartAttempts();
+
   // Path ①: re-launch serve on send if it crashed between requests.
   // `_serveStarted` stays true after a crash, so also check the live process.
   if (!_serveStarted || !serveManager.isRunning()) {
@@ -288,7 +324,23 @@ function _handleEvent(evt) {
   const type = typeof evt?.type === 'string' ? evt.type : '';
   const sessionID = props?.sessionID;
   const turn = sessionID ? _activeTurns.get(sessionID) : null;
+  if (turn) {
+    turn.lastActivityAt = Date.now();
+  }
 
+  const runWithContext = (fn) => {
+    if (turn && turn.requestId) {
+      return requestContext.run({ id: turn.requestId }, fn);
+    }
+    return fn();
+  };
+
+  runWithContext(() => {
+    _dispatchInnerEvent(type, props, sessionID, turn);
+  });
+}
+
+function _dispatchInnerEvent(type, props, sessionID, turn) {
   switch (type) {
     case 'session.created':
     case 'session.updated':
@@ -569,8 +621,12 @@ function _settleTurn(turn, { success, error }) {
   }
 }
 
-function _createTurn() {
+function _createTurn(requestId = null) {
+  const now = Date.now();
   return {
+    requestId,
+    createdAt: now,
+    lastActivityAt: now,
     settled: false,
     success: false,
     promise: null,
@@ -640,7 +696,7 @@ export async function sendMessagePersistent(params = {}) {
   const requestedId = (typeof safeParams.sessionId === 'string' && safeParams.sessionId.trim())
     ? safeParams.sessionId.trim()
     : null;
-  const agent = resolveAgentParam(safeParams) || 'build';
+  const agent = resolveAgentParam(safeParams);
   const model = resolveModelParam(safeParams.model);
   // 推理力度 → opencode model variant（docs/models#variants，按模型变化）。
   const variant = (typeof safeParams.reasoningEffort === 'string' && safeParams.reasoningEffort.trim())
@@ -745,7 +801,8 @@ export async function sendMessagePersistent(params = {}) {
   beginStream(sessionId);
   emitSessionId(sessionId);
 
-  const turn = _createTurn();
+  const currentReqId = requestContext.getStore()?.id ?? null;
+  const turn = _createTurn(currentReqId);
   turn.promise = new Promise((resolve, reject) => {
     turn.resolve = resolve;
     turn.reject = reject;
@@ -838,7 +895,7 @@ export async function sendShellPersistent(params = {}) {
   const requestedId = (typeof safeParams.sessionId === 'string' && safeParams.sessionId.trim())
     ? safeParams.sessionId.trim()
     : null;
-  const agent = resolveAgentParam(safeParams) || 'build';
+  const agent = resolveAgentParam(safeParams);
   const model = resolveModelParam(safeParams.model);
 
   if (!rawCommand) {
@@ -856,14 +913,15 @@ export async function sendShellPersistent(params = {}) {
   beginStream(sessionId);
   emitSessionId(sessionId);
 
-  const turn = _createTurn();
+  const currentReqId = requestContext.getStore()?.id ?? null;
+  const turn = _createTurn(currentReqId);
   turn.promise = new Promise((resolve, reject) => {
     turn.resolve = resolve;
     turn.reject = reject;
   });
   _activeTurns.set(sessionId, turn);
 
-  logDebug(`shell session=${sessionId} agent=${agent} cmdLen=${rawCommand.length}`);
+  logDebug(`shell session=${sessionId} agent=${agent || '-'} cmdLen=${rawCommand.length}`);
 
   try {
     await sdk.shellAsync(sessionId, rawCommand, {
@@ -957,9 +1015,15 @@ export async function preconnectPersistent(params = {}) {
  * Abort the active turn(s). Bypasses the command queue in daemon.js (runs
  * immediately, like the claude abort path). The opencode server settles the
  * turn with a `session.error`/`session.idle` which resolves the awaiting send.
+ *
+ * @param {string} [targetSessionId] - Optional session ID to abort. If omitted, aborts all active turns.
  */
-export async function abortCurrentTurn() {
-  const sessions = [..._activeTurns.keys()];
+export async function abortCurrentTurn(targetSessionId) {
+  const sessions = (targetSessionId && _activeTurns.has(targetSessionId))
+    ? [targetSessionId]
+    : targetSessionId
+      ? [] // 指定了不存在的 session，无需全局误杀
+      : [..._activeTurns.keys()];
   if (sessions.length === 0) return;
   for (const sessionId of sessions) {
     const turn = _activeTurns.get(sessionId);
@@ -1032,6 +1096,10 @@ export async function getContextUsagePersistent(params = {}) {
  * SSE subscription and stop the serve process.
  */
 export async function shutdownPersistentRuntimes() {
+  if (_watchdogTimer) {
+    clearInterval(_watchdogTimer);
+  }
+
   // Abort active turns so awaiting sends settle (as "interrupted").
   for (const sessionId of [..._activeTurns.keys()]) {
     const turn = _activeTurns.get(sessionId);

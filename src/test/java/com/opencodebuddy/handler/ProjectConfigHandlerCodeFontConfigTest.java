@@ -1,7 +1,7 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import org.junit.Test;
 
 import static org.junit.Assert.assertFalse;
@@ -57,7 +57,7 @@ public class ProjectConfigHandlerCodeFontConfigTest {
         }
     }
 
-    private HandlerContext contextWith(CodemossSettingsService settingsService) {
+    private HandlerContext contextWith(OpenCodeBuddySettingsService settingsService) {
         return new HandlerContext(
                 null,
                 null,
@@ -75,7 +75,7 @@ public class ProjectConfigHandlerCodeFontConfigTest {
         );
     }
 
-    private static class RecordingSettingsService extends CodemossSettingsService {
+    private static class RecordingSettingsService extends OpenCodeBuddySettingsService {
         private boolean setCodeFontConfigCalled = false;
 
         @Override

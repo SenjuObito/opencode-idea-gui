@@ -2,7 +2,7 @@ package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.permission.PermissionService;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.JsonObject;
 import org.junit.Before;
 import org.junit.Test;
@@ -232,8 +232,8 @@ public class PermissionHandlerTest {
         // safety net for a transient failure.
         PermissionHandler nullSettingsHandler = new PermissionHandler(contextStub());
 
-        long expected = CodemossSettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
-                + CodemossSettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
+        long expected = OpenCodeBuddySettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
+                + OpenCodeBuddySettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
         assertEquals(expected, nullSettingsHandler.getSafetyNetTimeoutSeconds());
     }
 
@@ -241,8 +241,8 @@ public class PermissionHandlerTest {
     public void safetyNetTimeoutFallsBackToDefaultPlusBufferWhenSettingsServiceThrows() {
         PermissionHandler throwingHandler = new PermissionHandler(contextStub(new FailingSettingsService()));
 
-        long expected = CodemossSettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
-                + CodemossSettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
+        long expected = OpenCodeBuddySettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
+                + OpenCodeBuddySettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
         assertEquals(expected, throwingHandler.getSafetyNetTimeoutSeconds());
     }
 
@@ -336,7 +336,7 @@ public class PermissionHandlerTest {
         return contextStub(null);
     }
 
-    private HandlerContext contextStub(CodemossSettingsService settingsService) {
+    private HandlerContext contextStub(OpenCodeBuddySettingsService settingsService) {
         return new HandlerContext(
                 null,
                 null,
@@ -348,7 +348,7 @@ public class PermissionHandlerTest {
         );
     }
 
-    private static class FakeSettingsService extends CodemossSettingsService {
+    private static class FakeSettingsService extends OpenCodeBuddySettingsService {
         private final int timeoutSeconds;
 
         private FakeSettingsService(int timeoutSeconds) {
@@ -361,7 +361,7 @@ public class PermissionHandlerTest {
         }
     }
 
-    private static class FailingSettingsService extends CodemossSettingsService {
+    private static class FailingSettingsService extends OpenCodeBuddySettingsService {
         @Override
         public int getPermissionDialogTimeoutSeconds() throws IOException {
             throw new IOException("simulated settings read failure");

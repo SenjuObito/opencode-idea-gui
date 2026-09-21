@@ -6,7 +6,7 @@ import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.util.TokenUsageUtils;
 import com.opencodebuddy.util.IgnoreRuleMatcher;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
@@ -166,7 +166,7 @@ public class UsagePushService {
                 // Check if auto-open file is enabled
                 String projectPath = context.getProject().getBasePath();
                 if (projectPath != null) {
-                    CodemossSettingsService settingsService = new CodemossSettingsService();
+                    OpenCodeBuddySettingsService settingsService = new OpenCodeBuddySettingsService();
                     boolean autoOpenFileEnabled = settingsService.getAutoOpenFileEnabled(projectPath);
                     if (!autoOpenFileEnabled) {
                         // If auto-open file is disabled, clear the ContextBar display

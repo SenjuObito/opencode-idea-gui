@@ -525,13 +525,19 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       try {
         const parsed = JSON.parse(window.__pendingUpdateJson) as Array<Record<string, unknown>>;
         for (let i = parsed.length - 1; i >= 0; i--) {
-          if (parsed[i]?.type === 'assistant') {
-            const rawContent = parsed[i].content;
+          const msg = parsed[i];
+          // Stop scanning backwards if we cross a user prompt (which started this turn).
+          // Any assistant messages before a user prompt belong to previous turns!
+          if (msg?.type === 'user' && (!msg.content || (typeof msg.content === 'string' && msg.content.trim() !== '[tool_result]'))) {
+            break;
+          }
+          if (msg?.type === 'assistant') {
+            const rawContent = msg.content;
             const content = typeof rawContent === 'string' ? rawContent : '';
             if (content) {
               backendSnapshotContent = content;
             }
-            const rawVal = parsed[i].raw;
+            const rawVal = msg.raw;
             if (rawVal != null && (typeof rawVal === 'object' || typeof rawVal === 'string')) {
               backendSnapshotRaw = rawVal as ClaudeRawMessage | string;
             }
@@ -680,14 +686,19 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
             finalRaw = endedBackendRaw;
           }
         }
-        newMessages[idx] = {
-          ...newMessages[idx],
-          content: finalContent,
-          raw: finalRaw,
-          isStreaming: false,
-          __turnId: endedStreamingTurnId, // Keep __turnId for merge guard
-          ...(durationMs != null ? { durationMs } : {}),
-        };
+        const rawContentLen = getTextLenFromRaw(finalRaw);
+        if (!finalContent && rawContentLen === 0) {
+          newMessages.splice(idx, 1);
+        } else {
+          newMessages[idx] = {
+            ...newMessages[idx],
+            content: finalContent,
+            raw: finalRaw,
+            isStreaming: false,
+            __turnId: endedStreamingTurnId, // Keep __turnId for merge guard
+            ...(durationMs != null ? { durationMs } : {}),
+          };
+        }
       }
 
       // FIX: Merge tool_result user messages that were in the pending snapshot

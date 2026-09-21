@@ -11,12 +11,14 @@ const CLI_MODELS_TIMEOUT_MS = 15_000;
 const modelsCache: CliModelsByProvider = {};
 const defaultModelCache: Record<string, string> = {};
 const catalogHasEntriesCache: Record<string, boolean> = {};
+let hasPluginInitFetched = false;
 
 /** Test-only: clear module caches between cases. */
 export function __resetCliModelsCacheForTests() {
   for (const key of Object.keys(modelsCache)) delete modelsCache[key];
   for (const key of Object.keys(defaultModelCache)) delete defaultModelCache[key];
   for (const key of Object.keys(catalogHasEntriesCache)) delete catalogHasEntriesCache[key];
+  hasPluginInitFetched = false;
 }
 
 function fallbackModels(providerId: string): ModelInfo[] {
@@ -169,6 +171,16 @@ export function useCliModels(currentProvider: string = 'opencode') {
   }, [clearPendingLoad]);
 
   useEffect(() => {
+    if (!hasPluginInitFetched) {
+      hasPluginInitFetched = true;
+      if (!modelsByProvider[currentProvider]?.length) {
+        beginLoad(currentProvider);
+      } else {
+        sendBridgeEvent('get_cli_models', currentProvider);
+      }
+      return;
+    }
+
     if (modelsByProvider[currentProvider]?.length) return;
     beginLoad(currentProvider);
   }, [currentProvider, modelsByProvider, beginLoad]);

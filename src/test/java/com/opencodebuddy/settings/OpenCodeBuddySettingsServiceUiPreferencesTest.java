@@ -13,7 +13,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-public class CodemossSettingsServiceUiPreferencesTest {
+public class OpenCodeBuddySettingsServiceUiPreferencesTest {
     private String originalHomeDir;
 
     @After
@@ -29,7 +29,7 @@ public class CodemossSettingsServiceUiPreferencesTest {
         Path tempHome = Files.createTempDirectory("ui-prefs-default-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         JsonObject prefs = service.getUiPreferences();
 
         assertEquals(0, prefs.entrySet().size());
@@ -40,7 +40,7 @@ public class CodemossSettingsServiceUiPreferencesTest {
         Path tempHome = Files.createTempDirectory("ui-prefs-roundtrip-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
 
         // 1. Set skipCompactConfirm = true
         JsonObject patch1 = new JsonObject();

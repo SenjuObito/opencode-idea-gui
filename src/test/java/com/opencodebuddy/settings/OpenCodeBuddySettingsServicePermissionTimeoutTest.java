@@ -12,7 +12,7 @@ import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
 
-public class CodemossSettingsServicePermissionTimeoutTest {
+public class OpenCodeBuddySettingsServicePermissionTimeoutTest {
     private String originalHomeDir;
 
     @After
@@ -25,9 +25,9 @@ public class CodemossSettingsServicePermissionTimeoutTest {
 
     @Test
     public void clampsPermissionDialogTimeoutToSupportedRange() {
-        assertEquals(120, CodemossSettingsService.clampPermissionDialogTimeoutSeconds(120));
-        assertEquals(30, CodemossSettingsService.clampPermissionDialogTimeoutSeconds(1));
-        assertEquals(3600, CodemossSettingsService.clampPermissionDialogTimeoutSeconds(99999));
+        assertEquals(120, OpenCodeBuddySettingsService.clampPermissionDialogTimeoutSeconds(120));
+        assertEquals(30, OpenCodeBuddySettingsService.clampPermissionDialogTimeoutSeconds(1));
+        assertEquals(3600, OpenCodeBuddySettingsService.clampPermissionDialogTimeoutSeconds(99999));
     }
 
     @Test
@@ -35,7 +35,7 @@ public class CodemossSettingsServicePermissionTimeoutTest {
         Path tempHome = Files.createTempDirectory("permission-timeout-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         assertEquals(300, service.getPermissionDialogTimeoutSeconds());
 
         Path configPath = tempHome.resolve(".opencodebuddy").resolve("config.json");
@@ -49,7 +49,7 @@ public class CodemossSettingsServicePermissionTimeoutTest {
         Path tempHome = Files.createTempDirectory("permission-timeout-persist-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         service.setPermissionDialogTimeoutSeconds(1);
         assertEquals(30, service.getPermissionDialogTimeoutSeconds());
 

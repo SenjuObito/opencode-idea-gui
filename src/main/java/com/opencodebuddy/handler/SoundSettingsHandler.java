@@ -2,7 +2,7 @@ package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.util.SoundNotificationService;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -17,7 +17,7 @@ public class SoundSettingsHandler {
     private static final Logger LOG = Logger.getInstance(SoundSettingsHandler.class);
 
     private final HandlerContext context;
-    private final CodemossSettingsService settingsService;
+    private final OpenCodeBuddySettingsService settingsService;
     private final Gson gson = new Gson();
 
     public SoundSettingsHandler(HandlerContext context) {

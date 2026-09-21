@@ -138,7 +138,7 @@ sequenceDiagram
             ▼                                               ▼
 ┌───────────────────────────────┐               ┌───────────────────────────────┐
 │     本地内存与 localStorage    │               │  宿主持久化 (Bridge 通信)      │
-│  - in-memory current state    │               │  - IDEA: ~/.codemoss/config.json │
+│  - in-memory current state    │               │  - IDEA: ~/.opencodebuddy/config.json │
 │  - localStorage['skipCompact']│               │    (uiPreferences 节点)       │
 │  - CustomEvent 广播通知       │               │  - VS Code: globalState       │
 └───────────────────────────────┘               └───────────────────────────────┘
@@ -147,8 +147,8 @@ sequenceDiagram
 1. **`skipCompactConfirm.ts`**：
    - `getSkipCompactConfirm()`：优先从 `getUiPreferences().skipCompactConfirm` 读取；
    - `setSkipCompactConfirm(value)`：通过 `updateUiPreferences({ skipCompactConfirm: value })` 同步写入内存、`localStorage`、向宿主发送 `set_ui_preferences`，并触发 `skipCompactConfirmChanged` 事件。
-2. **Java 宿主层（[`CodemossSettingsService.java`](../src/main/java/com/opencodebuddy/settings/CodemossSettingsService.java) & [`SettingsHandler.java`](../src/main/java/com/opencodebuddy/handler/SettingsHandler.java)）**：
-   - 在 `~/.codemoss/config.json` 的 `uiPreferences` 节点下持久化保存；
+2. **Java 宿主层（[`OpenCodeBuddySettingsService.java`](../src/main/java/com/opencodebuddy/settings/OpenCodeBuddySettingsService.java) & [`SettingsHandler.java`](../src/main/java/com/opencodebuddy/handler/SettingsHandler.java)）**：
+   - 在 `~/.opencodebuddy/config.json` 的 `uiPreferences` 节点下持久化保存；
    - 实现 `get_ui_preferences` 与 `set_ui_preferences` 处理分支，通过 `window.applyUiPreferences` 与 Webview 进行权威状态双向同步。
 
 ---
@@ -239,5 +239,5 @@ sequenceDiagram
    - 验证双环旋转动效容器、国际化文案、计时徽章递增（秒/分秒格式）与 `startTime` 初始计算。
 7. **`src/components/settings/BasicConfigSection/BehaviorTab.test.tsx`**
    - 验证设置页面中「压缩会话时二次确认」开关的展示与事件联动。
-8. **`CodemossSettingsServiceUiPreferencesTest.java`**
-   - 验证 Java 后端在 `~/.codemoss/config.json` 中对 `uiPreferences` 节点的读写、默认回退与增量合并持久化。
+8. **`OpenCodeBuddySettingsServiceUiPreferencesTest.java`**
+   - 验证 Java 后端在 `~/.opencodebuddy/config.json` 中对 `uiPreferences` 节点的读写、默认回退与增量合并持久化。

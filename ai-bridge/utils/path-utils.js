@@ -37,9 +37,9 @@ export function getRealHomeDir() {
   return cachedRealHomeDir;
 }
 
-// (Removed) getCodemossDir / getClaudeDir / getClaudeProjectKey /
+// (Removed) getOpenCodeBuddyDir / getClaudeDir / getClaudeProjectKey /
 // getClaudeProjectSessionFilePath / getManagedSettingsPath — legacy
-// multi-provider path helpers. The bridge no longer reads ~/.codemoss or
+// multi-provider path helpers. The bridge no longer reads ~/.opencodebuddy or
 // ~/.claude state; configuration lives in the VS Code settings API.
 
 /**

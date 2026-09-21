@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.OptionalInt;
 
 /**
- * Reads user-configured model context windows from {@code ~/.codemoss/config.json}.
+ * Reads user-configured model context windows from {@code ~/.opencodebuddy/config.json}.
  */
 public final class CustomModelContextWindowProvider {
 

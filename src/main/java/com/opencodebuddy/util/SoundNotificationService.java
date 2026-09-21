@@ -1,6 +1,6 @@
 package com.opencodebuddy.util;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import javazoom.jl.decoder.JavaLayerException;
@@ -82,7 +82,7 @@ public class SoundNotificationService {
     private void playConfiguredSound(String logPrefix, SoundNotificationGate gate) {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
-                CodemossSettingsService settings = new CodemossSettingsService();
+                OpenCodeBuddySettingsService settings = new OpenCodeBuddySettingsService();
 
                 if (!gate.isEnabled(settings)) {
                     LOG.debug(logPrefix + " Sound notification is disabled");
@@ -104,7 +104,7 @@ public class SoundNotificationService {
 
     @FunctionalInterface
     private interface SoundNotificationGate {
-        boolean isEnabled(CodemossSettingsService settings) throws Exception;
+        boolean isEnabled(OpenCodeBuddySettingsService settings) throws Exception;
     }
 
     /**

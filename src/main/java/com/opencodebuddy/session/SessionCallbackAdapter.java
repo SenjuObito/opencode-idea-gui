@@ -443,6 +443,19 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     }
 
     @Override
+    public void onTodoUpdated(String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.trim().isEmpty()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            jsTarget.callJavaScript("onTodoUpdated", JsUtils.escapeJs(jsonContent));
+        });
+    }
+
+    @Override
     public void onQuestionRequested(String jsonContent) {
         if (isInactive() || jsonContent == null || jsonContent.trim().isEmpty()) {
             return;

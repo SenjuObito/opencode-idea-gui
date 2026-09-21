@@ -96,27 +96,26 @@ public class SessionHandler extends BaseMessageHandler {
         return null;
     }
 
+    private void recordSendFailure(String prompt, String errorMessage) {
+        var session = context.getSession();
+        if (session != null && prompt != null && !prompt.isBlank()) {
+            session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, prompt));
+            session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, errorMessage));
+            session.getState().setBusy(false);
+            session.getState().setLoading(false);
+            session.getCallbackFacade().notifyMessageUpdate(session.getState().getMessages());
+            session.getCallbackFacade().notifyStateChange(false, false, errorMessage);
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            callJavaScript("addErrorMessage", escapeJs(errorMessage));
+        });
+    }
+
     /**
      * Send message to Claude
      * [FIX] Now parses JSON format to extract text, agent info and file tags
      */
     private void handleSendMessage(String content) {
-        String nodeVersion = this.resolveNodeVersion();
-        if (nodeVersion == null) {
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("addErrorMessage", escapeJs("未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。"));
-            });
-            return;
-        }
-        if (!NodeDetector.isVersionSupported(nodeVersion)) {
-            int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("addErrorMessage", escapeJs(
-                        "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。"));
-            });
-            return;
-        }
-
         // [FIX] Parse JSON format to extract text, agent info and file tags
         String prompt;
         String agentPrompt = null;
@@ -177,6 +176,17 @@ public class SessionHandler extends BaseMessageHandler {
             // If parsing fails, treat content as plain text (backward compatibility)
             LOG.debug("[SessionHandler] Message is plain text, not JSON: " + e.getMessage());
             prompt = content;
+        }
+
+        String nodeVersion = this.resolveNodeVersion();
+        if (nodeVersion == null) {
+            recordSendFailure(prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。");
+            return;
+        }
+        if (!NodeDetector.isVersionSupported(nodeVersion)) {
+            int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
+            recordSendFailure(prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。");
+            return;
         }
 
         final String finalPrompt = prompt;
@@ -255,11 +265,19 @@ public class SessionHandler extends BaseMessageHandler {
                     if (project != null) {
                         OpencodeNotifier.showError(project, "Task failed: " + ex.getMessage());
                     }
+                    var session = context.getSession();
+                    if (session != null) {
+                        session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, "发送失败: " + ex.getMessage()));
+                        session.getState().setBusy(false);
+                        session.getState().setLoading(false);
+                        session.getCallbackFacade().notifyMessageUpdate(session.getState().getMessages());
+                        session.getCallbackFacade().notifyStateChange(false, false, ex.getMessage());
+                    }
                     ApplicationManager.getApplication().invokeLater(() -> {
                         callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
                     });
                     return null;
-                    });
+                });
         });
     }
 
@@ -365,17 +383,12 @@ public class SessionHandler extends BaseMessageHandler {
         // Version check (consistent with handleSendMessage)
         String nodeVersion = this.resolveNodeVersion();
         if (nodeVersion == null) {
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("addErrorMessage", escapeJs("未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。"));
-            });
+            recordSendFailure(prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。");
             return;
         }
         if (!NodeDetector.isVersionSupported(nodeVersion)) {
             int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("addErrorMessage", escapeJs(
-                        "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。"));
-            });
+            recordSendFailure(prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。");
             return;
         }
 
@@ -422,11 +435,19 @@ public class SessionHandler extends BaseMessageHandler {
                     if (project != null) {
                         OpencodeNotifier.showError(project, "Task failed: " + ex.getMessage());
                     }
+                    var session = context.getSession();
+                    if (session != null) {
+                        session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, "发送失败: " + ex.getMessage()));
+                        session.getState().setBusy(false);
+                        session.getState().setLoading(false);
+                        session.getCallbackFacade().notifyMessageUpdate(session.getState().getMessages());
+                        session.getCallbackFacade().notifyStateChange(false, false, ex.getMessage());
+                    }
                     ApplicationManager.getApplication().invokeLater(() -> {
                         callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
                     });
                     return null;
-                    });
+                });
         });
     }
 
@@ -464,8 +485,8 @@ public class SessionHandler extends BaseMessageHandler {
         // history is stored under (see WorkingDirectoryManager#resolveEffectiveWorkingDirectory).
         if (projectPath != null && new File(projectPath).exists()) {
             try {
-                com.opencodebuddy.settings.CodemossSettingsService settingsService =
-                        new com.opencodebuddy.settings.CodemossSettingsService();
+                com.opencodebuddy.settings.OpenCodeBuddySettingsService settingsService =
+                        new com.opencodebuddy.settings.OpenCodeBuddySettingsService();
                 String resolvedPath = settingsService.getEffectiveWorkingDirectory(projectPath);
                 if (resolvedPath != null && !resolvedPath.isEmpty()) {
                     LOG.info("[SessionHandler] Using working directory: " + resolvedPath);

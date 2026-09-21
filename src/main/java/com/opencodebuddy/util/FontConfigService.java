@@ -1,6 +1,6 @@
 package com.opencodebuddy.util;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.FontPreferences;
@@ -164,7 +164,7 @@ public class FontConfigService {
      * @param settingsService settings facade
      * @return effective UI font payload
      */
-    public static JsonObject getResolvedUiFontConfig(CodemossSettingsService settingsService) {
+    public static JsonObject getResolvedUiFontConfig(OpenCodeBuddySettingsService settingsService) {
         try {
             JsonObject persistedConfig = settingsService.getUiFontConfig();
             return resolveUiFontConfig(persistedConfig, getUiSourceFontConfig());
@@ -180,7 +180,7 @@ public class FontConfigService {
      * @param settingsService settings facade
      * @return effective code font payload
      */
-    public static JsonObject getResolvedCodeFontConfig(CodemossSettingsService settingsService) {
+    public static JsonObject getResolvedCodeFontConfig(OpenCodeBuddySettingsService settingsService) {
         try {
             JsonObject persistedConfig = settingsService.getCodeFontConfig();
             return resolveCodeFontConfig(persistedConfig, getEditorFontConfig());
@@ -196,7 +196,7 @@ public class FontConfigService {
      * @param settingsService settings facade
      * @return serialized effective UI font payload
      */
-    public static String getResolvedUiFontConfigJson(CodemossSettingsService settingsService) {
+    public static String getResolvedUiFontConfigJson(OpenCodeBuddySettingsService settingsService) {
         return getResolvedUiFontConfig(settingsService).toString();
     }
 
@@ -206,7 +206,7 @@ public class FontConfigService {
      * @param settingsService settings facade
      * @return serialized effective code font payload
      */
-    public static String getResolvedCodeFontConfigJson(CodemossSettingsService settingsService) {
+    public static String getResolvedCodeFontConfigJson(OpenCodeBuddySettingsService settingsService) {
         return getResolvedCodeFontConfig(settingsService).toString();
     }
 

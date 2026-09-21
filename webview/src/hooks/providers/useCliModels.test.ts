@@ -132,5 +132,27 @@ describe('useCliModels', () => {
     expect(second.result.current.cliDefaultModel).toBe('openai/gpt-5');
     expect(second.result.current.cliModelsLoading).toBe(false);
   });
+
+  it('silently triggers get_cli_models in background on initial plugin open even if cache exists', () => {
+    // 1. Initial mount fetches and populates cache
+    const first = renderHook(() => useCliModels('opencode'));
+    expect(sendBridgeEventMock).toHaveBeenCalledTimes(1);
+    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'opencode');
+
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      defaultModel: 'openai/gpt-5',
+      models: [{ id: 'openai/gpt-5', label: 'gpt-5' }],
+    });
+    first.unmount();
+
+    // 2. Second mount in same session: reuses cache without extra bridge call
+    sendBridgeEventMock.mockClear();
+    const second = renderHook(() => useCliModels('opencode'));
+    expect(sendBridgeEventMock).not.toHaveBeenCalled();
+    expect(second.result.current.cliModelsLoading).toBe(false);
+    expect(second.result.current.cliModels.map((m) => m.id)).toEqual(['openai/gpt-5']);
+  });
 });
 

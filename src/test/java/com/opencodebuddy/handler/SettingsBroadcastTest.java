@@ -1,7 +1,7 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -18,7 +18,7 @@ public class SettingsBroadcastTest {
         HandlerContext context = new HandlerContext(
                 null,
                 null,
-                new CodemossSettingsService(),
+                new OpenCodeBuddySettingsService(),
                 new HandlerContext.JsCallback() {
                     @Override
                     public void callJavaScript(String functionName, String... args) {
@@ -44,7 +44,7 @@ public class SettingsBroadcastTest {
         HandlerContext context = new HandlerContext(
                 null,
                 null,
-                new CodemossSettingsService(),
+                new OpenCodeBuddySettingsService(),
                 new HandlerContext.JsCallback() {
                     @Override
                     public void callJavaScript(String functionName, String... args) {

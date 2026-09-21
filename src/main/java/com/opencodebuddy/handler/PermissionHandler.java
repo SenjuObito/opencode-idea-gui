@@ -6,7 +6,7 @@ import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.permission.PermissionService;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.util.SoundNotificationService;
 import com.opencodebuddy.util.SystemNotificationService;
 import com.google.gson.Gson;
@@ -127,21 +127,21 @@ public class PermissionHandler extends BaseMessageHandler {
     }
 
     long getSafetyNetTimeoutSeconds() {
-        CodemossSettingsService settingsService = context.getSettingsService();
+        OpenCodeBuddySettingsService settingsService = context.getSettingsService();
         if (settingsService == null) {
             // Fall back to DEFAULT (not MAX) so a missing settings service doesn't turn the
             // safety net into a one-hour hang for an error that's almost always transient.
-            return CodemossSettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
-                    + CodemossSettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
+            return OpenCodeBuddySettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
+                    + OpenCodeBuddySettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
         }
         try {
             return settingsService.getPermissionDialogTimeoutSeconds()
-                    + CodemossSettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
+                    + OpenCodeBuddySettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
         } catch (Exception e) {
             LOG.warn("[PERM_SHOW] Failed to read permission dialog timeout for safety net; errorClass="
                     + e.getClass().getSimpleName(), e);
-            return CodemossSettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
-                    + CodemossSettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
+            return OpenCodeBuddySettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
+                    + OpenCodeBuddySettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS;
         }
     }
 

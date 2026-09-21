@@ -3,7 +3,7 @@
  *
  * opencode-only build: all persistent configuration is owned by the VS Code
  * extension host via the VS Code settings API and passed to the bridge per
- * request — the bridge no longer reads any ~/.codemoss/config.json or
+ * request — the bridge no longer reads any ~/.opencodebuddy/config.json or
  * ~/.claude/settings.json state from disk. This module retains only the
  * webview-owned env-var guards and the dangerous-env-var security filter used
  * by the daemon's request handling.
@@ -98,6 +98,6 @@ export function isDangerousEnvVar(varName) {
 
 // (Removed) The old startup env injection pulled proxy/TLS/AWS settings from
 // ~/.claude/settings.json, gated by the provider mode stored in
-// ~/.codemoss/config.json. All configuration is now persisted through the VS
+// ~/.opencodebuddy/config.json. All configuration is now persisted through the VS
 // Code settings API on the extension-host side and delivered per request, so
 // the bridge never reads either file.

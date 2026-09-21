@@ -1,7 +1,7 @@
 package com.opencodebuddy.util;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -157,7 +157,7 @@ public class SystemNotificationService {
 
     private boolean isTaskCompletionEnabled() {
         try {
-            return new CodemossSettingsService().getTaskCompletionNotificationEnabled();
+            return new OpenCodeBuddySettingsService().getTaskCompletionNotificationEnabled();
         } catch (Exception e) {
             LOG.debug("[SystemNotification] Failed to read task completion flag, defaulting to false: " + e.getMessage());
             return false;
@@ -166,7 +166,7 @@ public class SystemNotificationService {
 
     private boolean isAskUserQuestionEnabled() {
         try {
-            return new CodemossSettingsService().getAskUserQuestionNotificationEnabled();
+            return new OpenCodeBuddySettingsService().getAskUserQuestionNotificationEnabled();
         } catch (Exception e) {
             LOG.debug("[SystemNotification] Failed to read ask user question flag, defaulting to false: " + e.getMessage());
             return false;
@@ -188,7 +188,7 @@ public class SystemNotificationService {
 
     private static boolean readSystemNotificationOnlyWhenUnfocused() {
         try {
-            return new CodemossSettingsService().getSystemNotificationOnlyWhenUnfocused();
+            return new OpenCodeBuddySettingsService().getSystemNotificationOnlyWhenUnfocused();
         } catch (Exception e) {
             LOG.debug("[SystemNotification] Failed to read only-when-unfocused flag, defaulting to false: " + e.getMessage());
             return false;

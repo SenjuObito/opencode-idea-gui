@@ -6,7 +6,6 @@ import com.opencodebuddy.util.PlatformUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.concurrency.AppExecutorUtil;
@@ -335,7 +334,7 @@ public class TokenTrackerHandler {
     }
 
     private String resolveNpmBin() {
-        String nodePath = PropertiesComponent.getInstance().getValue(NodePathHandler.NODE_PATH_PROPERTY_KEY);
+        String nodePath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getNodePath();
         if (nodePath != null && !nodePath.isBlank()) {
             File nodeFile = new File(nodePath.trim());
             File parent = nodeFile.getParentFile();
@@ -352,10 +351,8 @@ public class TokenTrackerHandler {
 
     /** Bin directory of the detected/saved Node.js installation, if known. */
     private String nodeBinDir() {
-        String nodePath = PropertiesComponent.getInstance().getValue(NodePathHandler.NODE_PATH_PROPERTY_KEY);
+        String nodePath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getNodePath();
         if (nodePath == null || nodePath.isBlank()) {
-            // Property not saved yet (e.g. settings opened before the main
-            // webview initialized) — fall back to the shared NodeDetector cache.
             nodePath = NodeDetector.getInstance().getCachedNodePath();
         }
         if (nodePath == null || nodePath.isBlank()) {

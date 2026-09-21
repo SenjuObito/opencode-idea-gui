@@ -1,7 +1,7 @@
 /**
  * SDK dependency type definitions
  *
- * SDK dependency installation path: ~/.codemoss/dependencies/
+ * SDK dependency installation path: ~/.opencodebuddy/dependencies/
  * - claude-sdk: Claude SDK (@anthropic-ai/claude-agent-sdk and its dependencies)
  * - codex-sdk: Codex SDK (@openai/codex-sdk)
  *

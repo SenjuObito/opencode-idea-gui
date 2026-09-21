@@ -27,7 +27,7 @@ public final class PermissionDialogTimeoutSettings {
                 Math.min(MAX_PERMISSION_DIALOG_TIMEOUT_SECONDS, seconds));
     }
 
-    public static int getPermissionDialogTimeoutSeconds(CodemossSettingsService service) throws IOException {
+    public static int getPermissionDialogTimeoutSeconds(OpenCodeBuddySettingsService service) throws IOException {
         JsonObject config = service.readConfig();
 
         if (!config.has("permissionDialogTimeoutSeconds")) {
@@ -38,20 +38,20 @@ public final class PermissionDialogTimeoutSettings {
             int timeout = config.get("permissionDialogTimeoutSeconds").getAsInt();
             return clampPermissionDialogTimeoutSeconds(timeout);
         } catch (Exception e) {
-            LOG.warn("[CodemossSettings] Invalid permissionDialogTimeoutSeconds value, rewriting default to disk; errorClass="
+            LOG.warn("[OpenCodeBuddySettings] Invalid permissionDialogTimeoutSeconds value, rewriting default to disk; errorClass="
                     + e.getClass().getSimpleName());
             try {
                 config.addProperty("permissionDialogTimeoutSeconds", DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS);
                 service.writeConfig(config);
             } catch (IOException rewriteError) {
-                LOG.warn("[CodemossSettings] Failed to self-heal permissionDialogTimeoutSeconds; errorClass="
+                LOG.warn("[OpenCodeBuddySettings] Failed to self-heal permissionDialogTimeoutSeconds; errorClass="
                         + rewriteError.getClass().getSimpleName());
             }
             return DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS;
         }
     }
 
-    public static void setPermissionDialogTimeoutSeconds(CodemossSettingsService service, int seconds) throws IOException {
+    public static void setPermissionDialogTimeoutSeconds(OpenCodeBuddySettingsService service, int seconds) throws IOException {
         int clamped = clampPermissionDialogTimeoutSeconds(seconds);
         JsonObject config = service.readConfig();
         config.addProperty("permissionDialogTimeoutSeconds", clamped);

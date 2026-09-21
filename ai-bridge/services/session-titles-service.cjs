@@ -5,9 +5,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getCodemossDir } = require('../utils/path-utils.cjs');
+const { getOpenCodeBuddyDir } = require('../utils/path-utils.cjs');
 
-const TITLES_DIR = getCodemossDir();
+const TITLES_DIR = getOpenCodeBuddyDir();
 const TITLES_FILE = path.join(TITLES_DIR, 'session-titles.json');
 
 /**

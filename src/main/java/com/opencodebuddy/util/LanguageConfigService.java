@@ -1,6 +1,6 @@
 package com.opencodebuddy.util;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.JsonObject;
 import com.intellij.DynamicBundle;
 import com.intellij.openapi.diagnostic.Logger;
@@ -75,7 +75,7 @@ public class LanguageConfigService {
      *
      * @return the user's language preference, or null if not manually set
      */
-    public static String getUserLanguage(CodemossSettingsService settingsService) {
+    public static String getUserLanguage(OpenCodeBuddySettingsService settingsService) {
         if (settingsService == null) {
             return null;
         }
@@ -85,13 +85,13 @@ public class LanguageConfigService {
                 return null;
             }
             if (!SUPPORTED_LANGUAGES.contains(userLanguage)) {
-                LOG.warn("[LanguageConfig] Ignoring unsupported user language in ~/.codemoss/config.json: " + userLanguage);
+                LOG.warn("[LanguageConfig] Ignoring unsupported user language in ~/.opencodebuddy/config.json: " + userLanguage);
                 return null;
             }
             LOG.info("[LanguageConfig] User manually set language: " + userLanguage);
             return userLanguage;
         } catch (Exception e) {
-            LOG.warn("[LanguageConfig] Failed to read user language from ~/.codemoss/config.json: " + e.getMessage());
+            LOG.warn("[LanguageConfig] Failed to read user language from ~/.opencodebuddy/config.json: " + e.getMessage());
             return null;
         }
     }
@@ -101,7 +101,7 @@ public class LanguageConfigService {
      *
      * @param language the language code to save
      */
-    public static void setUserLanguage(CodemossSettingsService settingsService, String language) throws IOException {
+    public static void setUserLanguage(OpenCodeBuddySettingsService settingsService, String language) throws IOException {
         if (settingsService == null) {
             throw new IllegalArgumentException("settingsService must not be null");
         }
@@ -115,7 +115,7 @@ public class LanguageConfigService {
     /**
      * Clear user's manual language preference (reset to follow IDEA language).
      */
-    public static void clearUserLanguage(CodemossSettingsService settingsService) throws IOException {
+    public static void clearUserLanguage(OpenCodeBuddySettingsService settingsService) throws IOException {
         if (settingsService == null) {
             throw new IllegalArgumentException("settingsService must not be null");
         }
@@ -129,7 +129,7 @@ public class LanguageConfigService {
      *
      * @return a JsonObject containing the language configuration
      */
-    public static JsonObject getLanguageConfig(CodemossSettingsService settingsService) {
+    public static JsonObject getLanguageConfig(OpenCodeBuddySettingsService settingsService) {
         JsonObject config = new JsonObject();
 
         try {
@@ -172,7 +172,7 @@ public class LanguageConfigService {
      *
      * @return the JSON string
      */
-    public static String getLanguageConfigJson(CodemossSettingsService settingsService) {
+    public static String getLanguageConfigJson(OpenCodeBuddySettingsService settingsService) {
         return getLanguageConfig(settingsService).toString();
     }
 
@@ -181,7 +181,7 @@ public class LanguageConfigService {
      *
      * @return the language code (zh, en, zh-TW, hi, es, fr, ja, ru, ko, pt-BR)
      */
-    public static String getCurrentLanguage(CodemossSettingsService settingsService) {
+    public static String getCurrentLanguage(OpenCodeBuddySettingsService settingsService) {
         String userLanguage = getUserLanguage(settingsService);
         if (userLanguage != null && !userLanguage.isEmpty()) {
             return userLanguage;

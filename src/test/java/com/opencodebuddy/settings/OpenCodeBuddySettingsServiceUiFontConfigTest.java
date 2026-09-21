@@ -14,7 +14,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
 
-public class CodemossSettingsServiceUiFontConfigTest {
+public class OpenCodeBuddySettingsServiceUiFontConfigTest {
     private String originalHomeDir;
 
     @After
@@ -30,7 +30,7 @@ public class CodemossSettingsServiceUiFontConfigTest {
         Path tempHome = Files.createTempDirectory("ui-font-default-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         JsonObject config = invokeGetUiFontConfig(service);
 
         assertEquals("followEditor", config.get("mode").getAsString());
@@ -43,7 +43,7 @@ public class CodemossSettingsServiceUiFontConfigTest {
         Path tempHome = Files.createTempDirectory("ui-font-roundtrip-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
 
         invokeSetUiFontConfig(service, "preset", null);
         JsonObject normalizedLegacyPresetConfig = invokeGetUiFontConfig(service);
@@ -63,7 +63,7 @@ public class CodemossSettingsServiceUiFontConfigTest {
         Path tempHome = Files.createTempDirectory("code-font-default-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         JsonObject config = invokeGetCodeFontConfig(service);
 
         assertEquals("followEditor", config.get("mode").getAsString());
@@ -76,7 +76,7 @@ public class CodemossSettingsServiceUiFontConfigTest {
         Path tempHome = Files.createTempDirectory("code-font-roundtrip-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
 
         invokeSetCodeFontConfig(service, "preset", null);
         JsonObject normalizedLegacyPresetConfig = invokeGetCodeFontConfig(service);
@@ -91,55 +91,55 @@ public class CodemossSettingsServiceUiFontConfigTest {
         assertFalse(customConfig.has("presetId"));
     }
 
-    private JsonObject invokeGetUiFontConfig(CodemossSettingsService service) throws Exception {
+    private JsonObject invokeGetUiFontConfig(OpenCodeBuddySettingsService service) throws Exception {
         Method method;
         try {
-            method = CodemossSettingsService.class.getMethod("getUiFontConfig");
+            method = OpenCodeBuddySettingsService.class.getMethod("getUiFontConfig");
         } catch (NoSuchMethodException e) {
-            fail("CodemossSettingsService should expose getUiFontConfig()");
+            fail("OpenCodeBuddySettingsService should expose getUiFontConfig()");
             throw e;
         }
         return (JsonObject) method.invoke(service);
     }
 
-    private void invokeSetUiFontConfig(CodemossSettingsService service, String mode, String customFontPath)
+    private void invokeSetUiFontConfig(OpenCodeBuddySettingsService service, String mode, String customFontPath)
             throws Exception {
         Method method;
         try {
-            method = CodemossSettingsService.class.getMethod(
+            method = OpenCodeBuddySettingsService.class.getMethod(
                     "setUiFontConfig",
                     String.class,
                     String.class
             );
         } catch (NoSuchMethodException e) {
-            fail("CodemossSettingsService should expose setUiFontConfig(mode, customFontPath)");
+            fail("OpenCodeBuddySettingsService should expose setUiFontConfig(mode, customFontPath)");
             throw e;
         }
         method.invoke(service, mode, customFontPath);
     }
 
-    private JsonObject invokeGetCodeFontConfig(CodemossSettingsService service) throws Exception {
+    private JsonObject invokeGetCodeFontConfig(OpenCodeBuddySettingsService service) throws Exception {
         Method method;
         try {
-            method = CodemossSettingsService.class.getMethod("getCodeFontConfig");
+            method = OpenCodeBuddySettingsService.class.getMethod("getCodeFontConfig");
         } catch (NoSuchMethodException e) {
-            fail("CodemossSettingsService should expose getCodeFontConfig()");
+            fail("OpenCodeBuddySettingsService should expose getCodeFontConfig()");
             throw e;
         }
         return (JsonObject) method.invoke(service);
     }
 
-    private void invokeSetCodeFontConfig(CodemossSettingsService service, String mode, String customFontPath)
+    private void invokeSetCodeFontConfig(OpenCodeBuddySettingsService service, String mode, String customFontPath)
             throws Exception {
         Method method;
         try {
-            method = CodemossSettingsService.class.getMethod(
+            method = OpenCodeBuddySettingsService.class.getMethod(
                     "setCodeFontConfig",
                     String.class,
                     String.class
             );
         } catch (NoSuchMethodException e) {
-            fail("CodemossSettingsService should expose setCodeFontConfig(mode, customFontPath)");
+            fail("OpenCodeBuddySettingsService should expose setCodeFontConfig(mode, customFontPath)");
             throw e;
         }
         method.invoke(service, mode, customFontPath);

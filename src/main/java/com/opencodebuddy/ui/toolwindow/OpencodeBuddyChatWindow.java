@@ -12,7 +12,7 @@ import com.opencodebuddy.session.SessionCallbackAdapter;
 import com.opencodebuddy.session.SessionLifecycleManager;
 import com.opencodebuddy.session.SessionState;
 import com.opencodebuddy.session.StreamMessageCoalescer;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.settings.TabStateService;
 import com.opencodebuddy.ui.ChatWindowDelegate;
 import com.opencodebuddy.ui.EditorContextTracker;
@@ -68,7 +68,7 @@ public class OpencodeBuddyChatWindow {
     private final DaemonBridge daemonBridge;
     private final OpenCodeSDKBridge openCodeSDKBridge;
     private final Project project;
-    private final CodemossSettingsService settingsService;
+    private final OpenCodeBuddySettingsService settingsService;
     private final HtmlLoader htmlLoader;
 
     private Content parentContent;
@@ -216,7 +216,7 @@ public class OpencodeBuddyChatWindow {
                 new com.opencodebuddy.bridge.BridgeDirectoryResolver(),
                 new com.opencodebuddy.bridge.EnvironmentConfigurator());
         this.openCodeSDKBridge = new OpenCodeSDKBridge(daemonBridge, new com.google.gson.Gson());
-        this.settingsService = new CodemossSettingsService();
+        this.settingsService = new OpenCodeBuddySettingsService();
         this.htmlLoader = new HtmlLoader(getClass());
         this.mainPanel = new JPanel(new BorderLayout());
         this.surfaceFrameFence = new SurfaceFrameFence(new SurfaceFrameFence.Listener() {
@@ -3150,7 +3150,7 @@ public class OpencodeBuddyChatWindow {
             }
 
             @Override
-            public CodemossSettingsService getSettingsService() {
+            public OpenCodeBuddySettingsService getSettingsService() {
                 return settingsService;
             }
 

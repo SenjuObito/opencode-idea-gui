@@ -151,8 +151,7 @@ public class WebviewInitializer {
 
         com.opencodebuddy.bridge.NodeDetector nodeDetector = com.opencodebuddy.bridge.NodeDetector.getInstance();
 
-        PropertiesComponent props = PropertiesComponent.getInstance();
-        String savedNodePath = props.getValue(NODE_PATH_PROPERTY_KEY);
+        String savedNodePath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getNodePath();
 
         if (savedNodePath != null && !savedNodePath.trim().isEmpty()) {
             String trimmed = savedNodePath.trim();
@@ -182,7 +181,9 @@ public class WebviewInitializer {
             }
 
             if (detected != null && detected.isFound() && detected.getNodePath() != null) {
-                props.setValue(NODE_PATH_PROPERTY_KEY, detected.getNodePath());
+                try {
+                    new com.opencodebuddy.settings.OpenCodeBuddySettingsService().setNodePath(detected.getNodePath());
+                } catch (Exception ignored) {}
                 nodeDetector.setNodeExecutable(detected.getNodePath());
                 nodeDetector.verifyAndCacheNodePath(detected.getNodePath());
                 LOG.info("Auto-detected Node.js: " + detected.getNodePath()

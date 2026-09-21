@@ -1,7 +1,7 @@
 package com.opencodebuddy.session;
 
 import com.opencodebuddy.bridge.NodeDetector;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.handler.UsagePushService;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
@@ -286,7 +286,7 @@ public class SessionLifecycleManager {
         }
 
         try {
-            CodemossSettingsService settingsService = new CodemossSettingsService();
+            OpenCodeBuddySettingsService settingsService = new OpenCodeBuddySettingsService();
             // Normalized effective working directory (custom dir if valid, else the
             // project path). Collapsing relative segments here keeps the launched cwd
             // consistent with the directory history is read from.

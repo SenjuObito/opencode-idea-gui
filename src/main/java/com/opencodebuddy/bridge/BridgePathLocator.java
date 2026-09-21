@@ -151,7 +151,7 @@ final class BridgePathLocator {
      * Checks for the existence of the core script and node_modules.
      *
      * Note: AI SDKs such as @anthropic-ai/claude-agent-sdk are not bundled in ai-bridge.
-     * They are loaded dynamically from ~/.codemoss/dependencies/, so SDK presence is not checked here.
+     * They are loaded dynamically from ~/.opencodebuddy/dependencies/, so SDK presence is not checked here.
      */
     static boolean isValidBridgeDir(File dir) {
         LOG.debug("[BridgeResolver] Validating bridge dir: " + (dir != null ? dir.getAbsolutePath() : "null"));
@@ -187,7 +187,7 @@ final class BridgePathLocator {
         LOG.debug("[BridgeResolver] node_modules found");
 
         // AI SDKs (@anthropic-ai/claude-agent-sdk, @openai/codex-sdk, etc.)
-        // are loaded dynamically from ~/.codemoss/dependencies/, no need to check within ai-bridge
+        // are loaded dynamically from ~/.opencodebuddy/dependencies/, no need to check within ai-bridge
 
         return true;
     }

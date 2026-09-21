@@ -7,7 +7,7 @@ import { parseTaskNotificationXml, collectTaskEventsFromMessages } from './taskN
 const FULL_XML = `<task-notification>
 <task-id>w-abc123</task-id>
 <tool-use-id>toolu_01XYZ</tool-use-id>
-<output-file>/home/user/.codemoss/agents/abc.jsonl</output-file>
+<output-file>/home/user/.opencodebuddy/agents/abc.jsonl</output-file>
 <status>completed</status>
 <summary>Agent "research" finished</summary>
 <result>Found 3 issues &amp; fixed them. See &lt;report&gt; for details.</result>
@@ -21,7 +21,7 @@ describe('parseTaskNotificationXml', () => {
       status: 'completed',
       agentId: 'w-abc123',
       summary: 'Found 3 issues & fixed them. See <report> for details.',
-      outputFilePath: '/home/user/.codemoss/agents/abc.jsonl',
+      outputFilePath: '/home/user/.opencodebuddy/agents/abc.jsonl',
     });
   });
 
@@ -78,7 +78,7 @@ describe('collectTaskEventsFromMessages', () => {
       status: 'completed',
       agentId: 'w-abc123',
       summary: 'Found 3 issues & fixed them. See <report> for details.',
-      outputFilePath: '/home/user/.codemoss/agents/abc.jsonl',
+      outputFilePath: '/home/user/.opencodebuddy/agents/abc.jsonl',
     });
   });
 

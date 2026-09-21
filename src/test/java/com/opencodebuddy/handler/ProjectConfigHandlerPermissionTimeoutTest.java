@@ -1,7 +1,7 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.JsonObject;
 import org.junit.Test;
 
@@ -40,7 +40,7 @@ public class ProjectConfigHandlerPermissionTimeoutTest {
         assertEquals(300, response.get("permissionDialogTimeoutSeconds").getAsInt());
     }
 
-    private HandlerContext contextWith(CodemossSettingsService settingsService) {
+    private HandlerContext contextWith(OpenCodeBuddySettingsService settingsService) {
         return new HandlerContext(
                 null,
                 null,
@@ -58,14 +58,14 @@ public class ProjectConfigHandlerPermissionTimeoutTest {
         );
     }
 
-    private static class FakeSettingsService extends CodemossSettingsService {
+    private static class FakeSettingsService extends OpenCodeBuddySettingsService {
         private int effectiveSeconds = 300;
         private int lastRequestedSeconds = -1;
 
         @Override
         public void setPermissionDialogTimeoutSeconds(int seconds) throws IOException {
             lastRequestedSeconds = seconds;
-            effectiveSeconds = CodemossSettingsService.clampPermissionDialogTimeoutSeconds(seconds);
+            effectiveSeconds = OpenCodeBuddySettingsService.clampPermissionDialogTimeoutSeconds(seconds);
         }
 
         @Override

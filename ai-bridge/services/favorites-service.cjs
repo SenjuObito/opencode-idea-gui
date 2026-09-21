@@ -5,9 +5,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getCodemossDir } = require('../utils/path-utils.cjs');
+const { getOpenCodeBuddyDir } = require('../utils/path-utils.cjs');
 
-const FAVORITES_DIR = getCodemossDir();
+const FAVORITES_DIR = getOpenCodeBuddyDir();
 const FAVORITES_FILE = path.join(FAVORITES_DIR, 'favorites.json');
 
 /**

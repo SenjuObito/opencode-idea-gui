@@ -25,13 +25,13 @@ public class NodeProcessRegistryHelpersTest {
 
     @Test
     public void looksLikeOurProcessMatchesDaemonJs() {
-        assertTrue(NodeProcessRegistry.looksLikeOurProcess("node /Users/me/.codemoss/ai-bridge/daemon.js"));
+        assertTrue(NodeProcessRegistry.looksLikeOurProcess("node /Users/me/.opencodebuddy/ai-bridge/daemon.js"));
     }
 
     @Test
     public void looksLikeOurProcessMatchesChannelManager() {
         assertTrue(NodeProcessRegistry.looksLikeOurProcess(
-                "/usr/local/bin/node /Users/me/.codemoss/ai-bridge/channel-manager.js codex send"));
+                "/usr/local/bin/node /Users/me/.opencodebuddy/ai-bridge/channel-manager.js codex send"));
     }
 
     @Test

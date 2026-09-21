@@ -151,6 +151,15 @@ export const appendOptimisticMessageIfMissing = (
         return nextList;
       }
     }
+    const lastIdx = nextList.length - 1;
+    if (lastIdx >= 0 && nextList[lastIdx].type === 'assistant') {
+      const lastMsg = nextList[lastIdx];
+      if (lastMsg.isStreaming || (typeof lastMsg.__turnId === 'number' && lastMsg.__turnId > 0)) {
+        const copy = [...nextList];
+        copy.splice(lastIdx, 0, optimisticMsg);
+        return copy;
+      }
+    }
     return [...nextList, optimisticMsg];
   }
 

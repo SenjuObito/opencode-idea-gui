@@ -1,7 +1,7 @@
 package com.opencodebuddy.notifications;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.CustomStatusBarWidget;
@@ -264,7 +264,7 @@ public class OpencodeStatusBarWidget implements CustomStatusBarWidget, StatusBar
         public boolean isAvailable(@NotNull Project project) {
             if (project == null) { return false; }
             try {
-                return new CodemossSettingsService().getStatusBarWidgetEnabled();
+                return new OpenCodeBuddySettingsService().getStatusBarWidgetEnabled();
             } catch (Exception e) {
                 return true;
             }

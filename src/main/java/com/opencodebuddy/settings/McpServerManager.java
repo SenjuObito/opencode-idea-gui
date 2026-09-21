@@ -46,7 +46,7 @@ public class McpServerManager {
     /**
      * Get all MCP servers.
      * Reads from ~/.claude.json first (the standard Claude CLI location),
-     * falling back to ~/.codemoss/config.json.
+     * falling back to ~/.opencodebuddy/config.json.
      * <p>
      * Note: Claude CLI merges global and project-level disabledMcpServers.
      */
@@ -181,7 +181,7 @@ public class McpServerManager {
             LOG.warn("[McpServerManager] Error accessing ~/.claude.json: " + e.getMessage());
         }
 
-        // 2. Fall back to ~/.codemoss/config.json (array format)
+        // 2. Fall back to ~/.opencodebuddy/config.json (array format)
         JsonObject config = configReader.apply(null);
         if (config.has("mcpServers")) {
             JsonArray servers = config.getAsJsonArray("mcpServers");
@@ -192,14 +192,14 @@ public class McpServerManager {
             }
         }
 
-        LOG.info("[McpServerManager] Loaded " + result.size() + " MCP servers from ~/.codemoss/config.json");
+        LOG.info("[McpServerManager] Loaded " + result.size() + " MCP servers from ~/.opencodebuddy/config.json");
         return result;
     }
 
     /**
      * Upsert (update or insert) an MCP server.
      * Prefers updating ~/.claude.json (standard Claude CLI location),
-     * falling back to ~/.codemoss/config.json.
+     * falling back to ~/.opencodebuddy/config.json.
      */
     public void upsertMcpServer(JsonObject server) throws IOException {
         upsertMcpServer(server, null);
@@ -324,7 +324,7 @@ public class McpServerManager {
             LOG.warn("[McpServerManager] Error updating ~/.claude.json: " + e.getMessage());
         }
 
-        // 2. Fall back to ~/.codemoss/config.json
+        // 2. Fall back to ~/.opencodebuddy/config.json
         JsonObject config = configReader.apply(null);
         JsonArray servers;
 
@@ -352,13 +352,13 @@ public class McpServerManager {
         }
 
         configWriter.accept(config);
-        LOG.info("[McpServerManager] Upserted MCP server in ~/.codemoss/config.json: " + serverId);
+        LOG.info("[McpServerManager] Upserted MCP server in ~/.opencodebuddy/config.json: " + serverId);
     }
 
     /**
      * Delete an MCP server.
      * Prefers deleting from ~/.claude.json (standard Claude CLI location),
-     * falling back to ~/.codemoss/config.json.
+     * falling back to ~/.opencodebuddy/config.json.
      */
     public boolean deleteMcpServer(String serverId) throws IOException {
         boolean removed = false;
@@ -410,7 +410,7 @@ public class McpServerManager {
             LOG.warn("[McpServerManager] Error deleting from ~/.claude.json: " + e.getMessage());
         }
 
-        // 2. Fall back to ~/.codemoss/config.json
+        // 2. Fall back to ~/.opencodebuddy/config.json
         JsonObject config = configReader.apply(null);
         if (config.has("mcpServers")) {
             JsonArray servers = config.getAsJsonArray("mcpServers");
@@ -428,7 +428,7 @@ public class McpServerManager {
             if (removed) {
                 config.add("mcpServers", newServers);
                 configWriter.accept(config);
-                LOG.info("[McpServerManager] Deleted MCP server from ~/.codemoss/config.json: " + serverId);
+                LOG.info("[McpServerManager] Deleted MCP server from ~/.opencodebuddy/config.json: " + serverId);
             }
         }
 

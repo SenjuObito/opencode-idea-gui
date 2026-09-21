@@ -1,6 +1,6 @@
 package com.opencodebuddy.bridge;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.util.PlatformUtils;
 import org.junit.Assume;
 import org.junit.Test;
@@ -161,7 +161,7 @@ public class EnvironmentConfiguratorPermissionTimeoutTest {
         assertTrue("HOME must be a native Windows path", !env.get("HOME").startsWith("/mnt/"));
     }
 
-    private static class FakeSettingsService extends CodemossSettingsService {
+    private static class FakeSettingsService extends OpenCodeBuddySettingsService {
         private final int timeoutSeconds;
 
         private FakeSettingsService(int timeoutSeconds) {

@@ -3,13 +3,12 @@ package com.opencodebuddy.handler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.util.FontConfigService;
 import com.opencodebuddy.util.ThemeConfigService;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileChooser.FileChooser;
@@ -27,7 +26,7 @@ public class ProjectConfigHandler {
     static final String SEND_SHORTCUT_PROPERTY_KEY = "opencodebuddy.send.shortcut";
 
     private final HandlerContext context;
-    private final CodemossSettingsService settingsService;
+    private final OpenCodeBuddySettingsService settingsService;
     private final Gson gson = new Gson();
 
     public ProjectConfigHandler(HandlerContext context) {
@@ -243,7 +242,7 @@ public class ProjectConfigHandler {
     public void handleGetPermissionDialogTimeout() {
         respondWithJson("window.updatePermissionDialogTimeout",
             () -> jsonOf("permissionDialogTimeoutSeconds", settingsService.getPermissionDialogTimeoutSeconds()),
-            jsonOf("permissionDialogTimeoutSeconds", CodemossSettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS),
+            jsonOf("permissionDialogTimeoutSeconds", OpenCodeBuddySettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS),
             "Failed to get permission dialog timeout");
     }
 
@@ -264,7 +263,7 @@ public class ProjectConfigHandler {
         JsonObject json = gson.fromJson(content, JsonObject.class);
         // Strict type check: only accept a JSON numeric primitive. Anything else
         // (string, boolean, array, object, null, missing) falls back to default.
-        int seconds = CodemossSettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS;
+        int seconds = OpenCodeBuddySettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS;
         if (json != null && json.has("permissionDialogTimeoutSeconds")) {
             JsonElement element = json.get("permissionDialogTimeoutSeconds");
             if (element != null
@@ -280,7 +279,7 @@ public class ProjectConfigHandler {
 
     public void handleGetSendShortcut() {
         try {
-            String sendShortcut = PropertiesComponent.getInstance().getValue(SEND_SHORTCUT_PROPERTY_KEY, "enter");
+            String sendShortcut = settingsService.getSendShortcut();
             pushJson("window.updateSendShortcut", jsonOf("sendShortcut", sendShortcut));
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to get send shortcut: " + e.getMessage(), e);
@@ -294,7 +293,7 @@ public class ProjectConfigHandler {
             if (!"enter".equals(sendShortcut) && !"cmdEnter".equals(sendShortcut)) {
                 sendShortcut = "enter";
             }
-            PropertiesComponent.getInstance().setValue(SEND_SHORTCUT_PROPERTY_KEY, sendShortcut);
+            settingsService.setSendShortcut(sendShortcut);
             LOG.info("[ProjectConfigHandler] Set send shortcut: " + sendShortcut);
             broadcastJsonToAll("window.updateSendShortcut", jsonOf("sendShortcut", sendShortcut));
         } catch (Exception e) {

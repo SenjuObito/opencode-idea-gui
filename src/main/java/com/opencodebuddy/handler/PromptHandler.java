@@ -4,7 +4,7 @@ import com.opencodebuddy.bridge.NodeDetector;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.model.ConflictStrategy;
 import com.opencodebuddy.model.PromptScope;
 import com.opencodebuddy.settings.AbstractPromptManager;
@@ -53,7 +53,7 @@ public class PromptHandler extends BaseMessageHandler {
         "save_imported_prompts"
     };
 
-    private final CodemossSettingsService settingsService;
+    private final OpenCodeBuddySettingsService settingsService;
     private final Gson gson;
     private final PromptFileWatcher fileWatcher;
 
@@ -62,7 +62,7 @@ public class PromptHandler extends BaseMessageHandler {
         this.settingsService = context.getSettingsService();
         this.gson = new Gson();
 
-        // Initialize file watcher to monitor .codemoss/prompt.json changes
+        // Initialize file watcher to monitor .opencodebuddy/prompt.json changes
         this.fileWatcher = new PromptFileWatcher(
             context.getProject(),
             settingsService,
@@ -168,7 +168,7 @@ public class PromptHandler extends BaseMessageHandler {
             if (json == null || !json.has("provider")) {
                 return "claude";
             }
-            return CodemossSettingsService.normalizePromptProvider(json.get("provider").getAsString());
+            return OpenCodeBuddySettingsService.normalizePromptProvider(json.get("provider").getAsString());
         } catch (Exception e) {
             LOG.warn("[PromptHandler] Failed to parse provider, defaulting to Claude: " + e.getMessage());
             return "claude";
@@ -178,13 +178,13 @@ public class PromptHandler extends BaseMessageHandler {
     private String promptRefreshJson(PromptScope scope, String provider) {
         JsonObject payload = new JsonObject();
         payload.addProperty("scope", scope.getValue());
-        payload.addProperty("provider", CodemossSettingsService.normalizePromptProvider(provider));
+        payload.addProperty("provider", OpenCodeBuddySettingsService.normalizePromptProvider(provider));
         return gson.toJson(payload);
     }
 
     private String promptListPayloadJson(String provider, String promptsJson) {
         JsonObject payload = new JsonObject();
-        payload.addProperty("provider", CodemossSettingsService.normalizePromptProvider(provider));
+        payload.addProperty("provider", OpenCodeBuddySettingsService.normalizePromptProvider(provider));
         payload.add("prompts", JsonParser.parseString(promptsJson));
         return gson.toJson(payload);
     }
@@ -490,7 +490,7 @@ public class PromptHandler extends BaseMessageHandler {
 
                 if (prompts.isEmpty()) {
                     Notifications.Bus.notify(new Notification(
-                            "Codemoss",
+                            "OpenCodeBuddy",
                             "Export Failed",
                             "No prompts to export",
                             NotificationType.WARNING
@@ -540,7 +540,7 @@ public class PromptHandler extends BaseMessageHandler {
                     LOG.info("[PromptHandler] Successfully exported " + prompts.size() + " prompts to " + file.getAbsolutePath());
 
                     Notifications.Bus.notify(new Notification(
-                            "Codemoss",
+                            "OpenCodeBuddy",
                             "Export Successful",
                             "Exported " + prompts.size() + " prompts to " + filename,
                             NotificationType.INFORMATION
@@ -548,7 +548,7 @@ public class PromptHandler extends BaseMessageHandler {
                 } catch (Exception e) {
                     LOG.error("[PromptHandler] Failed to write export file: " + e.getMessage(), e);
                     Notifications.Bus.notify(new Notification(
-                            "Codemoss",
+                            "OpenCodeBuddy",
                             "Export Failed",
                             "Failed to write file: " + e.getMessage(),
                             NotificationType.ERROR
@@ -557,7 +557,7 @@ public class PromptHandler extends BaseMessageHandler {
             } catch (Exception e) {
                 LOG.error("[PromptHandler] Failed to export prompts: " + e.getMessage(), e);
                 Notifications.Bus.notify(new Notification(
-                        "Codemoss",
+                        "OpenCodeBuddy",
                         "Export Failed",
                         "Failed to export prompts: " + e.getMessage(),
                         NotificationType.ERROR
@@ -615,7 +615,7 @@ public class PromptHandler extends BaseMessageHandler {
                 long maxSize = MAX_IMPORT_FILE_SIZE;
                 if (fileSize > maxSize) {
                     Notifications.Bus.notify(new Notification(
-                            "Codemoss",
+                            "OpenCodeBuddy",
                             "Import Failed",
                             "File size exceeds 5MB limit",
                             NotificationType.ERROR
@@ -630,7 +630,7 @@ public class PromptHandler extends BaseMessageHandler {
                 // Validate format
                 if (!importData.has("format") || !importData.get("format").getAsString().startsWith("claude-code-prompts-export-v")) {
                     Notifications.Bus.notify(new Notification(
-                            "Codemoss",
+                            "OpenCodeBuddy",
                             "Import Failed",
                             "Invalid file format. Please select a valid prompts export file.",
                             NotificationType.ERROR
@@ -640,7 +640,7 @@ public class PromptHandler extends BaseMessageHandler {
 
                 if (!importData.has("prompts")) {
                     Notifications.Bus.notify(new Notification(
-                            "Codemoss",
+                            "OpenCodeBuddy",
                             "Import Failed",
                             "No prompts found in file",
                             NotificationType.ERROR
@@ -701,7 +701,7 @@ public class PromptHandler extends BaseMessageHandler {
             } catch (Exception e) {
                 LOG.error("[PromptHandler] Failed to import prompts file: " + e.getMessage(), e);
                 Notifications.Bus.notify(new Notification(
-                        "Codemoss",
+                        "OpenCodeBuddy",
                         "Import Failed",
                         "Failed to read file: " + e.getMessage(),
                         NotificationType.ERROR
@@ -772,7 +772,7 @@ public class PromptHandler extends BaseMessageHandler {
                     String message = String.format("Imported %d prompts (%d new, %d updated, %d skipped)",
                             imported + updated, imported, updated, skipped);
                     Notifications.Bus.notify(new Notification(
-                            "Codemoss",
+                            "OpenCodeBuddy",
                             "Import Successful",
                             message,
                             NotificationType.INFORMATION
@@ -782,7 +782,7 @@ public class PromptHandler extends BaseMessageHandler {
                     List<String> errors = (List<String>) result.get("errors");
                     String errorMsg = errors.isEmpty() ? "Unknown error" : errors.get(0);
                     Notifications.Bus.notify(new Notification(
-                            "Codemoss",
+                            "OpenCodeBuddy",
                             "Import Failed",
                             errorMsg,
                             NotificationType.ERROR
@@ -809,7 +809,7 @@ public class PromptHandler extends BaseMessageHandler {
         ApplicationManager.getApplication().invokeLater(() -> {
             callJavaScript("window.promptImportResult", escapeJs(gson.toJson(errorResult)));
             Notifications.Bus.notify(new Notification(
-                    "Codemoss",
+                    "OpenCodeBuddy",
                     "Import Failed",
                     error,
                     NotificationType.ERROR

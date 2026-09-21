@@ -3,7 +3,7 @@ import { applyFontScale } from './fontScale';
 
 describe('applyFontScale', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<div id="app" style="zoom: 0.9"></div>';
+    document.body.innerHTML = '<div id="app"></div>';
     document.documentElement.style.removeProperty('--font-scale');
   });
 
@@ -12,22 +12,16 @@ describe('applyFontScale', () => {
     expect(document.documentElement.style.getPropertyValue('--font-scale')).toBe('1.4');
   });
 
-  it('clears stale inline zoom on #app so the stylesheet var takes over', () => {
+  it('sets inline zoom on #app so JCEF / Chromium applies zoom scale reliably', () => {
     const app = document.getElementById('app') as HTMLElement;
-    expect(app.style.zoom).toBe('0.9');
-
     applyFontScale('1.4');
-
-    expect(app.style.zoom).toBe('');
+    expect(app.style.zoom).toBe('1.4');
   });
 
-  it('is a no-op for #app when no inline zoom residue exists', () => {
+  it('updates inline zoom on #app when scale changes', () => {
     const app = document.getElementById('app') as HTMLElement;
-    app.style.removeProperty('zoom');
-
     applyFontScale('0.8');
-
-    expect(app.style.zoom).toBe('');
+    expect(app.style.zoom).toBe('0.8');
     expect(document.documentElement.style.getPropertyValue('--font-scale')).toBe('0.8');
   });
 });

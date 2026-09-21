@@ -4,7 +4,7 @@ import com.opencodebuddy.bridge.NodeDetector;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.model.ConflictStrategy;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -46,12 +46,12 @@ public class AgentHandler extends BaseMessageHandler {
         "save_imported_agents"
     };
 
-    private final CodemossSettingsService settingsService;
+    private final OpenCodeBuddySettingsService settingsService;
     private final Gson gson;
 
     public AgentHandler(HandlerContext context) {
         super(context);
-        this.settingsService = new CodemossSettingsService();
+        this.settingsService = new OpenCodeBuddySettingsService();
         this.gson = new Gson();
     }
 

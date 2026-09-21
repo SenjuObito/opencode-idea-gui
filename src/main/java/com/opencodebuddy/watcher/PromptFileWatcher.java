@@ -1,6 +1,6 @@
 package com.opencodebuddy.watcher;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.model.PromptScope;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -18,14 +18,14 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 
 /**
- * Watches for changes to .codemoss/prompt.json files and notifies listeners.
+ * Watches for changes to .opencodebuddy/prompt.json files and notifies listeners.
  * Monitors both global and project-specific prompt files for external modifications.
  */
 public class PromptFileWatcher implements BulkFileListener {
     private static final Logger LOG = Logger.getInstance(PromptFileWatcher.class);
 
     private final Project project;
-    private final CodemossSettingsService settingsService;
+    private final OpenCodeBuddySettingsService settingsService;
     private final Gson gson;
     private final PromptChangeListener onPromptsChanged;
     private MessageBusConnection connection;
@@ -39,7 +39,7 @@ public class PromptFileWatcher implements BulkFileListener {
      */
     public PromptFileWatcher(
         Project project,
-        CodemossSettingsService settingsService,
+        OpenCodeBuddySettingsService settingsService,
         PromptChangeListener onPromptsChanged
     ) {
         this.project = project;
@@ -80,7 +80,7 @@ public class PromptFileWatcher implements BulkFileListener {
 
     /**
      * Check if the file path matches project prompt.json pattern.
-     * Pattern: <project-path>/.codemoss/prompt.json
+     * Pattern: <project-path>/.opencodebuddy/prompt.json
      */
     private boolean isProjectPromptFile(String filePath) {
         if (project == null || project.getBasePath() == null) {
@@ -90,17 +90,17 @@ public class PromptFileWatcher implements BulkFileListener {
         String nodePath = NodeDetector.getInstance().getCachedNodePath();
         boolean isWsl = NodeDetector.isWslPath(nodePath);
         String normalizedFilePath = isWsl ? NodeDetector.convertToWslPath(filePath) : filePath;
-        String projectPromptPath = (isWsl ? NodeDetector.convertToWslPath(project.getBasePath()) : project.getBasePath()) + "/.codemoss/prompt.json";
+        String projectPromptPath = (isWsl ? NodeDetector.convertToWslPath(project.getBasePath()) : project.getBasePath()) + "/.opencodebuddy/prompt.json";
         return normalizedFilePath.equals(projectPromptPath);
     }
 
     /**
      * Check if the file path matches global prompt.json pattern.
-     * Pattern: ~/.codemoss/prompt.json
+     * Pattern: ~/.opencodebuddy/prompt.json
      */
     private boolean isGlobalPromptFile(String filePath) {
         String homeDir = NodeDetector.resolveHomeForFileOps();
-        String globalPromptPath = homeDir + "/.codemoss/prompt.json";
+        String globalPromptPath = homeDir + "/.opencodebuddy/prompt.json";
         return filePath.equals(globalPromptPath);
     }
 

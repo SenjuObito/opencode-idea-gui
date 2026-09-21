@@ -289,7 +289,7 @@ public class SkillHandler extends BaseMessageHandler {
             // Claude skills directories
             validBases.add(Paths.get(userHome, ".claude", "skills"));
             validBases.add(Paths.get(userHome, ".claude", "commands"));
-            validBases.add(Paths.get(userHome, ".codemoss", "skills"));
+            validBases.add(Paths.get(userHome, ".opencodebuddy", "skills"));
             // Codex & Agents skills directories
             validBases.add(Paths.get(userHome, ".agents", "skills"));
             validBases.add(Paths.get(userHome, ".codex", "skills"));

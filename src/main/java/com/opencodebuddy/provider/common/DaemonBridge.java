@@ -7,7 +7,6 @@ import com.opencodebuddy.utils.PluginFileLogger;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.diagnostic.Logger;
 
 import java.io.*;
@@ -363,8 +362,7 @@ public class DaemonBridge {
         }
 
         Map<String, String> environment = processBuilder.environment();
-        String openCodeCliPath = PropertiesComponent.getInstance()
-                .getValue(OPENCODE_CLI_PATH_PROPERTY_KEY);
+        String openCodeCliPath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getOpencodeCliPath();
         if (openCodeCliPath != null && !openCodeCliPath.trim().isEmpty()) {
             environment.put("OPENCODE_BIN", openCodeCliPath.trim());
             LOG.info("[DaemonBridge] Using custom opencode CLI: " + openCodeCliPath.trim());

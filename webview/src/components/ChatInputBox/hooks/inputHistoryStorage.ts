@@ -26,7 +26,7 @@ export interface HistoryItem {
 
 /**
  * Keep the stored history bounded to avoid unbounded localStorage growth.
- * Note: The actual limit is 200 in the backend (.codemoss)
+ * Note: The actual limit is 200 in the backend (.opencodebuddy)
  */
 export const MAX_HISTORY_ITEMS = 200;
 export const INVISIBLE_CHARS_RE = /[\u200B-\u200D\uFEFF]/g;
@@ -282,7 +282,7 @@ export function cleanupCounts(
 
 /**
  * Delete a specific history item
- * Dual-write: localStorage + .codemoss
+ * Dual-write: localStorage + .opencodebuddy
  */
 export function deleteHistoryItem(item: string): void {
   // Write to localStorage (sync)
@@ -310,7 +310,7 @@ export function deleteHistoryItem(item: string): void {
 
 /**
  * Clear all history items
- * Dual-write: localStorage + .codemoss
+ * Dual-write: localStorage + .opencodebuddy
  */
 export function clearAllHistory(): void {
   // Write to localStorage (sync)

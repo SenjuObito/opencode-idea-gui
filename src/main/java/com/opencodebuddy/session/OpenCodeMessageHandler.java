@@ -68,7 +68,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
             }
             case "usage" -> handleUsage(content);
             case "message_start", "message_end", "block_reset", "tool_result" -> {
-                // Stream lifecycle markers; cleanup is driven by stream_end/onComplete.
+                resetStreamingAccumulator();
             }
             case "permission_request" -> handlePermissionRequest(content);
             case "permission_closed" -> handlePermissionClosed(content);
@@ -165,6 +165,10 @@ public class OpenCodeMessageHandler implements MessageCallback {
             if (parsed == null) {
                 LOG.debug("OpenCode user message filtered out");
                 return;
+            }
+
+            if (!"[tool_result]".equals(parsed.content)) {
+                resetStreamingAccumulator();
             }
 
             state.addMessage(parsed);
@@ -361,7 +365,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
     }
 
     private void handleTodoUpdated(String jsonContent) {
-        callbackHandler.notifyTaskEvent(jsonContent);
+        callbackHandler.notifyTodoUpdated(jsonContent);
     }
 
     private void handleSessionTitle(String jsonContent) {

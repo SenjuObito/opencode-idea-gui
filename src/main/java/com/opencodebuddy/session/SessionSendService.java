@@ -1,6 +1,6 @@
 package com.opencodebuddy.session;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.google.gson.JsonObject;
@@ -328,7 +328,7 @@ public class SessionSendService {
         try {
             String projectPath = project.getBasePath();
             if (projectPath != null) {
-                CodemossSettingsService settingsService = new CodemossSettingsService();
+                OpenCodeBuddySettingsService settingsService = new OpenCodeBuddySettingsService();
                 boolean autoOpenFileEnabled = settingsService.getAutoOpenFileEnabled(projectPath);
                 LOG.info("[EditorContext] Auto open file enabled: " + autoOpenFileEnabled);
                 return autoOpenFileEnabled;
@@ -341,7 +341,7 @@ public class SessionSendService {
 
     private String getAgentPrompt() {
         try {
-            CodemossSettingsService settingsService = new CodemossSettingsService();
+            OpenCodeBuddySettingsService settingsService = new OpenCodeBuddySettingsService();
             String selectedAgentId = settingsService.getSelectedAgentId();
             LOG.info("[Agent] Checking selected agent ID: " + (selectedAgentId != null ? selectedAgentId : "null"));
 

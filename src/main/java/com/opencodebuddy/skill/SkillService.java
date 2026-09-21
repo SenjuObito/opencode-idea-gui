@@ -28,15 +28,15 @@ import java.util.regex.Pattern;
  * - Local: {workspace}/.opencode/skill, {workspace}/.claude/skills, {workspace}/.agents/skills
  * <p>
  * Management directories (disabled skills):
- * - Global: ~/.codemoss/skills/global
- * - Local: ~/.codemoss/skills/{project-path-hash}
+ * - Global: ~/.opencodebuddy/skills/global
+ * - Local: ~/.opencodebuddy/skills/{project-path-hash}
  */
 public class SkillService {
     private static final Logger LOG = Logger.getInstance(SkillService.class);
     private static final Gson gson = new Gson();
 
     // Management directory root path
-    private static final String CONFIG_DIR_NAME = ".codemoss";
+    private static final String CONFIG_DIR_NAME = ".opencodebuddy";
     private static final String SKILLS_DIR_NAME = "skills";
     private static final String GLOBAL_DIR_NAME = "global";
 
@@ -102,7 +102,7 @@ public class SkillService {
     // ==================== Management Directories (storage for disabled skills) ====================
 
     /**
-     * Gets the management directory root path (~/.codemoss/skills).
+     * Gets the management directory root path (~/.opencodebuddy/skills).
      */
     private static String getManagementRootDir() {
         String homeDir = NodeDetector.resolveHomeForFileOps();
@@ -110,14 +110,14 @@ public class SkillService {
     }
 
     /**
-     * Gets the global skills management directory (~/.codemoss/skills/global).
+     * Gets the global skills management directory (~/.opencodebuddy/skills/global).
      */
     public static String getGlobalManagementDir() {
         return Paths.get(getManagementRootDir(), GLOBAL_DIR_NAME).toString();
     }
 
     /**
-     * Gets the local skills management directory (~/.codemoss/skills/{project-path-hash}).
+     * Gets the local skills management directory (~/.opencodebuddy/skills/{project-path-hash}).
      * Uses a hash of the project path as the subdirectory name to avoid special character issues.
      */
     public static String getLocalManagementDir(String workspaceRoot) {

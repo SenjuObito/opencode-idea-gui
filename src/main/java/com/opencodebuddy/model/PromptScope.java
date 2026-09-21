@@ -7,14 +7,14 @@ package com.opencodebuddy.model;
 public enum PromptScope {
     /**
      * Global scope - prompts stored in user's home directory.
-     * Location: ~/.codemoss/prompt.json
+     * Location: ~/.opencodebuddy/prompt.json
      * These prompts are available across all projects for the user.
      */
     GLOBAL("global"),
 
     /**
      * Project scope - prompts stored in the project directory.
-     * Location: &lt;project&gt;/.codemoss/prompt.json
+     * Location: &lt;project&gt;/.opencodebuddy/prompt.json
      * These prompts are specific to the current project.
      */
     PROJECT("project");

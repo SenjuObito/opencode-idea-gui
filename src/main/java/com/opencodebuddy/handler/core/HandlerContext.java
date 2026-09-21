@@ -2,7 +2,7 @@ package com.opencodebuddy.handler.core;
 
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.session.OpencodeSession;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
@@ -21,7 +21,7 @@ public class HandlerContext {
 
     private final Project project;
     private final OpenCodeSDKBridge openCodeSDKBridge;
-    private final CodemossSettingsService settingsService;
+    private final OpenCodeBuddySettingsService settingsService;
     private final JsCallback jsCallback;
     private final BooleanSupplier activeContentSupplier;
     private final Supplier<String> contentTitleSupplier;
@@ -45,7 +45,7 @@ public class HandlerContext {
     public HandlerContext(
             Project project,
             OpenCodeSDKBridge openCodeSDKBridge,
-            CodemossSettingsService settingsService,
+            OpenCodeBuddySettingsService settingsService,
             JsCallback jsCallback
     ) {
         this(project, openCodeSDKBridge, settingsService, jsCallback, () -> true, () -> null);
@@ -54,7 +54,7 @@ public class HandlerContext {
     public HandlerContext(
             Project project,
             OpenCodeSDKBridge openCodeSDKBridge,
-            CodemossSettingsService settingsService,
+            OpenCodeBuddySettingsService settingsService,
             JsCallback jsCallback,
             BooleanSupplier activeContentSupplier,
             Supplier<String> contentTitleSupplier
@@ -76,7 +76,7 @@ public class HandlerContext {
         return openCodeSDKBridge;
     }
 
-    public CodemossSettingsService getSettingsService() {
+    public OpenCodeBuddySettingsService getSettingsService() {
         return settingsService;
     }
 

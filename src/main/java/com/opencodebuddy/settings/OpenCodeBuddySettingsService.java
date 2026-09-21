@@ -34,12 +34,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Codemoss configuration service (Facade pattern).
+ * OpenCodeBuddy configuration service (Facade pattern).
  * Delegates specific functionality to specialized managers.
  */
-public class CodemossSettingsService {
+public class OpenCodeBuddySettingsService {
 
-    private static final Logger LOG = Logger.getInstance(CodemossSettingsService.class);
+    private static final Logger LOG = Logger.getInstance(OpenCodeBuddySettingsService.class);
     private static final int CONFIG_VERSION = 2;
     private static final String UI_FONT_CONFIG_KEY = "uiFont";
     private static final String CODE_FONT_CONFIG_KEY = "codeFont";
@@ -74,6 +74,23 @@ public class CodemossSettingsService {
     private static final String DEFAULT_COMMIT_AI_OPENCODE_MODEL = "opencode-default";
     private static final String USER_LANGUAGE_CONFIG_KEY = "language";
     private static final String UI_PREFERENCES_KEY = "uiPreferences";
+    private static final String OPENCODE_CLI_PATH_KEY = "opencodeCliPath";
+    private static final String NODE_PATH_KEY = "nodePath";
+    private static final String SEND_SHORTCUT_KEY = "sendShortcut";
+
+    private static final Set<String> DEPRECATED_CONFIG_KEYS = Set.of(
+            "claude",
+            "codex",
+            "commitAi",
+            "commitPrompt",
+            "projectCommitPrompt",
+            "commitGenerationEnabled",
+            "promptEnhancer",
+            "prompts",
+            "agents",
+            "selectedAgentId",
+            "mcpServers"
+    );
 
     private final Gson gson;
 
@@ -84,7 +101,7 @@ public class CodemossSettingsService {
     private final SkillManager skillManager;
     private final McpServerManager mcpServerManager;
 
-    public CodemossSettingsService() {
+    public OpenCodeBuddySettingsService() {
         this.gson = new GsonBuilder().setPrettyPrinting().serializeNulls().create();
 
         // Initialize ConfigPathManager
@@ -152,10 +169,23 @@ public class CodemossSettingsService {
     // ==================== Basic Config Management ====================
 
     /**
-     * Get config file path (~/.codemoss/config.json).
+     * Get config file path (~/.opencodebuddy/config.json).
      */
     public String getConfigPath() {
         return pathManager.getConfigPath();
+    }
+
+    /**
+     * Sanitize config by stripping deprecated or obsolete top-level keys.
+     */
+    public JsonObject sanitizeConfig(JsonObject config) {
+        if (config == null) {
+            return new JsonObject();
+        }
+        for (String deprecatedKey : DEPRECATED_CONFIG_KEYS) {
+            config.remove(deprecatedKey);
+        }
+        return config;
     }
 
     /**
@@ -166,16 +196,17 @@ public class CodemossSettingsService {
         File configFile = new File(configPath);
 
         if (!configFile.exists()) {
-            LOG.info("[CodemossSettings] Config file not found, creating default: " + configPath);
+            LOG.info("[OpenCodeBuddySettings] Config file not found, creating default: " + configPath);
             return createDefaultConfig();
         }
 
         try (FileReader reader = new FileReader(configFile, StandardCharsets.UTF_8)) {
             JsonObject config = JsonParser.parseReader(reader).getAsJsonObject();
-            LOG.info("[CodemossSettings] Successfully read config from: " + configPath);
+            sanitizeConfig(config);
+            LOG.info("[OpenCodeBuddySettings] Successfully read config from: " + configPath);
             return config;
         } catch (Exception e) {
-            LOG.warn("[CodemossSettings] Failed to read config: " + e.getMessage());
+            LOG.warn("[OpenCodeBuddySettings] Failed to read config: " + e.getMessage());
             return createDefaultConfig();
         }
     }
@@ -185,6 +216,7 @@ public class CodemossSettingsService {
      */
     public void writeConfig(JsonObject config) throws IOException {
         pathManager.ensureConfigDirectory();
+        sanitizeConfig(config);
 
         // Back up existing config
         backupConfig();
@@ -202,9 +234,9 @@ public class CodemossSettingsService {
             } catch (AtomicMoveNotSupportedException ignored) {
                 Files.move(tempPath, configPath, StandardCopyOption.REPLACE_EXISTING);
             }
-            LOG.info("[CodemossSettings] Successfully wrote config to: " + configPath);
+            LOG.info("[OpenCodeBuddySettings] Successfully wrote config to: " + configPath);
         } catch (Exception e) {
-            LOG.warn("[CodemossSettings] Failed to write config: " + e.getMessage());
+            LOG.warn("[OpenCodeBuddySettings] Failed to write config: " + e.getMessage());
             throw e;
         } finally {
             Files.deleteIfExists(tempPath);
@@ -223,7 +255,7 @@ public class CodemossSettingsService {
                 hardenFilePermissions(backupPath);
             }
         } catch (Exception e) {
-            LOG.warn("[CodemossSettings] Failed to backup config: " + e.getMessage());
+            LOG.warn("[OpenCodeBuddySettings] Failed to backup config: " + e.getMessage());
         }
     }
 
@@ -235,7 +267,7 @@ public class CodemossSettingsService {
         try {
             Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
         } catch (UnsupportedOperationException | IOException e) {
-            LOG.debug("[CodemossSettings] Could not set 0600 on " + path + ": " + e.getMessage());
+            LOG.debug("[OpenCodeBuddySettings] Could not set 0600 on " + path + ": " + e.getMessage());
         }
     }
 
@@ -245,21 +277,6 @@ public class CodemossSettingsService {
     private JsonObject createDefaultConfig() {
         JsonObject config = new JsonObject();
         config.addProperty("version", CONFIG_VERSION);
-
-        // Claude config - empty provider list
-        JsonObject claude = new JsonObject();
-        JsonObject providers = new JsonObject();
-
-        claude.addProperty("current", "");
-        claude.add("providers", providers);
-        config.add("claude", claude);
-
-        JsonObject codex = new JsonObject();
-        codex.addProperty("current", "");
-        codex.add("providers", new JsonObject());
-        codex.addProperty("localConfigAuthorized", false);
-        config.add("codex", codex);
-
         return config;
     }
 
@@ -288,7 +305,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.addProperty(USER_LANGUAGE_CONFIG_KEY, language);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set user language: " + language);
+        LOG.info("[OpenCodeBuddySettings] Set user language: " + language);
     }
 
     /**
@@ -298,7 +315,116 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.remove(USER_LANGUAGE_CONFIG_KEY);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Cleared user language override");
+        LOG.info("[OpenCodeBuddySettings] Cleared user language override");
+    }
+
+    // ==================== Opencode CLI Path Management ====================
+
+    /**
+     * Get the configured Opencode CLI executable path.
+     *
+     * @return configured path, or null when unset
+     */
+    public String getOpencodeCliPath() {
+        try {
+            JsonObject config = readConfig();
+            if (!config.has(OPENCODE_CLI_PATH_KEY) || config.get(OPENCODE_CLI_PATH_KEY).isJsonNull()) {
+                return null;
+            }
+            String path = config.get(OPENCODE_CLI_PATH_KEY).getAsString();
+            return (path != null && !path.trim().isEmpty()) ? path.trim() : null;
+        } catch (Exception e) {
+            LOG.warn("[OpenCodeBuddySettings] Failed to read opencodeCliPath: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Persist the Opencode CLI executable path to config.json.
+     *
+     * @param path custom CLI binary path, or null/empty to clear
+     */
+    public void setOpencodeCliPath(String path) throws IOException {
+        JsonObject config = readConfig();
+        if (path == null || path.trim().isEmpty()) {
+            config.remove(OPENCODE_CLI_PATH_KEY);
+        } else {
+            config.addProperty(OPENCODE_CLI_PATH_KEY, path.trim());
+        }
+        writeConfig(config);
+        LOG.info("[OpenCodeBuddySettings] Saved opencodeCliPath: " + (path == null ? "(cleared)" : path.trim()));
+    }
+
+    // ==================== Node.js Path Management ====================
+
+    /**
+     * Get the manually configured Node.js executable path.
+     *
+     * @return configured path, or null when unset
+     */
+    public String getNodePath() {
+        try {
+            JsonObject config = readConfig();
+            if (!config.has(NODE_PATH_KEY) || config.get(NODE_PATH_KEY).isJsonNull()) {
+                return null;
+            }
+            String path = config.get(NODE_PATH_KEY).getAsString();
+            return (path != null && !path.trim().isEmpty()) ? path.trim() : null;
+        } catch (Exception e) {
+            LOG.warn("[OpenCodeBuddySettings] Failed to read nodePath: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Persist the Node.js executable path to config.json.
+     *
+     * @param path custom Node.js binary path, or null/empty to clear
+     */
+    public void setNodePath(String path) throws IOException {
+        JsonObject config = readConfig();
+        if (path == null || path.trim().isEmpty()) {
+            config.remove(NODE_PATH_KEY);
+        } else {
+            config.addProperty(NODE_PATH_KEY, path.trim());
+        }
+        writeConfig(config);
+        LOG.info("[OpenCodeBuddySettings] Saved nodePath: " + (path == null ? "(cleared)" : path.trim()));
+    }
+
+    // ==================== Send Shortcut Management ====================
+
+    /**
+     * Get the configured message send shortcut ("enter" or "cmdEnter").
+     *
+     * @return configured shortcut, default "enter"
+     */
+    public String getSendShortcut() {
+        try {
+            JsonObject config = readConfig();
+            if (config.has(SEND_SHORTCUT_KEY) && !config.get(SEND_SHORTCUT_KEY).isJsonNull()) {
+                String val = config.get(SEND_SHORTCUT_KEY).getAsString();
+                if ("cmdEnter".equalsIgnoreCase(val)) {
+                    return "cmdEnter";
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("[OpenCodeBuddySettings] Failed to read sendShortcut: " + e.getMessage());
+        }
+        return "enter";
+    }
+
+    /**
+     * Persist the message send shortcut to config.json.
+     *
+     * @param sendShortcut "enter" or "cmdEnter"
+     */
+    public void setSendShortcut(String sendShortcut) throws IOException {
+        JsonObject config = readConfig();
+        String val = "cmdEnter".equalsIgnoreCase(sendShortcut) ? "cmdEnter" : "enter";
+        config.addProperty(SEND_SHORTCUT_KEY, val);
+        writeConfig(config);
+        LOG.info("[OpenCodeBuddySettings] Saved sendShortcut: " + val);
     }
 
     // ==================== Working Directory Management ====================
@@ -355,7 +481,7 @@ public class CodemossSettingsService {
         config.addProperty("commitPrompt", prompt);
 
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set commit prompt: " + prompt);
+        LOG.info("[OpenCodeBuddySettings] Set commit prompt: " + prompt);
     }
 
     /**
@@ -398,7 +524,7 @@ public class CodemossSettingsService {
         }
         projectPrompts.addProperty(projectPath, prompt);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set project commit prompt for project: " + projectPath);
+        LOG.info("[OpenCodeBuddySettings] Set project commit prompt for project: " + projectPath);
     }
 
     // ==================== UI Font Config Management ====================
@@ -437,7 +563,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.add(UI_FONT_CONFIG_KEY, createUiFontConfig(mode, customFontPath, fontFamily));
         writeConfig(config);
-        LOG.debug("[CodemossSettings] Set UI font config: mode=" + mode
+        LOG.debug("[OpenCodeBuddySettings] Set UI font config: mode=" + mode
                 + ", customFontPath=" + customFontPath + ", fontFamily=" + fontFamily);
     }
 
@@ -475,7 +601,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.add(CODE_FONT_CONFIG_KEY, createCodeFontConfig(mode, customFontPath, fontFamily));
         writeConfig(config);
-        LOG.debug("[CodemossSettings] Set code font config: mode=" + mode
+        LOG.debug("[OpenCodeBuddySettings] Set code font config: mode=" + mode
                 + ", customFontPath=" + customFontPath + ", fontFamily=" + fontFamily);
     }
 
@@ -514,7 +640,7 @@ public class CodemossSettingsService {
         }
         config.add(UI_PREFERENCES_KEY, currentPrefs);
         writeConfig(config);
-        LOG.debug("[CodemossSettings] Updated UI preferences in config.json");
+        LOG.debug("[OpenCodeBuddySettings] Updated UI preferences in config.json");
     }
 
     // ==================== Permission Dialog Timeout Config Management ====================
@@ -689,7 +815,7 @@ public class CodemossSettingsService {
         streaming.addProperty("default", enabled);
 
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set streaming enabled to " + enabled + " for project: " + projectPath);
+        LOG.info("[OpenCodeBuddySettings] Set streaming enabled to " + enabled + " for project: " + projectPath);
     }
 
     // ==================== Auto Open File Config Management ====================
@@ -748,7 +874,7 @@ public class CodemossSettingsService {
         autoOpenFile.addProperty("default", enabled);
 
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set auto open file enabled to " + enabled + " for project: " + projectPath);
+        LOG.info("[OpenCodeBuddySettings] Set auto open file enabled to " + enabled + " for project: " + projectPath);
     }
 
     // ==================== MCP Server Management ====================
@@ -1221,7 +1347,7 @@ public class CodemossSettingsService {
 
         soundConfig.addProperty("enabled", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set sound notification enabled: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set sound notification enabled: " + enabled);
     }
 
     /**
@@ -1267,7 +1393,7 @@ public class CodemossSettingsService {
         }
 
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set custom sound path: " + path);
+        LOG.info("[OpenCodeBuddySettings] Set custom sound path: " + path);
     }
 
     /**
@@ -1308,7 +1434,7 @@ public class CodemossSettingsService {
 
         soundConfig.addProperty("onlyWhenUnfocused", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set sound only when unfocused: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set sound only when unfocused: " + enabled);
     }
 
     /**
@@ -1349,7 +1475,7 @@ public class CodemossSettingsService {
 
         soundConfig.addProperty("selectedSound", (soundId == null || soundId.isEmpty()) ? "default" : soundId);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set selected sound: " + soundId);
+        LOG.info("[OpenCodeBuddySettings] Set selected sound: " + soundId);
     }
 
     // ==================== Task Completion Notification Management ====================
@@ -1378,7 +1504,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.addProperty("taskCompletionNotificationEnabled", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set task completion notification enabled: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set task completion notification enabled: " + enabled);
     }
 
     // ==================== Ask User Question Notification Management ====================
@@ -1407,7 +1533,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.addProperty("askUserQuestionNotificationEnabled", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set ask user question notification enabled: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set ask user question notification enabled: " + enabled);
     }
 
     /**
@@ -1435,7 +1561,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.addProperty("askUserQuestionSoundNotificationEnabled", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set ask user question sound notification enabled: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set ask user question sound notification enabled: " + enabled);
     }
 
     /**
@@ -1463,7 +1589,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.addProperty("systemNotificationOnlyWhenUnfocused", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set system notification only when unfocused: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set system notification only when unfocused: " + enabled);
     }
 
     // ==================== AI Feature Toggle Management ====================
@@ -1492,7 +1618,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.addProperty("commitGenerationEnabled", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set commit generation enabled: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set commit generation enabled: " + enabled);
     }
 
     /**
@@ -1519,7 +1645,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.addProperty("statusBarWidgetEnabled", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set status bar widget enabled: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set status bar widget enabled: " + enabled);
     }
 
     /**
@@ -1546,7 +1672,7 @@ public class CodemossSettingsService {
         JsonObject config = readConfig();
         config.addProperty("aiTitleGenerationEnabled", enabled);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set AI title generation enabled: " + enabled);
+        LOG.info("[OpenCodeBuddySettings] Set AI title generation enabled: " + enabled);
     }
 
     // ==================== Prompt Enhancer Config Management ====================
@@ -1711,7 +1837,7 @@ public class CodemossSettingsService {
 
         config.add(featureKey, featureConfig);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set " + featureLabel + " config: provider=" + normalizedProvider);
+        LOG.info("[OpenCodeBuddySettings] Set " + featureLabel + " config: provider=" + normalizedProvider);
     }
 
     private JsonObject getAiFeatureRootObject(JsonObject rootConfig, String featureKey) {
@@ -1726,7 +1852,7 @@ public class CodemossSettingsService {
         try {
             cliStatuses = CliStatusDetector.detectAllStaleWhileRevalidate();
         } catch (Exception e) {
-            LOG.warn("[CodemossSettings] Failed to batch-detect CLI tools: " + e.getMessage());
+            LOG.warn("[OpenCodeBuddySettings] Failed to batch-detect CLI tools: " + e.getMessage());
             cliStatuses = java.util.Collections.emptyMap();
         }
 
@@ -1748,7 +1874,7 @@ public class CodemossSettingsService {
             CliToolStatus status = cliStatuses != null ? cliStatuses.get(provider) : null;
             return status != null && status.isInstalled();
         } catch (Exception e) {
-            LOG.warn("[CodemossSettings] Failed to resolve AI feature availability for " + provider + ": " + e.getMessage());
+            LOG.warn("[OpenCodeBuddySettings] Failed to resolve AI feature availability for " + provider + ": " + e.getMessage());
             return false;
         }
     }
@@ -1886,7 +2012,7 @@ public class CodemossSettingsService {
         }
 
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set user model context windows for " + normalizedProvider
+        LOG.info("[OpenCodeBuddySettings] Set user model context windows for " + normalizedProvider
                 + ": " + (contextWindows == null ? 0 : contextWindows.size()) + " models");
     }
 }

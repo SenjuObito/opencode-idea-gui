@@ -14,7 +14,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-public class CodemossSettingsServicePromptProviderTest {
+public class OpenCodeBuddySettingsServicePromptProviderTest {
     private String originalHome;
 
     @After
@@ -38,7 +38,7 @@ public class CodemossSettingsServicePromptProviderTest {
         config.add("prompts", prompts);
         Files.writeString(home.resolve(".opencodebuddy/prompt.json"), config.toString());
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         List<JsonObject> codexPrompts = service.getPrompts(PromptScope.GLOBAL, null, "codex");
         assertEquals(1, codexPrompts.size());
         assertEquals("codex-id", codexPrompts.get(0).get("id").getAsString());

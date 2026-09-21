@@ -13,7 +13,7 @@ import java.nio.file.Path;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-public class CodemossSettingsServiceAskUserQuestionNotificationTest {
+public class OpenCodeBuddySettingsServiceAskUserQuestionNotificationTest {
     private String originalHomeDir;
 
     @After
@@ -29,7 +29,7 @@ public class CodemossSettingsServiceAskUserQuestionNotificationTest {
         Path tempHome = Files.createTempDirectory("ask-user-question-notification-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         assertFalse(service.getAskUserQuestionNotificationEnabled());
         assertFalse(service.getAskUserQuestionSoundNotificationEnabled());
 
@@ -50,7 +50,7 @@ public class CodemossSettingsServiceAskUserQuestionNotificationTest {
         Path tempHome = Files.createTempDirectory("ask-user-question-notification-persist-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         service.setAskUserQuestionNotificationEnabled(true);
         assertTrue(service.getAskUserQuestionNotificationEnabled());
 
@@ -66,7 +66,7 @@ public class CodemossSettingsServiceAskUserQuestionNotificationTest {
         Path tempHome = Files.createTempDirectory("ask-user-question-sound-notification-persist-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         service.setAskUserQuestionNotificationEnabled(false);
         service.setAskUserQuestionSoundNotificationEnabled(true);
 
@@ -83,7 +83,7 @@ public class CodemossSettingsServiceAskUserQuestionNotificationTest {
         Path tempHome = Files.createTempDirectory("system-notification-focus-gate-home");
         useTemporaryHomeDirectory(tempHome);
 
-        CodemossSettingsService service = new CodemossSettingsService();
+        OpenCodeBuddySettingsService service = new OpenCodeBuddySettingsService();
         service.setAskUserQuestionNotificationEnabled(true);
         service.setSystemNotificationOnlyWhenUnfocused(true);
 

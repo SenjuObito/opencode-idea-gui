@@ -178,6 +178,15 @@ public class CallbackHandler {
     }
 
     /**
+     * Notify that todo tasks were updated (opencode todo.updated SSE event).
+     */
+    public void notifyTodoUpdated(String jsonContent) {
+        if (callback != null) {
+            callback.onTodoUpdated(jsonContent);
+        }
+    }
+
+    /**
      * Notify of a question request (AskUserQuestion).
      */
     public void notifyQuestionRequested(String jsonContent) {

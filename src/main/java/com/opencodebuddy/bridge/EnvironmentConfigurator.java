@@ -1,7 +1,7 @@
 // TODO: consider extracting WSL env propagation into a dedicated helper class
 package com.opencodebuddy.bridge;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.util.PlatformUtils;
 import com.opencodebuddy.util.ShellExecutor;
 import com.intellij.openapi.diagnostic.Logger;
@@ -36,15 +36,15 @@ public class EnvironmentConfigurator {
     private static final String HOME_ENV = "HOME";
     private static final Pattern WSL_MOUNT_PATH_PATTERN = Pattern.compile("^/mnt/([a-zA-Z])(?:/(.*))?$");
 
-    private final CodemossSettingsService settingsService;
+    private final OpenCodeBuddySettingsService settingsService;
     private volatile String cachedPermissionDir = null;
     private volatile String sessionId = null;
 
     public EnvironmentConfigurator() {
-        this(new CodemossSettingsService());
+        this(new OpenCodeBuddySettingsService());
     }
 
-    EnvironmentConfigurator(CodemossSettingsService settingsService) {
+    EnvironmentConfigurator(OpenCodeBuddySettingsService settingsService) {
         this.settingsService = settingsService;
     }
 
@@ -294,12 +294,12 @@ public class EnvironmentConfigurator {
     long getPermissionSafetyNetMs() {
         try {
             long timeoutSeconds = settingsService.getPermissionDialogTimeoutSeconds();
-            return (timeoutSeconds + CodemossSettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS) * 1000L;
+            return (timeoutSeconds + OpenCodeBuddySettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS) * 1000L;
         } catch (Exception e) {
             LOG.warn("[EnvironmentConfigurator] Failed to read permission timeout for Node safety net; errorClass="
                     + e.getClass().getSimpleName());
-            return (CodemossSettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
-                    + CodemossSettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS) * 1000L;
+            return (OpenCodeBuddySettingsService.DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS
+                    + OpenCodeBuddySettingsService.PERMISSION_SAFETY_NET_BUFFER_SECONDS) * 1000L;
         }
     }
 

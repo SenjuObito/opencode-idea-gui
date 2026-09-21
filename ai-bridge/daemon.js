@@ -42,7 +42,7 @@ import { listModels as listOpenCodeModels } from './services/opencode/models-ser
 import { isWebviewControlledEnvVar, isDangerousEnvVar } from './config/api-config.js';
 
 // (Removed) Startup env sync from ~/.claude/settings.json gated by
-// ~/.codemoss/config.json provider mode — all configuration is now owned by
+// ~/.opencodebuddy/config.json provider mode — all configuration is now owned by
 // the VS Code settings API on the extension-host side and delivered per
 // request; the bridge reads no config files from disk.
 

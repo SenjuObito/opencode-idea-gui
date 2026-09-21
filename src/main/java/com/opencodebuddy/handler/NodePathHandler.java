@@ -1,12 +1,11 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
-
 import com.opencodebuddy.bridge.NodeDetector;
 import com.opencodebuddy.model.NodeDetectionResult;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.concurrency.AppExecutorUtil;
@@ -15,18 +14,23 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Handles Node.js path detection, verification, and persistence.
+ * Persisted in {@link OpenCodeBuddySettingsService} (~/.opencodebuddy/config.json).
  */
 public class NodePathHandler {
 
     private static final Logger LOG = Logger.getInstance(NodePathHandler.class);
 
-    static final String NODE_PATH_PROPERTY_KEY = "opencodebuddy.node.path";
-
     private final HandlerContext context;
+    private final OpenCodeBuddySettingsService settingsService;
     private final Gson gson = new Gson();
 
     public NodePathHandler(HandlerContext context) {
+        this(context, new OpenCodeBuddySettingsService());
+    }
+
+    public NodePathHandler(HandlerContext context, OpenCodeBuddySettingsService settingsService) {
         this.context = context;
+        this.settingsService = settingsService != null ? settingsService : new OpenCodeBuddySettingsService();
     }
 
     /**
@@ -36,8 +40,7 @@ public class NodePathHandler {
     public void handleGetNodePath() {
         CompletableFuture.runAsync(() -> {
             try {
-                PropertiesComponent props = PropertiesComponent.getInstance();
-                String saved = props.getValue(NODE_PATH_PROPERTY_KEY);
+                String saved = settingsService.getNodePath();
                 String pathToSend = "";
                 String versionToSend = null;
 
@@ -51,15 +54,16 @@ public class NodePathHandler {
                         // Saved path is invalid, clear it and trigger re-detection
                         LOG.warn("[NodePathHandler] Saved Node.js path is invalid: " + trimmedPath
                             + ", clearing and triggering re-detection");
-                        props.unsetValue(NODE_PATH_PROPERTY_KEY);
-                        NodeDetector.getInstance().setNodeExecutable(null);
+                        try {
+                            settingsService.setNodePath(null);
+                        } catch (Exception ignored) {
+                        }
                         NodeDetector.getInstance().setNodeExecutable(null);
 
                         NodeDetectionResult detected = NodeDetector.getInstance().detectNodeWithDetails();
                         if (detected != null && detected.isFound() && detected.getNodePath() != null) {
                             pathToSend = detected.getNodePath();
                             versionToSend = detected.getNodeVersion();
-                            props.setValue(NODE_PATH_PROPERTY_KEY, pathToSend);
                             NodeDetector.getInstance().verifyAndCacheNodePath(pathToSend);
                             NodeDetector.getInstance().setNodeExecutable(pathToSend);
                         }
@@ -69,8 +73,6 @@ public class NodePathHandler {
                     if (detected != null && detected.isFound() && detected.getNodePath() != null) {
                         pathToSend = detected.getNodePath();
                         versionToSend = detected.getNodeVersion();
-                        props.setValue(NODE_PATH_PROPERTY_KEY, pathToSend);
-                        // Use verifyAndCacheNodePath instead of setNodeExecutable to ensure version info is cached
                         NodeDetector.getInstance().verifyAndCacheNodePath(pathToSend);
                         NodeDetector.getInstance().setNodeExecutable(pathToSend);
                     }
@@ -107,7 +109,6 @@ public class NodePathHandler {
         LOG.debug("[NodePathHandler] ========== handleSetNodePath START ==========");
         LOG.debug("[NodePathHandler] Received content: " + content);
 
-        // Parse path on the CEF IO thread — pure JSON parsing, no I/O, safe to do synchronously
         String parsedPath = null;
         try {
             JsonObject json = gson.fromJson(content, JsonObject.class);
@@ -123,18 +124,19 @@ public class NodePathHandler {
         }
         final String pathArg = (parsedPath != null) ? parsedPath.trim() : null;
 
-        // All I/O and process-spawning runs in a background thread
         CompletableFuture.runAsync(() -> {
             try {
-                PropertiesComponent props = PropertiesComponent.getInstance();
                 String finalPath = "";
                 String versionToSend = null;
                 boolean verifySuccess = false;
                 String failureMsg = null;
 
                 if (pathArg == null || pathArg.isEmpty()) {
-                    props.unsetValue(NODE_PATH_PROPERTY_KEY);
-                    NodeDetector.getInstance().setNodeExecutable(null);
+                    try {
+                        settingsService.setNodePath(null);
+                    } catch (Exception e) {
+                        LOG.warn("[NodePathHandler] Failed to clear nodePath in config.json: " + e.getMessage());
+                    }
                     NodeDetector.getInstance().setNodeExecutable(null);
                     LOG.info("[NodePathHandler] Cleared manual Node.js path from settings");
 
@@ -142,8 +144,6 @@ public class NodePathHandler {
                     if (detected != null && detected.isFound() && detected.getNodePath() != null) {
                         finalPath = detected.getNodePath();
                         versionToSend = detected.getNodeVersion();
-                        props.setValue(NODE_PATH_PROPERTY_KEY, finalPath);
-                        // Use verifyAndCacheNodePath to ensure version info is cached
                         NodeDetector.getInstance().verifyAndCacheNodePath(finalPath);
                         NodeDetector.getInstance().setNodeExecutable(finalPath);
                         verifySuccess = true;
@@ -151,21 +151,26 @@ public class NodePathHandler {
                         failureMsg = "已清空自定义路径，但无法自动检测到 Node.js，请手动配置路径";
                     }
                 } else {
+                    String resolvedPath = OpenCodeCliPathHandler.resolveValidCliPath(pathArg);
+                    String candidatePath = resolvedPath != null ? resolvedPath : pathArg;
+
                     // Verify before saving to avoid caching invalid path
-                    NodeDetectionResult result = NodeDetector.getInstance().verifyAndCacheNodePath(pathArg);
+                    NodeDetectionResult result = NodeDetector.getInstance().verifyAndCacheNodePath(candidatePath);
                     if (result != null && result.isFound()) {
-                        // Only save if verification succeeds
-                        props.setValue(NODE_PATH_PROPERTY_KEY, pathArg);
-                        NodeDetector.getInstance().setNodeExecutable(pathArg);
-                        finalPath = pathArg;
+                        try {
+                            settingsService.setNodePath(candidatePath);
+                        } catch (Exception e) {
+                            LOG.warn("[NodePathHandler] Failed to save nodePath in config.json: " + e.getMessage());
+                        }
+                        NodeDetector.getInstance().setNodeExecutable(candidatePath);
+                        finalPath = candidatePath;
                         versionToSend = result.getNodeVersion();
                         verifySuccess = true;
-                        LOG.info("[NodePathHandler] Saved manual Node.js path: " + pathArg);
+                        LOG.info("[NodePathHandler] Saved manual Node.js path: " + candidatePath);
                     } else {
-                        // Verification failed, don't save invalid path
                         finalPath = "";
                         failureMsg = result != null ? result.getErrorMessage() : "无法验证指定的 Node.js 路径";
-                        LOG.warn("[NodePathHandler] Node.js path verification failed: " + pathArg + " - " + failureMsg);
+                        LOG.warn("[NodePathHandler] Node.js path verification failed: " + candidatePath + " - " + failureMsg);
                     }
                 }
 
@@ -182,10 +187,7 @@ public class NodePathHandler {
 
                     if (successFlag) {
                         context.broadcastToAll("window.updateNodePath", context.escapeJs(gson.toJson(response)));
-                        // Trigger environment re-check, no IDE restart needed
                         context.callJavaScript("window.showSwitchSuccess", context.escapeJs("Node.js 路径已保存并生效,无需重启IDE"));
-
-                        // Notify DependencySection to re-check Node.js environment
                         context.callJavaScript("window.checkNodeEnvironment");
                     } else {
                         context.callJavaScript("window.updateNodePath", context.escapeJs(gson.toJson(response)));

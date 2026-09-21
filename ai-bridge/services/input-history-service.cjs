@@ -1,15 +1,15 @@
 /**
  * Input history service module
  * Responsible for persistent storage of user input history
- * Storage location: ~/.codemoss/inputHistory.json
+ * Storage location: ~/.opencodebuddy/inputHistory.json
  */
 
 const fs = require('fs');
 const path = require('path');
-const { getCodemossDir } = require('../utils/path-utils.cjs');
+const { getOpenCodeBuddyDir } = require('../utils/path-utils.cjs');
 
-const CODEMOSS_DIR = getCodemossDir();
-const HISTORY_FILE = path.join(CODEMOSS_DIR, 'inputHistory.json');
+const OPENCODEBUDDY_DIR = getOpenCodeBuddyDir();
+const HISTORY_FILE = path.join(OPENCODEBUDDY_DIR, 'inputHistory.json');
 
 /** Maximum number of history items */
 const MAX_HISTORY_ITEMS = 200;
@@ -21,8 +21,8 @@ const MAX_COUNT_RECORDS = 200;
  * Ensure the directory exists
  */
 function ensureDir() {
-  if (!fs.existsSync(CODEMOSS_DIR)) {
-    fs.mkdirSync(CODEMOSS_DIR, { recursive: true });
+  if (!fs.existsSync(OPENCODEBUDDY_DIR)) {
+    fs.mkdirSync(OPENCODEBUDDY_DIR, { recursive: true });
   }
 }
 

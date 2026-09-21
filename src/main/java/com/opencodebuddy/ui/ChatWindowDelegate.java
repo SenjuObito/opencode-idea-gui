@@ -2,7 +2,7 @@ package com.opencodebuddy.ui;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.session.OpencodeSession;
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.handler.AgentHandler;
 import com.opencodebuddy.handler.ClipboardHandler;
 import com.opencodebuddy.handler.ContextHandler;
@@ -73,7 +73,7 @@ public class ChatWindowDelegate {
         Project getProject();
         OpenCodeSDKBridge getOpenCodeSDKBridge();
         OpencodeSession getSession();
-        CodemossSettingsService getSettingsService();
+        OpenCodeBuddySettingsService getSettingsService();
         JPanel getMainPanel();
         JBCefBrowser getBrowser();
         boolean isDisposed();
@@ -208,7 +208,7 @@ public class ChatWindowDelegate {
     public void initializeHandlers() {
         Project project = host.getProject();
         OpenCodeSDKBridge openCodeSDKBridge = host.getOpenCodeSDKBridge();
-        CodemossSettingsService settingsService = host.getSettingsService();
+        OpenCodeBuddySettingsService settingsService = host.getSettingsService();
 
         HandlerContext.JsCallback jsCallback = new HandlerContext.JsCallback() {
             @Override
@@ -359,7 +359,7 @@ public class ChatWindowDelegate {
             com.opencodebuddy.notifications.OpencodeNotifier.setModel(project, model);
 
             try {
-                CodemossSettingsService settingsService = host.getSettingsService();
+                OpenCodeBuddySettingsService settingsService = host.getSettingsService();
                 String selectedId = settingsService.getSelectedAgentId();
                 if (selectedId != null) {
                     JsonObject agent = settingsService.getAgent(selectedId);
@@ -535,7 +535,7 @@ public class ChatWindowDelegate {
     static int resolveModelContextLimitForRecovery(
             String provider,
             String model,
-            CodemossSettingsService settingsService
+            OpenCodeBuddySettingsService settingsService
     ) {
         return ModelProviderHandler.getModelContextLimit(provider, model);
     }

@@ -21,14 +21,14 @@ function getRealHomeDir() {
   return cachedRealHomeDir;
 }
 
-function getCodemossDir() {
-  if (process.env.CODEMOSS_HOME) {
-    return process.env.CODEMOSS_HOME;
+function getOpenCodeBuddyDir() {
+  if (process.env.OPENCODEBUDDY_HOME) {
+    return process.env.OPENCODEBUDDY_HOME;
   }
-  return path.join(getRealHomeDir(), '.codemoss');
+  return path.join(getRealHomeDir(), '.opencodebuddy');
 }
 
 module.exports = {
   getRealHomeDir,
-  getCodemossDir,
+  getOpenCodeBuddyDir,
 };

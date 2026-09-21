@@ -22,7 +22,7 @@ public class ConfigPathManager {
     private static final String PROMPT_FILE_NAME = "prompt.json";
 
     /**
-     * Get the configuration file path (~/.codemoss/config.json).
+     * Get the configuration file path (~/.opencodebuddy/config.json).
      */
     public String getConfigPath() {
         String homeDir = NodeDetector.resolveHomeForFileOps();

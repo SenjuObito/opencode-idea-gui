@@ -10,7 +10,7 @@ import java.nio.file.Paths;
 
 /**
  * Project Prompt Manager.
- * Manages prompts stored in the project directory (<project>/.codemoss/prompt.json).
+ * Manages prompts stored in the project directory (<project>/.opencodebuddy/prompt.json).
  * These prompts are specific to the current project.
  */
 public class ProjectPromptManager extends AbstractPromptManager {
@@ -28,7 +28,7 @@ public class ProjectPromptManager extends AbstractPromptManager {
 
     /**
      * Get the storage path for project-specific prompts.
-     * @return Path to <project>/.codemoss/prompt.json
+     * @return Path to <project>/.opencodebuddy/prompt.json
      * @throws IllegalStateException if project is not available or has no base path
      */
     @Override
@@ -36,12 +36,12 @@ public class ProjectPromptManager extends AbstractPromptManager {
         if (project == null || project.getBasePath() == null) {
             throw new IllegalStateException("Project not available");
         }
-        return Paths.get(project.getBasePath(), ".codemoss", "prompt.json");
+        return Paths.get(project.getBasePath(), ".opencodebuddy", "prompt.json");
     }
 
     /**
      * Ensure the storage directory exists.
-     * Creates <project>/.codemoss directory if it doesn't exist.
+     * Creates <project>/.opencodebuddy directory if it doesn't exist.
      * @throws IOException if directory creation fails
      */
     @Override

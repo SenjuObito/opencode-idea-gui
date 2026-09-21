@@ -2,8 +2,8 @@
  * Skills type definitions
  *
  * Skills are custom command and feature extensions stored in specific directories:
- * - Global: ~/.claude/skills (enabled) / ~/.codemoss/skills/global (disabled)
- * - Local: {workspace}/.claude/skills (enabled) / ~/.codemoss/skills/{project-hash} (disabled)
+ * - Global: ~/.claude/skills (enabled) / ~/.opencodebuddy/skills/global (disabled)
+ * - Local: {workspace}/.claude/skills (enabled) / ~/.opencodebuddy/skills/{project-hash} (disabled)
  *
  * Each skill can be a file (.md) or a directory (containing skill.md)
  */

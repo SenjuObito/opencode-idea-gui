@@ -1283,4 +1283,25 @@ describe('preserveStreamingAssistantContent — raw blocks protection', () => {
     expect((blocks[0].thinking as string).length).toBe(longThinking.length);
     expect(blocks[1].text).toBe('answer');
   });
+
+  it('inserts optimistic user message before trailing assistant message in nextList', () => {
+    const prev = [
+      makeUserMsg('User prompt 1'),
+      makeAssistantMsg('Assistant reply 1'),
+      makeUserMsg('User prompt 2 (optimistic)', { isOptimistic: true }),
+    ];
+    // Backend snapshot contains active streaming assistant reply for turn 2 without user prompt 2
+    const next = [
+      makeUserMsg('User prompt 1'),
+      makeAssistantMsg('Assistant reply 1'),
+      makeAssistantMsg('Assistant reply 2', { isStreaming: true, __turnId: 2 }),
+    ];
+
+    const result = appendOptimisticMessageIfMissing(prev, next);
+    expect(result).toHaveLength(4);
+    expect(result[0].content).toBe('User prompt 1');
+    expect(result[1].content).toBe('Assistant reply 1');
+    expect(result[2].content).toBe('User prompt 2 (optimistic)');
+    expect(result[3].content).toBe('Assistant reply 2');
+  });
 });

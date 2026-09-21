@@ -170,6 +170,9 @@ public class OpencodeSession {
         default void onTaskEvent(String eventJson) {
         }
 
+        default void onTodoUpdated(String jsonContent) {
+        }
+
         default void onQuestionRequested(String jsonContent) {
         }
 
@@ -247,6 +250,14 @@ public class OpencodeSession {
 
     public void setCallback(SessionCallback callback) {
         callbackFacade.setCallback(callback);
+    }
+
+    public CallbackHandler getCallbackHandler() {
+        return callbackFacade.getCallbackHandler();
+    }
+
+    public SessionCallbackFacade getCallbackFacade() {
+        return callbackFacade;
     }
 
     public com.opencodebuddy.session.EditorContextCollector getContextCollector() {

@@ -1,6 +1,6 @@
 package com.opencodebuddy.ui;
 
-import com.opencodebuddy.settings.CodemossSettingsService;
+import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.util.IgnoreRuleMatcher;
 import com.opencodebuddy.util.JsUtils;
 import com.intellij.openapi.application.ApplicationManager;
@@ -90,8 +90,8 @@ public class EditorContextTracker {
             try {
                 String projectPath = project.getBasePath();
                 if (projectPath != null) {
-                    CodemossSettingsService settingsService =
-                        new CodemossSettingsService();
+                    OpenCodeBuddySettingsService settingsService =
+                        new OpenCodeBuddySettingsService();
                     boolean autoOpenFileEnabled = settingsService.getAutoOpenFileEnabled(projectPath);
                     if (!autoOpenFileEnabled) {
                         // If auto-open file is disabled, clear the ContextBar display

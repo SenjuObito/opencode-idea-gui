@@ -7,7 +7,7 @@ import java.nio.file.Path;
 
 /**
  * Global Prompt Manager.
- * Manages prompts stored in the user's home directory (~/.codemoss/prompt.json).
+ * Manages prompts stored in the user's home directory (~/.opencodebuddy/prompt.json).
  * These prompts are available across all projects for the user.
  */
 public class GlobalPromptManager extends AbstractPromptManager {
@@ -25,7 +25,7 @@ public class GlobalPromptManager extends AbstractPromptManager {
 
     /**
      * Get the storage path for global prompts.
-     * @return Path to ~/.codemoss/prompt.json
+     * @return Path to ~/.opencodebuddy/prompt.json
      */
     @Override
     protected Path getStoragePath() {
@@ -34,7 +34,7 @@ public class GlobalPromptManager extends AbstractPromptManager {
 
     /**
      * Ensure the storage directory exists.
-     * Creates ~/.codemoss directory if it doesn't exist.
+     * Creates ~/.opencodebuddy directory if it doesn't exist.
      */
     @Override
     protected void ensureStorageDirectory() throws IOException {

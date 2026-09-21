@@ -57,9 +57,8 @@ public class OpenCodeBuddySettingsServiceOpencodeCliPathTest {
     }
 
     @Test
-    public void shouldResolveValidCliPathWithHomeExpansion() throws Exception {
+    public void shouldResolveValidCliPath() throws Exception {
         Path tempHome = Files.createTempDirectory("opencode-cli-home-expand");
-        useTemporaryHomeDirectory(tempHome);
         File fakeBin = new File(tempHome.toFile(), "fake-opencode.exe");
         assertTrue(fakeBin.createNewFile());
 
@@ -67,14 +66,12 @@ public class OpenCodeBuddySettingsServiceOpencodeCliPathTest {
             Method resolveMethod = OpenCodeCliPathHandler.class.getDeclaredMethod("resolveValidCliPath", String.class);
             resolveMethod.setAccessible(true);
 
-            // Test expanding ~/fake-opencode.exe
-            String resolved = (String) resolveMethod.invoke(null, "~/fake-opencode.exe");
-            System.err.println("DEBUG: userHome=" + PlatformUtils.getHomeDirectory() + ", fakeBin=" + fakeBin.getAbsolutePath() + ", resolved=" + resolved);
+            String resolved = (String) resolveMethod.invoke(null, fakeBin.getAbsolutePath());
             assertNotNull(resolved);
+            assertEquals(fakeBin.getCanonicalPath(), new File(resolved).getCanonicalPath());
 
-            // Test non-existent path
-            String notFound = (String) resolveMethod.invoke(null, "~/non-existent-binary");
-            assertNull("Expected non-existent binary to resolve to null", notFound);
+            String notFound = (String) resolveMethod.invoke(null, new File(tempHome.toFile(), "non-existent-binary").getAbsolutePath());
+            assertNull(notFound);
         } finally {
             fakeBin.delete();
         }

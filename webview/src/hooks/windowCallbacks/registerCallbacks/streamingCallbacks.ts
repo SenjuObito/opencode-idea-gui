@@ -144,6 +144,32 @@ export function collectUnresolvedToolUseIds(
  * arrives for this duration while isStreamingRef is still true, the frontend
 
 /**
+ * Safely extracts raw content blocks from raw (handles object or JSON string).
+ */
+const getRawContentBlocks = (raw: unknown): unknown[] => {
+  if (!raw) return [];
+  let parsedRaw: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsedRaw = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!parsedRaw || typeof parsedRaw !== 'object') return [];
+  const content = (parsedRaw as { message?: { content?: unknown }; content?: unknown }).message?.content
+    ?? (parsedRaw as { content?: unknown }).content;
+  return Array.isArray(content) ? content : [];
+};
+
+/**
+ * Whether the raw field contains any content blocks (text, tool_use, thinking, etc.).
+ */
+function rawHasContent(raw: unknown): boolean {
+  return getRawContentBlocks(raw).length > 0;
+}
+
+/**
  * Whether a streaming assistant bubble has any renderable content yet.
  * An empty bubble (no text, no raw blocks) is an unfilled placeholder that can
  * be safely reused for a new turn instead of being left behind as a ghost.
@@ -152,38 +178,16 @@ function streamingBubbleHasContent(message: ClaudeMessage): boolean {
   if (typeof message.content === 'string' && message.content.trim().length > 0) {
     return true;
   }
-  const raw = message.raw;
-  if (raw && typeof raw === 'object') {
-    const content = (raw as { message?: { content?: unknown }; content?: unknown }).message?.content
-      ?? (raw as { content?: unknown }).content;
-    if (Array.isArray(content) && content.length > 0) return true;
-  }
-  return false;
+  return rawHasContent(message.raw);
 }
 
 // Helper to measure total text length from raw blocks (for comparing completeness).
 // Handles both object and JSON string formats of raw.
 type TextBlock = { type: 'text'; text: string };
-const hasTextBlocks = (value: unknown): value is { message: { content: TextBlock[] } } => {
-  if (!value || typeof value !== 'object') return false;
-  const msg = (value as { message?: unknown }).message;
-  if (!msg || typeof msg !== 'object') return false;
-  const content = (msg as { content?: unknown }).content;
-  return Array.isArray(content);
-};
 const getTextLenFromRaw = (raw: unknown): number => {
-  let parsedRaw: unknown = raw;
-  if (typeof raw === 'string') {
-    try {
-      parsedRaw = JSON.parse(raw);
-    } catch (error) {
-      console.warn('[Frontend] Failed to parse raw JSON for length comparison:', error);
-      return 0;
-    }
-  }
-  if (!hasTextBlocks(parsedRaw)) return 0;
-  return parsedRaw.message.content
-    .filter((b): b is TextBlock => b?.type === 'text' && typeof b.text === 'string')
+  const blocks = getRawContentBlocks(raw);
+  return blocks
+    .filter((b): b is TextBlock => (b as TextBlock)?.type === 'text' && typeof (b as TextBlock).text === 'string')
     .reduce((sum, b) => sum + b.text.length, 0);
 };
 
@@ -682,12 +686,20 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         // raw (updated by subsequent deltas) could actually be more up-to-date.
         let finalRaw = newMessages[idx].raw;
         if (endedBackendRaw != null) {
-          if (getTextLenFromRaw(endedBackendRaw) >= getTextLenFromRaw(finalRaw)) {
+          const backendTextLen = getTextLenFromRaw(endedBackendRaw);
+          const existingTextLen = getTextLenFromRaw(finalRaw);
+          const backendBlocks = getRawContentBlocks(endedBackendRaw);
+          const existingBlocks = getRawContentBlocks(finalRaw);
+
+          if (backendTextLen > existingTextLen || (backendTextLen === existingTextLen && backendBlocks.length >= existingBlocks.length)) {
             finalRaw = endedBackendRaw;
           }
         }
-        const rawContentLen = getTextLenFromRaw(finalRaw);
-        if (!finalContent && rawContentLen === 0) {
+        const hasAnyContent = Boolean(
+          (typeof finalContent === 'string' && finalContent.trim().length > 0) ||
+          rawHasContent(finalRaw)
+        );
+        if (!hasAnyContent) {
           newMessages.splice(idx, 1);
         } else {
           newMessages[idx] = {

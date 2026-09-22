@@ -19,10 +19,13 @@ function normalizeServerKey(value: string | undefined): string {
 }
 
 function getTerminalStatusNames(statusList: McpServerStatusInfo[]): Set<string> {
+  if (!Array.isArray(statusList)) {
+    return new Set();
+  }
   return new Set(
     statusList
-      .filter((status) => TERMINAL_DISCONNECT_STATUSES.has(status.status))
-      .map((status) => normalizeServerKey(status.name))
+      .filter((status) => status && TERMINAL_DISCONNECT_STATUSES.has(status.status))
+      .map((status) => normalizeServerKey(status?.name))
       .filter(Boolean),
   );
 }
@@ -218,13 +221,15 @@ export function useServerData({
       }
 
       const cachedStatus = readCache<McpServerStatusInfo[]>(cacheKeys.STATUS, cacheKeys);
-      if (cachedStatus && cachedStatus.length > 0) {
+      if (Array.isArray(cachedStatus) && cachedStatus.length > 0) {
         const terminalStatusNames = getTerminalStatusNames(cachedStatus);
         terminalStatusNamesRef.current = terminalStatusNames;
         clearToolsForTerminalStatuses(cachedServers || [], terminalStatusNames);
         const statusMap = new Map<string, McpServerStatusInfo>();
         cachedStatus.forEach((status) => {
-          statusMap.set(status.name, status);
+          if (status?.name) {
+            statusMap.set(status.name, status);
+          }
         });
         setServerStatus(statusMap);
         setStatusLoading(false);
@@ -280,7 +285,14 @@ export function useServerData({
   useEffect(() => {
     const handleServerListUpdate = (jsonStr: string) => {
       try {
-        const serverList: McpServer[] = JSON.parse(jsonStr);
+        const raw = JSON.parse(jsonStr);
+        const serverList: McpServer[] = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.servers)
+            ? raw.servers
+            : Array.isArray(raw?.data)
+              ? raw.data
+              : [];
         setServers(serverList);
         clearToolsForTerminalStatuses(serverList, terminalStatusNamesRef.current);
         setLoading(false);
@@ -296,10 +308,21 @@ export function useServerData({
 
     const handleServerStatusUpdate = (jsonStr: string) => {
       try {
-        const statusList: McpServerStatusInfo[] = JSON.parse(jsonStr);
+        const raw = JSON.parse(jsonStr);
+        const statusList: McpServerStatusInfo[] = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.statuses)
+            ? raw.statuses
+            : Array.isArray(raw?.data)
+              ? raw.data
+              : raw && typeof raw === 'object' && raw.name
+                ? [raw]
+                : [];
         const statusMap = new Map<string, McpServerStatusInfo>();
         statusList.forEach((status) => {
-          statusMap.set(status.name, status);
+          if (status?.name) {
+            statusMap.set(status.name, status);
+          }
         });
         setServerStatus(statusMap);
         const terminalStatusNames = getTerminalStatusNames(statusList);

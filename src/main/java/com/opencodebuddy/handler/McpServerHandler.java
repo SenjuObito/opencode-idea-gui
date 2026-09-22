@@ -143,11 +143,25 @@ public class McpServerHandler extends BaseMessageHandler {
                 context.getOpenCodeSDKBridge().getMcpStatus(cwd)
                     .thenAccept(statusElement -> {
                         Gson gson = new Gson();
-                        String statusJson = gson.toJson(statusElement);
+                        com.google.gson.JsonArray statusList;
+                        if (statusElement != null && statusElement.isJsonArray()) {
+                            statusList = statusElement.getAsJsonArray();
+                        } else if (statusElement != null && statusElement.isJsonObject()) {
+                            JsonObject obj = statusElement.getAsJsonObject();
+                            if (obj.has("statuses") && obj.get("statuses").isJsonArray()) {
+                                statusList = obj.getAsJsonArray("statuses");
+                            } else if (obj.has("data") && obj.get("data").isJsonArray()) {
+                                statusList = obj.getAsJsonArray("data");
+                            } else {
+                                statusList = new com.google.gson.JsonArray();
+                            }
+                        } else {
+                            statusList = new com.google.gson.JsonArray();
+                        }
+
+                        String statusJson = gson.toJson(statusList);
 
                         // Add debug logging to help troubleshoot name matching issues
-                        com.google.gson.JsonArray statusList = statusElement != null && statusElement.isJsonArray()
-                                ? statusElement.getAsJsonArray() : new com.google.gson.JsonArray();
                         LOG.info("[McpServerHandler] MCP server status received: " + statusList.size() + " servers");
                         for (com.google.gson.JsonElement element : statusList) {
                             if (element.isJsonObject()) {

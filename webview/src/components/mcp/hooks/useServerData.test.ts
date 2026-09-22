@@ -105,4 +105,45 @@ describe('useServerData terminal MCP status handling', () => {
     expect(readToolsCache(server.id, cacheKeys)).toBeNull();
     hook.unmount();
   });
+
+  it('handles server status update when payload is wrapped in an object', () => {
+    const hook = renderServerData();
+
+    act(() => {
+      window.updateMcpServers?.(JSON.stringify([server]));
+    });
+
+    act(() => {
+      window.updateMcpServerStatus?.(JSON.stringify({
+        success: true,
+        provider: 'opencode',
+        statuses: [{
+          name: server.name,
+          status: 'connected',
+        }],
+      }));
+    });
+
+    expect(hook.result.current.serverStatus.get(server.name)?.status).toBe('connected');
+    expect(onLog).toHaveBeenCalledWith(
+      expect.stringContaining('mcp.logs.statusUpdateComplete'),
+      'success'
+    );
+    hook.unmount();
+  });
+
+  it('handles server list update when payload is wrapped in an object', () => {
+    const hook = renderServerData();
+
+    act(() => {
+      window.updateMcpServers?.(JSON.stringify({
+        success: true,
+        servers: [server],
+      }));
+    });
+
+    expect(hook.result.current.servers).toEqual([server]);
+    expect(hook.result.current.loading).toBe(false);
+    hook.unmount();
+  });
 });

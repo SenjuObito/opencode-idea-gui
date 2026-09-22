@@ -90,7 +90,7 @@ public class WindowEventHandler extends BaseMessageHandler {
                 handleUnrevertSession();
                 return true;
             case "compact_session":
-                handleCompactSession();
+                handleCompactSession(content);
                 return true;
             default:
                 return false;
@@ -362,22 +362,40 @@ public class WindowEventHandler extends BaseMessageHandler {
         });
     }
 
-    private void handleCompactSession() {
-        requestDaemonJson("summarize", () -> singleSessionParams(null), new ResponseHandler() {
+    private void handleCompactSession(String content) {
+        String model = null;
+        if (content != null && !content.isBlank()) {
+            try {
+                com.google.gson.JsonElement el = com.google.gson.JsonParser.parseString(content);
+                if (el.isJsonObject()) {
+                    com.google.gson.JsonObject obj = el.getAsJsonObject();
+                    if (obj.has("model") && !obj.get("model").isJsonNull()) {
+                        model = obj.get("model").getAsString();
+                    }
+                } else if (el.isJsonPrimitive()) {
+                    model = el.getAsString();
+                }
+            } catch (Exception e) {
+                model = content.trim();
+            }
+        }
+        final String resolvedModel = (model != null && !model.isBlank()) ? model.trim() : null;
+        final String targetSessionId = sessionIdOrEmpty();
+        requestDaemonJson("summarize", () -> singleSessionParams(targetSessionId, resolvedModel), new ResponseHandler() {
             @Override
             public void onError(String error) {
                 LOG.error("[WindowEventHandler] Compact session failed: " + error);
-                callJavaScript("onCompactError", error != null ? error : "");
+                callJavaScript("onCompactError", targetSessionId, error != null ? error : "");
             }
 
             @Override
             public void onComplete(boolean success, java.util.List<String> chunks) {
                 if (success) {
                     LOG.info("[WindowEventHandler] Compact session succeeded");
-                    callJavaScript("onCompactSuccess", "");
+                    callJavaScript("onCompactSuccess", targetSessionId);
                 } else {
                     LOG.error("[WindowEventHandler] Compact session failed (success=false)");
-                    callJavaScript("onCompactError", "");
+                    callJavaScript("onCompactError", targetSessionId, "");
                 }
             }
         });
@@ -430,12 +448,19 @@ public class WindowEventHandler extends BaseMessageHandler {
     }
 
     private com.google.gson.JsonObject singleSessionParams(String sessionId) {
+        return singleSessionParams(sessionId, null);
+    }
+
+    private com.google.gson.JsonObject singleSessionParams(String sessionId, String model) {
         String id = sessionId != null && !sessionId.isBlank() ? sessionId : sessionIdOrEmpty();
         com.google.gson.JsonObject params = new com.google.gson.JsonObject();
         params.addProperty("sessionId", id);
         String cwd = context.resolveEffectiveWorkingDirectory();
         if (cwd != null && !cwd.isBlank()) {
             params.addProperty("directory", cwd);
+        }
+        if (model != null && !model.isBlank()) {
+            params.addProperty("model", model);
         }
         return params;
     }

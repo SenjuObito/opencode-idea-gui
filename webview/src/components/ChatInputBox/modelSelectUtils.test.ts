@@ -71,7 +71,7 @@ describe('modelSelectUtils', () => {
       expect(readPinnedModelIds('kimi')).toEqual([]);
 
       const afterAdd = togglePinnedModelId('opencode', 'deepseek/deepseek-v4-flash-free');
-      expect(afterAdd).toEqual(['deepseek/deepseek-v4-flash-free', 'opencode/big-pickle']);
+      expect(afterAdd).toEqual(['opencode/big-pickle', 'deepseek/deepseek-v4-flash-free']);
 
       const afterRemove = togglePinnedModelId('opencode', 'opencode/big-pickle');
       expect(afterRemove).toEqual(['deepseek/deepseek-v4-flash-free']);
@@ -92,11 +92,11 @@ describe('modelSelectUtils', () => {
       expect(readPinnedModelIds('opencode')).toEqual(['opencode/custom-1']);
     });
 
-    it('places newly pinned models at the top (front) of the list so the first pinned is preferred', () => {
+    it('places newly pinned models at the end of the list so the first pinned remains first', () => {
       togglePinnedModelId('opencode', 'model-1');
       togglePinnedModelId('opencode', 'model-2');
       togglePinnedModelId('opencode', 'model-3');
-      expect(readPinnedModelIds('opencode')).toEqual(['model-3', 'model-2', 'model-1']);
+      expect(readPinnedModelIds('opencode')).toEqual(['model-1', 'model-2', 'model-3']);
     });
   });
 
@@ -179,6 +179,17 @@ describe('modelSelectUtils', () => {
     it('returns the first available model when no pinned models and no valid cliDefaultModel exist', () => {
       expect(getFirstPreferredModelId('opencode', sampleModels, null)).toBe('opencode/m-first');
       expect(getFirstPreferredModelId('opencode', sampleModels, 'opencode/m-unknown')).toBe('opencode/m-first');
+    });
+
+    it('prefers the first-pinned model when multiple models are pinned in sequence', () => {
+      togglePinnedModelId('opencode', 'opencode/m-second');
+      togglePinnedModelId('opencode', 'opencode/m-third');
+      // m-second was pinned first (top), m-third pinned later (below)
+      expect(getFirstPreferredModelId('opencode', sampleModels, 'opencode/m-first')).toBe('opencode/m-second');
+
+      const { sections } = buildModelDropdownSections(sampleModels, readPinnedModelIds('opencode'));
+      expect(sections[0].id).toBe(PINNED_GROUP_ID);
+      expect(sections[0].models.map((m) => m.id)).toEqual(['opencode/m-second', 'opencode/m-third']);
     });
   });
 });

@@ -211,8 +211,8 @@ sequenceDiagram
 | `get_ui_preferences` | Webview → Host | 无 | Webview 就绪或设置页打开时获取宿主持久化的 UI 偏好 |
 | `set_ui_preferences` | Webview → Host | `JSON string` (Partial<UiPreferences>) | 偏好发生变动时增量推送至宿主持久化 |
 | `window.applyUiPreferences` | Host → Webview | `JSON string` (UiPreferences) | 宿主向 Webview 推送权威偏好完整镜像 |
-| `window.onCompactSuccess` | Host → Webview | 无 | 压缩成功通知，前端关闭 loading 并追加成功气泡 |
-| `window.onCompactError` | Host → Webview | `detail?: string` | 压缩失败通知，前端关闭 loading 并追加失败气泡 |
+| `window.onCompactSuccess` | Host → Webview | `targetSessionId?: string` | 压缩成功通知，前端校验匹配当前会话后关闭 loading 并追加成功气泡 |
+| `window.onCompactError` | Host → Webview | `targetSessionId?: string, detail?: string` | 压缩失败通知，前端校验匹配当前会话后关闭 loading 并追加失败气泡 |
 
 ---
 

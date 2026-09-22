@@ -33,6 +33,8 @@ export interface UseWindowCallbacksOptions {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoadingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
   setIsThinking: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsCompacting?: React.Dispatch<React.SetStateAction<boolean>>;
+  setCompactingStartTime?: React.Dispatch<React.SetStateAction<number | null>>;
   setExpandedThinking?: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setStreamingActive: React.Dispatch<React.SetStateAction<boolean>>;
   setSessionLoading: React.Dispatch<React.SetStateAction<boolean>>;

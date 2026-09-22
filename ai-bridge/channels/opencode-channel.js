@@ -239,7 +239,8 @@ export async function handleOpenCodeCommand(command, args, stdinData) {
     }
 
     case 'summarize': {
-      const { sessionId, directory, model } = stdinData || {};
+      const { sessionId, directory, model: explicitModel, providerID, modelID } = stdinData || {};
+      const model = explicitModel || (providerID && modelID ? `${providerID}/${modelID}` : undefined);
       // summarize 需要项目目录来运行摘要任务；宿主未传时回退到 daemon 记录的会话目录。
       // 与 listMessages 同因：resolveSummarizeModel 要查 session.get，冷 serve 会静默失败。
       console.error(`[summarize] start sessionId=${sessionId} directory=${directory || '-'} model=${model || '(session default)'} pid=${process.pid}`);

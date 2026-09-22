@@ -1,6 +1,5 @@
 package com.opencodebuddy.ui;
 
-import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.diagnostic.Logger;
 
 import javax.swing.*;

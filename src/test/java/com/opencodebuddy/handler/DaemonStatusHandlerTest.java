@@ -81,7 +81,7 @@ public class DaemonStatusHandlerTest {
         probe.preconnectResult.complete(true);
         waitForStatusCount(js, 2);
 
-        assertEquals("{\"alive\":false,\"serveReady\":false}",
+        assertEquals("{\"alive\":true,\"serveReady\":false}",
                 js.pushed.get(0).toString());
         assertEquals("{\"alive\":true,\"serveReady\":true}",
                 js.pushed.get(1).toString());

@@ -129,7 +129,7 @@ public class DaemonStatusHandler extends BaseMessageHandler {
             return;
         }
         // First determination (or after a death): show loading, then preconnect.
-        pushStatus(alive, false);
+        pushStatus(true, false);
         preconnectAndPush();
     }
 

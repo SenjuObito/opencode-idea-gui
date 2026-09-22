@@ -494,8 +494,10 @@ public class ProjectConfigHandler {
     public void handleGetEditorFontConfig() {
         try {
             String fontConfigJson = FontConfigService.getEditorFontConfig().toString();
-            ApplicationManager.getApplication().invokeLater(() ->
-                context.callJavaScript("window.onEditorFontConfigReceived", context.escapeJs(fontConfigJson)));
+            ApplicationManager.getApplication().invokeLater(() -> {
+                context.callJavaScript("window.onEditorFontConfigReceived", context.escapeJs(fontConfigJson));
+                context.callJavaScript("window.applyIdeaFontConfig", context.escapeJs(fontConfigJson));
+            });
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to get editor font config: " + e.getMessage(), e);
         }

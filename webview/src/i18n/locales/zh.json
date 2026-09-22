@@ -1527,6 +1527,10 @@
   "models": {
     "addModel": "添加模型",
     "searchPlaceholder": "搜索模型",
+    "refresh": "刷新模型列表",
+    "refreshing": "正在刷新...",
+    "refreshSuccess": "刷新成功",
+    "refreshFailed": "刷新失败",
     "noModelsFound": "未找到模型",
     "hiddenModelCount": "+ 还有 {{count}} 个模型。输入以搜索。",
     "pinned": "置顶",

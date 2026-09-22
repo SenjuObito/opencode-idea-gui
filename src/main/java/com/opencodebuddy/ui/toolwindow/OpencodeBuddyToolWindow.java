@@ -199,6 +199,21 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
         broadcastToProjectChatWindows(project, null, functionName, args);
     }
 
+    /**
+     * Trigger an immediate editor context check on all active chat windows of the given project.
+     */
+    public static void triggerContextUpdate(Project project) {
+        if (project == null) {
+            return;
+        }
+        Set<OpencodeBuddyChatWindow> windows = collectProjectChatWindows(project);
+        for (OpencodeBuddyChatWindow window : windows) {
+            if (window != null && !window.isDisposed()) {
+                window.triggerContextUpdate();
+            }
+        }
+    }
+
     private static void cleanupWindowProcesses(@NotNull OpencodeBuddyChatWindow window) {
         try {
             if (window.getOpenCodeSDKBridge() != null) {

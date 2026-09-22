@@ -95,13 +95,6 @@ public class CliModelsHandler extends BaseMessageHandler {
     }
 
     private void listModels(String provider) {
-        // Cache-first: whatever we have from the last successful fetch goes out
-        // immediately so the dropdown is usable while the refresh runs.
-        JsonObject cached = readCachedPayload(provider);
-        if (cached != null) {
-            pushPayload(cached);
-        }
-
         JsonObject refreshed = listModelsViaDaemon(provider);
         if (refreshed == null) {
             // Daemon unavailable or errored — fall back to the one-shot
@@ -109,9 +102,7 @@ public class CliModelsHandler extends BaseMessageHandler {
             refreshed = listModelsViaChannelManager(provider);
         }
         if (refreshed == null) {
-            if (cached == null) {
-                pushError(provider, "No model list available for " + provider);
-            }
+            pushError(provider, "No model list available for " + provider);
             return;
         }
         ensureProviderField(refreshed, provider);
@@ -246,21 +237,18 @@ public class CliModelsHandler extends BaseMessageHandler {
         CompletableFuture.runAsync(() -> {
             try {
                 CliModelsHandler handler = new CliModelsHandler(context);
-                JsonObject cached = handler.readCachedPayload("opencode");
                 JsonObject refreshed = handler.listModelsViaDaemon("opencode");
                 if (refreshed == null) {
                     refreshed = handler.listModelsViaChannelManager("opencode");
                 }
                 if (refreshed == null) {
-                    if (cached == null) {
-                        LOG.info("[CliModels] Warmup produced no model list yet");
-                    }
+                    LOG.info("[CliModels] Warmup produced no model list yet");
                     return;
                 }
                 handler.ensureProviderField(refreshed, "opencode");
                 handler.writeCachedPayload("opencode", refreshed);
                 handler.pushPayload(refreshed);
-                LOG.info("[CliModels] Model cache warmed via daemon");
+                LOG.info("[CliModels] Model list warmed via daemon");
             } catch (Exception e) {
                 LOG.debug("[CliModels] Warmup failed: " + e.getMessage());
             }

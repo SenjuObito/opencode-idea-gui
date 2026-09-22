@@ -48,6 +48,7 @@ public final class PluginFileLogger {
     private BufferedWriter writer;
     private long writtenBytes;
     private boolean disabled;
+    private boolean rotating;
 
     private PluginFileLogger() {
         this.file = resolveFile();
@@ -129,16 +130,26 @@ public final class PluginFileLogger {
                     new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8), 64 * 1024);
             this.writtenBytes = file.length();
             if (fresh) {
-                writeLocked("INFO", "FileLog", "Trace file created: " + file.getAbsolutePath(), null);
+                writeRawLineLocked("INFO", "FileLog", "Trace file created: " + file.getAbsolutePath());
             } else {
-                writeLocked("INFO", "FileLog",
-                        "--- new session, appending to " + file.getAbsolutePath() + " ---", null);
+                writeRawLineLocked("INFO", "FileLog",
+                        "--- new session, appending to " + file.getAbsolutePath() + " ---");
             }
             flushLocked();
         } catch (Exception e) {
             disabled = true;
             LOG.warn("[FileLog] Failed to open " + file, e);
         }
+    }
+
+    private void writeRawLineLocked(String level, String tag, String message) throws IOException {
+        if (writer == null) {
+            return;
+        }
+        String line = format(level, tag, message);
+        writer.write(line);
+        writer.newLine();
+        writtenBytes += line.length() + 1;
     }
 
     private void write(String level, String tag, String message, Throwable t) {
@@ -179,7 +190,7 @@ public final class PluginFileLogger {
                 writtenBytes += stack.length() + 1;
             }
             flushLocked();
-            if (writtenBytes > MAX_BYTES) {
+            if (writtenBytes > MAX_BYTES && !rotating) {
                 rotateLocked();
             }
         } catch (IOException e) {
@@ -223,22 +234,43 @@ public final class PluginFileLogger {
     }
 
     private void rotateLocked() {
+        if (rotating) {
+            return;
+        }
+        rotating = true;
         try {
-            writer.close();
-        } catch (IOException ignored) {
-            // best effort
-        }
-        for (int i = MAX_BACKUPS; i >= 1; i--) {
-            File src = i == 1 ? file : new File(file.getAbsolutePath() + "." + (i - 1));
-            File dst = new File(file.getAbsolutePath() + "." + i);
-            if (dst.exists() && !dst.delete()) {
-                // ignore
+            if (writer != null) {
+                try {
+                    writer.flush();
+                    writer.close();
+                } catch (IOException ignored) {
+                    // best effort
+                } finally {
+                    writer = null;
+                }
             }
-            if (src.exists() && !src.renameTo(dst)) {
-                // ignore
+            for (int i = MAX_BACKUPS; i >= 1; i--) {
+                File src = i == 1 ? file : new File(file.getAbsolutePath() + "." + (i - 1));
+                File dst = new File(file.getAbsolutePath() + "." + i);
+                if (dst.exists() && !dst.delete()) {
+                    // best effort
+                }
+                if (src.exists() && !src.renameTo(dst)) {
+                    // best effort
+                }
             }
+            // Fallback: If rename failed and the file is still oversized, truncate it to prevent infinite growth
+            if (file.exists() && file.length() >= MAX_BYTES) {
+                try (FileOutputStream fos = new FileOutputStream(file, false)) {
+                    // truncate file to 0 bytes
+                } catch (IOException ignored) {
+                    // best effort
+                }
+            }
+            open();
+        } finally {
+            rotating = false;
         }
-        open();
     }
 
     private synchronized void close() {

@@ -6,6 +6,7 @@ import { ModelSelect, ModeSelect, ReasoningSelect } from './selectors';
 import { useCliModels } from '../../hooks/providers/useCliModels';
 import { useToolbarSelectorCompact } from './hooks/useToolbarSelectorCompact';
 import { resolveProviderModels } from './resolveProviderModels';
+import { getFirstPreferredModelId } from './modelSelectUtils';
 
 /**
  * ButtonArea - Bottom toolbar component
@@ -84,7 +85,12 @@ export const ButtonArea = ({
     if (!availableModels.length || !onModelSelect) return;
     const exists = availableModels.some((model) => model.id === selectedModel);
     if (!exists) {
-      const fallbackId = cliDefaultModel ?? availableModels[0].id;
+      const fallbackId = getFirstPreferredModelId(currentProvider, availableModels, cliDefaultModel)
+        ?? (cliDefaultModel ?? availableModels[0].id);
+      if (selectedModel === 'opencode-default' || !selectedModel) {
+        onModelSelect(fallbackId);
+        return;
+      }
       const timer = window.setTimeout(() => {
         // Re-check against the *latest* state at fire time.
         const { models, selectedModel: currentSelection } = latestCatalogRef.current;
@@ -178,6 +184,7 @@ export const ButtonArea = ({
           loading={cliModelsLoading}
           error={cliModelsError}
           onRetry={() => refreshCliModels(currentProvider)}
+          onRefresh={() => refreshCliModels(currentProvider)}
           onAddModel={onAddModel}
         />
         <ReasoningSelect

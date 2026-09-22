@@ -118,6 +118,7 @@ public class DaemonStatusHandler extends BaseMessageHandler {
             // already delivered serveReady:true). Re-affirm it instead of regressing
             // the webview back to the "starting OpenCode service" loading state.
             pushStatus(true, true);
+            CliModelsHandler.warmupModelCache(context);
             return;
         }
         if (preconnectInFlight.get()) {

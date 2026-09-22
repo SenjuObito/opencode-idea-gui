@@ -30,4 +30,14 @@ public class DaemonLoggingAndProbeTest {
         assertTrue("Log file should exist or have valid directory path",
                 logFile.exists() || logFile.getParentFile().exists() || logFile.getParentFile().mkdirs());
     }
+
+    @Test
+    public void testPluginFileLoggerMultipleWritesAndRotationSafety() {
+        // Ensure repetitive writes work properly and do not cause stack overflow or recursion issues
+        for (int i = 0; i < 50; i++) {
+            PluginFileLogger.info("STRESS_TEST", "Logging message index: " + i);
+        }
+        File logFile = new File(PluginFileLogger.path());
+        assertTrue("Log file should exist", logFile.exists());
+    }
 }

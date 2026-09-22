@@ -7,6 +7,10 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
+import com.intellij.openapi.editor.event.CaretEvent;
+import com.intellij.openapi.editor.event.CaretListener;
+import com.intellij.openapi.editor.event.EditorMouseEvent;
+import com.intellij.openapi.editor.event.EditorMouseListener;
 import com.intellij.openapi.editor.event.SelectionEvent;
 import com.intellij.openapi.editor.event.SelectionListener;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
@@ -47,16 +51,26 @@ public class EditorContextTracker {
     }
 
     /**
-     * Register editor event listeners for file switching and text selection.
+     * Register editor event listeners for file switching, caret moving, and text selection.
      */
     public void registerListeners() {
         contextUpdateAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
         connection = project.getMessageBus().connect();
 
-        // Monitor file switching
+        // Monitor file switching, opening, and closing
         connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
             public void selectionChanged(@NotNull FileEditorManagerEvent event) {
+                scheduleContextUpdate();
+            }
+
+            @Override
+            public void fileOpened(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                scheduleContextUpdate();
+            }
+
+            @Override
+            public void fileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
                 scheduleContextUpdate();
             }
         });
@@ -71,9 +85,55 @@ public class EditorContextTracker {
             }
         };
         EditorFactory.getInstance().getEventMulticaster().addSelectionListener(selectionListener, connection);
+
+        // Monitor caret movements (cursor clicks without text selection)
+        CaretListener caretListener = new CaretListener() {
+            @Override
+            public void caretPositionChanged(@NotNull CaretEvent e) {
+                if (e.getEditor().getProject() == project) {
+                    scheduleContextUpdate();
+                }
+            }
+
+            @Override
+            public void caretAdded(@NotNull CaretEvent e) {
+                if (e.getEditor().getProject() == project) {
+                    scheduleContextUpdate();
+                }
+            }
+
+            @Override
+            public void caretRemoved(@NotNull CaretEvent e) {
+                if (e.getEditor().getProject() == project) {
+                    scheduleContextUpdate();
+                }
+            }
+        };
+        EditorFactory.getInstance().getEventMulticaster().addCaretListener(caretListener, connection);
+
+        // Monitor editor mouse clicks (focusing/clicking an editor tab)
+        EditorMouseListener mouseListener = new EditorMouseListener() {
+            @Override
+            public void mousePressed(@NotNull EditorMouseEvent event) {
+                if (event.getEditor().getProject() == project) {
+                    scheduleContextUpdate();
+                }
+            }
+
+            @Override
+            public void mouseClicked(@NotNull EditorMouseEvent event) {
+                if (event.getEditor().getProject() == project) {
+                    scheduleContextUpdate();
+                }
+            }
+        };
+        EditorFactory.getInstance().getEventMulticaster().addEditorMouseListener(mouseListener, connection);
+
+        // Initial context probe
+        scheduleContextUpdate();
     }
 
-    private void scheduleContextUpdate() {
+    public void scheduleContextUpdate() {
         if (disposed || contextUpdateAlarm == null) { return; }
         contextUpdateAlarm.cancelAllRequests();
         contextUpdateAlarm.addRequest(this::updateContextInfo, 200);

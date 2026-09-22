@@ -74,6 +74,7 @@ public class OpenCodeBuddySettingsService {
     private static final String DEFAULT_COMMIT_AI_OPENCODE_MODEL = "opencode-default";
     private static final String USER_LANGUAGE_CONFIG_KEY = "language";
     private static final String UI_PREFERENCES_KEY = "uiPreferences";
+    private static final String PINNED_MODELS_KEY = "pinnedModels";
     private static final String OPENCODE_CLI_PATH_KEY = "opencodeCliPath";
     private static final String NODE_PATH_KEY = "nodePath";
     private static final String SEND_SHORTCUT_KEY = "sendShortcut";
@@ -641,6 +642,34 @@ public class OpenCodeBuddySettingsService {
         config.add(UI_PREFERENCES_KEY, currentPrefs);
         writeConfig(config);
         LOG.debug("[OpenCodeBuddySettings] Updated UI preferences in config.json");
+    }
+
+    // ==================== Pinned Models Config Management ====================
+
+    public JsonObject getPinnedModels() throws IOException {
+        JsonObject config = readConfig();
+        if (!config.has(PINNED_MODELS_KEY) || !config.get(PINNED_MODELS_KEY).isJsonObject()) {
+            return new JsonObject();
+        }
+        return config.getAsJsonObject(PINNED_MODELS_KEY);
+    }
+
+    public void setPinnedModels(JsonObject pinnedModels) throws IOException {
+        JsonObject config = readConfig();
+        JsonObject currentPinned;
+        if (config.has(PINNED_MODELS_KEY) && config.get(PINNED_MODELS_KEY).isJsonObject()) {
+            currentPinned = config.getAsJsonObject(PINNED_MODELS_KEY);
+        } else {
+            currentPinned = new JsonObject();
+        }
+        if (pinnedModels != null) {
+            for (Map.Entry<String, JsonElement> entry : pinnedModels.entrySet()) {
+                currentPinned.add(entry.getKey(), entry.getValue());
+            }
+        }
+        config.add(PINNED_MODELS_KEY, currentPinned);
+        writeConfig(config);
+        LOG.debug("[OpenCodeBuddySettings] Updated pinned models in config.json");
     }
 
     // ==================== Permission Dialog Timeout Config Management ====================

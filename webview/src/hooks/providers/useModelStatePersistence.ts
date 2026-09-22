@@ -95,7 +95,9 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
             return;
           }
           sendBridgeEvent('set_provider', 'opencode');
-          sendBridgeEvent('set_model', restoredOpenCodeModel);
+          if (restoredOpenCodeModel && restoredOpenCodeModel !== OPENCODE_DEFAULT_MODEL_ID) {
+            sendBridgeEvent('set_model', restoredOpenCodeModel);
+          }
         } else {
           syncRetryCount++;
           if (syncRetryCount < MAX_SYNC_RETRIES) {

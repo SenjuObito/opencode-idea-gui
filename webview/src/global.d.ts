@@ -678,6 +678,13 @@ interface Window {
   applyUiPreferences?: (json: string) => void;
 
   /**
+   * Authoritative pinned models pushed by Java host from ~/.opencodebuddy/config.json.
+   */
+  applyPinnedModels?: (json: string) => void;
+  __INITIAL_PINNED_MODELS__?: Record<string, string[]>;
+  __pendingPinnedModels?: Record<string, string[]> | string;
+
+  /**
    * Update agents list
    */
   updateAgents?: (json: string) => void;
@@ -1132,6 +1139,7 @@ interface Window {
           defaultModel?: string;
         }
   ) => void;
+  __pendingCliModels?: unknown;
 }
 
 declare module 'mermaid' {

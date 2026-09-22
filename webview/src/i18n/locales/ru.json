@@ -1394,6 +1394,8 @@
   "models": {
     "addModel": "Добавить модель",
     "searchPlaceholder": "Поиск моделей",
+    "refresh": "Обновить список моделей",
+    "refreshing": "Обновление...",
     "noModelsFound": "Модели не найдены",
     "hiddenModelCount": "+ {{count}} дополнительных моделей. Введите текст для поиска.",
     "pinned": "Закреплённые",

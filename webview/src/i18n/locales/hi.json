@@ -1367,6 +1367,8 @@
   "models": {
     "addModel": "मॉडल जोड़ें",
     "searchPlaceholder": "मॉडल खोजें",
+    "refresh": "मॉडल सूची रीफ़्रेश करें",
+    "refreshing": "रीफ़्रेश हो रहा है...",
     "noModelsFound": "कोई मॉडल नहीं मिला",
     "hiddenModelCount": "+ {{count}} और मॉडल. खोजने के लिए टाइप करें.",
     "pinned": "पिन किए गए",

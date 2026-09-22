@@ -108,7 +108,9 @@ public class SettingsHandler extends BaseMessageHandler {
         "clear_user_language",
         "set_provider",
         "get_ui_preferences",
-        "set_ui_preferences"
+        "set_ui_preferences",
+        "get_pinned_models",
+        "set_pinned_models"
     };
 
     public SettingsHandler(HandlerContext context) {
@@ -395,6 +397,29 @@ public class SettingsHandler extends BaseMessageHandler {
                     });
                 } catch (Exception e) {
                     LOG.warn("[SettingsHandler] Failed to set ui_preferences: " + e.getMessage());
+                }
+                return true;
+            case "get_pinned_models":
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    try {
+                        JsonObject pinned = context.getSettingsService().getPinnedModels();
+                        callJavaScript("window.applyPinnedModels", escapeJs(pinned.toString()));
+                    } catch (Exception e) {
+                        LOG.warn("[SettingsHandler] Failed to get pinned_models: " + e.getMessage());
+                        callJavaScript("window.applyPinnedModels", "{}");
+                    }
+                });
+                return true;
+            case "set_pinned_models":
+                try {
+                    JsonObject patch = gson.fromJson(content, JsonObject.class);
+                    context.getSettingsService().setPinnedModels(patch);
+                    JsonObject currentPinned = context.getSettingsService().getPinnedModels();
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        broadcastToAll("window.applyPinnedModels", escapeJs(currentPinned.toString()));
+                    });
+                } catch (Exception e) {
+                    LOG.warn("[SettingsHandler] Failed to set pinned_models: " + e.getMessage());
                 }
                 return true;
             default:

@@ -1522,6 +1522,10 @@
   "models": {
     "addModel": "Add Model",
     "searchPlaceholder": "Search models",
+    "refresh": "Refresh model list",
+    "refreshing": "Refreshing...",
+    "refreshSuccess": "Refresh succeeded",
+    "refreshFailed": "Refresh failed",
     "noModelsFound": "No models found",
     "hiddenModelCount": "+ {{count}} more models. Type to search.",
     "pinned": "Pinned",

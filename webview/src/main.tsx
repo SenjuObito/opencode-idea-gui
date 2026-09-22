@@ -19,6 +19,7 @@ import { setupDollarCommandsCallback } from './components/ChatInputBox/providers
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
 import { sendBridgeEvent, cardDebugLog } from './utils/bridge';
 import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
+import { installPinnedModelsBridge } from './components/ChatInputBox/modelSelectUtils';
 import { debugLog } from './utils/debug';
 import { waitForBridge } from './utils/bridgeStartup';
 import type { UiFontConfig, CodeFontConfig } from './types/uiFontConfig';
@@ -622,6 +623,14 @@ if (typeof window !== 'undefined' && !window.showPlanApprovalDialog) {
   };
 }
 
+if (typeof window !== 'undefined' && !window.setCliModels) {
+  debugLog('[Main] Pre-registering setCliModels placeholder');
+  window.setCliModels = (dataOrStr: any) => {
+    debugLog('[Main] Storing pending CLI models payload');
+    window.__pendingCliModels = dataOrStr;
+  };
+}
+
 if (typeof window !== 'undefined') {
   window.updateLinkifyCapabilities = (json: string) => {
     applyLinkifyCapabilitiesPayload(json);
@@ -632,6 +641,7 @@ if (typeof window !== 'undefined') {
 // the extension host; register the push callback before React mounts so an early
 // `applyUiPreferences` is never dropped.
 installUiPreferencesBridge();
+installPinnedModelsBridge();
 
 // Render the React application
 ReactDOM.createRoot(document.getElementById('app') as HTMLElement).render(
@@ -663,6 +673,7 @@ waitForBridge(() => {
   // Authoritative appearance / behaviour settings (host globalState). Sent
   // right after frontend_ready so the host can answer from warm state.
   requestUiPreferences();
+  sendBridgeEvent('get_pinned_models');
 
   debugLog('[Main] Sending refresh_slash_commands request');
   sendBridgeEvent('refresh_slash_commands');

@@ -50,14 +50,13 @@ describe('useModelStatePersistence — boot sync', () => {
     delete window.__INITIAL_TAB_MODEL__;
   });
 
-  it('syncs opencode provider and model on boot', () => {
+  it('syncs opencode provider without sending dummy model on boot', () => {
     renderHook(() => useModelStatePersistence(makeOptions()));
     vi.advanceTimersByTime(200); // fire the deferred syncToBackend
 
     expect(bridgeEventsFor('set_mode')).toHaveLength(0);
     expect(bridgeEventsFor('set_provider')).toHaveLength(1);
-    expect(bridgeEventsFor('set_provider')).toHaveLength(1);
-    expect(bridgeEventsFor('set_model')).toHaveLength(1);
+    expect(bridgeEventsFor('set_model')).toHaveLength(0);
   });
 
   it('keeps frontend boot synchronization enabled for a pre-ready startup retry', () => {
@@ -68,7 +67,7 @@ describe('useModelStatePersistence — boot sync', () => {
     vi.advanceTimersByTime(200);
 
     expect(bridgeEventsFor('set_provider')).toHaveLength(1);
-    expect(bridgeEventsFor('set_model')).toHaveLength(1);
+    expect(bridgeEventsFor('set_model')).toHaveLength(0);
   });
 
   it('does not echo the stale HTML provider or model during watchdog recovery', () => {
@@ -144,7 +143,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'opencode-default']]);
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
   it('treats a backend-supplied legacy provider as "no backend preference" but still applies initial tab model', () => {

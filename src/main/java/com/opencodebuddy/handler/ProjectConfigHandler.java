@@ -4,6 +4,7 @@ import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
+import com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow;
 import com.opencodebuddy.util.FontConfigService;
 import com.opencodebuddy.util.ThemeConfigService;
 import com.google.gson.Gson;
@@ -234,7 +235,12 @@ public class ProjectConfigHandler {
 
     public void handleSetAutoOpenFileEnabled(String content) {
         handleProjectBooleanToggle(content, "autoOpenFileEnabled", false, "auto open file enabled",
-            settingsService::setAutoOpenFileEnabled,
+            (projectPath, enabled) -> {
+                settingsService.setAutoOpenFileEnabled(projectPath, enabled);
+                if (enabled) {
+                    OpencodeBuddyToolWindow.triggerContextUpdate(context.getProject());
+                }
+            },
             "window.updateAutoOpenFileEnabled",
             "Failed to save auto open file config");
     }

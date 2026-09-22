@@ -44,6 +44,9 @@ import { useDialogs } from './contexts/DialogContext';
 import { AppDialogs } from './components/AppDialogs';
 import ConfirmDialog from './components/ConfirmDialog';
 import { DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from './utils/permissionDialogTimeout';
+import { useCliModels } from './hooks/providers/useCliModels';
+import { getFirstPreferredModelId } from './components/ChatInputBox/modelSelectUtils';
+import { resolveProviderModels } from './components/ChatInputBox/resolveProviderModels';
 
 const App = () => {
   const { t } = useTranslation();
@@ -284,6 +287,31 @@ const App = () => {
     });
   }, [messages, setTaskEvents]);
 
+  const { cliModels, cliDefaultModel, cliCatalogHasEntries } = useCliModels(currentProvider);
+
+  const resetToPreferredModel = useCallback(() => {
+    const available = resolveProviderModels({
+      provider: currentProvider,
+      cliModels,
+      cliCatalogHasEntries,
+    });
+    const preferredId = getFirstPreferredModelId(currentProvider, available, cliDefaultModel);
+    if (preferredId) {
+      handleModelSelect(preferredId);
+    }
+  }, [currentProvider, cliModels, cliCatalogHasEntries, cliDefaultModel, handleModelSelect]);
+
+  // When models catalog arrives on initial load in a new session, immediately select the preferred model.
+  const hasAutoSelectedOnStartupRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoSelectedOnStartupRef.current) return;
+    if (!cliCatalogHasEntries || !cliModels.length) return;
+    if (currentSessionId === null && messages.length === 0) {
+      hasAutoSelectedOnStartupRef.current = true;
+      resetToPreferredModel();
+    }
+  }, [cliCatalogHasEntries, cliModels, currentSessionId, messages.length, resetToPreferredModel]);
+
   // ── Session management ──
   const {
     showNewSessionConfirm, showInterruptConfirm,
@@ -301,6 +329,7 @@ const App = () => {
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,
+    onResetToPreferredModel: resetToPreferredModel,
     clearToasts, addToast, t,
   });
 

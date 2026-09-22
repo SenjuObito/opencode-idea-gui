@@ -1368,6 +1368,8 @@
   "models": {
     "addModel": "Agregar modelo",
     "searchPlaceholder": "Buscar modelos",
+    "refresh": "Actualizar lista de modelos",
+    "refreshing": "Actualizando...",
     "noModelsFound": "No se encontraron modelos",
     "hiddenModelCount": "+ {{count}} modelos más. Escribe para buscar.",
     "pinned": "Fijados",

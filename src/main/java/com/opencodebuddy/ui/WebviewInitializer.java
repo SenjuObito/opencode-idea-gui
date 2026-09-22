@@ -797,8 +797,19 @@ public class WebviewInitializer {
             String codeFontConfig,
             String languageConfig
     ) {
+        return buildConfigurationInjections(editorFontConfig, uiFontConfig, codeFontConfig, languageConfig, "{}");
+    }
+
+    static List<String> buildConfigurationInjections(
+            String editorFontConfig,
+            String uiFontConfig,
+            String codeFontConfig,
+            String languageConfig,
+            String pinnedModelsConfig
+    ) {
         String escapedUiFontConfig = JsUtils.escapeJs(uiFontConfig);
         String escapedCodeFontConfig = JsUtils.escapeJs(codeFontConfig);
+        String escapedPinnedModelsConfig = JsUtils.escapeJs(pinnedModelsConfig != null ? pinnedModelsConfig : "{}");
         return List.of(
                 String.format(
                         "if (window.applyIdeaFontConfig) { window.applyIdeaFontConfig(%s); } " +
@@ -817,7 +828,12 @@ public class WebviewInitializer {
                 String.format(
                         "if (window.applyIdeaLanguageConfig) { window.applyIdeaLanguageConfig(%s); } " +
                                 "else { window.__pendingLanguageConfig = %s; }",
-                        languageConfig, languageConfig)
+                        languageConfig, languageConfig),
+                String.format(
+                        "(function(){ var c = JSON.parse('%s'); " +
+                                "if (window.applyPinnedModels) { window.applyPinnedModels(c); } " +
+                                "else { window.__pendingPinnedModels = c; window.__INITIAL_PINNED_MODELS__ = c; } })()",
+                        escapedPinnedModelsConfig)
         );
     }
 
@@ -847,9 +863,14 @@ public class WebviewInitializer {
                 host.getHandlerContext().getSettingsService());
         String languageConfig = LanguageConfigService.getLanguageConfigJson(
                 host.getHandlerContext().getSettingsService());
+        String pinnedModelsConfig = "{}";
+        try {
+            pinnedModelsConfig = host.getHandlerContext().getSettingsService().getPinnedModels().toString();
+        } catch (Exception ignored) {
+        }
 
         String configurationScript = joinConfigurationInjections(buildConfigurationInjections(
-                editorFontConfig, uiFontConfig, codeFontConfig, languageConfig));
+                editorFontConfig, uiFontConfig, codeFontConfig, languageConfig, pinnedModelsConfig));
         return
                 "if (window.__CCG_CONFIG_GENERATION__ !== " + pageGeneration + ") {"
                 + configurationScript

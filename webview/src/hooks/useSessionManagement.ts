@@ -38,6 +38,8 @@ interface UseSessionManagementOptions {
   setSseTodos?: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
   /** Clears polled sidechain histories so stale transcripts cannot leak across sessions. */
   setSubagentHistories?: React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>;
+  /** Resets model selection to preferred first model on new session. */
+  onResetToPreferredModel?: () => void;
   clearToasts: () => void;
   addToast: (message: string, type?: ToastType) => void;
   t: TFunction;
@@ -90,6 +92,7 @@ export function useSessionManagement({
   setTaskEvents,
   setSseTodos,
   setSubagentHistories,
+  onResetToPreferredModel,
   clearToasts,
   addToast,
   t,
@@ -164,6 +167,10 @@ export function useSessionManagement({
     setUsageUsedTokens(undefined);
     setUsageMaxTokens(undefined);
 
+    if (nextSessionId === null) {
+      onResetToPreferredModel?.();
+    }
+
     // FIX: Safety timeout to auto-release the session transition guard.
     // If the backend's historyLoadComplete signal is lost (e.g., JCEF IPC failure
     // during webview reload, or a backend error that prevents the callback),
@@ -183,7 +190,7 @@ export function useSessionManagement({
         setSessionLoading(false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
-  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSubagentHistories]);
+  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSseTodos, setSubagentHistories, onResetToPreferredModel]);
 
   // Create new session
   const createNewSession = useCallback(() => {

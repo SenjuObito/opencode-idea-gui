@@ -113,3 +113,22 @@ test('buildSdkModelEntry keeps variants alongside the context window', () => {
   assert.deepEqual(entry.variants, ['high', 'low']);
   assert.equal(entry.contextWindow, 200000);
 });
+
+test('buildSdkModelEntry omits variants when all variants are disabled or empty', () => {
+  const allDisabled = buildSdkModelEntry('anthropic', 'Anthropic', 'claude-sonnet-5', {
+    variants: { v1: { disabled: true }, v2: { disabled: true } },
+  });
+  assert.equal('variants' in allDisabled, false);
+
+  const emptyVariants = buildSdkModelEntry('anthropic', 'Anthropic', 'claude-sonnet-5', {
+    variants: {},
+  });
+  assert.equal('variants' in emptyVariants, false);
+});
+
+test('parseOpenCodeModelsOutput parses tab-delimited output with multiple columns', () => {
+  const out = 'opencode\topencode/nemotron-3-ultra-free\t1M context\nopenai\topenai/gpt-5.5\t200k context\n';
+  const models = parseOpenCodeModelsOutput(out);
+  assert.deepEqual(models.map((m) => m.id), ['opencode/nemotron-3-ultra-free', 'openai/gpt-5.5']);
+  assert.equal(models[0].label, 'Nemotron-3-Ultra-Free');
+});

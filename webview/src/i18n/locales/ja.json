@@ -1373,6 +1373,8 @@
   "models": {
     "addModel": "モデル追加",
     "searchPlaceholder": "モデルを検索",
+    "refresh": "モデル一覧を更新",
+    "refreshing": "更新中...",
     "noModelsFound": "モデルが見つかりません",
     "hiddenModelCount": "+ {{count}} 件のモデルがあります。入力して検索してください。",
     "pinned": "ピン留め",

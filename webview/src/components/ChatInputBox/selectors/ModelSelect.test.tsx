@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ModelSelect } from './ModelSelect';
 import type { ModelInfo } from '../types';
@@ -60,18 +60,12 @@ describe('ModelSelect', () => {
     expect(screen.getByRole('button').textContent).toContain('claude-fable-5');
   });
 
-  it('loading 时应显示加载状态', () => {
+  it('loading 且模型为空时应显示下拉加载状态', () => {
     render(
       <ModelSelect
         value="opencode-default"
         onChange={vi.fn()}
-        models={[
-          {
-            id: 'opencode-default',
-            label: 'OpenCode Default',
-            description: 'Use OpenCode CLI default model',
-          },
-        ]}
+        models={[]}
         currentProvider="opencode"
         loading
       />,
@@ -115,7 +109,7 @@ describe('ModelSelect', () => {
       <ModelSelect
         value="auto"
         onChange={vi.fn()}
-        models={[{ id: 'auto', label: 'PI Auto' }]}
+        models={[]}
         currentProvider="pi"
         loading
         error="timeout"
@@ -174,4 +168,139 @@ describe('ModelSelect', () => {
     const pinnedSection = screen.getByTestId('model-section-__pinned__');
     expect(pinnedSection.textContent).toContain('deepseek/Deepseek-V4-Flash-Free');
   });
+
+  it('点击搜索栏刷新按钮时应触发 onRefresh 并正确切换状态', () => {
+    vi.useFakeTimers();
+    const onRefresh = vi.fn();
+    const { rerender } = render(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    const refreshBtn = screen.getByTestId('model-refresh-button');
+    expect(refreshBtn).toBeTruthy();
+    expect(refreshBtn.classList.contains('is-loading')).toBe(false);
+
+    // 点击刷新
+    fireEvent.click(refreshBtn);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(refreshBtn.classList.contains('is-loading')).toBe(true);
+
+    // 模拟 loading 变为 true
+    rerender(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+        loading={true}
+      />,
+    );
+    expect(screen.getByTestId('model-refresh-button').classList.contains('is-loading')).toBe(true);
+
+    // 模拟 50ms 后请求成功，loading 变为 false
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    rerender(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+        loading={false}
+      />,
+    );
+
+    // 此时仍在 minSpin (600ms) 缓冲中
+    expect(screen.getByTestId('model-refresh-button').classList.contains('is-loading')).toBe(true);
+
+    // 走完 600ms
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    const updatedBtn = screen.getByTestId('model-refresh-button');
+    expect(updatedBtn.classList.contains('is-success')).toBe(true);
+    expect(updatedBtn.querySelector('.codicon-check')).toBeTruthy();
+
+    // 走完 1200ms success 显示
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(updatedBtn.classList.contains('is-success')).toBe(false);
+    expect(updatedBtn.querySelector('.codicon-refresh')).toBeTruthy();
+
+    vi.useRealTimers();
+  });
+
+  it('刷新失败时按钮应显示 error 状态', () => {
+    vi.useFakeTimers();
+    const onRefresh = vi.fn();
+    const { rerender } = render(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    const refreshBtn = screen.getByTestId('model-refresh-button');
+
+    fireEvent.click(refreshBtn);
+    expect(refreshBtn.classList.contains('is-loading')).toBe(true);
+
+    rerender(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+        loading={true}
+      />,
+    );
+
+    // 模拟请求失败
+    rerender(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+        loading={false}
+        error="fetch failed"
+      />,
+    );
+
+    // 走完 600ms
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    const updatedBtn = screen.getByTestId('model-refresh-button');
+    expect(updatedBtn.classList.contains('is-error')).toBe(true);
+    expect(updatedBtn.querySelector('.codicon-error')).toBeTruthy();
+
+    // 走完 1500ms error 显示
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(updatedBtn.classList.contains('is-error')).toBe(false);
+    expect(updatedBtn.querySelector('.codicon-refresh')).toBeTruthy();
+
+    vi.useRealTimers();
+  });
 });
+
+

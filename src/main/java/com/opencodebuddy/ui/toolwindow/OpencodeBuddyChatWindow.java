@@ -1614,6 +1614,9 @@ public class OpencodeBuddyChatWindow {
         hasEverBeenFrontendReady = true;
         flushPendingCodeSnippet();
         flushPendingFileReferences();
+        if (editorContextTracker != null) {
+            editorContextTracker.scheduleContextUpdate();
+        }
         ApplicationManager.getApplication().invokeLater(() -> {
             completeFrontendReadyUiUpdate(
                     disposed,
@@ -2150,6 +2153,12 @@ public class OpencodeBuddyChatWindow {
 
     public HandlerContext getHandlerContext() {
         return handlerContext;
+    }
+
+    public void triggerContextUpdate() {
+        if (!this.disposed && this.editorContextTracker != null) {
+            this.editorContextTracker.scheduleContextUpdate();
+        }
     }
 
     public void callJavaScript(String functionName, String... args) {

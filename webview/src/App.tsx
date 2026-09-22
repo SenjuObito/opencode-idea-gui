@@ -968,7 +968,6 @@ const App = () => {
         t={t}
         onBack={() => setCurrentView('chat')}
         onNewSession={createNewSession}
-        onNewTab={() => sendBridgeEvent('create_new_tab')}
         onHistory={() => setCurrentView('history')}
         onSettings={() => {
           setSettingsInitialTab(undefined);

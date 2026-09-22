@@ -63,8 +63,7 @@ public class ErrorPanelBuilder {
 
         // Pre-fill with the saved path or the currently detected path
         try {
-            PropertiesComponent props = PropertiesComponent.getInstance();
-            String savedNodePath = props.getValue(NODE_PATH_PROPERTY_KEY);
+            String savedNodePath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getNodePath();
             if (savedNodePath != null && !savedNodePath.trim().isEmpty()) {
                 nodeField.setText(savedNodePath.trim());
             } else if (currentNodePath != null) {
@@ -72,6 +71,9 @@ public class ErrorPanelBuilder {
             }
         } catch (Exception e) {
             LOG.warn("Failed to preload Node.js path: " + e.getMessage());
+            if (currentNodePath != null) {
+                nodeField.setText(currentNodePath);
+            }
         }
 
         JButton saveAndRetryButton = new JButton(com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("error.saveButton"));

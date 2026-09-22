@@ -381,7 +381,7 @@
         "hint": "비활성화하면 토큰 통계를 클릭하거나 /compact를 실행할 때 확인 대화 상자 없이 바로 압축합니다."
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI 경로",
+        "label": "OpenCode 경로",
         "placeholder": "예: /usr/local/bin/opencode — 비워두면 자동 감지",
         "hint": "opencode 서비스를 시작하는 데 사용되는 사용자 지정 opencode 바이너리(선택 사항). 비워두면 PATH 및 기본 설치 위치(~/.opencode/bin)를 자동으로 탐색합니다. 저장 후 데몬이 재시작되면 적용됩니다."
       }

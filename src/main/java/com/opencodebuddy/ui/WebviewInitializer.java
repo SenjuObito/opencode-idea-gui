@@ -181,9 +181,11 @@ public class WebviewInitializer {
             }
 
             if (detected != null && detected.isFound() && detected.getNodePath() != null) {
-                try {
-                    new com.opencodebuddy.settings.OpenCodeBuddySettingsService().setNodePath(detected.getNodePath());
-                } catch (Exception ignored) {}
+                if (NodeDetector.isVersionSupported(detected.getNodeVersion())) {
+                    try {
+                        new com.opencodebuddy.settings.OpenCodeBuddySettingsService().setNodePath(detected.getNodePath());
+                    } catch (Exception ignored) {}
+                }
                 nodeDetector.setNodeExecutable(detected.getNodePath());
                 nodeDetector.verifyAndCacheNodePath(detected.getNodePath());
                 LOG.info("Auto-detected Node.js: " + detected.getNodePath()
@@ -1197,12 +1199,30 @@ public class WebviewInitializer {
         com.opencodebuddy.bridge.NodeDetector nodeDetector = com.opencodebuddy.bridge.NodeDetector.getInstance();
         JPanel mainPanel = this.host.getMainPanel();
 
-        final boolean clearRequested = manualPath == null || manualPath.isEmpty();
+        String candidate = manualPath != null ? manualPath.trim() : "";
+        if ((candidate.startsWith("\"") && candidate.endsWith("\"")) ||
+            (candidate.startsWith("'") && candidate.endsWith("'"))) {
+            candidate = candidate.substring(1, candidate.length() - 1).trim();
+        }
+        if (candidate.startsWith("~" + File.separator) || candidate.startsWith("~/") || candidate.startsWith("~\\")) {
+            String userHome = com.opencodebuddy.util.PlatformUtils.getHomeDirectory();
+            if (userHome != null && !userHome.isEmpty()) {
+                candidate = new File(userHome, candidate.substring(2)).getAbsolutePath();
+            }
+        }
+
+        final boolean clearRequested = candidate.isEmpty();
+        final String effectivePath = candidate;
+
         if (clearRequested) {
             // Clear the saved path up front so no bridge can use the stale path
             // while detection runs, and show a loading panel in the meantime.
             PropertiesComponent props = PropertiesComponent.getInstance();
             props.unsetValue(NODE_PATH_PROPERTY_KEY);
+            try {
+                new com.opencodebuddy.settings.OpenCodeBuddySettingsService().setNodePath(null);
+            } catch (Exception ignored) {}
+            nodeDetector.clearCache();
             nodeDetector.setNodeExecutable(null);
             LOG.info("Cleared manual Node.js path, scheduling auto-detection on background thread");
             showLoadingPanel();
@@ -1211,11 +1231,16 @@ public class WebviewInitializer {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 PropertiesComponent props = PropertiesComponent.getInstance();
+                com.opencodebuddy.settings.OpenCodeBuddySettingsService settingsService =
+                        new com.opencodebuddy.settings.OpenCodeBuddySettingsService();
 
                 if (clearRequested) {
                     NodeDetectionResult detected = nodeDetector.detectNodeWithDetails();
                     if (detected != null && detected.isFound() && detected.getNodePath() != null) {
                         String detectedPath = detected.getNodePath();
+                        if (NodeDetector.isVersionSupported(detected.getNodeVersion())) {
+                            settingsService.setNodePath(detectedPath);
+                        }
                         props.setValue(NODE_PATH_PROPERTY_KEY, detectedPath);
                         nodeDetector.verifyAndCacheNodePath(detectedPath);
                         LOG.info("Auto-detected and saved Node.js path: " + detectedPath);
@@ -1225,18 +1250,37 @@ public class WebviewInitializer {
                 }
 
                 // Verify before saving to avoid caching invalid path
-                NodeDetectionResult result = nodeDetector.verifyAndCacheNodePath(manualPath);
+                NodeDetectionResult result = nodeDetector.verifyAndCacheNodePath(effectivePath);
                 if (result != null && result.isFound()) {
-                    // Only save if verification succeeds
-                    props.setValue(NODE_PATH_PROPERTY_KEY, manualPath);
-                    nodeDetector.setNodeExecutable(manualPath);
-                    LOG.info("Saved manual Node.js path: " + manualPath);
+                    if (!NodeDetector.isVersionSupported(result.getNodeVersion())) {
+                        String currentVersion = result.getNodeVersion() != null ? result.getNodeVersion() : "未知";
+                        String msg = OpenCodeBuddyBundle.message(
+                                "error.nodeVersionTooOld.message",
+                                currentVersion,
+                                String.valueOf(NodeDetector.MIN_NODE_MAJOR_VERSION),
+                                effectivePath
+                        );
+                        LOG.warn("Node.js version too old for manual path: " + effectivePath + " (" + currentVersion + ")");
+                        invokeLaterForToolWindow(() -> JOptionPane.showMessageDialog(
+                                mainPanel,
+                                msg,
+                                OpenCodeBuddyBundle.message("error.nodeVersionTooOld.title"),
+                                JOptionPane.WARNING_MESSAGE
+                        ));
+                        return;
+                    }
+
+                    // Only save if verification succeeds and version is supported
+                    settingsService.setNodePath(effectivePath);
+                    props.setValue(NODE_PATH_PROPERTY_KEY, effectivePath);
+                    nodeDetector.setNodeExecutable(effectivePath);
+                    LOG.info("Saved manual Node.js path: " + effectivePath + " (" + result.getNodeVersion() + ")");
                     reinitializeUi(mainPanel);
                 } else {
                     // Verification failed, show error and don't save invalid path.
                     // Don't reinitialize UI, let user try again.
                     String errorMsg = result != null ? result.getErrorMessage() : "Unknown error";
-                    LOG.warn("Node.js path verification failed: " + manualPath + " - " + errorMsg);
+                    LOG.warn("Node.js path verification failed: " + effectivePath + " - " + errorMsg);
                     invokeLaterForToolWindow(() -> JOptionPane.showMessageDialog(mainPanel,
                             "Node.js path verification failed: " + errorMsg + "\n\nPath not saved.",
                             "Invalid Node.js Path", JOptionPane.WARNING_MESSAGE));

@@ -420,7 +420,7 @@
         "hint": "When disabled, clicking token stats or running /compact will compact immediately without asking for confirmation."
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI Path",
+        "label": "OpenCode Path",
         "placeholder": "e.g. /usr/local/bin/opencode — leave empty to auto-detect",
         "hint": "Optional custom opencode binary used to start the opencode service. Leave empty to search PATH and default install locations (~/.opencode/bin). Takes effect after the daemon restarts on save."
       }

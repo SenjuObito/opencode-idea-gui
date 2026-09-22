@@ -381,7 +381,7 @@
         "hint": "關閉後，點選 Token 統計或執行 /compact 時將直接壓縮，不再彈出確認視窗"
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI 路徑",
+        "label": "OpenCode 路徑",
         "placeholder": "例如 /usr/local/bin/opencode — 留空則自動查找",
         "hint": "可選的自訂 opencode 二進位路徑，用於啟動 opencode 服務。留空則按 PATH 與預設安裝位置（~/.opencode/bin）自動探測。儲存後重啟守護程序生效。"
       }

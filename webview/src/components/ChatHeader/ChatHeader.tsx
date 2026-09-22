@@ -30,8 +30,6 @@ export interface ChatHeaderProps {
   onShare?: () => void;
   /** Callback to unshare the session */
   onUnshare?: () => void;
-  /** Callback to create a new chat tab in the IDE tool window */
-  onNewTab?: () => void;
   /** Fork the entire conversation into a new session */
   onForkAll?: () => void;
   /** Export current session as Markdown */
@@ -44,7 +42,6 @@ export function ChatHeader({
   t,
   onBack,
   onNewSession,
-  onNewTab,
   onHistory,
   onSettings,
   onOpenSearch,
@@ -237,16 +234,6 @@ export function ChatHeader({
             <button className="icon-button" onClick={onNewSession} data-tooltip={t('common.newSession')}>
               <span className="codicon codicon-plus" />
             </button>
-            {onNewTab && (
-              <button
-                className="icon-button"
-                onClick={onNewTab}
-                data-tooltip={t('common.newTab', { defaultValue: 'New Tab' })}
-                aria-label={t('common.newTab', { defaultValue: 'New Tab' })}
-              >
-                <span className="codicon codicon-multiple-windows" />
-              </button>
-            )}
             {onOpenSearch && (
               <button
                 className="icon-button"

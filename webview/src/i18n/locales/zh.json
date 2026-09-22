@@ -420,7 +420,7 @@
         "hint": "关闭后，点击 Token 统计或执行 /compact 时将直接压缩，不再弹出确认窗口"
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI 路径",
+        "label": "OpenCode 路径",
         "placeholder": "例如 /usr/local/bin/opencode — 留空则自动查找",
         "hint": "可选的自定义 opencode 二进制路径，用于启动 opencode 服务。留空则按 PATH 与默认安装位置（~/.opencode/bin）自动探测。保存后重启守护进程生效。"
       }

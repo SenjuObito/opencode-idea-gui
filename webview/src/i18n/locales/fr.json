@@ -381,7 +381,7 @@
         "hint": "Lorsqu'elle est désactivée, cliquer sur les stats de tokens ou exécuter /compact compactera directement sans demander de confirmation."
       },
       "opencodeCliPath": {
-        "label": "Chemin du TUI Opencode",
+        "label": "Chemin d'OpenCode",
         "placeholder": "ex. /usr/local/bin/opencode — laisser vide pour détection auto",
         "hint": "Binaire opencode personnalisé (facultatif) utilisé pour démarrer le service opencode. Laissez vide pour rechercher dans le PATH et les emplacements par défaut (~/.opencode/bin). Prend effet après le redémarrage du démon lors de la sauvegarde."
       }

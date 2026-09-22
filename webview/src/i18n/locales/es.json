@@ -381,7 +381,7 @@
         "hint": "Cuando está deshabilitado, hacer clic en las estadísticas de tokens o ejecutar /compact compactará directamente sin pedir confirmación."
       },
       "opencodeCliPath": {
-        "label": "Ruta del TUI de Opencode",
+        "label": "Ruta de OpenCode",
         "placeholder": "p. ej. /usr/local/bin/opencode — dejar vacío para autodetección",
         "hint": "Binario de opencode personalizado y opcional, usado para iniciar el servicio de opencode. Déjelo vacío para buscar en PATH y en las ubicaciones de instalación predeterminadas (~/.opencode/bin). Surte efecto cuando el daemon se reinicia al guardar."
       }

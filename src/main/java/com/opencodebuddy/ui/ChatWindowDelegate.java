@@ -138,8 +138,7 @@ public class ChatWindowDelegate {
 
     public void loadNodePathFromSettings() {
         try {
-            PropertiesComponent props = PropertiesComponent.getInstance();
-            String savedNodePath = props.getValue(NODE_PATH_PROPERTY_KEY);
+            String savedNodePath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getNodePath();
             if (savedNodePath != null && !savedNodePath.trim().isEmpty()) {
                 LOG.info("Using manually configured Node.js path: " + savedNodePath.trim());
             } else {

@@ -381,7 +381,7 @@
         "hint": "無効にすると、Token統計をクリックまたは/compactを実行した際、確認ダイアログを表示せず直接圧縮します。"
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI パス",
+        "label": "OpenCode パス",
         "placeholder": "例: /usr/local/bin/opencode — 空欄で自動検出",
         "hint": "opencode サービスの起動に使うカスタム opencode バイナリ（任意）。空欄の場合は PATH と既定のインストール先（~/.opencode/bin）を自動検索します。保存後にデーモンが再起動されて反映されます。"
       }

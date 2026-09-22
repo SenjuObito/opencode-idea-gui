@@ -70,17 +70,6 @@ describe('ChatHeader share controls', () => {
     expect(screen.queryByLabelText('chat.unshareTooltip')).toBeNull();
   });
 
-  it('renders new tab button and triggers onNewTab when clicked', () => {
-    const onNewTab = vi.fn();
-    render(<ChatHeader {...defaultProps} onNewTab={onNewTab} />);
-
-    const newTabBtn = screen.getByLabelText('common.newTab');
-    expect(newTabBtn).toBeTruthy();
-
-    fireEvent.click(newTabBtn);
-    expect(onNewTab).toHaveBeenCalledTimes(1);
-  });
-
   it('renders more options menu and triggers export and settings from secondary menu', () => {
     const onExport = vi.fn();
     const onSettings = vi.fn();

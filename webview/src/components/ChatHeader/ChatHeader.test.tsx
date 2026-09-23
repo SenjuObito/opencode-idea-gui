@@ -100,4 +100,15 @@ describe('ChatHeader share controls', () => {
     expect(onSettings).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('menu')).toBeNull();
   });
+
+  it('renders new tab button and triggers onNewTab when clicked', () => {
+    const onNewTab = vi.fn();
+    render(<ChatHeader {...defaultProps} onNewTab={onNewTab} />);
+
+    const newTabBtn = screen.getByLabelText('common.newTab');
+    expect(newTabBtn).toBeTruthy();
+
+    fireEvent.click(newTabBtn);
+    expect(onNewTab).toHaveBeenCalledTimes(1);
+  });
 });

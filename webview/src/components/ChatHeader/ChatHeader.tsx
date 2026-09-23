@@ -9,6 +9,8 @@ export interface ChatHeaderProps {
   t: TFunction;
   onBack: () => void;
   onNewSession: () => void;
+  /** Callback to create a new chat tab in the IDE tool window */
+  onNewTab?: () => void;
   onHistory: () => void;
   onSettings: () => void;
   /**
@@ -42,6 +44,7 @@ export function ChatHeader({
   t,
   onBack,
   onNewSession,
+  onNewTab,
   onHistory,
   onSettings,
   onOpenSearch,
@@ -234,6 +237,16 @@ export function ChatHeader({
             <button className="icon-button" onClick={onNewSession} data-tooltip={t('common.newSession')}>
               <span className="codicon codicon-plus" />
             </button>
+            {onNewTab && (
+              <button
+                className="icon-button"
+                onClick={onNewTab}
+                data-tooltip={t('common.newTab', { defaultValue: 'New Tab' })}
+                aria-label={t('common.newTab', { defaultValue: 'New Tab' })}
+              >
+                <span className="codicon codicon-multiple-windows" />
+              </button>
+            )}
             {onOpenSearch && (
               <button
                 className="icon-button"

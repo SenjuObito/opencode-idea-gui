@@ -26,7 +26,7 @@ public class CreateNewTabAction extends AnAction {
         super(
             OpenCodeBuddyBundle.message("action.createNewTab.text"),
             OpenCodeBuddyBundle.message("action.createNewTab.description"),
-            null
+            com.intellij.icons.AllIcons.General.Add
         );
     }
 

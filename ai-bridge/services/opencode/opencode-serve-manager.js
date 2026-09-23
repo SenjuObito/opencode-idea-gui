@@ -202,7 +202,7 @@ function waitForReady(url, timeoutMs) {
  */
 export async function start(port = 4096) {
   _lastPort = port;
-  if (_process && _serverUrl) {
+  if ((_process && _serverUrl) || (_started && _serverUrl)) {
     return _serverUrl;
   }
   if (_startPromise) {
@@ -373,11 +373,13 @@ async function doStart(port) {
 }
 
 /**
- * @returns {boolean} Whether a serve process is currently alive. Used by the
- * daemon to detect a crashed serve and re-launch it on the next request.
+ * @returns {boolean} Whether a serve process is currently alive or reused.
  */
 export function isRunning() {
-  return _process !== null;
+  if (_process !== null && !_process.killed) {
+    return true;
+  }
+  return _started && _serverUrl !== null;
 }
 
 /**
@@ -425,7 +427,11 @@ function scheduleAutoRestart() {
 export async function stop() {
   _stopRequested = true;
   const proc = _process;
-  if (!proc) return;
+  if (!proc) {
+    _serverUrl = null;
+    _started = false;
+    return;
+  }
 
   logInfo('opencode-serve-manager', 'Stopping opencode serve...');
 

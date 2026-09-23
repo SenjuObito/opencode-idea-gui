@@ -36,8 +36,17 @@ test('opencode-serve-manager start reuses local running HTTP server', async () =
     assert.equal(url, `http://localhost:${port}`);
     assert.equal(getServerUrl(), `http://localhost:${port}`);
     assert.equal(getServeProcess(), null); // Reused server does not create a child process
+    assert.equal(isRunning(), true); // isRunning should be true even when reused (_process is null)
+
+    // Second call should return immediately without spawning
+    const url2 = await start(port);
+    assert.equal(url2, url);
+    assert.equal(isRunning(), true);
   } finally {
     await stop();
+    assert.equal(isRunning(), false);
+    assert.equal(getServerUrl(), null);
     await new Promise((resolve) => server.close(resolve));
   }
 });
+

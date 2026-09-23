@@ -192,6 +192,7 @@ public class OpencodeBuddyChatWindow {
     private PermissionHandler permissionHandler;
     private HistoryHandler historyHandler;
     private final SessionLifecycleManager sessionLifecycleManager;
+    private final WebviewEventQueue<JBCefBrowser> webviewEventQueue;
 
     // Delegates
     private WebviewInitializer webviewInitializer;
@@ -211,6 +212,11 @@ public class OpencodeBuddyChatWindow {
 
     public OpencodeBuddyChatWindow(Project project, boolean skipRegister) {
         this.project = project;
+        this.webviewEventQueue = new WebviewEventQueue<JBCefBrowser>(
+                () -> this.browser,
+                () -> this.disposed,
+                this::executeQueuedWebviewScript
+        );
         this.daemonBridge = new DaemonBridge(
                 com.opencodebuddy.bridge.NodeDetector.getInstance(),
                 new com.opencodebuddy.bridge.BridgeDirectoryResolver(),
@@ -1237,6 +1243,9 @@ public class OpencodeBuddyChatWindow {
         cancelScheduledOsrSurfaceRefresh();
         surfaceRefreshCoordinator.invalidate();
         browser = nextBrowser;
+        if (webviewEventQueue != null) {
+            webviewEventQueue.browserChanged();
+        }
         if (nextBrowser != null) {
             observedBrowserComponent = nextBrowser.getComponent();
             observedBrowserComponent.addComponentListener(surfaceRefreshComponentListener);
@@ -2128,22 +2137,21 @@ public class OpencodeBuddyChatWindow {
         chatWindowDelegate.updateTabLoadingState(loading);
     }
 
+    /** Execute raw JavaScript through the same ordered webview queue as callback events. */
     public void executeJavaScriptCode(String jsCode) {
-        JBCefBrowser targetBrowser = this.browser;
-        if (this.disposed || targetBrowser == null) {
+        webviewEventQueue.enqueueRaw(jsCode);
+    }
+
+    private void executeQueuedWebviewScript(JBCefBrowser targetBrowser, String jsCode) {
+        if (this.disposed || this.browser != targetBrowser) {
             return;
         }
-        ApplicationManager.getApplication().invokeLater(() -> {
-            if (this.disposed || this.browser != targetBrowser) {
-                return;
-            }
-            try {
-                org.cef.browser.CefBrowser cefBrowser = targetBrowser.getCefBrowser();
-                cefBrowser.executeJavaScript(jsCode, cefBrowser.getURL(), 0);
-            } catch (Exception | LinkageError e) {
-                LOG.warn("Failed to execute raw JS code: " + e.getMessage(), e);
-            }
-        });
+        try {
+            org.cef.browser.CefBrowser cefBrowser = targetBrowser.getCefBrowser();
+            cefBrowser.executeJavaScript(jsCode, cefBrowser.getURL(), 0);
+        } catch (Exception | LinkageError e) {
+            LOG.warn("Failed to execute queued webview JavaScript: " + e.getMessage(), e);
+        }
     }
 
     // ==================== JavaScript Bridge ====================
@@ -2162,16 +2170,6 @@ public class OpencodeBuddyChatWindow {
     }
 
     public void callJavaScript(String functionName, String... args) {
-        JBCefBrowser targetBrowser = this.browser;
-        if (this.disposed || targetBrowser == null) {
-            LOG.warn("Cannot call JS function " + functionName + ": disposed=" + this.disposed
-                    + ", browser=" + (targetBrowser == null ? "null" : "exists"));
-            PluginFileLogger.warn("JS", "DROPPED call " + functionName
-                    + " (disposed=" + this.disposed + ", browser="
-                    + (targetBrowser == null ? "null" : "exists") + ")");
-            return;
-        }
-
         if (functionName == null || !SAFE_JS_FUNCTION_NAME.matcher(functionName).matches()) {
             LOG.error("Invalid JavaScript function name rejected: " + functionName);
             PluginFileLogger.error("JS", "INVALID function name rejected: " + functionName);
@@ -2182,49 +2180,7 @@ public class OpencodeBuddyChatWindow {
         PluginFileLogger.throttled("DEBUG", "JS", functionName,
                 "call " + functionName + "(" + argsPreview + ")", 2000L);
 
-        ApplicationManager.getApplication().invokeLater(() -> {
-            if (this.disposed || this.browser != targetBrowser) {
-                // Silent drop: the browser instance was replaced between scheduling and
-                // execution. This is the classic reason a status push never reaches the UI.
-                PluginFileLogger.warn("JS", "DROPPED (late) call " + functionName
-                        + " after browser swap, disposed=" + this.disposed);
-                return;
-            }
-            try {
-                org.cef.browser.CefBrowser cefBrowser = targetBrowser.getCefBrowser();
-                String callee = functionName;
-                if (!functionName.contains(".")) {
-                    callee = "window." + functionName;
-                }
-
-                StringBuilder argsJs = new StringBuilder();
-                if (args != null) {
-                    for (int i = 0; i < args.length; i++) {
-                        if (i > 0) { argsJs.append(", "); }
-                        String arg = args[i] == null ? "" : args[i];
-                        argsJs.append("'").append(arg).append("'");
-                    }
-                }
-
-                String checkAndCall =
-                        "(function() {" +
-                                "  try {" +
-                                "    if (typeof " + callee + " === 'function') {" +
-                                "      " + callee + "(" + argsJs + ");" +
-                                "    }" +
-                                "  } catch (e) {" +
-                                "    console.error('[Backend->Frontend] Failed to call " + functionName + ":', e);" +
-                                "  }" +
-                                "})();";
-
-                cefBrowser.executeJavaScript(checkAndCall, cefBrowser.getURL(), 0);
-                PluginFileLogger.throttled("DEBUG", "JS", functionName + "#ok",
-                        "executed " + functionName, 2000L);
-            } catch (Exception | LinkageError e) {
-                LOG.warn("Failed to call JS function: " + functionName + ", error: " + e.getMessage(), e);
-                PluginFileLogger.error("JS", "FAILED call " + functionName + ": " + e.getMessage(), e);
-            }
-        });
+        webviewEventQueue.enqueue(functionName, args);
     }
 
     /** Compact preview of JS call arguments for the trace file (never used to build JS). */
@@ -2894,6 +2850,9 @@ public class OpencodeBuddyChatWindow {
         chatWindowDelegate.dispose();
         editorContextTracker.dispose();
         streamCoalescer.dispose();
+        if (this.webviewEventQueue != null) {
+            this.webviewEventQueue.dispose();
+        }
         // Unregister the Swing-level theme change callback to prevent background updates
         // on a disposed panel. The SettingsHandler's callback is cleaned up via chatWindowDelegate.dispose().
         if (swingThemeCallbackHandle != null) {

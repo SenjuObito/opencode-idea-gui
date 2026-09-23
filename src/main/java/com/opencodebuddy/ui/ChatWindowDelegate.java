@@ -113,6 +113,9 @@ public class ChatWindowDelegate {
          * reload is deferred to stream end.</p>
          */
         void reloadActiveSessionMessages();
+
+        default void executeJavaScriptCode(String jsCode) {
+        }
     }
 
     private final DelegateHost host;
@@ -213,6 +216,10 @@ public class ChatWindowDelegate {
             @Override
             public void callJavaScript(String functionName, String... args) {
                 host.callJavaScript(functionName, args);
+            }
+            @Override
+            public void executeJavaScript(String jsCode) {
+                host.executeJavaScriptCode(jsCode);
             }
             @Override
             public String escapeJs(String str) {

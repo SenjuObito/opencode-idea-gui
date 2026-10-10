@@ -271,7 +271,56 @@ public final class OpenCodeMessageConverter {
             raw.addProperty("model", model);
         }
         if (info.has("tokens") && info.get("tokens").isJsonObject()) {
-            raw.add("tokens", info.getAsJsonObject("tokens"));
+            JsonObject tokens = info.getAsJsonObject("tokens");
+            raw.add("tokens", tokens);
+
+            JsonObject turnUsage = new JsonObject();
+            turnUsage.addProperty("input_tokens", readInt(tokens, "input"));
+            turnUsage.addProperty("output_tokens", readInt(tokens, "output"));
+            turnUsage.addProperty("reasoning_tokens", readInt(tokens, "reasoning"));
+            int cacheRead = 0;
+            int cacheWrite = 0;
+            if (tokens.has("cache") && tokens.get("cache").isJsonObject()) {
+                JsonObject cache = tokens.getAsJsonObject("cache");
+                cacheRead = readInt(cache, "read");
+                cacheWrite = readInt(cache, "write");
+            }
+            turnUsage.addProperty("cache_read_input_tokens", cacheRead);
+            turnUsage.addProperty("cache_creation_input_tokens", cacheWrite);
+
+            int total = readInt(tokens, "total");
+            if (total <= 0) {
+                total = readInt(tokens, "input") + readInt(tokens, "output") + readInt(tokens, "reasoning")
+                        + cacheRead + cacheWrite;
+            }
+            turnUsage.addProperty("total_tokens", total);
+            raw.add("turnUsage", turnUsage);
+            message.add("usage", turnUsage);
+
+            if (info.has("cost") && !info.get("cost").isJsonNull()) {
+                try {
+                    double cost = info.get("cost").getAsDouble();
+                    if (cost > 0) {
+                        raw.addProperty("turnCostUsd", cost);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        if (info.has("time") && info.get("time").isJsonObject()) {
+            JsonObject timeObj = info.getAsJsonObject("time");
+            long created = readLong(timeObj, "created");
+            if (created <= 0) {
+                created = readLong(timeObj, "start");
+            }
+            long completed = readLong(timeObj, "completed");
+            if (completed <= 0) {
+                completed = readLong(timeObj, "end");
+            }
+            if (created > 0 && completed >= created) {
+                raw.addProperty("durationMs", completed - created);
+            }
         }
 
         JsonObject assistant = new JsonObject();
@@ -328,5 +377,27 @@ public final class OpenCodeMessageConverter {
     private static String string(JsonObject obj, String key) {
         return obj != null && obj.has(key) && !obj.get(key).isJsonNull()
                 ? obj.get(key).getAsString() : "";
+    }
+
+    private static int readInt(JsonObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
+            return 0;
+        }
+        try {
+            return obj.get(key).getAsInt();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private static long readLong(JsonObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
+            return 0;
+        }
+        try {
+            return obj.get(key).getAsLong();
+        } catch (Exception e) {
+            return 0;
+        }
     }
 }

@@ -4,7 +4,6 @@ import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.jcef.JBCefBrowser;
 

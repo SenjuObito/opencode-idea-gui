@@ -136,6 +136,8 @@ interface Window {
   completeCodexHistoryPage?: (json: string) => void;
   /** Early history completion buffered before React installs the real callback. */
   __pendingHistoryLoadComplete?: { expectedMessageCount?: string | number };
+  /** Early history list data buffered before React installs the real setHistoryData callback. */
+  __pendingHistoryData?: any;
   /** Number of messages in the latest full backend snapshot accepted by this page. */
   __lastAcceptedMessageCount?: number;
   /** Restored-history snapshot size that still needs a React commit acknowledgment. */

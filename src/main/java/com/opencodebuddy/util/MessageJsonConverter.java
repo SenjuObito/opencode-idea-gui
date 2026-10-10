@@ -41,7 +41,11 @@ public class MessageJsonConverter {
             msgObj.addProperty("timestamp", msg.timestamp);
             msgObj.addProperty("content", truncateErrorContent(msg.content != null ? msg.content : ""));
             if (msg.raw != null) {
-                msgObj.add("raw", truncateRawForTransport(msg.raw));
+                JsonObject transportRaw = truncateRawForTransport(msg.raw);
+                msgObj.add("raw", transportRaw);
+                if (transportRaw.has("durationMs") && !transportRaw.get("durationMs").isJsonNull()) {
+                    msgObj.add("durationMs", transportRaw.get("durationMs"));
+                }
             }
             messagesArray.add(msgObj);
         }
@@ -205,6 +209,7 @@ public class MessageJsonConverter {
         // would be misleading if rendered per message.
         copyFieldIfPresent(raw, transport, "turnUsage");
         copyFieldIfPresent(raw, transport, "turnCostUsd");
+        copyFieldIfPresent(raw, transport, "durationMs");
         // Agent/Task tool metadata (agentId, totalDurationMs, totalTokens,
         // toolStats, ...) stamped by the SDK on tool_result messages. The
         // frontend's SubagentList / AgentGroupBlock read this to render

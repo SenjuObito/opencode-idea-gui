@@ -631,6 +631,14 @@ if (typeof window !== 'undefined' && !window.setCliModels) {
   };
 }
 
+if (typeof window !== 'undefined' && !window.setHistoryData) {
+  debugLog('[Main] Pre-registering setHistoryData placeholder');
+  window.setHistoryData = (dataOrStr: any) => {
+    debugLog('[Main] Storing pending history data payload');
+    window.__pendingHistoryData = dataOrStr;
+  };
+}
+
 if (typeof window !== 'undefined') {
   window.updateLinkifyCapabilities = (json: string) => {
     applyLinkifyCapabilitiesPayload(json);

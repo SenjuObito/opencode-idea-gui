@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HistoryData } from '../../types';
@@ -29,6 +29,10 @@ vi.mock('react-i18next', () => ({
         'history.convertButton': 'Convert',
         'history.confirmConvert': 'Convert to CLI?',
         'history.convertConfirmMessage': 'This changes the entrypoint.',
+        'history.loading': 'Loading history...',
+        'history.loadFailed': 'Load failed',
+        'history.loadTimeout': 'Load history timed out',
+        'history.retry': 'Retry',
         'common.cancel': 'Cancel',
         'common.delete': 'Delete',
       };
@@ -282,5 +286,59 @@ describe('HistoryView favorite visibility', () => {
 
     expect(favoritedButton.closest('.history-action-buttons')?.classList.contains('has-favorite')).toBe(true);
     expect(unfavoritedButton.closest('.history-action-buttons')?.classList.contains('has-favorite')).toBe(false);
+  });
+});
+
+describe('HistoryView loading timeout and error retry', () => {
+  it('renders retry button when error occurs and invokes onRetry', () => {
+    const onRetry = vi.fn();
+    render(
+      <HistoryView
+        historyData={{ success: false, error: 'Custom error message' }}
+        onLoadSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+        onDeleteSessions={vi.fn()}
+        onExportSession={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onUpdateTitle={vi.fn()}
+        onConvertToCliSession={vi.fn()}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(screen.getByText('Custom error message')).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    fireEvent.click(retryButton);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders timeout state and retry button after timeout duration', () => {
+    vi.useFakeTimers();
+    const onRetry = vi.fn();
+    render(
+      <HistoryView
+        historyData={null}
+        onLoadSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+        onDeleteSessions={vi.fn()}
+        onExportSession={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onUpdateTitle={vi.fn()}
+        onConvertToCliSession={vi.fn()}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(screen.getByText('Loading history...')).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(13000);
+    });
+
+    expect(screen.getByText('Load history timed out')).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    fireEvent.click(retryButton);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });

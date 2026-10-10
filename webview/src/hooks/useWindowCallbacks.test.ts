@@ -116,6 +116,7 @@ describe('useWindowCallbacks integration', () => {
     delete window.__lastAcceptedMessageCount;
     delete window.__pendingHistoryRefreshMessageCount;
     delete window.__pendingHistoryLoadComplete;
+    delete (window as unknown as Record<string, unknown>).__pendingHistoryData;
     delete window.__historySurfaceRefreshEpoch;
     window.__dependencyStatusState = 'pending';
   });
@@ -1089,6 +1090,18 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     expect(opts.setPermissionDialogTimeoutSeconds).not.toHaveBeenCalled();
+  });
+
+  it('drains __pendingHistoryData into setHistoryData on registration', () => {
+    const w = window as unknown as Record<string, unknown>;
+    const dummyHistory = { success: true, sessions: [{ sessionId: 'sess-1', title: 'Test' }] };
+    w.__pendingHistoryData = JSON.stringify(dummyHistory);
+
+    const opts = createOptions();
+    renderHook(() => useWindowCallbacks(opts));
+
+    expect(opts.setHistoryData).toHaveBeenCalledWith(dummyHistory);
+    expect(w.__pendingHistoryData).toBeUndefined();
   });
 
   it('addErrorMessage shows toast but does not set status', () => {

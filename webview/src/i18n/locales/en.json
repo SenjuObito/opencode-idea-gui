@@ -845,6 +845,8 @@
     "unfavorited": "Unfavorited",
     "loading": "Loading history...",
     "loadFailed": "Load failed",
+    "loadTimeout": "Load history timed out",
+    "retry": "Retry",
     "noSessions": "No history sessions",
     "noSessionsDesc": "No OpenCode session records found in current project",
     "totalSessions": "{{count}} sessions · {{total}} messages",

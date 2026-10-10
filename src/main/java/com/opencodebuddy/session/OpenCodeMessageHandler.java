@@ -214,7 +214,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
                     state.getProvider(), state.getModel());
             callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
 
-            boolean updated = attachUsageToLastAssistant(turnUsage);
+            boolean updated = attachUsageToLastAssistant(turnUsage, usage);
             if (updated) {
                 callbackHandler.notifyMessageUpdate(state.getMessages());
             } else {
@@ -225,16 +225,30 @@ public class OpenCodeMessageHandler implements MessageCallback {
         }
     }
 
-    private boolean attachUsageToLastAssistant(com.google.gson.JsonObject turnUsage) {
+    private boolean attachUsageToLastAssistant(com.google.gson.JsonObject turnUsage, com.google.gson.JsonObject usage) {
         java.util.List<Message> messages = state.getMessagesReference();
         for (int i = messages.size() - 1; i >= 0; i--) {
             Message msg = messages.get(i);
-            if (msg.type == Message.Type.ASSISTANT && msg.raw != null) {
+            if (msg.type == Message.Type.ASSISTANT) {
+                if (msg.raw == null) {
+                    msg.raw = new com.google.gson.JsonObject();
+                }
                 msg.raw.add("turnUsage", turnUsage);
-                Double turnCostUsd = UsageCostCalculator.calculateTurnCostUsd(
-                        SessionProviderRouter.PROVIDER_ID, turnUsage, state.getModel());
-                if (turnCostUsd != null) {
-                    msg.raw.addProperty("turnCostUsd", turnCostUsd);
+                if (usage != null && usage.has("cost") && !usage.get("cost").isJsonNull()) {
+                    try {
+                        double cost = usage.get("cost").getAsDouble();
+                        if (cost > 0) {
+                            msg.raw.addProperty("turnCostUsd", cost);
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (!msg.raw.has("turnCostUsd")) {
+                    Double turnCostUsd = UsageCostCalculator.calculateTurnCostUsd(
+                            SessionProviderRouter.PROVIDER_ID, turnUsage, state.getModel());
+                    if (turnCostUsd != null) {
+                        msg.raw.addProperty("turnCostUsd", turnCostUsd);
+                    }
                 }
                 return true;
             }

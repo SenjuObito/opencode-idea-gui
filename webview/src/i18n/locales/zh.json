@@ -850,6 +850,8 @@
     "unfavorited": "已取消收藏",
     "loading": "加载历史记录中...",
     "loadFailed": "加载失败",
+    "loadTimeout": "加载历史记录超时",
+    "retry": "重试",
     "noSessions": "暂无历史会话",
     "noSessionsDesc": "当前项目下没有找到 OpenCode 会话记录",
     "totalSessions": "共 {{count}} 个会话 · {{total}} 条消息",

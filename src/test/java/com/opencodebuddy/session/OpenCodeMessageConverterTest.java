@@ -157,6 +157,57 @@ public class OpenCodeMessageConverterTest {
         assertEquals("[tool_result]", toolResult.get("content").getAsString());
     }
 
+    @Test
+    public void assistantMessageTokensConvertedToTurnUsage() {
+        JsonObject info = new JsonObject();
+        info.addProperty("role", "assistant");
+        info.addProperty("id", "msg_asst_test");
+        info.addProperty("modelID", "deepseek-v4-flash-free");
+        info.addProperty("cost", 0.0025);
+
+        JsonObject time = new JsonObject();
+        time.addProperty("created", 1000L);
+        time.addProperty("completed", 3200L);
+        info.add("time", time);
+
+        JsonObject tokens = new JsonObject();
+        tokens.addProperty("total", 20975);
+        tokens.addProperty("input", 158);
+        tokens.addProperty("output", 162);
+        tokens.addProperty("reasoning", 175);
+        JsonObject cache = new JsonObject();
+        cache.addProperty("read", 20480);
+        cache.addProperty("write", 0);
+        tokens.add("cache", cache);
+        info.add("tokens", tokens);
+
+        JsonObject entry = new JsonObject();
+        entry.add("info", info);
+        entry.add("parts", JsonParser.parseString("[{\"type\":\"text\",\"text\":\"hello\"}]").getAsJsonArray());
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entry));
+        assertEquals(1, out.size());
+        JsonObject assistant = out.get(0);
+        JsonObject raw = assistant.getAsJsonObject("raw");
+        assertNotNull(raw);
+        assertEquals(2200L, raw.get("durationMs").getAsLong());
+        assertEquals(0.0025, raw.get("turnCostUsd").getAsDouble(), 0.0001);
+
+        assertTrue(raw.has("turnUsage"));
+        JsonObject turnUsage = raw.getAsJsonObject("turnUsage");
+        assertEquals(158, turnUsage.get("input_tokens").getAsInt());
+        assertEquals(162, turnUsage.get("output_tokens").getAsInt());
+        assertEquals(175, turnUsage.get("reasoning_tokens").getAsInt());
+        assertEquals(20480, turnUsage.get("cache_read_input_tokens").getAsInt());
+        assertEquals(0, turnUsage.get("cache_creation_input_tokens").getAsInt());
+        assertEquals(20975, turnUsage.get("total_tokens").getAsInt());
+
+        // message.usage should also match
+        JsonObject msgUsage = raw.getAsJsonObject("message").getAsJsonObject("usage");
+        assertNotNull(msgUsage);
+        assertEquals(20480, msgUsage.get("cache_read_input_tokens").getAsInt());
+    }
+
     private static JsonElement wrap(JsonObject entry) {
         JsonArray arr = new JsonArray();
         arr.add(entry);

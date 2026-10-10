@@ -5,8 +5,6 @@ const cwd = process.cwd();
 const distFile = path.resolve(cwd, 'dist/index.html');
 const targetFiles = [
   path.resolve(cwd, '../src/main/resources/html/opencode-chat.html'),
-  path.resolve(cwd, '../../opencode-vscode-plugin/dist/webview/index.html'),
-  path.resolve(cwd, '../../vs-open-code-gui/dist/webview/index.html'),
 ];
 
 const main = async () => {

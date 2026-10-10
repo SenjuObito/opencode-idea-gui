@@ -703,6 +703,12 @@ export function registerMessageCallbacks(
     }
   };
 
+  const pendingHistory = (window as unknown as Record<string, unknown>).__pendingHistoryData;
+  if (pendingHistory !== undefined) {
+    delete (window as unknown as Record<string, unknown>).__pendingHistoryData;
+    window.setHistoryData?.(pendingHistory as any);
+  }
+
   const pendingStatus = (window as unknown as Record<string, unknown>).__pendingStatusText;
   if (typeof pendingStatus === 'string' && pendingStatus.length > 0) {
     delete (window as unknown as Record<string, unknown>).__pendingStatusText;

@@ -6,13 +6,11 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Service for loading and enhancing history data.
@@ -42,63 +40,38 @@ public class HistoryLoadService {
                 String projectPath = context.resolveEffectiveWorkingDirectory();
                 if (projectPath == null) {
                     LOG.warn("[HistoryHandler] Project base path is null");
+                    notifyHistoryError("项目根路径为空，无法加载历史记录");
                     return;
                 }
 
                 OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
                 if (bridge == null) {
                     LOG.warn("[HistoryHandler] OpenCodeSDKBridge is null");
+                    notifyHistoryError("OpenCode SDK 未就绪，无法加载历史记录");
                     return;
                 }
 
-                JsonElement resultElement = bridge.listSessions(projectPath, 0).join();
+                JsonElement resultElement = bridge.listSessions(projectPath, 0)
+                        .orTimeout(15, TimeUnit.SECONDS)
+                        .join();
                 String finalJson = buildHistoryJsonFromNativeSessions(resultElement, provider);
                 LOG.info("[HistoryHandler] 构建原生历史会话数据完成，JSON 长度: " + finalJson.length());
 
-                // Use Base64 encoding to avoid JavaScript string escaping issues
-                String base64Json = Base64.getEncoder().encodeToString(finalJson.getBytes(StandardCharsets.UTF_8));
-                LOG.info("[HistoryHandler] Base64 编码完成，长度: " + base64Json.length());
-
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    String jsCode = "console.log('[Backend->Frontend] Starting to inject history data');" +
-                                            "if (window.setHistoryData) { " +
-                                            "  try { " +
-                                            "    var base64Str = '" + base64Json + "'; " +
-                                            "    console.log('[Backend->Frontend] Base64 length:', base64Str.length); " +
-                                            // Use TextDecoder to properly decode UTF-8 Base64 strings (avoid garbled non-ASCII characters)
-                                            "    var binaryStr = atob(base64Str); " +
-                                            "    var bytes = new Uint8Array(binaryStr.length); " +
-                                            "    for (var i = 0; i < binaryStr.length; i++) { bytes[i] = binaryStr.charCodeAt(i); } " +
-                                            "    var jsonStr = new TextDecoder('utf-8').decode(bytes); " +
-                                            "    console.log('[Backend->Frontend] Decoded JSON length:', jsonStr.length); " +
-                                            "    var data = JSON.parse(jsonStr); " +
-                                            "    console.log('[Backend->Frontend] Parsed data, sessions:', data.sessions ? data.sessions.length : 0); " +
-                                            "    window.setHistoryData(data); " +
-                                            "    console.log('[Backend->Frontend] setHistoryData called successfully'); " +
-                                            "  } catch(e) { " +
-                                            "    console.error('[Backend->Frontend] Failed to parse/set history data:', e); " +
-                                            "    window.setHistoryData({ success: false, error: '解析历史数据失败: ' + e.message }); " +
-                                            "  } " +
-                                            "} else { " +
-                                            "  console.error('[Backend->Frontend] setHistoryData not available!'); " +
-                                            "}";
-
-                    context.executeJavaScriptOnEDT(jsCode);
-                    LOG.info("[HistoryHandler] JavaScript 代码已注入");
-                });
+                context.callJavaScript("window.setHistoryData", context.escapeJs(finalJson));
+                LOG.info("[HistoryHandler] 历史会话数据已通过 callJavaScript 发送给前端");
 
             } catch (Exception e) {
                 LOG.error("[HistoryHandler] 加载历史数据失败: " + e.getMessage(), e);
-
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    String errorMsg = context.escapeJs(e.getMessage() != null ? e.getMessage() : "未知错误");
-                    String jsCode = "if (window.setHistoryData) { " +
-                                            "  window.setHistoryData({ success: false, error: '" + errorMsg + "' }); " +
-                                            "}";
-                    context.executeJavaScriptOnEDT(jsCode);
-                });
+                notifyHistoryError(e.getMessage() != null ? e.getMessage() : "未知错误");
             }
         });
+    }
+
+    private void notifyHistoryError(String errorMessage) {
+        JsonObject errorObj = new JsonObject();
+        errorObj.addProperty("success", false);
+        errorObj.addProperty("error", errorMessage);
+        context.callJavaScript("window.setHistoryData", context.escapeJs(GSON.toJson(errorObj)));
     }
 
     /**

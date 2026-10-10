@@ -337,6 +337,11 @@ const App = () => {
 
   useHistoryLoader({ currentView, currentProvider });
 
+  const handleRetryHistory = useCallback(() => {
+    setHistoryData(null);
+    sendBridgeEvent('load_history_data', currentProvider);
+  }, [currentProvider, setHistoryData]);
+
   // ── Share state ──
   const [isShared, setIsShared] = useState(false);
   const [sharePending, setSharePending] = useState(false);
@@ -1097,6 +1102,7 @@ const App = () => {
               onToggleFavorite={toggleFavoriteSession}
               onUpdateTitle={updateHistoryTitle}
               onConvertToCliSession={convertToCliSession}
+              onRetry={handleRetryHistory}
             />
           )}
         </>

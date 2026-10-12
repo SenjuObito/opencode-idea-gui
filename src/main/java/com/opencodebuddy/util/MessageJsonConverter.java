@@ -8,7 +8,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.ui.jcef.JBCefBrowser;
 
@@ -360,20 +359,7 @@ public class MessageJsonConverter {
             usageUpdate.addProperty("maxTokens", maxTokens);
 
             String usageJson = new Gson().toJson(usageUpdate);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                if (browser != null && !disposed) {
-                    // Use safe call pattern, check if function exists
-                    String js = "(function() {" +
-                            "  if (typeof window.onUsageUpdate === 'function') {" +
-                            "    window.onUsageUpdate('" + JsUtils.escapeJs(usageJson) + "');" +
-                            "    console.log('[Backend->Frontend] Usage update sent successfully');" +
-                            "  } else {" +
-                            "    console.warn('[Backend->Frontend] window.onUsageUpdate not found');" +
-                            "  }" +
-                            "})();";
-                    browser.getCefBrowser().executeJavaScript(js, browser.getCefBrowser().getURL(), 0);
-                }
-            });
+            handlerContext.callJavaScript("window.onUsageUpdate", JsUtils.escapeJs(usageJson));
         } catch (Exception e) {
             LOG.warn("Failed to push usage update: " + e.getMessage(), e);
         }

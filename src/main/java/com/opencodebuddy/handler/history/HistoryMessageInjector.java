@@ -3,7 +3,6 @@ package com.opencodebuddy.handler.history;
 import com.opencodebuddy.bridge.NodeDetector;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 
 /**
@@ -74,16 +73,7 @@ public class HistoryMessageInjector {
     }
 
     void notifyHistoryLoadComplete() {
-        ApplicationManager.getApplication().invokeLater(() -> {
-            String jsCode = "if (window.historyLoadComplete) { " +
-                                    "  try { " +
-                                    "    window.historyLoadComplete(); " +
-                                    "  } catch(e) { " +
-                                    "    console.error('[HistoryHandler] historyLoadComplete callback failed:', e); " +
-                                    "  } " +
-                                    "}";
-            context.executeJavaScriptOnEDT(jsCode);
-        });
+        context.callJavaScript("window.historyLoadComplete");
     }
 
     /**

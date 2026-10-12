@@ -2783,7 +2783,7 @@ public class OpencodeBuddyChatWindow {
                 targetBrowser.getComponent().requestFocus();
             }
         });
-        executeJavaScriptCode("window.insertFileReferencesAtCursor?.(" + pathsJson + ");");
+        callJavaScript("window.insertFileReferencesAtCursor", pathsJson);
     }
 
     /**
@@ -2804,7 +2804,7 @@ public class OpencodeBuddyChatWindow {
             LOG.debug("Skip focus input pane: webview is unavailable", e);
             return;
         }
-        executeJavaScriptCode("window.focusChatInput?.()");
+        callJavaScript("window.focusChatInput");
     }
 
     // ==================== Dispose ====================

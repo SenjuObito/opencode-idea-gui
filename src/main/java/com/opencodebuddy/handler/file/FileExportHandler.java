@@ -130,22 +130,12 @@ public class FileExportHandler extends BaseMessageHandler {
     }
 
     private void notifySuccess(String message) {
-        ApplicationManager.getApplication().invokeLater(() -> {
-            String jsCode = "if (window.addToast) { " +
-                "  window.addToast('" + escapeJs(message) + "', 'success'); " +
-                "}";
-            context.executeJavaScriptOnEDT(jsCode);
-        });
+        callJavaScript("window.addToast", escapeJs(message), "success");
     }
 
     private void notifyError(String message) {
-        ApplicationManager.getApplication().invokeLater(() -> {
-            String errorDetail = message != null ? message : com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("file.unknownError");
-            String errorMsg = escapeJs(com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("file.saveFailedWithReason", errorDetail));
-            String jsCode = "if (window.addToast) { " +
-                "  window.addToast('" + errorMsg + "', 'error'); " +
-                "}";
-            context.executeJavaScriptOnEDT(jsCode);
-        });
+        String errorDetail = message != null ? message : com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("file.unknownError");
+        String errorMsg = com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("file.saveFailedWithReason", errorDetail);
+        callJavaScript("window.addToast", escapeJs(errorMsg), "error");
     }
 }

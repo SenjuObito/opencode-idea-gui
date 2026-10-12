@@ -6,7 +6,6 @@ import com.opencodebuddy.util.JsUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 
 import java.util.concurrent.CompletableFuture;
@@ -95,12 +94,8 @@ class HistoryMetadataService {
 
             } catch (Exception e) {
                 LOG.error("[HistoryHandler] 更新标题失败: " + e.getMessage(), e);
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    String jsCode = "if (window.addToast) { " +
-                                            "  window.addToast('更新标题失败: " + context.escapeJs(e.getMessage() != null ? e.getMessage() : "未知错误") + "', 'error'); " +
-                                            "}";
-                    context.executeJavaScriptOnEDT(jsCode);
-                });
+                String errorMsg = "更新标题失败: " + (e.getMessage() != null ? e.getMessage() : "未知错误");
+                context.callJavaScript("window.addToast", context.escapeJs(errorMsg), "error");
             }
         });
     }

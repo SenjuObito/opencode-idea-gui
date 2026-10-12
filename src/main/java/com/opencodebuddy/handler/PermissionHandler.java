@@ -12,8 +12,6 @@ import com.opencodebuddy.util.SystemNotificationService;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.Application;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
@@ -165,13 +163,7 @@ public class PermissionHandler extends BaseMessageHandler {
     private void forceCloseFrontendDialog(String fnName, String targetId) {
         String safeId = targetId == null ? "" : targetId;
         String escapedId = escapeJs(safeId);
-        String jsCode = "if (typeof window." + fnName + " === 'function') { "
-                + "window." + fnName + "('" + escapedId + "'); }";
-        // executeJavaScriptOnEDT already marshals to the EDT and no-ops when the
-        // browser is absent, so call it directly. Wrapping it in another
-        // invokeLater would both double-post and NPE in unit tests, where
-        // ApplicationManager.getApplication() is null.
-        context.executeJavaScriptOnEDT(jsCode);
+        callJavaScript("window." + fnName, escapedId);
     }
 
     public void setPermissionDeniedCallback(PermissionDeniedCallback callback) {
@@ -231,20 +223,8 @@ public class PermissionHandler extends BaseMessageHandler {
             String requestJson = gson.toJson(requestData);
             String escapedJson = escapeJs(requestJson);
 
-            ApplicationManager.getApplication().invokeLater(() -> {
-                LOG.info("[PERM_SHOW] Executing JS to show dialog for channelId=" + channelId);
-                String jsCode = "(function retryShowDialog(retries) { " +
-                    "  if (window.showPermissionDialog) { " +
-                    "    window.showPermissionDialog('" + escapedJson + "'); " +
-                    "  } else if (retries > 0) { " +
-                    "    setTimeout(function() { retryShowDialog(retries - 1); }, 200); " +
-                    "  } else { " +
-                    "    console.error('[PERM_DEBUG][JS] FAILED: showPermissionDialog not available!'); " +
-                    "  } " +
-                    "})(30);";
-
-                context.executeJavaScriptOnEDT(jsCode);
-            });
+            LOG.info("[PERM_SHOW] Executing JS to show dialog for channelId=" + channelId);
+            callJavaScript("window.showPermissionDialog", escapedJson);
 
             scheduleSafetyNet(future, () -> {
                 if (future.complete(PermissionService.PermissionResponse.DENY.getValue())) {
@@ -298,18 +278,7 @@ public class PermissionHandler extends BaseMessageHandler {
             } catch (Exception ignored) {
             }
 
-            // Execute directly via context browser on EDT with retry loop
-            String jsCode = "(function retryShowPermission(retries) { " +
-                "  if (window.showPermissionDialog) { " +
-                "    window.showPermissionDialog('" + escapedJson + "'); " +
-                "  } else if (retries > 0) { " +
-                "    setTimeout(function() { retryShowPermission(retries - 1); }, 200); " +
-                "  } else { " +
-                "    console.error('[PermissionHandler][JS] FAILED: showPermissionDialog not available!'); " +
-                "  } " +
-                "})(30);";
-
-            context.executeJavaScriptOnEDT(jsCode);
+            callJavaScript("window.showPermissionDialog", escapedJson);
 
         } catch (Exception e) {
             LOG.error("[PermissionHandler] 显示权限弹窗失败: errorClass=" + errorClass(e), e);
@@ -493,17 +462,7 @@ public class PermissionHandler extends BaseMessageHandler {
             String requestJson = gson.toJson(requestData);
             String escapedJson = escapeJs(requestJson);
 
-            String jsCode = "(function retryShowAskUserQuestion(retries) { " +
-                "  if (window.showAskUserQuestionDialog) { " +
-                "    window.showAskUserQuestionDialog('" + escapedJson + "'); " +
-                "  } else if (retries > 0) { " +
-                "    setTimeout(function() { retryShowAskUserQuestion(retries - 1); }, 200); " +
-                "  } else { " +
-                "    console.error('[PermissionHandler][JS] FAILED: showAskUserQuestionDialog not available!'); " +
-                "  } " +
-                "})(30);";
-
-            context.executeJavaScriptOnEDT(jsCode);
+            callJavaScript("window.showAskUserQuestionDialog", escapedJson);
         } catch (Exception e) {
             LOG.error("[PermissionHandler] Failed to process onQuestionRequested: " + e.getMessage(), e);
         }
@@ -582,24 +541,7 @@ public class PermissionHandler extends BaseMessageHandler {
             String requestJson = gson.toJson(questionsData);
             String escapedJson = escapeJs(requestJson);
 
-            Application application = ApplicationManager.getApplication();
-            if (application != null) {
-                application.invokeLater(() -> {
-                    String jsCode = "(function retryShowAskUserQuestion(retries) { " +
-                        "  if (window.showAskUserQuestionDialog) { " +
-                        "    window.showAskUserQuestionDialog('" + escapedJson + "'); " +
-                        "  } else if (retries > 0) { " +
-                        "    setTimeout(function() { retryShowAskUserQuestion(retries - 1); }, 200); " +
-                        "  } else { " +
-                        "    console.error('[ASK_USER_QUESTION][JS] FAILED: showAskUserQuestionDialog not available!'); " +
-                        "  } " +
-                        "})(30);";
-
-                    context.executeJavaScriptOnEDT(jsCode);
-                });
-            } else {
-                LOG.debug("[ASK_USER_QUESTION][SHOW_DIALOG] Application unavailable, skipping JS dialog dispatch");
-            }
+            callJavaScript("window.showAskUserQuestionDialog", escapedJson);
 
             scheduleSafetyNet(future, () -> {
                 if (future.complete(new JsonObject())) {
@@ -655,8 +597,7 @@ public class PermissionHandler extends BaseMessageHandler {
             onQAData.addProperty("requestId", requestId);
             onQAData.add("questions", pending.questions);
             onQAData.add("answers", answers);
-            context.executeJavaScriptOnEDT("if (window.onQuestionAnswered) { window.onQuestionAnswered('"
-                    + escapeJs(gson.toJson(onQAData)) + "'); }");
+            callJavaScript("window.onQuestionAnswered", escapeJs(gson.toJson(onQAData)));
 
             JsonArray orderedAnswers = buildOrderedAnswers(pending.questions, answers);
 
@@ -667,8 +608,7 @@ public class PermissionHandler extends BaseMessageHandler {
                             if (error != null || !Boolean.TRUE.equals(ok)) {
                                 String msg = error != null ? error.getMessage() : "daemon rejected";
                                 LOG.warn("[OpenCode] replyQuestion failed: id=" + requestId + " error=" + msg);
-                                context.executeJavaScriptOnEDT("if (window.showToast) { window.showToast('"
-                                        + escapeJs("回答提交失败: " + msg) + "'); }");
+                                callJavaScript("window.showToast", escapeJs("回答提交失败: " + msg));
                                 forceCloseFrontendDialog("invalidateQuestionCard", requestId);
                             }
                         });
@@ -763,19 +703,7 @@ public class PermissionHandler extends BaseMessageHandler {
             String requestJson = gson.toJson(planData);
             String escapedJson = escapeJs(requestJson);
 
-            ApplicationManager.getApplication().invokeLater(() -> {
-                String jsCode = "(function retryShowPlanApproval(retries) { " +
-                    "  if (window.showPlanApprovalDialog) { " +
-                    "    window.showPlanApprovalDialog('" + escapedJson + "'); " +
-                    "  } else if (retries > 0) { " +
-                    "    setTimeout(function() { retryShowPlanApproval(retries - 1); }, 200); " +
-                    "  } else { " +
-                    "    console.error('[PLAN_APPROVAL][JS] FAILED: showPlanApprovalDialog not available!'); " +
-                    "  } " +
-                    "})(30);";
-
-                context.executeJavaScriptOnEDT(jsCode);
-            });
+            callJavaScript("window.showPlanApprovalDialog", escapedJson);
 
             scheduleSafetyNet(future, () -> {
                 JsonObject timeoutResponse = new JsonObject();

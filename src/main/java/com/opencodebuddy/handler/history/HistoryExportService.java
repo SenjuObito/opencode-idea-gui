@@ -119,11 +119,6 @@ class HistoryExportService {
     }
 
     private void showToast(String message, String type) {
-        ApplicationManager.getApplication().invokeLater(() -> {
-            String jsCode = "if (window.addToast) { " +
-                    "  window.addToast('" + context.escapeJs(message) + "', '" + type + "'); " +
-                    "}";
-            context.executeJavaScriptOnEDT(jsCode);
-        });
+        context.callJavaScript("window.addToast", context.escapeJs(message), type);
     }
 }

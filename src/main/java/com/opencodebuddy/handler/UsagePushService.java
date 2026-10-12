@@ -137,20 +137,7 @@ public class UsagePushService {
 
     void sendUsagePayload(JsonObject usageUpdate) {
         String usageJson = gson.toJson(usageUpdate);
-
-        // Push to frontend (must be executed on the EDT thread)
-        ApplicationManager.getApplication().invokeLater(() -> {
-            if (context.getBrowser() != null && !context.isDisposed()) {
-                String js = "(function() {" +
-                        "  if (typeof window.onUsageUpdate === 'function') {" +
-                        "    window.onUsageUpdate('" + context.escapeJs(usageJson) + "');" +
-                        "  }" +
-                        "})();";
-                context.getBrowser().getCefBrowser().executeJavaScript(js, context.getBrowser().getCefBrowser().getURL(), 0);
-            } else {
-                LOG.warn("[UsagePushService] Cannot send usage update: browser is null or disposed");
-            }
-        });
+        context.callJavaScript("window.onUsageUpdate", context.escapeJs(usageJson));
     }
 
     /**

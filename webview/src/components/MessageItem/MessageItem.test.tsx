@@ -170,7 +170,7 @@ describe('MessageItem copy button visibility', () => {
 });
 
 describe('MessageItem token usage display', () => {
-  it('shows whole-turn token usage without detailed extras by default', () => {
+  it('hides token usage and cost when detailed output is disabled by default', () => {
     const message: ClaudeMessage = {
       type: 'assistant',
       content: 'Hello',
@@ -190,7 +190,8 @@ describe('MessageItem token usage display', () => {
     renderMessageItem(message);
 
     expect(screen.getByText('0:16')).toBeTruthy();
-    expect(screen.getByText('输入 1.2K / 输出 456')).toBeTruthy();
+    expect(screen.queryByText(/输入/)).toBeNull();
+    expect(screen.queryByText(/输出/)).toBeNull();
     expect(screen.queryByText(/\$0\.0060/)).toBeNull();
   });
 
@@ -247,7 +248,7 @@ describe('MessageItem token usage display', () => {
     );
   });
 
-  it('hides cache hit ratio when detailed output is disabled', () => {
+  it('hides token usage when detailed output is disabled', () => {
     const message: ClaudeMessage = {
       type: 'assistant',
       content: 'Hello',
@@ -267,7 +268,8 @@ describe('MessageItem token usage display', () => {
 
     renderMessageItem(message);
 
-    expect(screen.getByText('输入 36.3K / 输出 353')).toBeTruthy();
+    expect(screen.getByText('0:10')).toBeTruthy();
+    expect(screen.queryByText(/输入/)).toBeNull();
     expect(screen.queryByText(/缓存命中/)).toBeNull();
   });
 
@@ -362,19 +364,21 @@ describe('MessageItem token usage display', () => {
       } as any,
     };
 
-    renderMessageItem(message);
+    renderMessageItem(message, { detailedOutputEnabled: true });
 
     expect(screen.getByText('0:03')).toBeTruthy();
-    expect(screen.getByText(/输入 20.6K/)).toBeTruthy();
-    expect(screen.getByText(/输出 162/)).toBeTruthy();
+    expect(screen.getByText(/输入 20\.6K/)).toBeTruthy();
+    expect(screen.getByText(/输出 337/)).toBeTruthy();
+    expect(screen.getByText(/思考 175/)).toBeTruthy();
   });
-  it("renders token usage and cost when durationMs is undefined (decoupled from duration)", () => {
+
+  it('renders token usage and cost when durationMs is undefined (decoupled from duration)', () => {
     const message: ClaudeMessage = {
-      type: "assistant",
-      content: "Hello without durationMs",
+      type: 'assistant',
+      content: 'Hello without durationMs',
       raw: {
         message: {
-          content: [{ type: "text", text: "Hello without durationMs" }],
+          content: [{ type: 'text', text: 'Hello without durationMs' }],
         },
         turnUsage: {
           input_tokens: 1500,
@@ -388,9 +392,10 @@ describe('MessageItem token usage display', () => {
 
     renderMessageItem(message, { detailedOutputEnabled: true });
 
-    expect(screen.queryByText("本次耗时")).toBeNull();
+    expect(screen.queryByText('本次耗时')).toBeNull();
     expect(screen.getByText(/输入 3\.5K/)).toBeTruthy();
     expect(screen.getByText(/输出 300/)).toBeTruthy();
-    expect(screen.getByText("$0.0052")).toBeTruthy();
+    expect(screen.getByText('$0.0052')).toBeTruthy();
   });
 });
+

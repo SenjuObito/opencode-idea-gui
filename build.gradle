@@ -359,8 +359,7 @@ tasks.named('runIde') {
     }
 }
 
-// Unified AI Bridge (merging Claude and Codex)
-def aiBridgeDir = file("ai-bridge")
+// OpenCode Buddy Core package directories
 def aiBridgePackDir = layout.buildDirectory.dir('ai-bridge-pack').get().asFile
 def aiBridgeArchive = new File(aiBridgePackDir, 'ai-bridge.zip')
 def aiBridgeHashFile = new File(aiBridgePackDir, 'ai-bridge.hash')
@@ -464,106 +463,107 @@ tasks.named('processResources') {
     mustRunAfter('buildWebview')
 }
 
-// Use system zip command to package ai-bridge, preserving file permissions
-tasks.register('packageAiBridge', Exec) {
-    onlyIf { aiBridgeDir.exists() }
+def coreVersion = '0.1.0'
+def coreZipReleaseUrl = "https://github.com/SenjuObito/opencode-buddy-core/releases/download/v${coreVersion}/ai-bridge.zip"
+def coreHashReleaseUrl = "https://github.com/SenjuObito/opencode-buddy-core/releases/download/v${coreVersion}/ai-bridge.hash"
+def coreCacheDir = layout.buildDirectory.dir('core-cache').get().asFile
+def cachedCoreZip = new File(coreCacheDir, "ai-bridge-${coreVersion}.zip")
+def cachedCoreHash = new File(coreCacheDir, "ai-bridge-${coreVersion}.hash")
 
-    // Switch to ai-bridge directory for packaging, avoiding inclusion of top-level directory
-    workingDir aiBridgeDir
-
-    // Ensure output directory exists and dependencies are installed
-    doFirst {
-        aiBridgePackDir.mkdirs()
-        // Delete old zip file
-        if (aiBridgeArchive.exists()) {
-            aiBridgeArchive.delete()
-        }
-        // Install npm dependencies if node_modules doesn't exist
-        if (!new File(aiBridgeDir, 'node_modules').exists()) {
-            println 'Installing ai-bridge npm dependencies...'
-            String npmCmd = System.getProperty('os.name').toLowerCase().contains('windows') ? 'npm.cmd' : 'npm'
-            exec { commandLine npmCmd, 'install', '--silent', '--loglevel=error'; workingDir = aiBridgeDir }
-            println 'ai-bridge npm dependencies installed.'
-        }
-    }
-
-    // Use system zip command, -r for recursive, -y to preserve symlinks
-    // @opencode-ai/sdk is bundled with the plugin; only pnpm store dirs are excluded.
-    if (System.getProperty('os.name').toLowerCase().contains('windows')) {
-        // Windows: Use PowerShell to exclude SDK packages
-        // Create temporary PowerShell script file to avoid escaping issues
-        def tempScript = File.createTempFile('ai-bridge-pack', '.ps1')
-        tempScript.deleteOnExit()
-
-        def scriptContent = '''
-            $excludePatterns = @(
-                '*node_modules\\.pnpm*'
-            )
-            $tempDir = Join-Path $env:TEMP "ai-bridge-temp-$(Get-Random)"
-            New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-            try {
-                Get-ChildItem -Path . -Recurse -Force | Where-Object {
-                    $itemPath = $_.FullName
-                    $shouldExclude = $false
-                    foreach ($pattern in $excludePatterns) {
-                        if ($itemPath -like $pattern) {
-                            $shouldExclude = $true
-                            break
-                        }
-                    }
-                    -not $shouldExclude
-                } | ForEach-Object {
-                    $relativePath = $_.FullName.Substring((Get-Location).Path.Length + 1)
-                    $dest = Join-Path $tempDir $relativePath
-                    if ($_.PSIsContainer) {
-                        if (-not (Test-Path $dest)) {
-                            New-Item -ItemType Directory -Path $dest -Force | Out-Null
-                        }
-                    } else {
-                        $destDir = Split-Path $dest -Parent
-                        if (-not (Test-Path $destDir)) {
-                            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-                        }
-                        Copy-Item $_.FullName -Destination $dest -Force
-                    }
-                }
-                Compress-Archive -Path "$tempDir\\*" -DestinationPath "''' + aiBridgeArchive.absolutePath.replace('\\', '\\\\') + '''" -Force
-            } finally {
-                if (Test-Path $tempDir) {
-                    Remove-Item -Path $tempDir -Recurse -Force
-                }
+// Download opencode-buddy-core distribution zip automatically from GitHub Release
+tasks.register('downloadAiBridgeCore') {
+    outputs.files(cachedCoreZip, cachedCoreHash)
+    doLast {
+        String customZipPath = System.getenv("OPENCODE_DEV_BRIDGE_ZIP") ?: System.getProperty("opencode.bridge.zip")
+        if (customZipPath) {
+            File customZip = file(customZipPath)
+            if (customZip.exists()) {
+                println "Using local custom bridge zip: ${customZip.absolutePath}"
+                coreCacheDir.mkdirs()
+                java.nio.file.Files.copy(customZip.toPath(), cachedCoreZip.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                return
             }
-            '''
-        tempScript.text = scriptContent
-        commandLine 'powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempScript.absolutePath
-    } else {
-        // Unix/Linux/macOS: Use zip command to preserve permissions
-        // Exclude SDK package directories
-        commandLine 'zip', '-r', '-y', aiBridgeArchive.absolutePath,
-            '.',
-            '-x', '*/node_modules/.pnpm/*'
+        }
+
+        if (cachedCoreZip.exists() && cachedCoreZip.length() > 0) {
+            println "Using cached opencode-buddy-core zip: ${cachedCoreZip.absolutePath}"
+            return
+        }
+
+        println "Downloading opencode-buddy-core v${coreVersion} asset from ${coreZipReleaseUrl}..."
+        coreCacheDir.mkdirs()
+
+        def downloadWithRedirects = { String urlStr, File targetFile ->
+            String currentUrl = urlStr
+            for (int redirects = 0; redirects < 10; redirects++) {
+                def conn = (java.net.HttpURLConnection) new URI(currentUrl).toURL().openConnection()
+                conn.setInstanceFollowRedirects(true)
+                conn.setConnectTimeout(20000)
+                conn.setReadTimeout(60000)
+                int status = conn.getResponseCode()
+                if (status == java.net.HttpURLConnection.HTTP_MOVED_TEMP ||
+                    status == java.net.HttpURLConnection.HTTP_MOVED_PERM ||
+                    status == java.net.HttpURLConnection.HTTP_SEE_OTHER ||
+                    status == 307 || status == 308) {
+                    currentUrl = conn.getHeaderField("Location")
+                    conn.disconnect()
+                    continue
+                }
+                if (status >= 400) {
+                    throw new GradleException("Failed to download from ${currentUrl}: HTTP ${status}")
+                }
+                conn.inputStream.withStream { input ->
+                    targetFile.withOutputStream { output ->
+                        output << input
+                    }
+                }
+                conn.disconnect()
+                return
+            }
+            throw new GradleException("Too many redirects downloading ${urlStr}")
+        }
+
+        downloadWithRedirects(coreZipReleaseUrl, cachedCoreZip)
+        println "✓ Downloaded ai-bridge.zip (${cachedCoreZip.length() / 1024} KB)"
+
+        try {
+            downloadWithRedirects(coreHashReleaseUrl, cachedCoreHash)
+            println "✓ Downloaded ai-bridge.hash"
+        } catch (Exception e) {
+            println "Note: Could not download ai-bridge.hash (${e.message}), will compute SHA-256 locally"
+        }
     }
+}
+
+// Package ai-bridge into zip using the downloaded opencode-buddy-core release
+tasks.register('packageAiBridge') {
+    dependsOn('downloadAiBridgeCore')
+    outputs.files(aiBridgeArchive, aiBridgeHashFile)
 
     doLast {
-        if (aiBridgeArchive.exists()) {
-            println "✓ ai-bridge.zip created: ${aiBridgeArchive.absolutePath}"
-            println "  Size: ${aiBridgeArchive.length() / 1024 / 1024} MB"
-
-            // Generate ai-bridge.hash file (SHA-256)
-            def digest = java.security.MessageDigest.getInstance('SHA-256')
-            aiBridgeArchive.withInputStream { is ->
-                byte[] buffer = new byte[8192]
-                int read
-                while ((read = is.read(buffer)) != -1) {
-                    digest.update(buffer, 0, read)
+        aiBridgePackDir.mkdirs()
+        if (cachedCoreZip.exists() && cachedCoreZip.length() > 0) {
+            java.nio.file.Files.copy(cachedCoreZip.toPath(), aiBridgeArchive.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            if (cachedCoreHash.exists() && cachedCoreHash.length() > 0) {
+                java.nio.file.Files.copy(cachedCoreHash.toPath(), aiBridgeHashFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                def digest = java.security.MessageDigest.getInstance('SHA-256')
+                aiBridgeArchive.withInputStream { is ->
+                    byte[] buffer = new byte[8192]
+                    int read
+                    while ((read = is.read(buffer)) != -1) {
+                        digest.update(buffer, 0, read)
+                    }
                 }
+                def hashHex = digest.digest().collect { String.format('%02x', it) }.join('')
+                aiBridgeHashFile.text = hashHex
             }
-            def hashHex = digest.digest().collect { String.format('%02x', it) }.join('')
-            aiBridgeHashFile.text = hashHex
-            println "✓ ai-bridge.hash created: ${hashHex}"
-        } else {
-            throw new GradleException("Packaging failed: ai-bridge.zip was not generated")
+            println "✓ Packaged ai-bridge.zip from opencode-buddy-core: ${aiBridgeArchive.absolutePath}"
+            println "  Size: ${aiBridgeArchive.length() / 1024} KB"
+            return
         }
+
+        throw new GradleException("Packaging failed: cached opencode-buddy-core zip not found")
     }
 }
 
@@ -579,11 +579,10 @@ tasks.matching { it.name.startsWith('prepareSandbox') }.configureEach {
     // Capture needed file references during configuration phase
     def archiveSource = aiBridgeArchive
     def hashSource = aiBridgeHashFile
-    def bridgeDir = aiBridgeDir
 
     doLast {
-        if (!bridgeDir.exists() && !archiveSource.exists()) {
-            throw new GradleException('ai-bridge directory does not exist. Please ensure it has been pulled and dependencies installed.')
+        if (!archiveSource.exists()) {
+            throw new GradleException('ai-bridge.zip does not exist. Ensure downloadAiBridgeCore and packageAiBridge succeeded.')
         }
         def sandboxRoot = sandboxRootProvider.get().asFile
 

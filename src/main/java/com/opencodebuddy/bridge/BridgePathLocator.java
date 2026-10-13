@@ -25,6 +25,7 @@ final class BridgePathLocator {
     static final String PLUGIN_DIR_NAME = "opencode-buddy-jetbrains";
     static final String BRIDGE_PATH_PROPERTY = "opencode.bridge.path";
     static final String BRIDGE_PATH_ENV = "OPENCODE_BRIDGE_PATH";
+    static final String DEV_BRIDGE_PATH_ENV = "OPENCODE_DEV_BRIDGE_PATH";
 
     private BridgePathLocator() {
     }
@@ -33,6 +34,13 @@ final class BridgePathLocator {
      * Resolve the configured bridge directory.
      */
     static File resolveConfiguredBridgeDir() {
+        File fromDevEnv = tryResolveConfiguredPath(
+            System.getenv(DEV_BRIDGE_PATH_ENV),
+            "environment variable " + DEV_BRIDGE_PATH_ENV
+        );
+        if (fromDevEnv != null) {
+            return fromDevEnv;
+        }
         File fromProperty = tryResolveConfiguredPath(
             System.getProperty(BRIDGE_PATH_PROPERTY),
             "system property " + BRIDGE_PATH_PROPERTY

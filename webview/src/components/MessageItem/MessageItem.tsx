@@ -188,6 +188,7 @@ interface TokenUsageInfo {
   /** Total input-side tokens for the turn (non-cache input + cache write + cache read). */
   inputTokens: number;
   outputTokens: number;
+  reasoningTokens: number;
   nonCacheInputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
@@ -219,7 +220,9 @@ function extractTokenUsage(raw: ClaudeMessage['raw']): TokenUsageInfo | null {
   const nonCacheInput = num(usageSrc.input_tokens ?? usageSrc.input);
   const cacheCreation = num(usageSrc.cache_creation_input_tokens ?? cache.write);
   const cacheRead = num(usageSrc.cache_read_input_tokens ?? cache.read);
-  const output = num(usageSrc.output_tokens ?? usageSrc.output);
+  const reasoning = num(usageSrc.reasoning_tokens ?? usageSrc.reasoning);
+  const rawOutput = num(usageSrc.output_tokens ?? usageSrc.output);
+  const output = usageSrc.reasoning_tokens !== undefined ? rawOutput : rawOutput + reasoning;
   const input = nonCacheInput + cacheCreation + cacheRead;
   if (input === 0 && output === 0) return null;
 
@@ -228,6 +231,7 @@ function extractTokenUsage(raw: ClaudeMessage['raw']): TokenUsageInfo | null {
   return {
     inputTokens: input,
     outputTokens: output,
+    reasoningTokens: reasoning,
     nonCacheInputTokens: nonCacheInput,
     cacheCreationTokens: cacheCreation,
     cacheReadTokens: cacheRead,
@@ -913,13 +917,26 @@ export const MessageItem = memo(function MessageItem({
         const durationMs = typeof message.durationMs === 'number' ? message.durationMs : null;
         const hasDuration = durationMs !== null;
         const tokenInfo = extractTokenUsage(message.raw);
-        if (!hasDuration && !tokenInfo) return null;
+        if (!hasDuration && (!detailedOutputEnabled || !tokenInfo)) return null;
 
-        const cacheHitRatio = detailedOutputEnabled && tokenInfo ? formatCacheHitRatio(tokenInfo) : null;
+        const cacheHitRatio = tokenInfo ? formatCacheHitRatio(tokenInfo) : null;
         const cacheHitLabel = cacheHitRatio
           ? t('chat.cacheHitsWithRatio', {
             tokens: formatTokenCount(tokenInfo!.cacheReadTokens),
             ratio: cacheHitRatio,
+          })
+          : '';
+
+        const reasoningLabel = tokenInfo && tokenInfo.reasoningTokens > 0
+          ? `（思考 ${formatTokenCount(tokenInfo.reasoningTokens)}）`
+          : '';
+
+        const tokenDetailTitle = tokenInfo
+          ? t('chat.tokenUsageDetail', {
+            input: formatTokenCount(tokenInfo.nonCacheInputTokens),
+            cacheWrite: formatTokenCount(tokenInfo.cacheCreationTokens),
+            cacheRead: formatTokenCount(tokenInfo.cacheReadTokens),
+            output: formatTokenCount(tokenInfo.outputTokens),
           })
           : '';
 
@@ -933,24 +950,19 @@ export const MessageItem = memo(function MessageItem({
                   <span className="message-duration-value">{formatDurationMs(durationMs)}</span>
                 </>
               )}
-              {tokenInfo && (
+              {detailedOutputEnabled && tokenInfo && (
                 <>
                   {hasDuration && <span className="message-duration-separator">·</span>}
                   <span
                     className="message-duration-tokens"
-                    title={t('chat.tokenUsageDetail', {
-                      input: formatTokenCount(tokenInfo.nonCacheInputTokens),
-                      cacheWrite: formatTokenCount(tokenInfo.cacheCreationTokens),
-                      cacheRead: formatTokenCount(tokenInfo.cacheReadTokens),
-                      output: formatTokenCount(tokenInfo.outputTokens),
-                    })}
+                    title={tokenDetailTitle}
                   >
                     {t('chat.tokenUsage', {
                       input: `${formatTokenCount(tokenInfo.inputTokens)}${cacheHitLabel}`,
-                      output: formatTokenCount(tokenInfo.outputTokens),
+                      output: `${formatTokenCount(tokenInfo.outputTokens)}${reasoningLabel}`,
                     })}
                   </span>
-                  {detailedOutputEnabled && tokenInfo.costUsd !== undefined && (
+                  {tokenInfo.costUsd !== undefined && (
                     <>
                       <span className="message-duration-separator">·</span>
                       <span className="message-duration-tokens">{formatUsdCost(tokenInfo.costUsd)}</span>

@@ -12,6 +12,7 @@ import { sendBridgeEvent } from '../../../utils/bridge';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
 import { parseSequence } from '../parseSequence';
 import { getStreamEndHandlingMode } from '../messageSync';
+import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 
 /**
  * Pour every tool_use_id carried by tool_result blocks inside one message's raw
@@ -690,8 +691,19 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
           const existingTextLen = getTextLenFromRaw(finalRaw);
           const backendBlocks = getRawContentBlocks(endedBackendRaw);
           const existingBlocks = getRawContentBlocks(finalRaw);
+          const preferBackendContent = backendTextLen > existingTextLen || (backendTextLen === existingTextLen && backendBlocks.length >= existingBlocks.length);
 
-          if (backendTextLen > existingTextLen || (backendTextLen === existingTextLen && backendBlocks.length >= existingBlocks.length)) {
+          if (typeof endedBackendRaw === 'object' && endedBackendRaw !== null) {
+            const backendObj = endedBackendRaw as Record<string, unknown>;
+            const currentObj = (finalRaw && typeof finalRaw === 'object' ? finalRaw : {}) as Record<string, unknown>;
+            finalRaw = {
+              ...(preferBackendContent ? backendObj : currentObj),
+              ...(backendObj.turnUsage ? { turnUsage: backendObj.turnUsage } : {}),
+              ...(backendObj.turnCostUsd !== undefined ? { turnCostUsd: backendObj.turnCostUsd } : {}),
+              ...(backendObj.tokens ? { tokens: backendObj.tokens } : {}),
+              ...(backendObj.durationMs !== undefined ? { durationMs: backendObj.durationMs } : {}),
+            };
+          } else if (preferBackendContent) {
             finalRaw = endedBackendRaw;
           }
         }
@@ -796,7 +808,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         console.error('[Frontend] Failed to collect interrupted tool ids:', error);
       }
 
-      return newMessages;
+      return reconstructTurnMetadata(newMessages, { skipTrailingTurn: false });
     });
 
     // Collapse auto-expanded thinking blocks using the pre-clear snapshot

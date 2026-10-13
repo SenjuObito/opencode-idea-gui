@@ -276,7 +276,7 @@ public final class OpenCodeMessageConverter {
 
             JsonObject turnUsage = new JsonObject();
             turnUsage.addProperty("input_tokens", readInt(tokens, "input"));
-            turnUsage.addProperty("output_tokens", readInt(tokens, "output"));
+            turnUsage.addProperty("output_tokens", readInt(tokens, "output") + readInt(tokens, "reasoning"));
             turnUsage.addProperty("reasoning_tokens", readInt(tokens, "reasoning"));
             int cacheRead = 0;
             int cacheWrite = 0;

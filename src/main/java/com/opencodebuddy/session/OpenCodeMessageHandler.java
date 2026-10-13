@@ -512,12 +512,9 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
         assistantContent.append(content);
 
-        if (currentAssistantMessage == null) {
-            currentAssistantMessage = new Message(Message.Type.ASSISTANT, assistantContent.toString());
-            state.addMessage(currentAssistantMessage);
-        } else {
-            currentAssistantMessage.content = assistantContent.toString();
-        }
+        ensureCurrentAssistantMessageExists();
+        currentAssistantMessage.content = assistantContent.toString();
+        applyContentDeltaToRaw(content);
 
         callbackHandler.notifyContentDelta(content);
         callbackHandler.notifyMessageUpdate(state.getMessages());
@@ -587,6 +584,47 @@ public class OpenCodeMessageHandler implements MessageCallback {
         String next = existing + delta;
         target.addProperty("thinking", next);
         target.addProperty("text", next);
+
+        message.add("content", content);
+        raw.add("message", message);
+        currentAssistantMessage.raw = raw;
+    }
+
+    private void applyContentDeltaToRaw(String delta) {
+        if (delta == null || delta.isEmpty()) {
+            return;
+        }
+        com.google.gson.JsonObject raw = currentAssistantMessage.raw;
+        com.google.gson.JsonObject message = raw.has("message") && raw.get("message").isJsonObject()
+                ? raw.getAsJsonObject("message")
+                : new com.google.gson.JsonObject();
+        com.google.gson.JsonArray content = message.has("content") && message.get("content").isJsonArray()
+                ? message.getAsJsonArray("content")
+                : new com.google.gson.JsonArray();
+
+        com.google.gson.JsonObject target = null;
+        for (int i = content.size() - 1; i >= 0; i--) {
+            com.google.gson.JsonElement el = content.get(i);
+            if (el.isJsonObject()) {
+                com.google.gson.JsonObject block = el.getAsJsonObject();
+                if (block.has("type") && "text".equals(block.get("type").getAsString())) {
+                    target = block;
+                    break;
+                }
+            }
+        }
+
+        if (target == null) {
+            target = new com.google.gson.JsonObject();
+            target.addProperty("type", "text");
+            target.addProperty("text", "");
+            content.add(target);
+        }
+
+        String existing = target.has("text") && !target.get("text").isJsonNull()
+                ? target.get("text").getAsString()
+                : "";
+        target.addProperty("text", existing + delta);
 
         message.add("content", content);
         raw.add("message", message);

@@ -196,7 +196,7 @@ public class OpenCodeMessageConverterTest {
         assertTrue(raw.has("turnUsage"));
         JsonObject turnUsage = raw.getAsJsonObject("turnUsage");
         assertEquals(158, turnUsage.get("input_tokens").getAsInt());
-        assertEquals(162, turnUsage.get("output_tokens").getAsInt());
+        assertEquals(337, turnUsage.get("output_tokens").getAsInt());
         assertEquals(175, turnUsage.get("reasoning_tokens").getAsInt());
         assertEquals(20480, turnUsage.get("cache_read_input_tokens").getAsInt());
         assertEquals(0, turnUsage.get("cache_creation_input_tokens").getAsInt());

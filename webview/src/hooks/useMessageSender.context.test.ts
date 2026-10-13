@@ -32,6 +32,7 @@ describe('useMessageSender - /context command', () => {
     setCurrentView: vi.fn(),
     forceCreateNewSession: vi.fn(),
     handleModeSelect: vi.fn(),
+    longContextEnabled: false,
     openContextUsageDialog: vi.fn(),
     closeContextUsageDialog: vi.fn().mockReturnValue(true),
     ...overrides,
@@ -70,9 +71,10 @@ describe('useMessageSender - /context command', () => {
     expect(payload.requestId).toBeTruthy();
   });
 
-  it('sends get_context_usage with base model (longContext option is not wired yet)', () => {
+  it('sends get_context_usage with selected model when longContext is enabled', () => {
     const opts = createOptions({
       selectedModel: 'claude-opus-4-8',
+      longContextEnabled: true,
     });
 
     const { result } = renderHook(() => useMessageSender(opts));
@@ -189,7 +191,7 @@ describe('useMessageSender - /context command', () => {
     expect(payload.reasoningEffort).toBe('high');
   });
 
-  it('omits reasoning effort for Claude models without adaptive thinking support', () => {
+  it('passes through reasoning effort consistently', () => {
     const opts = createOptions({
       currentProvider: 'claude',
       selectedModel: 'claude-haiku-4-5',

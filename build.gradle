@@ -331,10 +331,17 @@ tasks.named('runIde') {
     // Configure log output to console
     systemProperty 'idea.log.debug.categories', '#com.opencodebuddy'
 
-    // Point bridge resolver to pre-extracted ai-bridge with node_modules (dev only)
-    def stableBridge = layout.buildDirectory.dir("stable-ai-bridge").get().asFile
-    if (stableBridge.exists()) {
-        systemProperty 'opencode.bridge.path', stableBridge.absolutePath
+    // Point bridge resolver to sibling opencode-buddy-core source directory for instant local debugging
+    File siblingCoreSourceDir = new File(projectDir.parentFile, 'opencode-buddy-core')
+    if (siblingCoreSourceDir.exists() && new File(siblingCoreSourceDir, 'channel-manager.js').exists()) {
+        systemProperty 'opencode.bridge.path', siblingCoreSourceDir.absolutePath
+        environment 'OPENCODE_DEV_BRIDGE_PATH', siblingCoreSourceDir.absolutePath
+        println "runIde: Pointed opencode.bridge.path to local source: ${siblingCoreSourceDir.absolutePath}"
+    } else {
+        def stableBridge = layout.buildDirectory.dir("stable-ai-bridge").get().asFile
+        if (stableBridge.exists()) {
+            systemProperty 'opencode.bridge.path', stableBridge.absolutePath
+        }
     }
 
     // Redirect standard output
@@ -470,10 +477,22 @@ def coreCacheDir = layout.buildDirectory.dir('core-cache').get().asFile
 def cachedCoreZip = new File(coreCacheDir, "ai-bridge-${coreVersion}.zip")
 def cachedCoreHash = new File(coreCacheDir, "ai-bridge-${coreVersion}.hash")
 
-// Download opencode-buddy-core distribution zip automatically from GitHub Release
+// Sibling repository detection for opencode-buddy-core
+def siblingCoreDir = new File(projectDir.parentFile, 'opencode-buddy-core')
+
+// Download or package opencode-buddy-core distribution zip automatically
 tasks.register('downloadAiBridgeCore') {
+    // If sibling repo exists, register its source files as task inputs so changes trigger rebuild
+    if (siblingCoreDir.exists() && siblingCoreDir.isDirectory()) {
+        inputs.files(fileTree(siblingCoreDir) {
+            include 'daemon.js', 'channel-manager.js', 'package.json', 'scripts/**', 'services/**', 'channels/**', 'utils/**'
+            exclude '**/node_modules/**', '**/dist/**', '**/.git/**'
+        })
+    }
     outputs.files(cachedCoreZip, cachedCoreHash)
+
     doLast {
+        // Priority 1: User explicitly specified bridge zip via env var or system property
         String customZipPath = System.getenv("OPENCODE_DEV_BRIDGE_ZIP") ?: System.getProperty("opencode.bridge.zip")
         if (customZipPath) {
             File customZip = file(customZipPath)
@@ -485,11 +504,48 @@ tasks.register('downloadAiBridgeCore') {
             }
         }
 
+        // Priority 2: Local sibling opencode-buddy-core repository
+        if (siblingCoreDir.exists() && siblingCoreDir.isDirectory()) {
+            File coreDistZip = new File(siblingCoreDir, 'dist/ai-bridge.zip')
+            File coreDistHash = new File(siblingCoreDir, 'dist/ai-bridge.hash')
+            File packScript = new File(siblingCoreDir, 'scripts/pack-zip.mjs')
+
+            boolean needPack = !coreDistZip.exists() || (project.findProperty('repackCore') ?: 'false').toString().toBoolean()
+            if (!needPack && coreDistZip.exists()) {
+                def keyFiles = [new File(siblingCoreDir, 'daemon.js'), new File(siblingCoreDir, 'package.json'), packScript]
+                needPack = keyFiles.any { it.exists() && it.lastModified() > coreDistZip.lastModified() }
+            }
+
+            if (needPack && packScript.exists()) {
+                println "Building opencode-buddy-core zip from local sibling directory (${siblingCoreDir.absolutePath})..."
+                exec {
+                    workingDir siblingCoreDir
+                    if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+                        commandLine 'cmd', '/c', 'npm', 'run', 'pack:zip'
+                    } else {
+                        commandLine 'npm', 'run', 'pack:zip'
+                    }
+                }
+            }
+
+            if (coreDistZip.exists() && coreDistZip.length() > 0) {
+                println "✓ Using local opencode-buddy-core build: ${coreDistZip.absolutePath}"
+                coreCacheDir.mkdirs()
+                java.nio.file.Files.copy(coreDistZip.toPath(), cachedCoreZip.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                if (coreDistHash.exists()) {
+                    java.nio.file.Files.copy(coreDistHash.toPath(), cachedCoreHash.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+                return
+            }
+        }
+
+        // Priority 3: Cached zip from previous run
         if (cachedCoreZip.exists() && cachedCoreZip.length() > 0) {
             println "Using cached opencode-buddy-core zip: ${cachedCoreZip.absolutePath}"
             return
         }
 
+        // Priority 4: Download from GitHub Release fallback
         println "Downloading opencode-buddy-core v${coreVersion} asset from ${coreZipReleaseUrl}..."
         coreCacheDir.mkdirs()
 

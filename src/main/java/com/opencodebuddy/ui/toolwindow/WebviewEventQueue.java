@@ -114,7 +114,7 @@ final class WebviewEventQueue<T> {
                     script.append(", ");
                 }
                 script.append('\'')
-                        .append(call.args[i] == null ? "" : call.args[i])
+                        .append(sanitizeArgForJsLiteral(call.args[i]))
                         .append('\'');
             }
             script.append("); } } catch (e) { console.error('[Backend->Frontend] Failed to call ")
@@ -122,6 +122,33 @@ final class WebviewEventQueue<T> {
                     .append("', e); }\n");
         }
         return script.append("})();").toString();
+    }
+
+    static String sanitizeArgForJsLiteral(String arg) {
+        if (arg == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(arg.length() + 8);
+        for (int i = 0; i < arg.length(); i++) {
+            char c = arg.charAt(i);
+            if (c == '\'') {
+                if (i == 0 || arg.charAt(i - 1) != '\\') {
+                    sb.append('\\');
+                }
+                sb.append('\'');
+            } else if (c == '\n') {
+                sb.append("\\n");
+            } else if (c == '\r') {
+                sb.append("\\r");
+            } else if (c == '\u2028') {
+                sb.append("\\u2028");
+            } else if (c == '\u2029') {
+                sb.append("\\u2029");
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private T currentBrowser() {
@@ -319,11 +346,22 @@ final class WebviewEventQueue<T> {
     }
 
     private static boolean isLifecycle(JsCall<?> call) {
-        return call.rawScript != null
-                || isMessageSnapshot(call)
+        if (call.rawScript != null) {
+            return true;
+        }
+        String fn = call.functionName;
+        return isMessageSnapshot(call)
                 || isSnapshotResetBoundary(call)
-                || "onStreamEnd".equals(call.functionName)
-                || "onBlockReset".equals(call.functionName);
+                || "onStreamEnd".equals(fn)
+                || "onBlockReset".equals(fn)
+                || "historyLoadComplete".equals(fn)
+                || "window.historyLoadComplete".equals(fn)
+                || "showPermissionDialog".equals(fn)
+                || "window.showPermissionDialog".equals(fn)
+                || "showAskUserQuestionDialog".equals(fn)
+                || "window.showAskUserQuestionDialog".equals(fn)
+                || "showPlanApprovalDialog".equals(fn)
+                || "window.showPlanApprovalDialog".equals(fn);
     }
 
     private static boolean isLatestOnly(JsCall<?> call) {

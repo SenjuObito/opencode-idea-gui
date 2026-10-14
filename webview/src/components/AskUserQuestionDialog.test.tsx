@@ -1,5 +1,5 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { AskUserQuestionDialog, type AskUserQuestionRequest } from './AskUserQuestionDialog';
 
 const countdown = vi.hoisted(() => ({
@@ -26,21 +26,13 @@ vi.mock('../hooks/useDialogCountdownTimeout', () => ({
   },
 }));
 
-// The returned functions must keep a stable identity across renders: the
-// component lists setDialogHeight in an effect dep array, so a fresh vi.fn()
-// per render re-runs that effect forever and the test OOMs.
-const dialogResize = vi.hoisted(() => ({
-  dialogRef: { current: null } as { current: HTMLDivElement | null },
-  setDialogHeight: vi.fn(),
-  handleResizeStart: vi.fn(),
-}));
-
+const setDialogHeightMock = vi.fn();
 vi.mock('../hooks/useDialogResize', () => ({
   useDialogResize: () => ({
-    dialogRef: dialogResize.dialogRef,
+    dialogRef: { current: null },
     dialogHeight: null,
-    setDialogHeight: dialogResize.setDialogHeight,
-    handleResizeStart: dialogResize.handleResizeStart,
+    setDialogHeight: setDialogHeightMock,
+    handleResizeStart: vi.fn(),
   }),
 }));
 
@@ -63,10 +55,10 @@ const mkRequest = (overrides: Partial<AskUserQuestionRequest> = {}): AskUserQues
 const renderDialog = (request: AskUserQuestionRequest | null) => {
   const onSubmit = vi.fn();
   const onCancel = vi.fn();
-  render(
+  const result = render(
     <AskUserQuestionDialog isOpen request={request} onSubmit={onSubmit} onCancel={onCancel} />,
   );
-  return { onSubmit, onCancel };
+  return { onSubmit, onCancel, ...result };
 };
 
 describe('AskUserQuestionDialog', () => {
@@ -74,6 +66,10 @@ describe('AskUserQuestionDialog', () => {
     countdown.state = { remainingSeconds: 100, isTimeWarning: false };
     countdown.markSubmitted.mockClear();
     countdown.lastOpts = null;
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it('renders nothing without a request', () => {
@@ -156,5 +152,67 @@ describe('AskUserQuestionDialog', () => {
     renderDialog(mkRequest());
     expect(document.querySelector('.question-option')).toBeTruthy();
     expect(document.querySelector('.option-checkbox .codicon')).toBeTruthy();
+  });
+
+  it('can be minimized to a single bar and restored on click', () => {
+    renderDialog(mkRequest());
+    expect(document.querySelector('.ask-user-question-dialog')).toBeTruthy();
+
+    const collapseBtn = document.querySelector('.ask-user-question-collapse-btn');
+    expect(collapseBtn).toBeTruthy();
+    fireEvent.click(collapseBtn!);
+
+    // Should be in minimized mode
+    expect(document.querySelector('.ask-user-question-dialog')).toBeFalsy();
+    expect(document.querySelector('.ask-user-question-dialog-minimized')).toBeTruthy();
+    expect(document.querySelector('.permission-dialog-overlay.collapsed-mode')).toBeTruthy();
+
+    // Clicking the expand button restores the full dialog
+    const expandBtn = document.querySelector('.ask-user-question-expand-btn');
+    expect(expandBtn).toBeTruthy();
+    fireEvent.click(expandBtn!);
+
+    expect(document.querySelector('.ask-user-question-dialog')).toBeTruthy();
+    expect(document.querySelector('.ask-user-question-dialog-minimized')).toBeFalsy();
+  });
+
+  it('restores dialog when clicking on the minimized card body', () => {
+    renderDialog(mkRequest());
+    fireEvent.click(document.querySelector('.ask-user-question-collapse-btn')!);
+
+    const minimizedCard = document.querySelector('.ask-user-question-dialog-minimized');
+    expect(minimizedCard).toBeTruthy();
+    fireEvent.click(minimizedCard!);
+
+    expect(document.querySelector('.ask-user-question-dialog')).toBeTruthy();
+  });
+
+  it('resets minimized state when a new request arrives', () => {
+    const { rerender } = render(
+      <AskUserQuestionDialog
+        isOpen
+        request={mkRequest({ requestId: 'req-1' })}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    // Minimize
+    fireEvent.click(document.querySelector('.ask-user-question-collapse-btn')!);
+    expect(document.querySelector('.ask-user-question-dialog-minimized')).toBeTruthy();
+
+    // New request arrives
+    rerender(
+      <AskUserQuestionDialog
+        isOpen
+        request={mkRequest({ requestId: 'req-2' })}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    // Automatically expanded
+    expect(document.querySelector('.ask-user-question-dialog')).toBeTruthy();
+    expect(document.querySelector('.ask-user-question-dialog-minimized')).toBeFalsy();
   });
 });

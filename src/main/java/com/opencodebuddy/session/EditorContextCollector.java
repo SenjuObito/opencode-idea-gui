@@ -74,14 +74,20 @@ public class EditorContextCollector {
         AtomicReference<Editor> editorRef = new AtomicReference<>();
         AtomicReference<String> activeFileRef = new AtomicReference<>();
 
-        ApplicationManager.getApplication().invokeAndWait(() -> {
+        Runnable fetchEditor = () -> {
             try {
                 editorRef.set(FileEditorManager.getInstance(project).getSelectedTextEditor());
                 activeFileRef.set(EditorFileUtils.getCurrentActiveFile(project));
             } catch (Exception e) {
                 LOG.warn("Failed to get editor on EDT: " + e.getMessage());
             }
-        });
+        };
+
+        if (ApplicationManager.getApplication().isDispatchThread()) {
+            fetchEditor.run();
+        } else {
+            ApplicationManager.getApplication().invokeAndWait(fetchEditor);
+        }
 
         // Then collect context in background read action
         ReadAction

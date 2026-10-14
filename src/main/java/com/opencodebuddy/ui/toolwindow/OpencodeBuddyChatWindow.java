@@ -819,31 +819,9 @@ public class OpencodeBuddyChatWindow {
         if (!isSurfaceRefreshEligible(expectedBrowser)) {
             return false;
         }
-        CefBrowser cefBrowser = expectedBrowser.getCefBrowser();
-        SurfaceFrameFence.Attempt attempt = surfaceFrameFence.arm(
-                expectedBrowser,
-                cefBrowser,
-                activePageGeneration,
-                readyEpoch);
-        if (attempt == null) {
-            return false;
-        }
-        LOG.info("[WebviewSurface] Armed OSR full-frame fence"
-                + ", serial=" + attempt.serial()
-                + ", attempt=" + attempt.attemptId()
-                + ", reason=" + attempt.reason()
-                + ", trigger=" + trigger
-                + ", project=" + project.getName());
-        if (!scheduleOsrFrameFenceTimeout(attempt)) {
-            releaseOsrAttempt(attempt, "timeout_owner_conflict");
-            return false;
-        }
-        if (replacementSource == null) {
-            triggerSurfaceDamage(attempt, "phaseA");
-        } else {
-            surfaceDamageReplacementSources.put(attempt, replacementSource);
-            replaceSurfaceDamage(replacementSource, attempt);
-        }
+        // Native rendering handles resizing and surface refresh smoothly.
+        // Avoid artificial frame fence or damage pulse that causes viewport tearing on resize.
+        refreshCurrentWebviewSurface(expectedBrowser);
         return true;
     }
 
@@ -2741,6 +2719,16 @@ public class OpencodeBuddyChatWindow {
         snapshot.reasoningEffort = session.getReasoningEffort();
 
         TabStateService.getInstance(project).saveTabSessionState(tabIndex, snapshot);
+
+        Content parent = this.parentContent;
+        if (parent != null) {
+            TabSessionSlot slot = parent.getUserData(TabSessionSlot.KEY);
+            if (slot != null) {
+                slot.setSessionId(session.getSessionId());
+                slot.setProvider(session.getProvider());
+                slot.setModel(session.getModel());
+            }
+        }
     }
 
     /**
@@ -2961,7 +2949,7 @@ public class OpencodeBuddyChatWindow {
 
             @Override
             public com.intellij.ui.jcef.JBCefOSRHandlerFactory getOsrHandlerFactory() {
-                return surfaceFrameFence.createHandlerFactory();
+                return null;
             }
 
             @Override

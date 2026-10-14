@@ -102,7 +102,7 @@ public class StreamMessageCoalescerStreamEndHookTest {
 
     @Test
     public void thresholdConversationKeepsTheFullSnapshot() {
-        List<OpencodeSession.Message> messages = messages(300);
+        List<OpencodeSession.Message> messages = messages(StreamMessageCoalescer.LONG_CONVERSATION_THRESHOLD);
 
         StreamMessageCoalescer.MessageTransport transport =
                 StreamMessageCoalescer.selectMessageTransport(messages, null);
@@ -114,9 +114,11 @@ public class StreamMessageCoalescerStreamEndHookTest {
 
     @Test
     public void growingConversationWithStablePrefixUsesTail() {
-        List<OpencodeSession.Message> previous = messages(300);
+        int threshold = StreamMessageCoalescer.LONG_CONVERSATION_THRESHOLD;
+        int tailSize = StreamMessageCoalescer.LONG_CONVERSATION_TAIL_SIZE;
+        List<OpencodeSession.Message> previous = messages(threshold);
         List<OpencodeSession.Message> growing = new ArrayList<>(previous);
-        for (int i = 300; i < 400; i++) {
+        for (int i = threshold; i < threshold + 10; i++) {
             growing.add(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "message-" + i));
         }
 
@@ -124,8 +126,8 @@ public class StreamMessageCoalescerStreamEndHookTest {
                 StreamMessageCoalescer.selectMessageTransport(growing, previous);
 
         assertTrue(transport.tailUpdate());
-        assertEquals(220, transport.baseIndex());
-        assertEquals(180, transport.messages().size());
+        assertEquals(growing.size() - tailSize, transport.baseIndex());
+        assertEquals(tailSize, transport.messages().size());
     }
 
     @Test

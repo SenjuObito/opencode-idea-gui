@@ -37,8 +37,8 @@ public class StreamMessageCoalescer {
     private static final int MEDIUM_INTERVAL_MS = 500;             // 100-200KB
     private static final int LARGE_INTERVAL_MS = 2_000;            // 200-500KB
     private static final int XLARGE_INTERVAL_MS = 5_000;           // >500KB
-    private static final int LONG_CONVERSATION_THRESHOLD = 300;
-    private static final int LONG_CONVERSATION_TAIL_SIZE = 180;
+    static final int LONG_CONVERSATION_THRESHOLD = 30;
+    static final int LONG_CONVERSATION_TAIL_SIZE = 15;
 
     // During streaming, delta channel (onContentDelta/onThinkingDelta) provides
     // real-time character-by-character updates.  updateMessages carries authoritative

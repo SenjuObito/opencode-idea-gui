@@ -340,10 +340,64 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
                 if (contentManager.getSelectedContent() != event.getContent()) {
                     return;
                 }
-                OpencodeBuddyChatWindow window = contentToWindowMap.get(event.getContent());
-                if (window != null) {
-                    window.onTabActivated();
-                    window.resyncSessionFromServerIfNeeded();
+                Content selectedContent = event.getContent();
+                OpencodeBuddyChatWindow mainWindow = instances.get(project);
+                if (mainWindow == null) {
+                    return;
+                }
+
+                TabSessionSlot targetSlot = selectedContent.getUserData(TabSessionSlot.KEY);
+                if (targetSlot == null) {
+                    return;
+                }
+
+                // 1. Mount single JCEF view into the newly selected tab container
+                JPanel targetContainer = targetSlot.getContainerPanel();
+                JPanel chatPanel = mainWindow.getContent();
+                if (chatPanel.getParent() != targetContainer) {
+                    targetContainer.removeAll();
+                    targetContainer.add(chatPanel, BorderLayout.CENTER);
+                    targetContainer.revalidate();
+                    targetContainer.repaint();
+                }
+
+                // 2. Persist previous tab slot state & update mainWindow parentContent
+                Content previousContent = mainWindow.getParentContent();
+                if (previousContent != null && previousContent != selectedContent) {
+                    TabSessionSlot prevSlot = previousContent.getUserData(TabSessionSlot.KEY);
+                    if (prevSlot != null && mainWindow.getSession() != null) {
+                        prevSlot.setSessionId(mainWindow.getSession().getSessionId());
+                        prevSlot.setProvider(mainWindow.getSession().getProvider());
+                        prevSlot.setModel(mainWindow.getSession().getModel());
+                    }
+                }
+                mainWindow.setParentContent(selectedContent);
+
+                // 3. Dispatch session switch via Core multi-session architecture
+                String targetSessionId = targetSlot.getSessionId();
+                com.opencodebuddy.session.OpencodeSession currentSession = mainWindow.getSession();
+                String currentSessionId = (currentSession != null) ? currentSession.getSessionId() : null;
+
+                if (targetSessionId != null && !targetSessionId.isEmpty()) {
+                    if (!targetSessionId.equals(currentSessionId)) {
+                        LOG.info("[TabManager] Switching session to: " + targetSessionId);
+                        mainWindow.getSessionLifecycleManager().loadHistorySession(
+                                targetSessionId,
+                                project.getBasePath(),
+                                targetSlot.getProvider(),
+                                targetSlot.getModel()
+                        );
+                    } else {
+                        mainWindow.onTabActivated();
+                        mainWindow.resyncSessionFromServerIfNeeded();
+                    }
+                } else {
+                    if (currentSessionId != null || (currentSession != null && !currentSession.getMessages().isEmpty())) {
+                        LOG.info("[TabManager] Creating fresh session for tab: " + selectedContent.getDisplayName());
+                        mainWindow.getSessionLifecycleManager().createNewSession();
+                    } else {
+                        mainWindow.onTabActivated();
+                    }
                 }
             }
 
@@ -352,9 +406,10 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
                 updateTabCloseableState(contentManager);
 
                 Content removedContent = event.getContent();
+                contentToWindowMap.remove(removedContent);
+
                 if (isContentDetaching(removedContent)) {
-                    LOG.info("[TabManager] Tab detaching to floating window, skipping dispose: "
-                        + removedContent.getDisplayName());
+                    LOG.info("[TabManager] Tab detaching to floating window: " + removedContent.getDisplayName());
                     return;
                 }
 
@@ -362,12 +417,20 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
                 TabStateService tabStateService = TabStateService.getInstance(project);
                 tabStateService.onTabRemoved(removedIndex);
 
-                OpencodeBuddyChatWindow window = contentToWindowMap.get(removedContent);
-                if (window != null) {
-                    LOG.info("[TabManager] Disposing OpencodeBuddyChatWindow for removed tab: "
-                        + removedContent.getDisplayName());
-                    window.dispose();
+                TabSessionSlot slot = removedContent.getUserData(TabSessionSlot.KEY);
+                if (slot != null && slot.getSessionId() != null) {
+                    OpencodeBuddyChatWindow mainWindow = instances.get(project);
+                    if (mainWindow != null && mainWindow.getSession() != null
+                            && slot.getSessionId().equals(mainWindow.getSession().getSessionId())) {
+                        try {
+                            mainWindow.getSession().interrupt();
+                        } catch (Exception e) {
+                            LOG.debug("[TabManager] Failed to interrupt closing session: " + e.getMessage());
+                        }
+                    }
                 }
+
+                LOG.info("[TabManager] Tab removed: " + removedContent.getDisplayName());
             }
 
             @Override
@@ -468,10 +531,18 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
         OpencodeBuddyChatWindow firstChatWindow = new OpencodeBuddyChatWindow(project, false);
         String firstTabName = getDefaultTabName(1);
 
-        loadingContent.setComponent(firstChatWindow.getContent());
+        JPanel container = new JPanel(new BorderLayout());
+        container.setBackground(com.opencodebuddy.util.ThemeConfigService.getBackgroundColor());
+        container.add(firstChatWindow.getContent(), BorderLayout.CENTER);
+
+        loadingContent.setComponent(container);
         loadingContent.setDisplayName(firstTabName);
+        TabSessionSlot slot = new TabSessionSlot(firstTabName, container);
+        loadingContent.putUserData(TabSessionSlot.KEY, slot);
+
         firstChatWindow.setParentContent(loadingContent);
-        loadingContent.setDisposer(firstChatWindow::dispose);
+        firstChatWindow.setOriginalTabName(firstTabName);
+        contentToWindowMap.put(loadingContent, firstChatWindow);
 
         updateTabCloseableState(contentManager);
     }
@@ -493,13 +564,64 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
         OpencodeBuddyChatWindow chatWindow = new OpencodeBuddyChatWindow(project, false);
         String tabName = getDefaultTabName(1);
 
-        Content content = contentFactory.createContent(chatWindow.getContent(), tabName, false);
+        JPanel container = new JPanel(new BorderLayout());
+        container.setBackground(com.opencodebuddy.util.ThemeConfigService.getBackgroundColor());
+        container.add(chatWindow.getContent(), BorderLayout.CENTER);
+
+        Content content = contentFactory.createContent(container, tabName, false);
+        TabSessionSlot slot = new TabSessionSlot(tabName, container);
+        content.putUserData(TabSessionSlot.KEY, slot);
+
         chatWindow.setParentContent(content);
         chatWindow.setOriginalTabName(tabName);
-        content.setDisposer(chatWindow::dispose);
+        contentToWindowMap.put(content, chatWindow);
         contentManager.addContent(content);
 
         updateTabCloseableState(contentManager);
+    }
+
+    /**
+     * Create a new chat tab backed by a new Core session in the single-JCEF architecture.
+     */
+    public static void createNewTab(@NotNull Project project) {
+        ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
+        toolWindowManager.invokeLater(() -> {
+            ToolWindow toolWindow = toolWindowManager.getToolWindow(TOOL_WINDOW_ID);
+            if (toolWindow == null) {
+                LOG.error("[ToolWindow] Tool window not found");
+                return;
+            }
+
+            OpencodeBuddyChatWindow mainWindow = instances.get(project);
+            if (mainWindow == null) {
+                LOG.error("[ToolWindow] Main chat window not found for project: " + project.getName());
+                return;
+            }
+
+            ContentManager contentManager = toolWindow.getContentManager();
+            String tabName = getNextTabName(toolWindow);
+
+            JPanel container = new JPanel(new BorderLayout());
+            container.setBackground(com.opencodebuddy.util.ThemeConfigService.getBackgroundColor());
+
+            ContentFactory contentFactory = ContentFactory.getInstance();
+            Content content = contentFactory.createContent(container, tabName, false);
+            content.setCloseable(true);
+
+            TabSessionSlot slot = new TabSessionSlot(tabName, container);
+            if (mainWindow.getSession() != null) {
+                slot.setProvider(mainWindow.getSession().getProvider());
+                slot.setModel(mainWindow.getSession().getModel());
+            }
+            content.putUserData(TabSessionSlot.KEY, slot);
+            contentToWindowMap.put(content, mainWindow);
+
+            contentManager.addContent(content);
+            contentManager.setSelectedContent(content);
+
+            toolWindow.show(null);
+            LOG.info("[ToolWindow] Created new tab slot: " + tabName);
+        });
     }
 
     /**

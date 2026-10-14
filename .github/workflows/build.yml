@@ -39,10 +39,6 @@ jobs:
         working-directory: webview
         run: npm ci
 
-      - name: Install ai-bridge dependencies
-        working-directory: ai-bridge
-        run: npm ci
-
       # The tag is the release version. Strip the leading `v` and hand the rest
       # to Gradle, which names the plugin zip after it and forwards it to the
       # webview build (as RELEASE_VERSION) so the version shown in the UI tracks

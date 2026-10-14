@@ -19,6 +19,7 @@ import {
   useModelProviderState,
   useChatComputations,
   useCompactConfirm,
+  useSessionTabs,
 } from './hooks';
 import {
   NEW_SESSION_COMMANDS,
@@ -316,7 +317,7 @@ const App = () => {
   const {
     showNewSessionConfirm, showInterruptConfirm,
     suppressNextStatusToastRef,
-    createNewSession, forceCreateNewSession,
+    forceCreateNewSession,
     handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
@@ -974,37 +975,63 @@ const App = () => {
     }
   }, [sessionTitle, t]);
 
+  // Session tabs management
+  const {
+    tabs,
+    activeTabId,
+    selectTab,
+    createTab,
+    closeTab,
+    renameTab,
+    forkTab,
+  } = useSessionTabs({
+    currentSessionId,
+    sessionTitle,
+    setCustomSessionTitle,
+    updateHistoryTitle,
+    messages,
+    setMessages,
+    loading,
+    streamingActive,
+    isShared,
+    forceCreateNewSession,
+    loadHistorySession,
+    t,
+  });
+
   // ── Render ──
   return (
     <>
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       <ChatHeader
         currentView={currentView}
-        sessionTitle={sessionTitle}
         t={t}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={selectTab}
+        onCloseTab={closeTab}
+        onRenameTab={renameTab}
+        onForkTab={forkTab}
+        onShareTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          void handleShare();
+        }}
+        onCopyShareLinkTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          handleCopyShareLink();
+        }}
+        onUnshareTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          void handleUnshare();
+        }}
         onBack={() => setCurrentView('chat')}
-        onNewSession={createNewSession}
-        onNewTab={() => sendBridgeEvent('create_new_tab')}
+        onNewSession={createTab}
         onHistory={() => setCurrentView('history')}
         onSettings={() => {
           setSettingsInitialTab(undefined);
           setCurrentView('settings');
         }}
         onOpenSearch={() => setSearchOpen(true)}
-        titleEditable
-        onTitleChange={(newTitle) => {
-          setCustomSessionTitle(newTitle);
-          if (currentSessionId) {
-            updateHistoryTitle(currentSessionId, newTitle);
-          }
-        }}
-        isShared={isShared}
-        sharePending={sharePending}
-        shareHidden={shareHidden}
-        onCopyShareLink={handleCopyShareLink}
-        onShare={handleShare}
-        onUnshare={handleUnshare}
-        onForkAll={handleForkFull}
         onExport={() => {
           if (currentSessionId) {
             exportHistorySession(currentSessionId, sessionTitle);

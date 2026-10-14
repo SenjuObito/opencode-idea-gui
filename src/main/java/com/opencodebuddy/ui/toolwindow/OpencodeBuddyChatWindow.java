@@ -2720,15 +2720,7 @@ public class OpencodeBuddyChatWindow {
 
         TabStateService.getInstance(project).saveTabSessionState(tabIndex, snapshot);
 
-        Content parent = this.parentContent;
-        if (parent != null) {
-            TabSessionSlot slot = parent.getUserData(TabSessionSlot.KEY);
-            if (slot != null) {
-                slot.setSessionId(session.getSessionId());
-                slot.setProvider(session.getProvider());
-                slot.setModel(session.getModel());
-            }
-        }
+
     }
 
     /**

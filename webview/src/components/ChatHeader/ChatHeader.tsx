@@ -1,118 +1,48 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
-
 import { BackIcon } from '../Icons';
+import type { SessionTabData } from './types';
+import { SessionTabBar } from './SessionTabBar';
 
 export interface ChatHeaderProps {
   currentView: 'chat' | 'history' | 'settings';
-  sessionTitle: string;
   t: TFunction;
+  tabs: SessionTabData[];
+  activeTabId: string;
+  onSelectTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => void;
+  onRenameTab: (tabId: string, newTitle: string) => void;
+  onForkTab: (tab: SessionTabData) => void;
+  onShareTab: (tab: SessionTabData) => void;
+  onCopyShareLinkTab: (tab: SessionTabData) => void;
+  onUnshareTab: (tab: SessionTabData) => void;
   onBack: () => void;
   onNewSession: () => void;
-  /** Callback to create a new chat tab in the IDE tool window */
-  onNewTab?: () => void;
   onHistory: () => void;
   onSettings: () => void;
-  /**
-   * Opens the in-conversation search panel. Only rendered when provided.
-   * Wired up by App.tsx via UIStateContext.setSearchOpen.
-   */
   onOpenSearch?: () => void;
-  onTitleChange?: (newTitle: string) => void;
-  titleEditable?: boolean;
-  /** Whether the session is currently shared */
-  isShared?: boolean;
-  /** Whether a share request is in flight (spinner state) */
-  sharePending?: boolean;
-  /** Hide the share controls entirely (e.g. "share": "disabled" in opencode.json) */
-  shareHidden?: boolean;
-  /** Copy the existing share link to the clipboard */
-  onCopyShareLink?: () => void;
-  /** Callback to share the session */
-  onShare?: () => void;
-  /** Callback to unshare the session */
-  onUnshare?: () => void;
-  /** Fork the entire conversation into a new session */
-  onForkAll?: () => void;
-  /** Export current session as Markdown */
   onExport?: () => void;
 }
 
 export function ChatHeader({
   currentView,
-  sessionTitle,
   t,
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+  onRenameTab,
+  onForkTab,
+  onShareTab,
+  onCopyShareLinkTab,
+  onUnshareTab,
   onBack,
   onNewSession,
-  onNewTab,
   onHistory,
   onSettings,
   onOpenSearch,
-  onTitleChange,
-  titleEditable = false,
-  isShared = false,
-  sharePending = false,
-  shareHidden = false,
-  onCopyShareLink,
-  onShare,
-  onUnshare,
-  onForkAll,
   onExport,
 }: ChatHeaderProps): React.ReactElement | null {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!titleEditable) {
-      setEditing(false);
-    }
-  }, [titleEditable]);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  const startEditing = useCallback(() => {
-    if (!titleEditable || !onTitleChange) return;
-    setEditValue(sessionTitle);
-    setEditing(true);
-  }, [titleEditable, onTitleChange, sessionTitle]);
-
-  const commitEdit = useCallback(() => {
-    setEditing(false);
-    const trimmed = editValue.trim().slice(0, 50);
-    if (trimmed && trimmed !== sessionTitle && onTitleChange) {
-      onTitleChange(trimmed);
-    }
-  }, [editValue, sessionTitle, onTitleChange]);
-
-  const cancelEdit = useCallback(() => {
-    setEditing(false);
-  }, []);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitEdit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelEdit();
-    }
-  }, [commitEdit, cancelEdit]);
-
-  const handleBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
-    // If focus moves to save/cancel button inside edit container, let that button handle it
-    const editContainer = e.currentTarget.closest('.session-title-edit-mode');
-    if (editContainer && editContainer.contains(e.relatedTarget as Node)) {
-      return;
-    }
-    commitEdit();
-  }, [commitEdit]);
-
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
@@ -147,106 +77,34 @@ export function ChatHeader({
           <button className="back-button" onClick={onBack} data-tooltip={t('common.back')}>
             <BackIcon /> {t('common.back')}
           </button>
-        ) : editing ? (
-          <div className="session-title-edit-mode" onClick={(e) => e.stopPropagation()}>
-            <input
-              ref={inputRef}
-              type="text"
-              className="session-title-input"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
-              maxLength={50}
-              spellCheck={false}
-              aria-label="Session title"
-            />
-            <button className="session-title-save-btn" onClick={commitEdit} aria-label="Save title">
-              <span className="codicon codicon-check" />
-            </button>
-            <button className="session-title-cancel-btn" onClick={cancelEdit} aria-label="Cancel editing">
-              <span className="codicon codicon-close" />
-            </button>
-          </div>
         ) : (
-          <div className="session-title-wrapper">
-            <div className="session-title">
-              {sessionTitle}
-            </div>
-            {titleEditable && (
-              <button className="session-title-edit-btn" onClick={startEditing} aria-label="Edit session title">
-                <span className="codicon codicon-edit" />
-              </button>
-            )}
-            {currentView === 'chat' && onForkAll && (
-              <button
-                className="session-title-share-btn"
-                onClick={onForkAll}
-                title={t('chat.forkAllTooltip')}
-                aria-label={t('chat.forkAllTooltip')}
-              >
-                <span className="codicon codicon-git-branch" />
-              </button>
-            )}
-            {currentView === 'chat' && onShare && onUnshare && !shareHidden && (
-              sharePending ? (
-                <button
-                  className="session-title-share-btn pending"
-                  disabled
-                  title={t('chat.sharePendingTooltip')}
-                  aria-label={t('chat.sharePendingTooltip')}
-                >
-                  <span className="codicon codicon-loading codicon-modifier-spin" />
-                </button>
-              ) : isShared ? (
-                <>
-                  <button
-                    className="session-title-share-btn shared"
-                    onClick={onCopyShareLink}
-                    title={t('chat.copyShareLinkTooltip')}
-                    aria-label={t('chat.copyShareLinkTooltip')}
-                  >
-                    <span className="codicon codicon-copy" />
-                  </button>
-                  <button
-                    className="session-title-share-btn shared"
-                    onClick={onUnshare}
-                    title={t('chat.unshareTooltip')}
-                    aria-label={t('chat.unshareTooltip')}
-                  >
-                    <span className="codicon codicon-close" />
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="session-title-share-btn"
-                  onClick={onShare}
-                  title={t('chat.shareTooltip')}
-                  aria-label={t('chat.shareTooltip')}
-                >
-                  <span className="codicon codicon-share" />
-                </button>
-              )
-            )}
-          </div>
+          <SessionTabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={onSelectTab}
+            onCloseTab={onCloseTab}
+            onRenameTab={onRenameTab}
+            onForkTab={onForkTab}
+            onShareTab={onShareTab}
+            onCopyShareLinkTab={onCopyShareLinkTab}
+            onUnshareTab={onUnshareTab}
+            t={t}
+          />
         )}
       </div>
+
       <div className="header-right">
         {currentView === 'chat' && (
           <>
-            <button className="icon-button" onClick={onNewSession} data-tooltip={t('common.newSession')}>
+            <button
+              className="icon-button"
+              onClick={onNewSession}
+              data-tooltip={t('common.newSession', { defaultValue: 'New Chat' })}
+              aria-label={t('common.newSession', { defaultValue: 'New Chat' })}
+            >
               <span className="codicon codicon-plus" />
             </button>
-            {onNewTab && (
-              <button
-                className="icon-button"
-                onClick={onNewTab}
-                data-tooltip={t('common.newTab', { defaultValue: 'New Tab' })}
-                aria-label={t('common.newTab', { defaultValue: 'New Tab' })}
-              >
-                <span className="codicon codicon-multiple-windows" />
-              </button>
-            )}
+
             {onOpenSearch && (
               <button
                 className="icon-button"
@@ -257,13 +115,16 @@ export function ChatHeader({
                 <span className="codicon codicon-search" />
               </button>
             )}
+
             <button
               className="icon-button"
               onClick={onHistory}
-              data-tooltip={t('common.history')}
+              data-tooltip={t('common.history', { defaultValue: 'History' })}
+              aria-label={t('common.history', { defaultValue: 'History' })}
             >
               <span className="codicon codicon-history" />
             </button>
+
             <div className="header-more-menu-wrapper" ref={moreMenuRef}>
               <button
                 className={`icon-button ${moreMenuOpen ? 'active' : ''}`}

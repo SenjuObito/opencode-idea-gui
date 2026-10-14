@@ -1,7 +1,6 @@
 name: Tests
 
 # CI test coverage for every component of the plugin:
-#   - ai-bridge unit tests (node:test)
 #   - webview unit tests (vitest + tsc typecheck)
 #   - Java unit tests (Linux)
 #   - WSL integration tests (Windows + WSL)
@@ -76,10 +75,6 @@ jobs:
         working-directory: webview
         run: npm ci
 
-      - name: Install ai-bridge dependencies
-        working-directory: ai-bridge
-        run: npm ci
-
       - name: Run tests
         run: ./gradlew test
 
@@ -125,10 +120,6 @@ jobs:
 
       - name: Install webview dependencies
         working-directory: webview
-        run: npm ci
-
-      - name: Install ai-bridge dependencies
-        working-directory: ai-bridge
         run: npm ci
 
       - name: Run WSL integration tests

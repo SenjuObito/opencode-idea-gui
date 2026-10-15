@@ -43,6 +43,7 @@ public class HistoryLoadService {
                     notifyHistoryError("项目根路径为空，无法加载历史记录");
                     return;
                 }
+                projectPath = projectPath.replace('\\', '/');
 
                 OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
                 if (bridge == null) {
@@ -154,6 +155,20 @@ public class HistoryLoadService {
                 // Agent
                 if (s.has("agent") && !s.get("agent").isJsonNull()) {
                     session.addProperty("agent", s.get("agent").getAsString());
+                }
+
+                // Project directory (v1: directory, v2: location.directory or directory)
+                String sessionDir = null;
+                if (s.has("directory") && !s.get("directory").isJsonNull()) {
+                    sessionDir = s.get("directory").getAsString();
+                } else if (s.has("location") && s.get("location").isJsonObject()) {
+                    JsonObject loc = s.getAsJsonObject("location");
+                    if (loc.has("directory") && !loc.get("directory").isJsonNull()) {
+                        sessionDir = loc.get("directory").getAsString();
+                    }
+                }
+                if (sessionDir != null && !sessionDir.isBlank()) {
+                    session.addProperty("projectPath", sessionDir);
                 }
 
                 // Metadata: isFavorited & favoritedAt

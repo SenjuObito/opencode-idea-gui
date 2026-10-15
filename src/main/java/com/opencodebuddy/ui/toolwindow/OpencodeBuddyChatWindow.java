@@ -91,7 +91,7 @@ public class OpencodeBuddyChatWindow {
     private final Map<String, StreamMessageCoalescer> sessionCoalescers = new ConcurrentHashMap<>();
     private volatile String activeSessionId = null;
     private final WebviewWatchdog webviewWatchdog;
-    private final StreamMessageCoalescer streamCoalescer;
+    private volatile StreamMessageCoalescer streamCoalescer;
 
     private volatile boolean disposed = false;
     private volatile boolean initialized = false;
@@ -1630,7 +1630,7 @@ public class OpencodeBuddyChatWindow {
             }
             StreamMessageCoalescer coalescer = sessionCoalescers.get(targetSessionId);
             if (coalescer != null) {
-                // Keep the active coalescer reference in sync
+                this.streamCoalescer = coalescer;
             }
             persistTabSessionState();
         }
@@ -3270,8 +3270,12 @@ public class OpencodeBuddyChatWindow {
                     return;
                 }
                 int count = restoring.getMessages().size();
-                if (streamCoalescer != null) {
-                    streamCoalescer.flush(seq -> {
+                StreamMessageCoalescer targetCoalescer = sessionCoalescers.get(currentId);
+                if (targetCoalescer == null) {
+                    targetCoalescer = streamCoalescer;
+                }
+                if (targetCoalescer != null) {
+                    targetCoalescer.flush(seq -> {
                         if (!disposed) {
                             callJavaScript("historyLoadComplete", String.valueOf(count));
                             syncRevertStateToFrontend(restoring);

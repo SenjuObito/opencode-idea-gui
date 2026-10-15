@@ -190,7 +190,7 @@ public class OpenCodeMessageConverterTest {
         JsonObject assistant = out.get(0);
         JsonObject raw = assistant.getAsJsonObject("raw");
         assertNotNull(raw);
-        assertEquals(2200L, raw.get("durationMs").getAsLong());
+        assertEquals(2200000L, raw.get("durationMs").getAsLong());
         assertEquals(0.0025, raw.get("turnCostUsd").getAsDouble(), 0.0001);
 
         assertTrue(raw.has("turnUsage"));

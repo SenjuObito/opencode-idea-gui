@@ -217,8 +217,8 @@ public class SessionCallbackAdapterStreamEndTest {
         ApplicationManager.setApplication(invokeLaterInlineApplication());
         adapter.onBlockReset();
 
-        assertTrue(jsTarget.calls.contains("onContentDelta:text-tail"));
-        assertTrue(jsTarget.calls.contains("onThinkingDelta:thinking-tail"));
+        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("onContentDelta:") && c.endsWith("text-tail")));
+        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("onThinkingDelta:") && c.endsWith("thinking-tail")));
         adapter.deactivate();
     }
 

@@ -39,8 +39,16 @@ public class SessionSendService {
     }
 
     public void prepareContextCollector(EditorContextCollector contextCollector) {
+        prepareContextCollector(contextCollector, null);
+    }
+
+    public void prepareContextCollector(EditorContextCollector contextCollector, Boolean overrideAutoOpenFile) {
         contextCollector.setPsiContextEnabled(state.isPsiContextEnabled());
-        contextCollector.setAutoOpenFileEnabled(readAutoOpenFileEnabled());
+        if (overrideAutoOpenFile != null) {
+            contextCollector.setAutoOpenFileEnabled(overrideAutoOpenFile);
+        } else {
+            contextCollector.setAutoOpenFileEnabled(readAutoOpenFileEnabled());
+        }
     }
 
     public void updateSessionStateForSend(OpencodeSession.Message userMessage, String normalizedInput) {

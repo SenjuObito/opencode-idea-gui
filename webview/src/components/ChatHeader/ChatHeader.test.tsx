@@ -74,25 +74,15 @@ describe('ChatHeader', () => {
     expect(onHistory).toHaveBeenCalledTimes(1);
   });
 
-  it('renders more options menu and triggers settings from secondary menu', () => {
+  it('renders settings button and triggers onSettings', () => {
     const onSettings = vi.fn();
     render(<ChatHeader {...defaultProps} onSettings={onSettings} />);
 
-    const moreBtn = screen.getByLabelText('common.more');
-    expect(moreBtn).toBeTruthy();
+    const settingsBtn = screen.getByLabelText('common.settings');
+    expect(settingsBtn).toBeTruthy();
 
-    // Menu should be closed initially
-    expect(screen.queryByRole('menu')).toBeNull();
-
-    // Click more button to open menu
-    fireEvent.click(moreBtn);
-    expect(screen.getByRole('menu')).toBeTruthy();
-
-    // Test settings button
-    const settingsItem = screen.getByText('common.settings');
-    fireEvent.click(settingsItem);
+    fireEvent.click(settingsBtn);
     expect(onSettings).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('renders back button in history view and triggers onBack', () => {

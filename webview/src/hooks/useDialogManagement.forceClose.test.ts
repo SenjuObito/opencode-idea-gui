@@ -147,16 +147,16 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
     expect(result.current.permissionDialogOpen).toBe(false);
   });
 
-  it('switching session clears every pending request', () => {
+  it('clearing active dialogs via dialogStore clears every pending request', () => {
     const { result } = renderHook(
-      () => ({ dialogs: useDialogManagement({ t }), session: useSession() }),
+      () => ({ dialogs: useDialogManagement({ t }) }),
       { wrapper },
     );
 
     act(() => { result.current.dialogs.openPermissionDialog(mkPermission('A')); });
     act(() => { result.current.dialogs.openAskUserQuestionDialog(mkAsk('Q')); });
 
-    act(() => { result.current.session.setCurrentSessionId('s1'); });
+    act(() => { window.__dialogStore?.clearActive(); });
 
     expect(result.current.dialogs.askUserQuestionDialogOpen).toBe(false);
     expect(result.current.dialogs.permissionDialogOpen).toBe(false);

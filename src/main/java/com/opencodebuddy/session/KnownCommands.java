@@ -40,7 +40,8 @@ public final class KnownCommands {
             "logout",
             "export",
             "share",
-            "unshare"
+            "unshare",
+            "opencode"
     )));
 
     private KnownCommands() {

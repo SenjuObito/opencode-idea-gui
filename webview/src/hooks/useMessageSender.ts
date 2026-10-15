@@ -60,6 +60,7 @@ export interface UseMessageSenderOptions {
   closeContextUsageDialog: (requestId?: string | null) => boolean;
   currentSessionId?: string | null;
   currentSessionIdRef?: RefObject<string | null>;
+  autoOpenFileEnabled?: boolean;
 }
 
 /**
@@ -95,6 +96,7 @@ export function useMessageSender({
   closeContextUsageDialog,
   currentSessionId,
   currentSessionIdRef,
+  autoOpenFileEnabled,
 }: UseMessageSenderOptions) {
   /**
    * Check if the input is a new session command
@@ -262,6 +264,9 @@ export function useMessageSender({
 
     const activeTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
     const targetSessionId = currentSessionIdRef?.current ?? currentSessionId ?? undefined;
+    const effectiveAutoOpenFileEnabled = typeof autoOpenFileEnabled === 'boolean'
+      ? autoOpenFileEnabled
+      : (window.__sessionTabsStore?.getActiveTabAutoOpenFileEnabled?.() ?? false);
 
     if (hasAttachments) {
       try {
@@ -276,6 +281,7 @@ export function useMessageSender({
           })),
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
+          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...reasoningEffortPayload,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
@@ -287,6 +293,7 @@ export function useMessageSender({
           text,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
+          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...reasoningEffortPayload,
         });
         sendBridgeEvent('send_message', fallbackPayload);
@@ -298,11 +305,12 @@ export function useMessageSender({
         text,
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
+        autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
         ...reasoningEffortPayload,
       });
       sendBridgeEvent('send_message', payload);
     }
-  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef]);
+  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef, autoOpenFileEnabled]);
 
   /**
    * Execute message sending (from queue or directly)

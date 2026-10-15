@@ -127,6 +127,7 @@ public class SessionHandler extends BaseMessageHandler {
         String requestedReasoningEffort = null;
         String requestedCodexFastMode = null;
         String requestedDshPreset = null;
+        Boolean requestedAutoOpenFile = null;
         String targetSessionId = null;
         String tabId = null;
         try {
@@ -184,6 +185,9 @@ public class SessionHandler extends BaseMessageHandler {
                 requestedCodexFastMode = payload.get("codexFastMode").getAsString();
             }
             requestedDshPreset = extractDshPreset(payload);
+            if (payload != null && payload.has("autoOpenFileEnabled") && !payload.get("autoOpenFileEnabled").isJsonNull()) {
+                requestedAutoOpenFile = payload.get("autoOpenFileEnabled").getAsBoolean();
+            }
         } catch (Exception e) {
             // If parsing fails, treat content as plain text (backward compatibility)
             LOG.debug("[SessionHandler] Message is plain text, not JSON: " + e.getMessage());
@@ -225,6 +229,7 @@ public class SessionHandler extends BaseMessageHandler {
         final String finalRequestedReasoningEffort = requestedReasoningEffort;
         final String finalRequestedCodexFastMode = requestedCodexFastMode;
         final String finalRequestedDshPreset = requestedDshPreset;
+        final Boolean finalRequestedAutoOpenFile = requestedAutoOpenFile;
 
         if (finalPrompt != null && finalPrompt.startsWith("!") && finalPrompt.trim().length() > 1) {
             String command = finalPrompt.substring(1).trim();
@@ -280,7 +285,8 @@ public class SessionHandler extends BaseMessageHandler {
             // [FIX] Pass agent prompt and file tags directly to session
             targetSession.send(finalPrompt, finalAgentPrompt, finalFileTagPaths,
                             finalRequestedPermissionMode, finalRequestedReasoningEffort,
-                            finalRequestedCodexFastMode, finalRequestedDshPreset)
+                            finalRequestedCodexFastMode, finalRequestedDshPreset,
+                            finalRequestedAutoOpenFile)
                 .thenRun(() -> {
                     // Claude now triggers success on actual stream_end callback.
                     // Codex has no stream_end event, keep success trigger at completion.
@@ -387,6 +393,10 @@ public class SessionHandler extends BaseMessageHandler {
                 requestedCodexFastMode = payload.get("codexFastMode").getAsString();
             }
             requestedDshPreset = extractDshPreset(payload);
+            Boolean requestedAutoOpenFile = null;
+            if (payload != null && payload.has("autoOpenFileEnabled") && !payload.get("autoOpenFileEnabled").isJsonNull()) {
+                requestedAutoOpenFile = payload.get("autoOpenFileEnabled").getAsBoolean();
+            }
 
             String targetSessionId = null;
             if (payload != null && payload.has("sessionId") && !payload.get("sessionId").isJsonNull()) {
@@ -398,7 +408,7 @@ public class SessionHandler extends BaseMessageHandler {
             }
 
             sendMessageWithAttachments(targetSessionId, tabId, text, atts, agentPrompt, fileTagPaths, requestedPermissionMode,
-                    requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset);
+                    requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset, requestedAutoOpenFile);
         } catch (Exception e) {
             LOG.error("[SessionHandler] 解析附件负载失败: " + e.getMessage(), e);
             handleSendMessage(content);
@@ -419,7 +429,8 @@ public class SessionHandler extends BaseMessageHandler {
         String requestedPermissionMode,
         String requestedReasoningEffort,
         String requestedCodexFastMode,
-        String requestedDshPreset
+        String requestedDshPreset,
+        Boolean requestedAutoOpenFile
     ) {
         OpencodeSession sessionObj = null;
         if (targetSessionId != null && !targetSessionId.isBlank()) {
@@ -456,6 +467,7 @@ public class SessionHandler extends BaseMessageHandler {
         final String finalRequestedReasoningEffort = requestedReasoningEffort;
         final String finalRequestedCodexFastMode = requestedCodexFastMode;
         final String finalRequestedDshPreset = requestedDshPreset;
+        final Boolean finalRequestedAutoOpenFile = requestedAutoOpenFile;
 
         CompletableFuture.runAsync(() -> {
             if (targetSession == null) {
@@ -477,7 +489,8 @@ public class SessionHandler extends BaseMessageHandler {
             // [FIX] Pass agent prompt and file tags directly to session
             targetSession.send(prompt, attachments, finalAgentPrompt, finalFileTagPaths,
                             finalRequestedPermissionMode, finalRequestedReasoningEffort,
-                            finalRequestedCodexFastMode, finalRequestedDshPreset)
+                            finalRequestedCodexFastMode, finalRequestedDshPreset,
+                            finalRequestedAutoOpenFile)
                 .thenRun(() -> {
                     // Claude now triggers success on actual stream_end callback.
                     // Codex has no stream_end event, keep success trigger at completion.

@@ -989,6 +989,7 @@ const App = () => {
     }
   }, [sessionTitle, t]);
 
+
   // Session tabs management
   const {
     tabs,

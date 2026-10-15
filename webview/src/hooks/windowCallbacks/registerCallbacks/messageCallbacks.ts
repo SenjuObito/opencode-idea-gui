@@ -140,7 +140,12 @@ export function registerMessageCallbacks(
     requestNativeHistoryRefresh();
   };
 
-  const processUpdateMessages = (json: string, sequence: number | null = null, baseIndexArg?: string | number | null) => {
+  const processUpdateMessages = (
+    json: string,
+    sequence: number | null = null,
+    baseIndexArg?: string | number | null,
+    targetSessionId?: string | null,
+  ) => {
     cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length, 'transitioning:', window.__sessionTransitioning);
     // Re-check the session-transition guard inside processUpdateMessages so the
     // rAF-deferred path (window.updateMessages → setTimeout → processUpdateMessages)
@@ -150,8 +155,13 @@ export function registerMessageCallbacks(
     // already guard, but processUpdateMessages is the canonical setter and
     // should be self-defending.
     if (window.__sessionTransitioning) {
-      cardDebugLog('[processUpdateMessages] BLOCKED: sessionTransitioning');
-      return;
+      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+      const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
+      if (!isTargetActiveSession) {
+        cardDebugLog('[processUpdateMessages] BLOCKED: sessionTransitioning');
+        return;
+      }
+      cardDebugLog('[processUpdateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
     }
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
     if (sequence != null && sequence < minAcceptedSequence) {
@@ -398,8 +408,13 @@ export function registerMessageCallbacks(
     json: string,
     baseIndexArg: string | number,
     sequenceArg?: string | number,
+    targetSessionId?: string | null,
   ) => {
-    if (window.__sessionTransitioning) return;
+    if (window.__sessionTransitioning) {
+      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+      const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
+      if (!isTargetActiveSession) return;
+    }
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
     if (sequence != null && sequence < minAcceptedSequence) return;
@@ -478,7 +493,8 @@ export function registerMessageCallbacks(
     let sequenceArg: string | number | undefined;
     let baseIndexArg: string | number | undefined;
 
-    if (typeof arg1 === 'string') {
+    const isFirstArgJson = typeof arg0 === 'string' && (arg0.trimStart().startsWith('[') || arg0.trimStart().startsWith('{'));
+    if (!isFirstArgJson && typeof arg1 === 'string') {
       targetSessionId = arg0;
       json = arg1;
       sequenceArg = arg2;
@@ -511,8 +527,13 @@ export function registerMessageCallbacks(
     // callbacks to prevent cleared messages from being restored
     cardDebugLog('[updateMessages] called, transitioning:', window.__sessionTransitioning, 'seq:', sequenceArg, 'jsonLen:', json?.length);
     if (window.__sessionTransitioning) {
-      cardDebugLog('[updateMessages] BLOCKED by sessionTransitioning');
-      return;
+      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+      const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
+      if (!isTargetActiveSession) {
+        cardDebugLog('[updateMessages] BLOCKED by sessionTransitioning');
+        return;
+      }
+      cardDebugLog('[updateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
     }
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
@@ -556,9 +577,13 @@ export function registerMessageCallbacks(
           // stale snapshot deferred during the outgoing session's streaming
           // would run down the non-streaming path (isStreamingRef was cleared
           // by beginSessionTransition) and resurrect the cleared messages.
-          if (window.__sessionTransitioning) return;
+          if (window.__sessionTransitioning) {
+            const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+            const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
+            if (!isTargetActiveSession) return;
+          }
           if (latestJson) {
-            processUpdateMessages(latestJson, latestSequence, latestBaseIndex);
+            processUpdateMessages(latestJson, latestSequence, latestBaseIndex, targetSessionId);
           }
         }, 16);
         pendingUpdateRaf = timerId as unknown as number;
@@ -567,7 +592,7 @@ export function registerMessageCallbacks(
       return;
     }
 
-    processUpdateMessages(json, sequence, baseIndexArg);
+    processUpdateMessages(json, sequence, baseIndexArg, targetSessionId);
   };
 
   window.updateMessageTail = (arg0, arg1, arg2, arg3) => {
@@ -576,7 +601,8 @@ export function registerMessageCallbacks(
     let baseIndexArg: string | number;
     let sequenceArg: string | number | undefined;
 
-    if (typeof arg1 === 'string') {
+    const isFirstArgJson = typeof arg0 === 'string' && (arg0.trimStart().startsWith('[') || arg0.trimStart().startsWith('{'));
+    if (!isFirstArgJson && typeof arg1 === 'string') {
       targetSessionId = arg0;
       json = arg1;
       baseIndexArg = arg2 as any;
@@ -605,7 +631,7 @@ export function registerMessageCallbacks(
       return;
     }
 
-    processMessageTail(json, baseIndexArg, sequenceArg);
+    processMessageTail(json, baseIndexArg, sequenceArg, targetSessionId);
   };
 
   // ── opencode 恢复分页/回源：前插更早的历史页 ──

@@ -222,6 +222,7 @@ public class SessionLifecycleManager {
         }
 
         host.registerSession(sessionId, newSession, newAdapter, newCoalescer);
+        host.switchSession(sessionId);
         if (host.getHandlerContext() != null) {
             host.getHandlerContext().registerSession(sessionId, newSession);
         }
@@ -229,8 +230,11 @@ public class SessionLifecycleManager {
         long clearBarrierSeq = (newCoalescer != null) ? newCoalescer.resetStreamState() : 0L;
         host.callJavaScript("clearMessages", sessionId, String.valueOf(clearBarrierSeq));
 
+        String effectiveDir = determineWorkingDirectory();
+        String nodePath = NodeDetector.getInstance().getCachedNodePath();
         String workingDir = (projectPath != null && !projectPath.isEmpty())
-                                ? projectPath : NodeDetector.convertToWslPath(determineWorkingDirectory());
+                                ? projectPath
+                                : (NodeDetector.isWslPath(nodePath) ? NodeDetector.convertToWslPath(effectiveDir) : effectiveDir);
         newSession.setSessionInfo(sessionId, workingDir);
 
         // Prewarm the opencode daemon for the historical session so the

@@ -297,8 +297,16 @@ tasks.named('buildSearchableOptions') {
     enabled = false
 }
 
-tasks.named('instrumentCode') {
-    enabled = false
+tasks.matching { it.name.startsWith('instrument') }.configureEach {
+    actions.clear()
+    doLast {
+        def target = name == 'instrumentCode' ? 'instrumentCode' : 'instrumentTestCode'
+        def source = name == 'instrumentCode' ? sourceSets.main.output.classesDirs : sourceSets.test.output.classesDirs
+        copy {
+            from source
+            into layout.buildDirectory.dir("instrumented/${target}")
+        }
+    }
 }
 
 tasks.named('jarSearchableOptions') {

@@ -378,6 +378,10 @@ export function useSessionTabs({
         const cur = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
         return cur?.sessionId ?? null;
       },
+      getActiveTabAutoOpenFileEnabled: () => {
+        const cur = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+        return cur?.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
+      },
       getTabs: () => tabsRef.current,
       isActiveSession,
       updateBackgroundTab,
@@ -479,12 +483,8 @@ export function useSessionTabs({
         sendBridgeEvent('set_model', resolvedModel);
       }
 
-      // Restore contextInfo & autoOpenFileEnabled
+      // Restore contextInfo
       setContextInfo?.(targetTab.contextInfo ?? null);
-      sendBridgeEvent(
-        'set_auto_open_file_enabled',
-        JSON.stringify({ autoOpenFileEnabled: Boolean(targetTab.autoOpenFileEnabled) })
-      );
 
       // Restore turnStartedAt & usage tracking to prevent cross-session pollution
       const targetTurnStartedAt = targetTab.turnStartedAt ?? null;
@@ -598,6 +598,7 @@ export function useSessionTabs({
                   reasoningEffort: resolvedEffort,
                   filteredFileChanges: [],
                   contextInfo: null,
+                  autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
                 }
               : t
           )
@@ -780,10 +781,6 @@ export function useSessionTabs({
     setReasoningEffort?.('medium');
     sendBridgeEvent('set_reasoning_effort', 'medium');
     setContextInfo?.(null);
-    sendBridgeEvent(
-      'set_auto_open_file_enabled',
-      JSON.stringify({ autoOpenFileEnabled: Boolean(defaultAutoOpenFileEnabled) })
-    );
 
     // Reset turn timer & usage metrics for new tab
     setLoadingStartTime?.(null);
@@ -935,10 +932,6 @@ export function useSessionTabs({
             }
 
             setContextInfo?.(nextActive.contextInfo ?? null);
-            sendBridgeEvent(
-              'set_auto_open_file_enabled',
-              JSON.stringify({ autoOpenFileEnabled: Boolean(nextActive.autoOpenFileEnabled) })
-            );
 
             // Restore turnStartedAt & usage tracking for the switched active tab
             const nextTurnStartedAt = nextActive.turnStartedAt ?? null;
@@ -1049,7 +1042,6 @@ export function useSessionTabs({
         return tab;
       })
     );
-    sendBridgeEvent('set_auto_open_file_enabled', JSON.stringify({ autoOpenFileEnabled: enabled }));
   }, []);
 
   return {

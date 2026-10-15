@@ -452,6 +452,25 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setMessages).toHaveBeenCalled();
   });
 
+  it('updateMessages with matching targetSessionId is processed even when __sessionTransitioning is true', () => {
+    const opts = createOptions({
+      currentSessionIdRef: { current: 'ses_target_123' },
+    });
+    renderHook(() => useWindowCallbacks(opts));
+
+    window.__sessionTransitioning = true;
+
+    const freshMessages: ClaudeMessage[] = [
+      { type: 'user', content: 'historical message', timestamp: new Date().toISOString() },
+    ];
+
+    act(() => {
+      window.updateMessages!('ses_target_123', JSON.stringify(freshMessages), '1');
+    });
+
+    expect(opts.setMessages).toHaveBeenCalled();
+  });
+
   it('reports one DOM commit when restored history arrives after completion', () => {
     const opts = createOptions();
     vi.useFakeTimers();

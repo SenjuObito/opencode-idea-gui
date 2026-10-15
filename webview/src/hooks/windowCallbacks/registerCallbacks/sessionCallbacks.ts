@@ -47,6 +47,17 @@ export function registerSessionCallbacks(
       }
     }
 
+    const syncTitle = () => {
+      const title = customSessionTitleRef.current;
+      if (title && oldId !== sessionId) {
+        if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
+          updateHistoryTitle(sessionId, title);
+        } else {
+          applyHistoryTitleLocal(sessionId, title);
+        }
+      }
+    };
+
     if (targetTab) {
       const resolvedTabId = targetTab.id;
       tabsStore?.updateTabSessionId?.(resolvedTabId, sessionId);
@@ -54,19 +65,12 @@ export function registerSessionCallbacks(
       if (resolvedTabId === activeTabId) {
         currentSessionIdRef.current = sessionId;
         setCurrentSessionId(sessionId);
-
-        const title = customSessionTitleRef.current;
-        if (title && oldId !== sessionId) {
-          if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
-            updateHistoryTitle(sessionId, title);
-          } else {
-            applyHistoryTitleLocal(sessionId, title);
-          }
-        }
+        syncTitle();
       }
     } else {
       currentSessionIdRef.current = sessionId;
       setCurrentSessionId(sessionId);
+      syncTitle();
     }
   };
 

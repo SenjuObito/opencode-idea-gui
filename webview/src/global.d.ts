@@ -1141,6 +1141,7 @@ interface Window {
   __sessionTabsStore?: {
     getActiveTabId: () => string;
     getActiveSessionId: () => string | null;
+    getActiveTabAutoOpenFileEnabled?: () => boolean;
     getTabs: () => any[];
     isActiveSession: (sessionId: string | null | undefined) => boolean;
     updateBackgroundTab: (

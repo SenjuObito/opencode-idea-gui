@@ -16,7 +16,7 @@ export const EDIT_TOOL_NAMES = new Set([
 ]);
 
 // Bash/command execution tools
-export const BASH_TOOL_NAMES = new Set(['bash', 'run_terminal_cmd', 'exec_command', 'execute_command', 'shell_command']);
+export const BASH_TOOL_NAMES = new Set(['bash', 'shell', 'run_terminal_cmd', 'exec_command', 'execute_command', 'shell_command']);
 
 // Search/grep/glob tools
 export const SEARCH_TOOL_NAMES = new Set(['grep', 'glob', 'search', 'find', 'search_files']);

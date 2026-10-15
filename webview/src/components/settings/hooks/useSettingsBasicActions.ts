@@ -7,10 +7,6 @@ import {
   clampPermissionDialogTimeoutSeconds,
 } from '../../../utils/permissionDialogTimeout';
 import {
-  SKIP_NEW_SESSION_CONFIRM_EVENT,
-  type SkipNewSessionConfirmChangedDetail,
-} from '../../../utils/skipNewSessionConfirm';
-import {
   SKIP_COMPACT_CONFIRM_EVENT,
   type SkipCompactConfirmChangedDetail,
 } from '../../../utils/skipCompactConfirm';
@@ -80,9 +76,6 @@ export interface UseSettingsBasicActionsReturn {
   setDiffExpandedByDefault: (enabled: boolean) => void;
   historyCompletionEnabled: boolean;
   setHistoryCompletionEnabled: (enabled: boolean) => void;
-  /** Whether to skip the "create new session with existing messages" confirm dialog. */
-  skipNewSessionConfirm: boolean;
-  setSkipNewSessionConfirm: (enabled: boolean) => void;
   /** Whether to skip the "compact session" confirm dialog. */
   skipCompactConfirm: boolean;
   setSkipCompactConfirm: (enabled: boolean) => void;
@@ -222,23 +215,6 @@ export function useSettingsBasicActions({
     () => getUiPreferences().historyCompletionEnabled,
   );
 
-  // "Skip new-session confirm dialog" preference (localStorage-only, default: false).
-  // Synced bidirectionally with the dialog checkbox via CustomEvent so toggling
-  // either surface (dialog or settings page) updates the other immediately.
-  const [skipNewSessionConfirm, setSkipNewSessionConfirm] = useState<boolean>(
-    () => getUiPreferences().skipNewSessionConfirm,
-  );
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const custom = event as CustomEvent<SkipNewSessionConfirmChangedDetail>;
-      if (custom.detail && typeof custom.detail.enabled === 'boolean') {
-        setSkipNewSessionConfirm(custom.detail.enabled);
-      }
-    };
-    window.addEventListener(SKIP_NEW_SESSION_CONFIRM_EVENT, handler);
-    return () => window.removeEventListener(SKIP_NEW_SESSION_CONFIRM_EVENT, handler);
-  }, []);
-
   // "Skip compact confirm dialog" preference (localStorage-only, default: false).
   // Synced bidirectionally with the dialog checkbox via CustomEvent so toggling
   // either surface (dialog or settings page) updates the other immediately.
@@ -277,7 +253,6 @@ export function useSettingsBasicActions({
       const next: UiPreferences = detail.preferences;
       setDiffExpandedByDefault(next.diffExpandedByDefault);
       setHistoryCompletionEnabled(next.historyCompletionEnabled);
-      setSkipNewSessionConfirm(next.skipNewSessionConfirm);
       setSkipCompactConfirm(next.skipCompactConfirm);
       setDetailedOutputEnabledState(next.detailedOutputEnabled);
     };
@@ -312,11 +287,6 @@ export function useSettingsBasicActions({
   useEffect(() => {
     updateUiPreferences({ historyCompletionEnabled });
   }, [historyCompletionEnabled]);
-
-  // 新建会话确认对话框开关
-  useEffect(() => {
-    updateUiPreferences({ skipNewSessionConfirm });
-  }, [skipNewSessionConfirm]);
 
   // 压缩会话确认对话框开关
   useEffect(() => {
@@ -610,8 +580,6 @@ export function useSettingsBasicActions({
     setDiffExpandedByDefault,
     historyCompletionEnabled,
     setHistoryCompletionEnabled,
-    skipNewSessionConfirm,
-    setSkipNewSessionConfirm,
     skipCompactConfirm,
     setSkipCompactConfirm,
     handleSaveOpencodeCliPath,

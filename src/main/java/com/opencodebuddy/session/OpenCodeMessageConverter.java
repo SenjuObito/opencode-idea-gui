@@ -319,7 +319,11 @@ public final class OpenCodeMessageConverter {
                 completed = readLong(timeObj, "end");
             }
             if (created > 0 && completed >= created) {
-                raw.addProperty("durationMs", completed - created);
+                long diff = completed - created;
+                if (created < 100_000_000_000L) {
+                    diff *= 1000L;
+                }
+                raw.addProperty("durationMs", diff);
             }
         }
 
@@ -357,7 +361,11 @@ public final class OpenCodeMessageConverter {
             if (info.has("time") && info.get("time").isJsonObject()) {
                 JsonObject time = info.getAsJsonObject("time");
                 if (time.has("created") && !time.get("created").isJsonNull()) {
-                    return time.get("created").getAsLong();
+                    long val = time.get("created").getAsLong();
+                    if (val > 0 && val < 100_000_000_000L) {
+                        return val * 1000L;
+                    }
+                    return val;
                 }
             }
         } catch (Exception ignored) {

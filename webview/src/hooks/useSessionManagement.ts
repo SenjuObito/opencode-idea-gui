@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
 import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
-import { getSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
 type ViewMode = 'chat' | 'history' | 'settings';
@@ -48,14 +47,11 @@ interface UseSessionManagementOptions {
 }
 
 interface UseSessionManagementReturn {
-  showNewSessionConfirm: boolean;
   showInterruptConfirm: boolean;
   suppressNextStatusToastRef: React.MutableRefObject<boolean>;
   createNewSession: () => void;
   forceCreateNewSession: () => void;
   forceCreateNewSessionWithProvider: (providerId: string) => void;
-  handleConfirmNewSession: () => void;
-  handleCancelNewSession: () => void;
   handleConfirmInterrupt: () => void;
   handleCancelInterrupt: () => void;
   loadHistorySession: (sessionId: string) => void;
@@ -72,7 +68,7 @@ interface UseSessionManagementReturn {
  * Hook for managing session operations (create, load, delete, export, etc.)
  */
 export function useSessionManagement({
-  messages,
+  messages: _messages,
   loading,
   historyData,
   currentSessionId,
@@ -101,7 +97,6 @@ export function useSessionManagement({
   addToast,
   t,
 }: UseSessionManagementOptions): UseSessionManagementReturn {
-  const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
   const [showInterruptConfirm, setShowInterruptConfirm] = useState(false);
   const pendingActionRef = useRef<'newSession' | null>(null);
   const suppressNextStatusToastRef = useRef(false);
@@ -204,29 +199,13 @@ export function useSessionManagement({
     // This prevents creating new session without stopping the current conversation
     if (loading) {
       // If loading (AI is responding), show interrupt confirmation.
-      // NOTE: The "don't ask again" preference deliberately does NOT apply here —
-      // interrupting an in-progress AI response is a more dangerous operation
-      // and must always require explicit confirmation.
       pendingActionRef.current = 'newSession';
       setShowInterruptConfirm(true);
-    } else if (messages.length > 0) {
-      // If the user previously ticked "don't ask again", skip the dialog and
-      // proceed directly. Preference is read fresh each call so the setting
-      // page toggle takes effect immediately.
-      if (getSkipNewSessionConfirm()) {
-        beginSessionTransition(null, null);
-        sendBridgeEvent('create_new_session');
-        return;
-      }
-      // If there are messages but not loading, show new session confirmation
-      pendingActionRef.current = 'newSession';
-      setShowNewSessionConfirm(true);
     } else {
-      // If empty and not loading, directly create new session
       beginSessionTransition(null, null);
       sendBridgeEvent('create_new_session');
     }
-  }, [beginSessionTransition, messages.length, loading]);
+  }, [beginSessionTransition, loading]);
 
   // Force create new session (no confirmation, used by /clear /new /reset commands)
   const forceCreateNewSession = useCallback(() => {
@@ -245,24 +224,6 @@ export function useSessionManagement({
     sendBridgeEvent('set_provider', providerId);
     sendBridgeEvent('create_new_session');
   }, [beginSessionTransition, loading]);
-
-  // Confirm new session
-  const handleConfirmNewSession = useCallback(() => {
-    setShowNewSessionConfirm(false);
-    // [FIX] Safety check: if loading started while dialog was open, send interrupt first
-    if (loading) {
-      sendBridgeEvent('interrupt_session');
-    }
-    beginSessionTransition(null, null);
-    sendBridgeEvent('create_new_session');
-    pendingActionRef.current = null;
-  }, [beginSessionTransition, loading]);
-
-  // Cancel new session
-  const handleCancelNewSession = useCallback(() => {
-    setShowNewSessionConfirm(false);
-    pendingActionRef.current = null;
-  }, []);
 
   // Confirm interrupt
   const handleConfirmInterrupt = useCallback(() => {
@@ -332,16 +293,13 @@ export function useSessionManagement({
       return;
     }
 
-    // Switching to a different session: interrupt first if the AI is
-    // mid-reply, then do a full session swap.
+    // Switching to a different session: in multi-session architecture,
+    // do not interrupt the in-flight background turn.
     cardDebugLog('[SessionManagement] different session, calling beginSessionTransition');
-    if (loading) {
-      sendBridgeEvent('interrupt_session');
-    }
     beginSessionTransition(sessionId, session?.title ?? null);
     sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
     setCurrentView('chat');
-  }, [beginSessionTransition, loading, setCurrentView, currentSessionId]);
+  }, [beginSessionTransition, setCurrentView, currentSessionId]);
 
   // Delete history session
   const deleteHistorySession = useCallback((sessionId: string) => {
@@ -368,17 +326,26 @@ export function useSessionManagement({
         };
       });
 
+      // Close open tab associated with deleted session
+      if (window.__sessionTabsStore) {
+        window.__sessionTabsStore.closeTabBySessionId?.(sessionId);
+      }
+
       // If deleted session is current session, clear messages and reset state
       if (sessionId === currentSessionId) {
         // [FIX] Send interrupt signal if AI is responding
         if (loading) {
           sendBridgeEvent('interrupt_session');
         }
-        beginSessionTransition(null, null);
-        startedSessionTransition = true;
-        // Set flag to suppress next updateStatus toast
-        suppressNextStatusToastRef.current = true;
-        sendBridgeEvent('create_new_session');
+        if (!window.__sessionTabsStore) {
+          beginSessionTransition(null, null);
+          startedSessionTransition = true;
+          // Set flag to suppress next updateStatus toast
+          suppressNextStatusToastRef.current = true;
+          sendBridgeEvent('create_new_session');
+        } else {
+          startedSessionTransition = true;
+        }
       }
 
     }
@@ -415,14 +382,25 @@ export function useSessionManagement({
         };
       });
 
+      // Close open tab(s) associated with deleted session(s)
+      if (window.__sessionTabsStore) {
+        for (const sid of uniqueSessionIds) {
+          window.__sessionTabsStore.closeTabBySessionId?.(sid);
+        }
+      }
+
       if (currentSessionId && deletedSessionIds.has(currentSessionId)) {
         if (loading) {
           sendBridgeEvent('interrupt_session');
         }
-        beginSessionTransition(null, null);
-        startedSessionTransition = true;
-        suppressNextStatusToastRef.current = true;
-        sendBridgeEvent('create_new_session');
+        if (!window.__sessionTabsStore) {
+          beginSessionTransition(null, null);
+          startedSessionTransition = true;
+          suppressNextStatusToastRef.current = true;
+          sendBridgeEvent('create_new_session');
+        } else {
+          startedSessionTransition = true;
+        }
       }
 
     }
@@ -540,14 +518,11 @@ export function useSessionManagement({
   }, [setHistoryData]);
 
   return {
-    showNewSessionConfirm,
     showInterruptConfirm,
     suppressNextStatusToastRef,
     createNewSession,
     forceCreateNewSession,
     forceCreateNewSessionWithProvider,
-    handleConfirmNewSession,
-    handleCancelNewSession,
     handleConfirmInterrupt,
     handleCancelInterrupt,
     loadHistorySession,

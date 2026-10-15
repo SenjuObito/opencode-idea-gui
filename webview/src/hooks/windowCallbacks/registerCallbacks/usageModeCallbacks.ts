@@ -28,9 +28,20 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     currentProviderRef,
   } = options;
 
-  window.onUsageUpdate = (json) => {
+  window.onUsageUpdate = (arg0: string, arg1?: string) => {
+    let targetSessionId: string | null = null;
+    let jsonStr: string = '';
+
+    if (typeof arg1 !== 'undefined') {
+      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
+      jsonStr = typeof arg1 === 'string' ? arg1 : JSON.stringify(arg1);
+    } else {
+      targetSessionId = null;
+      jsonStr = typeof arg0 === 'string' ? arg0 : JSON.stringify(arg0);
+    }
+
     try {
-      const data = JSON.parse(json);
+      const data = JSON.parse(jsonStr);
       if (typeof data.percentage === 'number') {
         const used =
           typeof data.usedTokens === 'number'
@@ -52,6 +63,20 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         }
 
         const safePercentage = Math.max(0, Math.min(100, data.percentage));
+
+        // If targetSessionId belongs to a background tab, update the background tab's data directly
+        if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+          window.__sessionTabsStore.updateBackgroundTab(
+            (t) => t.sessionId === targetSessionId,
+            (tab) => {
+              tab.usagePercentage = safePercentage;
+              tab.usageUsedTokens = used;
+              tab.usageMaxTokens = max;
+            }
+          );
+          return;
+        }
+
         setUsagePercentage(safePercentage);
         setUsageUsedTokens(used);
         setUsageMaxTokens(max);
@@ -61,10 +86,14 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  if (typeof window.__pendingUsageUpdate === 'string') {
-    const pending = window.__pendingUsageUpdate;
+  if (window.__pendingUsageUpdate) {
+    const pending = window.__pendingUsageUpdate as { arg0: string; arg1?: string } | string;
     delete window.__pendingUsageUpdate;
-    window.onUsageUpdate(pending);
+    if (typeof pending === 'object' && pending !== null && 'arg0' in pending) {
+      window.onUsageUpdate(pending.arg0, pending.arg1);
+    } else if (typeof pending === 'string') {
+      window.onUsageUpdate(pending);
+    }
   }
 
   const updateMode = (mode?: PermissionMode) => {

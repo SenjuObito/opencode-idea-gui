@@ -116,6 +116,9 @@ public class ChatWindowDelegate {
 
         default void executeJavaScriptCode(String jsCode) {
         }
+
+        default void switchSession(String sessionId) {}
+        default void closeSession(String sessionId) {}
     }
 
     private final DelegateHost host;
@@ -304,6 +307,15 @@ public class ChatWindowDelegate {
             }
             @Override public void onCreateNewSession() {
                 host.getSessionLifecycleManager().createNewSession();
+            }
+            @Override public void onCreateNewSession(String sessionId) {
+                host.getSessionLifecycleManager().createNewSession(sessionId);
+            }
+            @Override public void onSwitchSession(String sessionId) {
+                host.switchSession(sessionId);
+            }
+            @Override public void onCloseSession(String sessionId) {
+                host.closeSession(sessionId);
             }
             @Override public void onFrontendReady() { handleFrontendReady(); }
             @Override public void onHistoryRenderComplete(long commitEpoch) {

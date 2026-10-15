@@ -583,8 +583,8 @@ if (typeof window !== 'undefined' && !window.onModeReceived) {
 // Java may refresh recovery usage immediately after frontend_ready, before
 // React's callback effect mounts. Retain the latest snapshot until registration.
 if (typeof window !== 'undefined' && !window.onUsageUpdate) {
-  window.onUsageUpdate = (json: string) => {
-    window.__pendingUsageUpdate = json;
+  window.onUsageUpdate = (arg0: string, arg1?: string) => {
+    window.__pendingUsageUpdate = { arg0, arg1 };
   };
 }
 

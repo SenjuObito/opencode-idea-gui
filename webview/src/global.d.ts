@@ -22,17 +22,20 @@ interface Window {
    */
   /**
    * Update messages from backend.
-   * The optional third argument is the host window base index (global message
-   * ordinal of snapshot[0], see SessionState windowing). When it changes
-   * between snapshots the webview performs a windowed splice instead of the
-   * legacy index-aligned merge. Absent = legacy semantics (base 0).
+   * Can be called with (json, sequence, baseIndex) or (sessionId, json, sequence, baseIndex).
    */
-  updateMessages?: (json: string, sequence?: string | number, baseIndex?: string | number) => void;
+  updateMessages?: (
+    arg0: string,
+    arg1?: string | number,
+    arg2?: string | number,
+    arg3?: string | number
+  ) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
   updateMessageTail?: (
-    json: string,
-    baseIndex: string | number,
-    sequence?: string | number,
+    arg0: string,
+    arg1: string | number,
+    arg2?: string | number,
+    arg3?: string | number
   ) => void;
   /**
    * Prepend an earlier history page (opencode restore paging / live window
@@ -61,27 +64,27 @@ interface Window {
   /**
    * Patch a single message UUID without re-sending the full message list.
    */
-  patchMessageUuid?: (content: string, uuid: string) => void;
+  patchMessageUuid?: (arg0: string, arg1: string, arg2?: string) => void;
 
   /**
    * Update status message
    */
-  updateStatus?: (text: string) => void;
+  updateStatus?: (arg0: string, arg1?: string) => void;
 
   /**
    * Show loading indicator
    */
-  showLoading?: (value: string | boolean) => void;
+  showLoading?: (arg0: string | boolean, arg1?: string | boolean) => void;
 
   /**
    * Show thinking status
    */
-  showThinkingStatus?: (value: string | boolean) => void;
+  showThinkingStatus?: (arg0: string | boolean, arg1?: string | boolean) => void;
 
   /**
    * Show conversation summary/compaction notice
    */
-  showSummary?: (summary: string) => void;
+  showSummary?: (arg0: string, arg1?: string) => void;
 
   /**
    * Set history data
@@ -94,11 +97,9 @@ interface Window {
   onExportSessionData?: (json: string) => void;
 
   /**
-   * Clear all messages. The optional barrier sequence (the backend coalescer's
-   * post-reset updateSequence) advances __minAcceptedUpdateSequence so stale
-   * in-flight updateMessages from the previous session are rejected.
+   * Clear all messages.
    */
-  clearMessages?: (barrierSequence?: string | number) => void;
+  clearMessages?: (arg0?: string | number, arg1?: string | number) => void;
 
   /**
    * Add error message
@@ -125,7 +126,7 @@ interface Window {
    * History load complete callback - invoked when history messages finish loading.
    * Triggers Markdown re-rendering to fix incorrect rendering on first history load.
    */
-  historyLoadComplete?: (expectedMessageCount?: string | number) => void;
+  historyLoadComplete?: (arg0?: string | number, arg1?: string | number) => void;
   /** Legacy Codex callback — kept as no-op. Does NOT release session transition guard. */
   codexHistoryPageRenderComplete?: () => void;
   /** Begin a Codex history page transfer (paginated history loading). */
@@ -152,18 +153,13 @@ interface Window {
 
   /**
    * task_* SDK system event callback (async subagent lifecycle).
-   * Payload: { subtype: 'task_started'|'task_progress'|'task_notification',
-   *   task_id, tool_use_id, status?, summary?, usage?, output_file? }.
-   * task_notification carries the terminal status and result summary that the
-   * StatusPanel uses to mark a background (run_in_background) Agent subagent as completed.
    */
-  onTaskEvent?: (eventJson: string) => void;
+  onTaskEvent?: (arg0: string, arg1?: string) => void;
 
   /**
    * opencode todo.updated SSE event callback.
-   * Payload: { sessionID: string, todos: Array<{content, status, priority}> }.
    */
-  onTodoUpdated?: (payload: string) => void;
+  onTodoUpdated?: (arg0: string, arg1?: string) => void;
 
   /**
    * SDK-to-CLI session conversion result callback.
@@ -183,7 +179,7 @@ interface Window {
   /**
    * Set current session ID (for rewind feature)
    */
-  setSessionId?: (sessionId: string) => void;
+  setSessionId?: (sessionId: string, tabId?: string) => void;
 
   /**
    * Add toast notification (called from backend)
@@ -200,12 +196,12 @@ interface Window {
   };
 
   /**
-   * Usage statistics update callback
+   * Usage statistics update callback (supports (json) or (sessionId, json))
    */
-  onUsageUpdate?: (json: string) => void;
+  onUsageUpdate?: (arg0: string, arg1?: string) => void;
 
   /** Buffers the latest usage update received before React callbacks mount. */
-  __pendingUsageUpdate?: string;
+  __pendingUsageUpdate?: unknown;
 
   /**
    * Mode changed callback
@@ -788,37 +784,33 @@ interface Window {
   /**
    * Stream start callback - called when streaming begins
    */
-  onStreamStart?: (mode?: string | boolean) => void;
+  onStreamStart?: (arg0?: string | boolean, arg1?: string | boolean) => void;
 
   /**
    * Content delta callback - called when a content delta is received
-   * @param delta The content delta string
    */
-  onContentDelta?: (delta: string) => void;
+  onContentDelta?: (arg0: string, arg1?: string) => void;
 
   /**
    * Thinking delta callback - called when a thinking delta is received
-   * @param delta The thinking delta string
    */
-  onThinkingDelta?: (delta: string) => void;
+  onThinkingDelta?: (arg0: string, arg1?: string) => void;
 
   /**
    * Block reset callback - called when a new assistant message starts within
-   * an ongoing stream (e.g., after a tool_use loop iteration). Frontend should
-   * clear streaming content refs to prevent cross-turn content merging.
+   * an ongoing stream.
    */
-  onBlockReset?: () => void;
+  onBlockReset?: (arg0?: string) => void;
 
   /**
    * Stream end callback - called when streaming ends
    */
-  onStreamEnd?: (sequence?: string | number) => void;
+  onStreamEnd?: (arg0?: string | number, arg1?: string | number) => void;
 
   /**
-   * Streaming heartbeat callback - lightweight signal from backend during
-   * tool execution phases to prevent the stall watchdog from falsely triggering.
+   * Streaming heartbeat callback
    */
-  onStreamingHeartbeat?: () => void;
+  onStreamingHeartbeat?: (arg0?: string) => void;
 
   /**
    * Permission denied callback - called when permission is denied.
@@ -1142,6 +1134,32 @@ interface Window {
         }
   ) => void;
   __pendingCliModels?: unknown;
+
+  /**
+   * Multi-session tab store for routing background session events
+   */
+  __sessionTabsStore?: {
+    getActiveTabId: () => string;
+    getActiveSessionId: () => string | null;
+    getTabs: () => any[];
+    isActiveSession: (sessionId: string | null | undefined) => boolean;
+    updateBackgroundTab: (
+      predicate: (tab: any) => boolean,
+      updater: (tab: any) => void
+    ) => void;
+    updateTabSessionId: (tabId: string, sessionId: string) => void;
+    updateTabTitle: (sessionId: string, newTitle: string) => void;
+    closeTabBySessionId?: (sessionId: string) => void;
+  };
+
+  /**
+   * Dialog store for switching and preserving pending permissions/questions across session tabs
+   */
+  __dialogStore?: {
+    getSnapshot: () => { permissions: any[]; questions: any[] };
+    restore: (permissions: any[], questions: any[]) => void;
+    clearActive: () => void;
+  };
 }
 
 declare module 'mermaid' {

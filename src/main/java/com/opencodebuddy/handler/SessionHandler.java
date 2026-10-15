@@ -60,7 +60,7 @@ public class SessionHandler extends BaseMessageHandler {
                 return true;
             case "interrupt_session":
                 LOG.debug("[SessionHandler] 处理: interrupt_session");
-                handleInterruptSession();
+                handleInterruptSession(content);
                 return true;
             case "restart_session":
                 LOG.debug("[SessionHandler] 处理: restart_session");
@@ -97,7 +97,10 @@ public class SessionHandler extends BaseMessageHandler {
     }
 
     private void recordSendFailure(String prompt, String errorMessage) {
-        var session = context.getSession();
+        recordSendFailure(context.getSession(), null, prompt, errorMessage);
+    }
+
+    private void recordSendFailure(OpencodeSession session, String targetSessionId, String prompt, String errorMessage) {
         if (session != null && prompt != null && !prompt.isBlank()) {
             session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, prompt));
             session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, errorMessage));
@@ -107,7 +110,7 @@ public class SessionHandler extends BaseMessageHandler {
             session.getCallbackFacade().notifyStateChange(false, false, errorMessage);
         }
         ApplicationManager.getApplication().invokeLater(() -> {
-            callJavaScript("addErrorMessage", escapeJs(errorMessage));
+            callJavaScript("addErrorMessage", targetSessionId != null ? targetSessionId : "", escapeJs(errorMessage));
         });
     }
 
@@ -124,12 +127,21 @@ public class SessionHandler extends BaseMessageHandler {
         String requestedReasoningEffort = null;
         String requestedCodexFastMode = null;
         String requestedDshPreset = null;
+        String targetSessionId = null;
+        String tabId = null;
         try {
             Gson gson = new Gson();
             JsonObject payload = gson.fromJson(content, JsonObject.class);
             prompt = payload != null && payload.has("text") && !payload.get("text").isJsonNull()
                              ? payload.get("text").getAsString()
                              : content; // Fallback to raw content if not JSON
+
+            if (payload != null && payload.has("sessionId") && !payload.get("sessionId").isJsonNull()) {
+                targetSessionId = payload.get("sessionId").getAsString();
+            }
+            if (payload != null && payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
+                tabId = payload.get("tabId").getAsString();
+            }
 
             // Extract agent prompt from the message
             if (payload != null && payload.has("agent") && !payload.get("agent").isJsonNull()) {
@@ -178,14 +190,31 @@ public class SessionHandler extends BaseMessageHandler {
             prompt = content;
         }
 
+        OpencodeSession sessionObj = null;
+        if (targetSessionId != null && !targetSessionId.isBlank()) {
+            sessionObj = context.getSession(targetSessionId);
+        }
+        if (sessionObj == null && tabId != null && !tabId.isBlank()) {
+            sessionObj = context.getSession(tabId);
+            if (sessionObj == null) {
+                sessionObj = context.createSession(tabId);
+            }
+        }
+        if (sessionObj == null) {
+            sessionObj = context.getSession();
+        }
+        final OpencodeSession targetSession = sessionObj;
+        final String resolvedSessionId = targetSessionId != null ? targetSessionId
+                : (tabId != null ? tabId : (targetSession != null ? targetSession.getSessionId() : ""));
+
         String nodeVersion = this.resolveNodeVersion();
         if (nodeVersion == null) {
-            recordSendFailure(prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。");
+            recordSendFailure(targetSession, resolvedSessionId, prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。");
             return;
         }
         if (!NodeDetector.isVersionSupported(nodeVersion)) {
             int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
-            recordSendFailure(prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。");
+            recordSendFailure(targetSession, resolvedSessionId, prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。");
             return;
         }
 
@@ -201,10 +230,10 @@ public class SessionHandler extends BaseMessageHandler {
             String command = finalPrompt.substring(1).trim();
             CompletableFuture.runAsync(() -> {
                 String currentWorkingDir = determineWorkingDirectory();
-                String previousCwd = context.getSession().getCwd();
+                String previousCwd = targetSession != null ? targetSession.getCwd() : context.getSession().getCwd();
 
-                if (!currentWorkingDir.equals(previousCwd)) {
-                    context.getSession().setCwd(currentWorkingDir);
+                if (!currentWorkingDir.equals(previousCwd) && targetSession != null) {
+                    targetSession.setCwd(currentWorkingDir);
                     LOG.info("[SessionHandler] Updated working directory: " + currentWorkingDir);
                 }
 
@@ -213,27 +242,32 @@ public class SessionHandler extends BaseMessageHandler {
                     OpencodeNotifier.setWaiting(project);
                 }
 
-                context.getSession().sendShell(command)
-                        .exceptionally(ex -> {
-                            LOG.error("Failed to execute shell command", ex);
-                            if (project != null) {
-                                OpencodeNotifier.showError(project, "Shell failed: " + ex.getMessage());
-                            }
-                            ApplicationManager.getApplication().invokeLater(() -> {
-                                callJavaScript("addErrorMessage", escapeJs("Shell 执行失败: " + ex.getMessage()));
+                if (targetSession != null) {
+                    targetSession.sendShell(command)
+                            .exceptionally(ex -> {
+                                LOG.error("Failed to execute shell command", ex);
+                                if (project != null) {
+                                    OpencodeNotifier.showError(project, "Shell failed: " + ex.getMessage());
+                                }
+                                ApplicationManager.getApplication().invokeLater(() -> {
+                                    callJavaScript("addErrorMessage", resolvedSessionId, escapeJs("Shell 执行失败: " + ex.getMessage()));
+                                });
+                                return null;
                             });
-                            return null;
-                        });
+                }
             });
             return;
         }
 
         CompletableFuture.runAsync(() -> {
+            if (targetSession == null) {
+                return;
+            }
             String currentWorkingDir = determineWorkingDirectory();
-            String previousCwd = context.getSession().getCwd();
+            String previousCwd = targetSession.getCwd();
 
             if (!currentWorkingDir.equals(previousCwd)) {
-                context.getSession().setCwd(currentWorkingDir);
+                targetSession.setCwd(currentWorkingDir);
                 LOG.info("[SessionHandler] Updated working directory: " + currentWorkingDir);
             }
 
@@ -244,20 +278,19 @@ public class SessionHandler extends BaseMessageHandler {
             }
 
             // [FIX] Pass agent prompt and file tags directly to session
-            context.getSession().send(finalPrompt, finalAgentPrompt, finalFileTagPaths,
+            targetSession.send(finalPrompt, finalAgentPrompt, finalFileTagPaths,
                             finalRequestedPermissionMode, finalRequestedReasoningEffort,
                             finalRequestedCodexFastMode, finalRequestedDshPreset)
                 .thenRun(() -> {
                     // Claude now triggers success on actual stream_end callback.
                     // Codex has no stream_end event, keep success trigger at completion.
-                    var session = context.getSession();
                     if (project != null
-                            && "codex".equals(session.getProvider())
-                            && !session.isManuallyInterrupted()) {
+                            && "codex".equals(targetSession.getProvider())
+                            && !targetSession.isManuallyInterrupted()) {
                         OpencodeNotifier.showSuccess(
                             project,
-                            OpencodeNotifier.buildTitleFromSession(session),
-                            OpencodeNotifier.buildPreviewFromSession(session, "Task completed"));
+                            OpencodeNotifier.buildTitleFromSession(targetSession),
+                            OpencodeNotifier.buildPreviewFromSession(targetSession, "Task completed"));
                     }
                 })
                 .exceptionally(ex -> {
@@ -265,16 +298,13 @@ public class SessionHandler extends BaseMessageHandler {
                     if (project != null) {
                         OpencodeNotifier.showError(project, "Task failed: " + ex.getMessage());
                     }
-                    var session = context.getSession();
-                    if (session != null) {
-                        session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, "发送失败: " + ex.getMessage()));
-                        session.getState().setBusy(false);
-                        session.getState().setLoading(false);
-                        session.getCallbackFacade().notifyMessageUpdate(session.getState().getMessages());
-                        session.getCallbackFacade().notifyStateChange(false, false, ex.getMessage());
-                    }
+                    targetSession.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, "发送失败: " + ex.getMessage()));
+                    targetSession.getState().setBusy(false);
+                    targetSession.getState().setLoading(false);
+                    targetSession.getCallbackFacade().notifyMessageUpdate(targetSession.getState().getMessages());
+                    targetSession.getCallbackFacade().notifyStateChange(false, false, ex.getMessage());
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
+                        callJavaScript("addErrorMessage", resolvedSessionId, escapeJs("发送失败: " + ex.getMessage()));
                     });
                     return null;
                 });
@@ -358,7 +388,16 @@ public class SessionHandler extends BaseMessageHandler {
             }
             requestedDshPreset = extractDshPreset(payload);
 
-            sendMessageWithAttachments(text, atts, agentPrompt, fileTagPaths, requestedPermissionMode,
+            String targetSessionId = null;
+            if (payload != null && payload.has("sessionId") && !payload.get("sessionId").isJsonNull()) {
+                targetSessionId = payload.get("sessionId").getAsString();
+            }
+            String tabId = null;
+            if (payload != null && payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
+                tabId = payload.get("tabId").getAsString();
+            }
+
+            sendMessageWithAttachments(targetSessionId, tabId, text, atts, agentPrompt, fileTagPaths, requestedPermissionMode,
                     requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset);
         } catch (Exception e) {
             LOG.error("[SessionHandler] 解析附件负载失败: " + e.getMessage(), e);
@@ -371,6 +410,8 @@ public class SessionHandler extends BaseMessageHandler {
      * [FIX] Now accepts agent prompt and file tags parameters
      */
     private void sendMessageWithAttachments(
+        String targetSessionId,
+        String tabId,
         String prompt,
         List<OpencodeSession.Attachment> attachments,
         String agentPrompt,
@@ -380,15 +421,32 @@ public class SessionHandler extends BaseMessageHandler {
         String requestedCodexFastMode,
         String requestedDshPreset
     ) {
+        OpencodeSession sessionObj = null;
+        if (targetSessionId != null && !targetSessionId.isBlank()) {
+            sessionObj = context.getSession(targetSessionId);
+        }
+        if (sessionObj == null && tabId != null && !tabId.isBlank()) {
+            sessionObj = context.getSession(tabId);
+            if (sessionObj == null) {
+                sessionObj = context.createSession(tabId);
+            }
+        }
+        if (sessionObj == null) {
+            sessionObj = context.getSession();
+        }
+        final OpencodeSession targetSession = sessionObj;
+        final String resolvedSessionId = targetSessionId != null ? targetSessionId
+                : (tabId != null ? tabId : (targetSession != null ? targetSession.getSessionId() : ""));
+
         // Version check (consistent with handleSendMessage)
         String nodeVersion = this.resolveNodeVersion();
         if (nodeVersion == null) {
-            recordSendFailure(prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。");
+            recordSendFailure(targetSession, resolvedSessionId, prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。");
             return;
         }
         if (!NodeDetector.isVersionSupported(nodeVersion)) {
             int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
-            recordSendFailure(prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。");
+            recordSendFailure(targetSession, resolvedSessionId, prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。");
             return;
         }
 
@@ -400,10 +458,13 @@ public class SessionHandler extends BaseMessageHandler {
         final String finalRequestedDshPreset = requestedDshPreset;
 
         CompletableFuture.runAsync(() -> {
+            if (targetSession == null) {
+                return;
+            }
             String currentWorkingDir = determineWorkingDirectory();
-            String previousCwd = context.getSession().getCwd();
+            String previousCwd = targetSession.getCwd();
             if (!currentWorkingDir.equals(previousCwd)) {
-                context.getSession().setCwd(currentWorkingDir);
+                targetSession.setCwd(currentWorkingDir);
                 LOG.info("[SessionHandler] Updated working directory: " + currentWorkingDir);
             }
 
@@ -414,20 +475,19 @@ public class SessionHandler extends BaseMessageHandler {
             }
 
             // [FIX] Pass agent prompt and file tags directly to session
-            context.getSession().send(prompt, attachments, finalAgentPrompt, finalFileTagPaths,
+            targetSession.send(prompt, attachments, finalAgentPrompt, finalFileTagPaths,
                             finalRequestedPermissionMode, finalRequestedReasoningEffort,
                             finalRequestedCodexFastMode, finalRequestedDshPreset)
                 .thenRun(() -> {
                     // Claude now triggers success on actual stream_end callback.
                     // Codex has no stream_end event, keep success trigger at completion.
-                    var session = context.getSession();
                     if (project != null
-                            && "codex".equals(session.getProvider())
-                            && !session.isManuallyInterrupted()) {
+                            && "codex".equals(targetSession.getProvider())
+                            && !targetSession.isManuallyInterrupted()) {
                         OpencodeNotifier.showSuccess(
                             project,
-                            OpencodeNotifier.buildTitleFromSession(session),
-                            OpencodeNotifier.buildPreviewFromSession(session, "Task completed"));
+                            OpencodeNotifier.buildTitleFromSession(targetSession),
+                            OpencodeNotifier.buildPreviewFromSession(targetSession, "Task completed"));
                     }
                 })
                 .exceptionally(ex -> {
@@ -435,16 +495,13 @@ public class SessionHandler extends BaseMessageHandler {
                     if (project != null) {
                         OpencodeNotifier.showError(project, "Task failed: " + ex.getMessage());
                     }
-                    var session = context.getSession();
-                    if (session != null) {
-                        session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, "发送失败: " + ex.getMessage()));
-                        session.getState().setBusy(false);
-                        session.getState().setLoading(false);
-                        session.getCallbackFacade().notifyMessageUpdate(session.getState().getMessages());
-                        session.getCallbackFacade().notifyStateChange(false, false, ex.getMessage());
-                    }
+                    targetSession.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, "发送失败: " + ex.getMessage()));
+                    targetSession.getState().setBusy(false);
+                    targetSession.getState().setLoading(false);
+                    targetSession.getCallbackFacade().notifyMessageUpdate(targetSession.getState().getMessages());
+                    targetSession.getCallbackFacade().notifyStateChange(false, false, ex.getMessage());
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
+                        callJavaScript("addErrorMessage", resolvedSessionId, escapeJs("发送失败: " + ex.getMessage()));
                     });
                     return null;
                 });
@@ -452,17 +509,41 @@ public class SessionHandler extends BaseMessageHandler {
     }
 
     /**
-     * Interrupt the current session.
+     * Interrupt the specified or current session.
      */
-    private void handleInterruptSession() {
-        context.getSession().interrupt().thenRun(() -> {
-            ApplicationManager.getApplication().invokeLater(() -> {
-                // [FIX] Notify frontend that stream has ended and reset loading state
-                // This ensures streamActive flag is reset and loading=false takes effect
-                context.callJavaScript("onStreamEnd");
-                context.callJavaScript("showLoading", "false");
+    private void handleInterruptSession(String content) {
+        String targetSessionId = null;
+        String tabId = null;
+        try {
+            if (content != null && content.trim().startsWith("{")) {
+                JsonObject payload = new Gson().fromJson(content, JsonObject.class);
+                if (payload != null && payload.has("sessionId") && !payload.get("sessionId").isJsonNull()) {
+                    targetSessionId = payload.get("sessionId").getAsString();
+                }
+                if (payload != null && payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
+                    tabId = payload.get("tabId").getAsString();
+                }
+            }
+        } catch (Exception ignored) {}
+
+        OpencodeSession targetSession = null;
+        if (targetSessionId != null && !targetSessionId.isBlank()) {
+            targetSession = context.getSession(targetSessionId);
+        } else if (tabId != null && !tabId.isBlank()) {
+            targetSession = context.getSession(tabId);
+        }
+
+        if (targetSession != null) {
+            final String resolvedSessionId = targetSessionId != null ? targetSessionId
+                    : (tabId != null ? tabId : targetSession.getSessionId());
+            targetSession.interrupt().thenRun(() -> {
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    // [FIX] Notify frontend that stream has ended and reset loading state for this session
+                    context.callJavaScript("onStreamEnd", resolvedSessionId != null ? resolvedSessionId : "");
+                    context.callJavaScript("showLoading", resolvedSessionId != null ? resolvedSessionId : "", "false");
+                });
             });
-        });
+        }
     }
 
     /**

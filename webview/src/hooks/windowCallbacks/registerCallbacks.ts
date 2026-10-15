@@ -163,18 +163,26 @@ export function registerWindowCallbacks(
   //      session switch, so stale entries from the prior session cannot linger.
   //   3. tool_use_ids are globally unique, so even a delayed event can only
   //      update the agent it was emitted for, never mislabel another.
-  window.onTaskEvent = (eventJson: string) => {
+  window.onTaskEvent = (arg0: string, arg1?: string) => {
+    const [targetSessionId, eventJson] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
     try {
-      if (!options.setTaskEvents) return;
       const taskEvent = parseTaskNotification(JSON.parse(eventJson));
       if (!taskEvent) return;
+
+      if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          (t) => {
+            t.taskEvents = { ...(t.taskEvents || {}), [taskEvent.toolUseId]: taskEvent };
+          }
+        );
+        return;
+      }
+
+      if (!options.setTaskEvents) return;
       const { toolUseId } = taskEvent;
       options.setTaskEvents((prev) => {
         const existing = prev[toolUseId];
-        // Dedup: skip the state update when no observable field changed. Include
-        // agentId/outputFilePath so a follow-up event that adds the sidechain
-        // transcript path still lands (task_notification is terminal, but a
-        // late output_file attachment would otherwise be swallowed).
         if (existing
           && existing.status === taskEvent.status
           && existing.summary === taskEvent.summary
@@ -188,20 +196,29 @@ export function registerWindowCallbacks(
         return { ...prev, [toolUseId]: taskEvent };
       });
     } catch {
-      // Ignore malformed task event payloads. A task_notification is terminal,
-      // so a dropped event is not retried - but a later task_progress /
-      // task_notification for the same tool_use_id will still land and update
-      // the entry, so the subagent list is not permanently stuck.
+      // Ignore malformed task event payloads.
     }
   };
 
   // opencode todo.updated SSE event — stores authoritative todo list
-  window.onTodoUpdated = (payload: string) => {
+  window.onTodoUpdated = (arg0: string, arg1?: string) => {
+    const [targetSessionId, payload] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
     try {
       cardDebugLog('[onTodoUpdated] received payload length:', payload?.length);
       const { sessionID, todos } = JSON.parse(payload);
-      cardDebugLog('[onTodoUpdated] parsed sessionID:', sessionID, 'currentSessionId:', options.currentSessionIdRef.current, 'todos count:', todos?.length);
-      if (sessionID !== options.currentSessionIdRef.current) {
+      const effectiveSessionId = targetSessionId || sessionID;
+
+      if (effectiveSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(effectiveSessionId)) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === effectiveSessionId,
+          (t) => {
+            t.sseTodos = todos;
+          }
+        );
+        return;
+      }
+
+      if (effectiveSessionId && options.currentSessionIdRef.current && effectiveSessionId !== options.currentSessionIdRef.current) {
         cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch');
         return;
       }
@@ -213,7 +230,6 @@ export function registerWindowCallbacks(
       }
     } catch (e) {
       console.error('[onTodoUpdated] parse error:', e);
-      // Ignore malformed todo event payloads.
     }
   };
 

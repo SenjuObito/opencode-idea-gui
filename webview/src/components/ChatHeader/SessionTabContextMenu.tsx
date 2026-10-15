@@ -9,6 +9,7 @@ export interface SessionTabContextMenuProps {
   onClose: () => void;
   onRename: () => void;
   onFork: () => void;
+  onExport: () => void;
   onShare: () => void;
   onCopyShareLink: () => void;
   onUnshare: () => void;
@@ -22,6 +23,7 @@ export const SessionTabContextMenu: React.FC<SessionTabContextMenuProps> = ({
   onClose,
   onRename,
   onFork,
+  onExport,
   onShare,
   onCopyShareLink,
   onUnshare,
@@ -83,6 +85,18 @@ export const SessionTabContextMenu: React.FC<SessionTabContextMenuProps> = ({
       >
         <span className="codicon codicon-git-branch" />
         <span>{t('chat.forkSession', { defaultValue: 'Fork 会话' })}</span>
+      </button>
+
+      <button
+        className="context-menu-item"
+        role="menuitem"
+        onClick={() => {
+          onClose();
+          onExport();
+        }}
+      >
+        <span className="codicon codicon-markdown" />
+        <span>{t('chat.exportMarkdown', { defaultValue: '导出会话为 Markdown' })}</span>
       </button>
 
       <div className="context-menu-divider" />

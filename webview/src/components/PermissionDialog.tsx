@@ -13,6 +13,7 @@ export interface PermissionRequest {
   toolName: string;
   inputs: Record<string, unknown>;
   suggestions?: string[];
+  sessionId?: string;
 }
 
 interface PermissionDialogProps {

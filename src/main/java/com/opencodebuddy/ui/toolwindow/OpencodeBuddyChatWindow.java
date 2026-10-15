@@ -86,6 +86,10 @@ public class OpencodeBuddyChatWindow {
     // volatile: read from the daemon reader thread by the session_updated listener
     // and its loadFromServer continuation, while reassigned on the EDT.
     private volatile OpencodeSession session;
+    private final Map<String, OpencodeSession> sessions = new ConcurrentHashMap<>();
+    private final Map<String, SessionCallbackAdapter> sessionAdapters = new ConcurrentHashMap<>();
+    private final Map<String, StreamMessageCoalescer> sessionCoalescers = new ConcurrentHashMap<>();
+    private volatile String activeSessionId = null;
     private final WebviewWatchdog webviewWatchdog;
     private final StreamMessageCoalescer streamCoalescer;
 
@@ -308,13 +312,33 @@ public class OpencodeBuddyChatWindow {
 
             @Override
             public OpencodeSession getSession() {
-                return session;
+                return OpencodeBuddyChatWindow.this.getSession();
+            }
+
+            @Override
+            public OpencodeSession getSession(String targetSessionId) {
+                return OpencodeBuddyChatWindow.this.getSession(targetSessionId);
             }
 
             @Override
             public void setSession(OpencodeSession s) {
                 session = s;
                 persistTabSessionState();
+            }
+
+            @Override
+            public void registerSession(String targetSessionId, OpencodeSession s, SessionCallbackAdapter adapter, StreamMessageCoalescer coalescer) {
+                OpencodeBuddyChatWindow.this.registerSession(targetSessionId, s, adapter, coalescer);
+            }
+
+            @Override
+            public void switchSession(String targetSessionId) {
+                OpencodeBuddyChatWindow.this.switchSession(targetSessionId);
+            }
+
+            @Override
+            public void closeSession(String targetSessionId) {
+                OpencodeBuddyChatWindow.this.closeSession(targetSessionId);
             }
 
             @Override
@@ -325,6 +349,21 @@ public class OpencodeBuddyChatWindow {
             @Override
             public StreamMessageCoalescer getStreamCoalescer() {
                 return streamCoalescer;
+            }
+
+            @Override
+            public StreamMessageCoalescer getStreamCoalescer(String targetSessionId) {
+                return OpencodeBuddyChatWindow.this.getStreamCoalescer(targetSessionId);
+            }
+
+            @Override
+            public StreamMessageCoalescer createStreamCoalescer(String targetSessionId) {
+                return OpencodeBuddyChatWindow.this.createStreamCoalescer(targetSessionId);
+            }
+
+            @Override
+            public SessionCallbackAdapter createCallbackAdapter(String targetSessionId, StreamMessageCoalescer coalescer) {
+                return OpencodeBuddyChatWindow.this.createCallbackAdapter(targetSessionId, coalescer);
             }
 
             @Override
@@ -1415,6 +1454,204 @@ public class OpencodeBuddyChatWindow {
         return session;
     }
 
+    public OpencodeSession getSession(String targetSessionId) {
+        if (targetSessionId == null || targetSessionId.isBlank()) {
+            return null;
+        }
+        OpencodeSession s = sessions.get(targetSessionId);
+        if (s != null) {
+            return s;
+        }
+        if (session != null && targetSessionId.equals(session.getSessionId())) {
+            return session;
+        }
+        return handlerContext != null ? handlerContext.getSession(targetSessionId) : null;
+    }
+
+    public OpencodeSession createSessionForTab(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            tabId = "tab-" + System.currentTimeMillis();
+        }
+        OpencodeSession existing = sessions.get(tabId);
+        if (existing != null) {
+            return existing;
+        }
+
+        OpencodeSession oldSession = this.session;
+        String previousPermissionMode = (oldSession != null) ? oldSession.getPermissionMode() : "default";
+        String previousProvider = (oldSession != null) ? oldSession.getProvider() : "claude";
+        String previousModel = (oldSession != null) ? oldSession.getModel() : "claude-sonnet-4-6";
+
+        OpencodeSession newSession = new OpencodeSession(project, openCodeSDKBridge);
+        newSession.setPermissionMode(previousPermissionMode);
+        newSession.setProvider(previousProvider);
+        newSession.setModel(previousModel);
+
+        StreamMessageCoalescer newCoalescer = createStreamCoalescer(tabId);
+        if (newCoalescer == null) {
+            newCoalescer = streamCoalescer;
+        }
+        SessionCallbackAdapter newAdapter = createCallbackAdapter(tabId, newCoalescer);
+        if (newAdapter != null) {
+            newSession.setCallback(newAdapter);
+        }
+
+        registerSession(tabId, newSession, newAdapter, newCoalescer);
+        if (this.session == null) {
+            this.session = newSession;
+            this.activeSessionId = tabId;
+        }
+        return newSession;
+    }
+
+    public StreamMessageCoalescer getStreamCoalescer(String targetSessionId) {
+        if (targetSessionId == null || targetSessionId.isBlank()) {
+            return streamCoalescer;
+        }
+        StreamMessageCoalescer coalescer = sessionCoalescers.get(targetSessionId);
+        return coalescer != null ? coalescer : streamCoalescer;
+    }
+
+    public StreamMessageCoalescer createStreamCoalescer(String targetSessionId) {
+        StreamMessageCoalescer newCoalescer = new StreamMessageCoalescer(targetSessionId, new StreamMessageCoalescer.JsCallbackTarget() {
+            @Override
+            public void callJavaScript(String functionName, String... args) {
+                OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
+            }
+
+            @Override
+            public JBCefBrowser getBrowser() {
+                return browser;
+            }
+
+            @Override
+            public boolean isDisposed() {
+                return disposed;
+            }
+
+            @Override
+            public HandlerContext getHandlerContext() {
+                return handlerContext;
+            }
+
+            @Override
+            public void onStreamEnded() {
+                OpencodeSession current = getSession(targetSessionId);
+                if (current != null && shouldReconcileTranscriptAtStreamEnd(
+                        current.getProvider(), current.getSessionId())) {
+                    OpencodeBuddyChatWindow.this.deferredReload.defer(current.getSessionId());
+                }
+                OpencodeBuddyChatWindow.this.drainDeferredReload();
+            }
+        });
+        if (targetSessionId != null && !targetSessionId.isBlank()) {
+            sessionCoalescers.put(targetSessionId, newCoalescer);
+        }
+        return newCoalescer;
+    }
+
+    public SessionCallbackAdapter createCallbackAdapter(String targetSessionId, StreamMessageCoalescer coalescer) {
+        StreamMessageCoalescer effectiveCoalescer = coalescer != null ? coalescer : getStreamCoalescer(targetSessionId);
+        SessionCallbackAdapter newAdapter = new SessionCallbackAdapter(
+                targetSessionId,
+                effectiveCoalescer,
+                new SessionCallbackAdapter.JsTarget() {
+                    @Override
+                    public void callJavaScript(String functionName, String... args) {
+                        OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
+                    }
+                },
+                permissionHandler,
+                () -> slashCommandsFetched,
+                this::onStreamEnded
+        ) {
+            @Override
+            public void onSessionIdReceived(String newSessionId) {
+                super.onSessionIdReceived(newSessionId);
+                if (targetSessionId != null && !targetSessionId.equals(newSessionId)) {
+                    OpencodeSession existingSession = sessions.remove(targetSessionId);
+                    if (existingSession != null) {
+                        sessions.put(newSessionId, existingSession);
+                    }
+                    SessionCallbackAdapter existingAdapter = sessionAdapters.remove(targetSessionId);
+                    if (existingAdapter != null) {
+                        sessionAdapters.put(newSessionId, existingAdapter);
+                    }
+                    StreamMessageCoalescer existingCoalescer = sessionCoalescers.remove(targetSessionId);
+                    if (existingCoalescer != null) {
+                        sessionCoalescers.put(newSessionId, existingCoalescer);
+                    }
+                    if (handlerContext != null) {
+                        handlerContext.removeSession(targetSessionId);
+                        if (existingSession != null) {
+                            handlerContext.registerSession(newSessionId, existingSession);
+                        }
+                    }
+                }
+                if (activeSessionId == null || activeSessionId.equals(targetSessionId)) {
+                    sessionId = newSessionId;
+                    activeSessionId = newSessionId;
+                    persistTabSessionState();
+                }
+            }
+        };
+        if (targetSessionId != null && !targetSessionId.isBlank()) {
+            sessionAdapters.put(targetSessionId, newAdapter);
+        }
+        return newAdapter;
+    }
+
+    public void registerSession(String targetSessionId, OpencodeSession s, SessionCallbackAdapter adapter, StreamMessageCoalescer coalescer) {
+        if (targetSessionId == null || targetSessionId.isBlank()) return;
+        if (s != null) {
+            sessions.put(targetSessionId, s);
+            if (handlerContext != null) {
+                handlerContext.registerSession(targetSessionId, s);
+            }
+        }
+        if (adapter != null) {
+            sessionAdapters.put(targetSessionId, adapter);
+        }
+        if (coalescer != null) {
+            sessionCoalescers.put(targetSessionId, coalescer);
+        }
+    }
+
+    public void switchSession(String targetSessionId) {
+        if (targetSessionId == null || targetSessionId.isBlank()) return;
+        activeSessionId = targetSessionId;
+        OpencodeSession targetSession = getSession(targetSessionId);
+        if (targetSession != null) {
+            this.session = targetSession;
+            this.sessionId = resolveExposedSessionId(targetSession.getSessionId(), this.permissionServiceKey);
+            SessionCallbackAdapter adapter = sessionAdapters.get(targetSessionId);
+            if (adapter != null) {
+                this.sessionCallbackAdapter = adapter;
+            }
+            StreamMessageCoalescer coalescer = sessionCoalescers.get(targetSessionId);
+            if (coalescer != null) {
+                // Keep the active coalescer reference in sync
+            }
+            persistTabSessionState();
+        }
+    }
+
+    public void closeSession(String targetSessionId) {
+        if (targetSessionId == null || targetSessionId.isBlank()) return;
+        sessions.remove(targetSessionId);
+        SessionCallbackAdapter adapter = sessionAdapters.remove(targetSessionId);
+        if (adapter != null) {
+            adapter.dispose();
+        }
+        StreamMessageCoalescer coalescer = sessionCoalescers.remove(targetSessionId);
+        if (coalescer != null) {
+            coalescer.dispose();
+        }
+        if (handlerContext != null) {
+            handlerContext.removeSession(targetSessionId);
+        }
+    }
+
     /**
      * Copies provider-specific preferences into a newly-created tab without
      * carrying over the source tab's conversation or runtime channel.
@@ -2304,6 +2541,15 @@ public class OpencodeBuddyChatWindow {
         };
         session.setCallback(sessionCallbackAdapter);
 
+        String curId = session.getSessionId();
+        if (curId == null || curId.isBlank()) {
+            curId = this.sessionId;
+        }
+        if (curId != null && !curId.isBlank()) {
+            registerSession(curId, session, sessionCallbackAdapter, streamCoalescer);
+            activeSessionId = curId;
+        }
+
         // Wire daemon events directly to frontend (bypasses adapter lifecycle).
         // Calling through sessionCallbackAdapter would silently drop the event
         // if setupSessionCallbacks() is invoked again before the title arrives
@@ -2333,70 +2579,35 @@ public class OpencodeBuddyChatWindow {
                         return;
                     }
 
-                    // Compare with current active session
-                    String currentSessionId = session != null ? session.getSessionId() : null;
-                    if (currentSessionId == null || !currentSessionId.equals(updatedSessionId)) {
-                        // Event is for a different session, ignore
+                    // Check if session exists in our window (active or in pool)
+                    OpencodeSession targetSession = getSession(updatedSessionId);
+                    if (targetSession == null) {
                         return;
                     }
 
-                    // If a turn is streaming, DON'T reload now (clearMessages() off
-                    // the EDT would race the streaming append and disturb the live
-                    // bubble). DON'T drop it either, or a background-turn answer would
-                    // stay invisible until the user reopens the session. Park the id
-                    // and drain it at stream end (onStreamEnded).
-                    if (sessionCallbackAdapter != null && streamCoalescer != null && streamCoalescer.isStreamActive()) {
+                    StreamMessageCoalescer coalescer = getStreamCoalescer(updatedSessionId);
+                    if (coalescer != null && coalescer.isStreamActive()) {
                         deferredReload.defer(updatedSessionId);
-                        // onStreamEnded drains this at the next stream-end. Also arm the
-                        // safety backstop so a defer that races the stream-end edge — or
-                        // the last fan-out answer with no following stream end — is still
-                        // drained once the stream goes idle (see deferredReloadSafetyTick).
                         scheduleDeferredReloadSafetyDrain();
-                        LOG.info("[OpencodeBuddyChatWindow] session_updated during active turn, deferring reload to stream end");
+                        LOG.info("[OpencodeBuddyChatWindow] session_updated during active turn for " + updatedSessionId + ", deferring reload to stream end");
                         return;
                     }
 
                     LOG.info("[OpencodeBuddyChatWindow] session_updated for sessionId=" + updatedSessionId + ", reloading from server");
-
-                    // Reuse the canonical reload path (same as history-load / rewind):
-                    // loadFromServer() reads the session via the bridge, converts each
-                    // record with MessageParser.parseServerMessage(), and pushes a full
-                    // refresh through the callback facade. Coalesced so overlapping
-                    // background-task completions never reload concurrently.
-                    //
-                    // Pass updatedSessionId as the reload target: the session field can
-                    // be reassigned on the EDT (new-session / restart flows) between the
-                    // currentSessionId check above and the reload actually running.
-                    // driveSessionReload() re-validates the id at entry and after
-                    // loadFromServer() returns, so a reload never lands on a session
-                    // that the user has navigated away from.
                     requestSessionReload(updatedSessionId);
                 } else if ("task_event".equals(event)) {
-                    // Async subagent (Agent/Task tool with run_in_background:true)
-                    // lifecycle event forwarded by the
-                    // ai-bridge perpetual reader. task_notification arrives inter-turn
-                    // (after the turn's result), so it cannot ride the normal [MESSAGE]
-                    // stream -- route it to the frontend via onTaskEvent so the subagent
-                    // list reflects completion/usage instead of staying on "running".
                     String taskSessionId = data.has("sessionId") && data.get("sessionId").isJsonPrimitive()
                             ? data.get("sessionId").getAsString() : null;
                     if (taskSessionId == null) {
                         LOG.warn("[OpencodeBuddyChatWindow] task_event event missing sessionId");
                         return;
                     }
-                    // Mirror session_updated's guard: drop events that do not match the
-                    // active session so a stale background-agent completion cannot leak
-                    // into a session the user has since navigated to. Capture the
-                    // adapter into a local before the session check: session and
-                    // sessionCallbackAdapter are both volatile and reassigned on the EDT,
-                    // so reading them separately could route an old-session event to a
-                    // newly activated adapter. The captured adapter's onTaskEvent
-                    // re-checks isInactive(), so if the session switched after the
-                    // snapshot the delivery is skipped.
-                    var adapter = sessionCallbackAdapter;
-                    String currentSessionId = session != null ? session.getSessionId() : null;
-                    if (currentSessionId == null || !currentSessionId.equals(taskSessionId)) {
-                        return;
+                    var adapter = sessionAdapters.get(taskSessionId);
+                    if (adapter == null) {
+                        String currentSessionId = session != null ? session.getSessionId() : null;
+                        if (currentSessionId != null && currentSessionId.equals(taskSessionId)) {
+                            adapter = sessionCallbackAdapter;
+                        }
                     }
                     if (adapter != null && data.has("taskEvent") && !data.get("taskEvent").isJsonNull()) {
                         adapter.onTaskEvent(data.get("taskEvent").toString());
@@ -2568,17 +2779,17 @@ public class OpencodeBuddyChatWindow {
             }
             return;
         }
-        // A narrow window remains: the EDT can reassign `session` between the
-        // isSessionActive() check above and the `current = session` read below,
-        // so `current` may be a session the user has navigated away from. This is
-        // safe by design: loadFromServer() pushes its result through `current`'s
-        // own callbackFacade → SessionCallbackAdapter, and that adapter is
-        // deactivated by setupSessionCallbacks() when the new session is bound
-        // (volatile `active` flag, checked in every on* callback). So a stale
-        // reload's onMessageUpdate/onStateChange are silently dropped, and the
-        // isSessionActive() check in the continuation additionally blocks any
-        // follow-up reload. Two independent guards; neither alone is sufficient.
-        OpencodeSession current = session;
+        OpencodeSession current = getSession(targetSessionId);
+        if (current == null) {
+            current = session;
+        }
+        if (current == null) {
+            synchronized (sessionReloadLock) {
+                sessionReloadInFlight = false;
+                sessionReloadPending = false;
+            }
+            return;
+        }
         current.loadFromServer().whenComplete((v, ex) -> {
             if (ex != null) {
                 LOG.warn("[OpencodeBuddyChatWindow] session reload failed", ex);
@@ -2642,12 +2853,18 @@ public class OpencodeBuddyChatWindow {
      * safe from the daemon-reader and loadFromServer() continuation threads.
      */
     private boolean isSessionActive(String sessionId) {
+        if (sessionId == null) {
+            return false;
+        }
+        if (sessions.containsKey(sessionId)) {
+            return true;
+        }
         OpencodeSession current = session;
-        if (current == null || sessionId == null) {
+        if (current == null) {
             return false;
         }
         String currentId = current.getSessionId();
-        return sessionId.equals(currentId);
+        return sessionId.equals(currentId) || sessionId.equals(permissionServiceKey);
     }
 
     private void onStreamEnded() {
@@ -2842,6 +3059,19 @@ public class OpencodeBuddyChatWindow {
         Disposer.dispose(surfaceRefreshAlarmDisposable);
         deferredReloadSafetyAlarm.cancelAllRequests();
         Disposer.dispose(safetyAlarmDisposable);
+        for (StreamMessageCoalescer c : sessionCoalescers.values()) {
+            if (c != streamCoalescer) {
+                c.dispose();
+            }
+        }
+        sessionCoalescers.clear();
+        for (SessionCallbackAdapter a : sessionAdapters.values()) {
+            if (a != sessionCallbackAdapter) {
+                a.dispose();
+            }
+        }
+        sessionAdapters.clear();
+        sessions.clear();
         if (sessionCallbackAdapter != null) {
             sessionCallbackAdapter.dispose();
         }
@@ -3155,6 +3385,9 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void setHandlerContext(HandlerContext ctx) {
                 handlerContext = ctx;
+                if (ctx != null) {
+                    ctx.setSessionCreator(OpencodeBuddyChatWindow.this::createSessionForTab);
+                }
             }
 
             @Override
@@ -3250,6 +3483,16 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void updateTabTitle(String title) {
                 OpencodeBuddyChatWindow.this.updateTabTitle(title);
+            }
+
+            @Override
+            public void switchSession(String targetSessionId) {
+                OpencodeBuddyChatWindow.this.switchSession(targetSessionId);
+            }
+
+            @Override
+            public void closeSession(String targetSessionId) {
+                OpencodeBuddyChatWindow.this.closeSession(targetSessionId);
             }
         };
     }

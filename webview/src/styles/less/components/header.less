@@ -445,3 +445,158 @@
     }
 }
 
+/* Session Tab Overflow Menu */
+.session-tab-overflow-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.session-tab-overflow-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--color-chat-bars-muted-text, var(--text-tertiary));
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    position: relative;
+
+    &:hover {
+        background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+        color: var(--color-chat-bars-text, var(--text-secondary));
+    }
+
+    &.active {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-secondary);
+    }
+
+    .session-tab-busy-dot {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent-primary);
+    }
+
+    .session-tab-attention-dot {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--color-warning, #f59e0b);
+        box-shadow: 0 0 6px var(--color-warning, #f59e0b);
+        animation: pulseWarning 1.5s infinite;
+    }
+}
+
+.session-tab-attention-icon {
+    color: var(--color-warning, #f59e0b) !important;
+    animation: pulseWarning 1.5s infinite;
+}
+
+@keyframes pulseWarning {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.15); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.session-tab-overflow-menu {
+    position: fixed;
+    min-width: 180px;
+    max-width: 280px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--color-chat-bars-bg, var(--bg-secondary));
+    border: 1px solid var(--border-secondary);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    z-index: 10000;
+    padding: 4px;
+
+    .session-tab-overflow-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: background 0.12s ease;
+
+        &:hover {
+            background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+            color: var(--text-primary);
+
+            .session-tab-overflow-close {
+                opacity: 0.8;
+            }
+        }
+
+        &.active {
+            background: var(--bg-tertiary);
+            color: var(--accent-primary);
+            font-weight: 500;
+        }
+
+        .session-tab-icon {
+            font-size: 13px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            color: var(--text-tertiary);
+        }
+
+        &.active .session-tab-icon {
+            color: var(--accent-primary);
+        }
+
+        .session-tab-overflow-title {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .session-tab-overflow-close {
+            opacity: 0;
+            background: transparent;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            padding: 2px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.15s ease, background 0.15s ease;
+
+            &:hover {
+                opacity: 1 !important;
+                background: var(--color-button-danger-hover-bg, rgba(239, 68, 68, 0.2));
+                color: var(--color-danger, #ef4444);
+            }
+
+            .codicon {
+                font-size: 12px;
+            }
+        }
+    }
+}
+
+

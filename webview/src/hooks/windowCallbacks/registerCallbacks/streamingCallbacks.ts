@@ -15,6 +15,12 @@ import { getStreamEndHandlingMode } from '../messageSync';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 
 /**
+ * Per-session turn start timestamp registry to prevent cross-session timer pollution
+ * when users switch tabs during streaming.
+ */
+const sessionTurnStartTimes = new Map<string, number>();
+
+/**
  * Pour every tool_use_id carried by tool_result blocks inside one message's raw
  * into the supplied accumulator.
  *
@@ -245,7 +251,33 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     window.__lastStreamActivityAt = Date.now();
   };
 
-  window.onStreamStart = (mode?: string | boolean) => {
+  window.onStreamStart = (arg0?: string | boolean, arg1?: string | boolean) => {
+    let targetSessionId: string | null = null;
+    let mode: string | boolean | undefined;
+
+    if (typeof arg1 !== 'undefined') {
+      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
+      mode = arg1;
+    } else if (typeof arg0 === 'boolean' || arg0 === 'replay') {
+      mode = arg0;
+    } else if (typeof arg0 === 'string') {
+      targetSessionId = arg0;
+    }
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      const now = Date.now();
+      sessionTurnStartTimes.set(targetSessionId, now);
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.streamingActive = true;
+          t.loading = true;
+          t.turnStartedAt = now;
+        }
+      );
+      return;
+    }
+
     if (window.__sessionTransitioning) return;
     const isReplayStart = mode === 'replay' || mode === true;
     // Clear any stale pending updateMessages from previous turn.
@@ -262,7 +294,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // Clear idempotency guard for the new turn
     window.__streamEndProcessedTurnId = undefined;
     // Record turn start time for duration calculation in onStreamEnd
-    window.__turnStartedAt = Date.now();
+    const turnNow = Date.now();
+    window.__turnStartedAt = turnNow;
+    const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    if (activeSessionId) {
+      sessionTurnStartTimes.set(activeSessionId, turnNow);
+    }
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     isStreamingRef.current = true;
@@ -419,7 +456,40 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     startStallWatchdog();
   };
 
-  window.onContentDelta = (delta: string) => {
+  window.onContentDelta = (arg0: string, arg1?: string) => {
+    const [targetSessionId, delta] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.streamingActive = true;
+          t.loading = true;
+          if (t.messages && t.messages.length > 0) {
+            const last = t.messages[t.messages.length - 1];
+            if (last && last.type === 'assistant') {
+              last.content = (last.content || '') + delta;
+            } else {
+              t.messages.push({
+                type: 'assistant',
+                content: delta,
+                isStreaming: true,
+                timestamp: new Date().toISOString(),
+              });
+            }
+          } else {
+            t.messages = [{
+              type: 'assistant',
+              content: delta,
+              isStreaming: true,
+              timestamp: new Date().toISOString(),
+            }];
+          }
+        }
+      );
+      return;
+    }
+
     if (window.__sessionTransitioning) return;
     ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
@@ -427,7 +497,21 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     scheduleContentRaf();
   };
 
-  window.onThinkingDelta = (delta: string) => {
+  window.onThinkingDelta = (arg0: string, arg1?: string) => {
+    const [targetSessionId, delta] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.streamingActive = true;
+          t.loading = true;
+          t.isThinking = true;
+        }
+      );
+      return;
+    }
+
     if (window.__sessionTransitioning) return;
     ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
@@ -459,7 +543,52 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     });
   };
 
-  window.onStreamEnd = (sequence?: string | number) => {
+  window.onStreamEnd = (arg0?: string | number, arg1?: string | number) => {
+    let targetSessionId: string | null = null;
+    let sequence: string | number | undefined;
+
+    if (typeof arg1 !== 'undefined') {
+      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
+      sequence = arg1;
+    } else if (typeof arg0 === 'number' || (typeof arg0 === 'string' && /^\d+$/.test(arg0))) {
+      sequence = arg0;
+    } else if (typeof arg0 === 'string') {
+      targetSessionId = arg0;
+    }
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      const turnStartedAt = sessionTurnStartTimes.get(targetSessionId);
+      sessionTurnStartTimes.delete(targetSessionId);
+      const streamEndedAt = Date.now();
+      const calculatedDurationMs = turnStartedAt ? streamEndedAt - turnStartedAt : undefined;
+
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.streamingActive = false;
+          t.loading = false;
+          const durMs = calculatedDurationMs ?? (t.turnStartedAt ? streamEndedAt - t.turnStartedAt : undefined);
+          t.turnStartedAt = null;
+
+          if (t.messages && t.messages.length > 0) {
+            for (let i = t.messages.length - 1; i >= 0; i--) {
+              const msg = t.messages[i];
+              if (msg && msg.type === 'assistant') {
+                msg.isStreaming = false;
+                if (durMs != null && msg.durationMs == null) {
+                  msg.durationMs = durMs;
+                }
+                break;
+              }
+            }
+            // Reconstruct turn metadata for background tab so turnUsage and duration are solidified
+            t.messages = reconstructTurnMetadata(t.messages);
+          }
+        }
+      );
+      return;
+    }
+
     if (window.__sessionTransitioning) return;
 
     // Idempotency guard: dual-path delivery (primary via flush callback +
@@ -585,8 +714,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     const keysToCollapse = new Set(autoExpandedThinkingKeysRef.current);
 
     // Snapshot turn start time BEFORE entering the updater
-    const turnStartedAt = window.__turnStartedAt;
+    const currentActiveSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    const turnStartedAt = window.__turnStartedAt ?? (currentActiveSessionId ? sessionTurnStartTimes.get(currentActiveSessionId) : undefined);
     window.__turnStartedAt = undefined;
+    if (currentActiveSessionId) {
+      sessionTurnStartTimes.delete(currentActiveSessionId);
+    }
     // Snapshot stream-end time and derived values BEFORE the updater to keep it pure.
     // Date.now() / new Date() inside an updater are impure: React StrictMode double-invokes
     // updaters and would produce two different timestamps for the same stream end.
@@ -861,7 +994,10 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // message starts within an ongoing stream (e.g., after tool_use loop iteration).
   // This prevents cross-turn content merging where new thinking/text deltas
   // would append to previous turn's buffered content.
-  window.onBlockReset = () => {
+  window.onBlockReset = (targetSessionId?: string) => {
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      return;
+    }
     if (!isStreamingRef.current) {
       // Stream not active, ignore (could be stale signal after stream ended)
       return;
@@ -892,5 +1028,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     lastThinkingUpdateRef.current = 0;
     // Clear auto-expanded thinking keys for the new turn
     autoExpandedThinkingKeysRef.current.clear();
+  };
+
+  window.onStreamingHeartbeat = (targetSessionId?: string) => {
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      return;
+    }
+    window.__lastStreamActivityAt = Date.now();
   };
 }

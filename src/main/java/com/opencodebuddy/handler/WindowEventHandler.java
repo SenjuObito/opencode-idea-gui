@@ -16,7 +16,8 @@ public class WindowEventHandler extends BaseMessageHandler {
     private static final Logger LOG = Logger.getInstance(WindowEventHandler.class);
     private static final String[] SUPPORTED_TYPES = {
         "heartbeat", "tab_loading_changed", "tab_status_changed",
-        "create_new_session", "frontend_ready", "history_dom_committed",
+        "create_new_session", "switch_session", "close_session",
+        "frontend_ready", "history_dom_committed",
         "history_render_complete", "surface_damage_applied",
         "refresh_slash_commands",
         "fork_session", "share_session", "unshare_session",
@@ -31,6 +32,9 @@ public class WindowEventHandler extends BaseMessageHandler {
         void onTabLoadingChanged(boolean loading);
         void onTabStatusChanged(String status);
         void onCreateNewSession();
+        default void onCreateNewSession(String sessionId) { onCreateNewSession(); }
+        default void onSwitchSession(String sessionId) {}
+        default void onCloseSession(String sessionId) {}
         void onFrontendReady();
         void onHistoryRenderComplete(long commitEpoch);
         void onSurfaceDamageApplied(String token, String phase, boolean applied);
@@ -57,7 +61,13 @@ public class WindowEventHandler extends BaseMessageHandler {
                 handleTabStatusChanged(content);
                 return true;
             case "create_new_session":
-                callback.onCreateNewSession();
+                callback.onCreateNewSession(parseSessionId(content));
+                return true;
+            case "switch_session":
+                handleSwitchSession(content);
+                return true;
+            case "close_session":
+                handleCloseSession(content);
                 return true;
             case "frontend_ready":
                 callback.onFrontendReady();
@@ -103,21 +113,40 @@ public class WindowEventHandler extends BaseMessageHandler {
     // =========================================================================
 
     private void handleForkSession(String content) {
-        String sessionId = sessionIdOrEmpty();
+        String parsedId = parseSessionId(content);
+        String sessionId = (parsedId != null && !parsedId.isEmpty()) ? parsedId : sessionIdOrEmpty();
         LOG.info("[fork] request content=\"" + content + "\" sessionId=\"" + sessionId + "\"");
         if (sessionId.isEmpty()) {
             LOG.warn("[fork] skipped: no active sessionId");
             return;
         }
 
-        com.opencodebuddy.session.OpencodeSession session = context.getSession();
+        com.opencodebuddy.session.OpencodeSession session = context.getSession(sessionId);
+        if (session == null) {
+            session = context.getSession();
+        }
         if (session != null && session.isBusy()) {
             LOG.warn("[fork] skipped: session busy");
             callJavaScript("onForkError", "session busy");
             return;
         }
 
-        if ("full".equals(content != null ? content.trim() : null)) {
+        boolean isFull = false;
+        if (content != null) {
+            String trimmed = content.trim();
+            if ("full".equals(trimmed)) {
+                isFull = true;
+            } else if (trimmed.startsWith("{")) {
+                try {
+                    com.google.gson.JsonObject obj = new com.google.gson.Gson().fromJson(trimmed, com.google.gson.JsonObject.class);
+                    if (obj != null && obj.has("type") && "full".equals(obj.get("type").getAsString())) {
+                        isFull = true;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        if (isFull) {
             requestFork(sessionId, null);
             return;
         }
@@ -214,7 +243,8 @@ public class WindowEventHandler extends BaseMessageHandler {
     }
 
     private void handleRevertSession(String messageId) {
-        String sessionId = sessionIdOrEmpty();
+        String parsedId = parseSessionId(messageId);
+        String sessionId = (parsedId != null && !parsedId.isEmpty()) ? parsedId : sessionIdOrEmpty();
         LOG.info("[revert] request messageId=\"" + messageId + "\" sessionId=\"" + sessionId + "\"");
         if (sessionId.isEmpty()) {
             LOG.warn("[revert] skipped: no active sessionId");
@@ -380,7 +410,8 @@ public class WindowEventHandler extends BaseMessageHandler {
             }
         }
         final String resolvedModel = (model != null && !model.isBlank()) ? model.trim() : null;
-        final String targetSessionId = sessionIdOrEmpty();
+        String parsedId = parseSessionId(content);
+        final String targetSessionId = (parsedId != null && !parsedId.isEmpty()) ? parsedId : sessionIdOrEmpty();
         requestDaemonJson("summarize", () -> singleSessionParams(targetSessionId, resolvedModel), new ResponseHandler() {
             @Override
             public void onError(String error) {
@@ -463,6 +494,33 @@ public class WindowEventHandler extends BaseMessageHandler {
             params.addProperty("model", model);
         }
         return params;
+    }
+
+    private String parseSessionId(String content) {
+        if (content == null || content.isBlank()) return null;
+        try {
+            if (content.trim().startsWith("{")) {
+                com.google.gson.JsonObject json = new com.google.gson.Gson().fromJson(content, com.google.gson.JsonObject.class);
+                if (json != null && json.has("sessionId") && !json.get("sessionId").isJsonNull()) {
+                    return json.get("sessionId").getAsString();
+                }
+            }
+        } catch (Exception ignored) {}
+        return content.trim();
+    }
+
+    private void handleSwitchSession(String content) {
+        String sessionId = parseSessionId(content);
+        if (sessionId != null && !sessionId.isEmpty()) {
+            callback.onSwitchSession(sessionId);
+        }
+    }
+
+    private void handleCloseSession(String content) {
+        String sessionId = parseSessionId(content);
+        if (sessionId != null && !sessionId.isEmpty()) {
+            callback.onCloseSession(sessionId);
+        }
     }
 
     private static String joinLines(java.util.List<String> chunks) {

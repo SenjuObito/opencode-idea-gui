@@ -1,79 +1,82 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatHeader } from './ChatHeader';
+import type { SessionTabData } from './types';
 
 const mockT = ((key: string) => key) as any;
 
-describe('ChatHeader share controls', () => {
+describe('ChatHeader', () => {
+  const mockTabs: SessionTabData[] = [
+    {
+      id: 'tab-1',
+      sessionId: 'sess-1',
+      title: 'Tab 1',
+      messages: [],
+      isShared: false,
+    },
+    {
+      id: 'tab-2',
+      sessionId: 'sess-2',
+      title: 'Tab 2',
+      messages: [],
+      isShared: true,
+    },
+  ];
+
   const defaultProps = {
     currentView: 'chat' as const,
-    sessionTitle: 'Test Session',
     t: mockT,
+    tabs: mockTabs,
+    activeTabId: 'tab-1',
+    onSelectTab: vi.fn(),
+    onCloseTab: vi.fn(),
+    onRenameTab: vi.fn(),
+    onForkTab: vi.fn(),
+    onShareTab: vi.fn(),
+    onCopyShareLinkTab: vi.fn(),
+    onUnshareTab: vi.fn(),
     onBack: vi.fn(),
     onNewSession: vi.fn(),
     onHistory: vi.fn(),
     onSettings: vi.fn(),
-    onShare: vi.fn(),
-    onUnshare: vi.fn(),
-    onCopyShareLink: vi.fn(),
   };
 
-  it('renders unshared button and triggers onShare when clicked', () => {
-    const onShare = vi.fn();
-    render(<ChatHeader {...defaultProps} isShared={false} onShare={onShare} />);
+  it('renders session tabs and triggers onSelectTab when clicked', () => {
+    const onSelectTab = vi.fn();
+    render(<ChatHeader {...defaultProps} onSelectTab={onSelectTab} />);
 
-    const shareBtn = screen.getByLabelText('chat.shareTooltip');
-    expect(shareBtn).toBeTruthy();
+    const tab2 = screen.getByText('Tab 2');
+    expect(tab2).toBeTruthy();
 
-    fireEvent.click(shareBtn);
-    expect(onShare).toHaveBeenCalledTimes(1);
+    fireEvent.click(tab2);
+    expect(onSelectTab).toHaveBeenCalledWith('tab-2');
   });
 
-  it('renders loading button when sharePending is true', () => {
-    render(<ChatHeader {...defaultProps} sharePending={true} />);
+  it('renders new session button and triggers onNewSession when clicked', () => {
+    const onNewSession = vi.fn();
+    render(<ChatHeader {...defaultProps} onNewSession={onNewSession} />);
 
-    const pendingBtn = screen.getByLabelText('chat.sharePendingTooltip');
-    expect(pendingBtn).toBeTruthy();
-    expect(pendingBtn.hasAttribute('disabled')).toBe(true);
+    const newSessionBtn = screen.getByLabelText('common.newSession');
+    expect(newSessionBtn).toBeTruthy();
+
+    fireEvent.click(newSessionBtn);
+    expect(onNewSession).toHaveBeenCalledTimes(1);
   });
 
-  it('renders copy link and unshare buttons when isShared is true', () => {
-    const onCopyShareLink = vi.fn();
-    const onUnshare = vi.fn();
-    render(
-      <ChatHeader
-        {...defaultProps}
-        isShared={true}
-        onCopyShareLink={onCopyShareLink}
-        onUnshare={onUnshare}
-      />
-    );
+  it('renders history button and triggers onHistory when clicked', () => {
+    const onHistory = vi.fn();
+    render(<ChatHeader {...defaultProps} onHistory={onHistory} />);
 
-    const copyBtn = screen.getByLabelText('chat.copyShareLinkTooltip');
-    const unshareBtn = screen.getByLabelText('chat.unshareTooltip');
+    const historyBtn = screen.getByLabelText('common.history');
+    expect(historyBtn).toBeTruthy();
 
-    expect(copyBtn).toBeTruthy();
-    expect(unshareBtn).toBeTruthy();
-
-    fireEvent.click(copyBtn);
-    expect(onCopyShareLink).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(unshareBtn);
-    expect(onUnshare).toHaveBeenCalledTimes(1);
+    fireEvent.click(historyBtn);
+    expect(onHistory).toHaveBeenCalledTimes(1);
   });
 
-  it('hides share controls when shareHidden is true', () => {
-    render(<ChatHeader {...defaultProps} shareHidden={true} />);
-
-    expect(screen.queryByLabelText('chat.shareTooltip')).toBeNull();
-    expect(screen.queryByLabelText('chat.copyShareLinkTooltip')).toBeNull();
-    expect(screen.queryByLabelText('chat.unshareTooltip')).toBeNull();
-  });
-
-  it('renders more options menu and triggers export and settings from secondary menu', () => {
-    const onExport = vi.fn();
+  it('renders more options menu and triggers settings from secondary menu', () => {
     const onSettings = vi.fn();
-    render(<ChatHeader {...defaultProps} onExport={onExport} onSettings={onSettings} />);
+    render(<ChatHeader {...defaultProps} onSettings={onSettings} />);
 
     const moreBtn = screen.getByLabelText('common.more');
     expect(moreBtn).toBeTruthy();
@@ -85,30 +88,37 @@ describe('ChatHeader share controls', () => {
     fireEvent.click(moreBtn);
     expect(screen.getByRole('menu')).toBeTruthy();
 
-    // Find export button and click
-    const exportItem = screen.getByText('chat.exportMarkdown');
-    fireEvent.click(exportItem);
-    expect(onExport).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('menu')).toBeNull();
-
-    // Open menu again and test settings
-    fireEvent.click(moreBtn);
-    expect(screen.getByRole('menu')).toBeTruthy();
-
+    // Test settings button
     const settingsItem = screen.getByText('common.settings');
     fireEvent.click(settingsItem);
     expect(onSettings).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  it('renders new tab button and triggers onNewTab when clicked', () => {
-    const onNewTab = vi.fn();
-    render(<ChatHeader {...defaultProps} onNewTab={onNewTab} />);
+  it('renders back button in history view and triggers onBack', () => {
+    const onBack = vi.fn();
+    render(<ChatHeader {...defaultProps} currentView="history" onBack={onBack} />);
 
-    const newTabBtn = screen.getByLabelText('common.newTab');
-    expect(newTabBtn).toBeTruthy();
+    const backBtn = screen.getByText('common.back');
+    expect(backBtn).toBeTruthy();
 
-    fireEvent.click(newTabBtn);
-    expect(onNewTab).toHaveBeenCalledTimes(1);
+    fireEvent.click(backBtn);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers onExportTab when clicking export in tab context menu', () => {
+    const onExportTab = vi.fn();
+    render(<ChatHeader {...defaultProps} onExportTab={onExportTab} />);
+
+    // Right-click on tab
+    const tabEl = screen.getByText('Tab 1');
+    fireEvent.contextMenu(tabEl);
+
+    // Context menu should appear with export item
+    const exportBtn = screen.getByText('chat.exportMarkdown');
+    expect(exportBtn).toBeTruthy();
+
+    fireEvent.click(exportBtn);
+    expect(onExportTab).toHaveBeenCalledWith(expect.objectContaining({ id: 'tab-1' }));
   });
 });

@@ -95,8 +95,56 @@ public class HandlerContext {
         return settingsService.getEffectiveWorkingDirectory(basePath);
     }
 
+    private final java.util.Map<String, OpencodeSession> sessionPool = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile java.util.function.Function<String, OpencodeSession> sessionLookup;
+
     public OpencodeSession getSession() {
         return session;
+    }
+
+    public OpencodeSession getSession(String sessionId) {
+        if (sessionId != null && !sessionId.isBlank()) {
+            if (sessionLookup != null) {
+                OpencodeSession found = sessionLookup.apply(sessionId);
+                if (found != null) {
+                    return found;
+                }
+            }
+            OpencodeSession pooled = sessionPool.get(sessionId);
+            if (pooled != null) {
+                return pooled;
+            }
+        }
+        return null;
+    }
+
+    public void registerSession(String sessionId, OpencodeSession session) {
+        if (sessionId != null && session != null) {
+            sessionPool.put(sessionId, session);
+        }
+    }
+
+    public void removeSession(String sessionId) {
+        if (sessionId != null) {
+            sessionPool.remove(sessionId);
+        }
+    }
+
+    public void setSessionLookup(java.util.function.Function<String, OpencodeSession> lookup) {
+        this.sessionLookup = lookup;
+    }
+
+    private volatile java.util.function.Function<String, OpencodeSession> sessionCreator;
+
+    public void setSessionCreator(java.util.function.Function<String, OpencodeSession> creator) {
+        this.sessionCreator = creator;
+    }
+
+    public OpencodeSession createSession(String tabOrSessionId) {
+        if (sessionCreator != null) {
+            return sessionCreator.apply(tabOrSessionId);
+        }
+        return null;
     }
 
     public JBCefBrowser getBrowser() {

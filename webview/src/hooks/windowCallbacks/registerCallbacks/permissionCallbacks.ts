@@ -55,7 +55,23 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showPermissionDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      console.log(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName}`);
+      console.log(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId}`);
+      const targetSessionId = request.sessionId;
+      const tabsStore = window.__sessionTabsStore;
+
+      if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
+        tabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
+          (t) => {
+            const list = t.pendingPermissions || [];
+            if (!list.some((r: any) => r.channelId === request.channelId)) {
+              t.pendingPermissions = [...list, request];
+            }
+          }
+        );
+        return;
+      }
+
       openPermissionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse permission request:', error);
@@ -70,10 +86,30 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   // until they reload the tab — see issue #1360.
   window.forceClosePermissionDialog = (channelId) => {
     forceClosePermissionDialog(channelId ?? null);
+    if (channelId && window.__sessionTabsStore) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        () => true,
+        (t) => {
+          if (t.pendingPermissions) {
+            t.pendingPermissions = t.pendingPermissions.filter((r: any) => r.channelId !== channelId);
+          }
+        }
+      );
+    }
   };
 
   window.forceCloseAskUserQuestionDialog = (requestId) => {
     forceCloseAskUserQuestionDialog(requestId ?? null);
+    if (requestId && window.__sessionTabsStore) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        () => true,
+        (t) => {
+          if (t.pendingQuestions) {
+            t.pendingQuestions = t.pendingQuestions.filter((r: any) => r.requestId !== requestId);
+          }
+        }
+      );
+    }
   };
 
   window.forceClosePlanApprovalDialog = (requestId) => {
@@ -94,7 +130,23 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showAskUserQuestionDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0}`);
+      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} sessionId=${request.sessionId}`);
+      const targetSessionId = request.sessionId;
+      const tabsStore = window.__sessionTabsStore;
+
+      if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
+        tabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
+          (t) => {
+            const list = t.pendingQuestions || [];
+            if (!list.some((r: any) => r.requestId === request.requestId)) {
+              t.pendingQuestions = [...list, request];
+            }
+          }
+        );
+        return;
+      }
+
       openAskUserQuestionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse ask user question request:', error);

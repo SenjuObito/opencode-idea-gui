@@ -77,6 +77,7 @@ public class StreamMessageCoalescer {
     private volatile List<OpencodeSession.Message> lastDeliveredSnapshot = null;
 
     private final JsCallbackTarget callbackTarget;
+    private volatile String sessionId;
 
     /**
      * Callback interface to push data to the webview.
@@ -104,7 +105,24 @@ public class StreamMessageCoalescer {
     ) {}
 
     public StreamMessageCoalescer(JsCallbackTarget callbackTarget) {
+        this(null, callbackTarget);
+    }
+
+    public StreamMessageCoalescer(String sessionId, JsCallbackTarget callbackTarget) {
+        this.sessionId = sessionId;
         this.callbackTarget = callbackTarget;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    private String getTargetSessionId() {
+        return sessionId != null ? sessionId : "";
     }
 
     /**
@@ -414,11 +432,12 @@ public class StreamMessageCoalescer {
                     if (tailUpdate) {
                         callbackTarget.callJavaScript(
                                 "updateMessageTail",
+                                getTargetSessionId(),
                                 escapedMessagesJson,
                                 String.valueOf(tailBaseIndex),
                                 String.valueOf(pushSequence));
                     } else {
-                        callbackTarget.callJavaScript("updateMessages", escapedMessagesJson, String.valueOf(pushSequence));
+                        callbackTarget.callJavaScript("updateMessages", getTargetSessionId(), escapedMessagesJson, String.valueOf(pushSequence));
                     }
                     synchronized (lock) {
                         // Unconditional: this frame reached the webview, so it becomes the
@@ -498,7 +517,7 @@ public class StreamMessageCoalescer {
                 return;
             }
             try {
-                callbackTarget.callJavaScript("onStreamingHeartbeat");
+                callbackTarget.callJavaScript("onStreamingHeartbeat", getTargetSessionId());
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("[Heartbeat] Sent streaming heartbeat to frontend");
                 }

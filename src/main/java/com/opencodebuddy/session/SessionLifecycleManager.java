@@ -42,7 +42,31 @@ public class SessionLifecycleManager {
 
         OpencodeSession getSession();
 
+        default OpencodeSession getSession(String sessionId) {
+            return getSession();
+        }
+
         void setSession(OpencodeSession session);
+
+        default void registerSession(String sessionId, OpencodeSession session, SessionCallbackAdapter adapter, StreamMessageCoalescer coalescer) {
+            setSession(session);
+        }
+
+        default void switchSession(String sessionId) {}
+
+        default void closeSession(String sessionId) {}
+
+        default StreamMessageCoalescer getStreamCoalescer(String sessionId) {
+            return getStreamCoalescer();
+        }
+
+        default SessionCallbackAdapter createCallbackAdapter(String sessionId, StreamMessageCoalescer coalescer) {
+            return null;
+        }
+
+        default StreamMessageCoalescer createStreamCoalescer(String sessionId) {
+            return null;
+        }
 
         HandlerContext getHandlerContext();
 
@@ -74,10 +98,14 @@ public class SessionLifecycleManager {
     }
 
     /**
-     * Create a new session, interrupting the old one first.
+     * Create a new session with an optional client-assigned sessionId.
      */
     public void createNewSession() {
-        LOG.info("Creating new session...");
+        createNewSession(null);
+    }
+
+    public void createNewSession(String clientSessionId) {
+        LOG.info("Creating new session (clientSessionId=" + clientSessionId + ")...");
 
         OpencodeSession oldSession = host.getSession();
         OpencodeSession defaultSession = createDefaultSession();
@@ -87,44 +115,39 @@ public class SessionLifecycleManager {
         LOG.info("Preserving session state: mode=" + previousPermissionMode
                          + ", provider=" + previousProvider + ", model=" + previousModel);
 
-        host.invalidateSessionCallbacks();
-        long clearBarrierSeq = host.getStreamCoalescer().resetStreamState();
-        host.callJavaScript("clearMessages", String.valueOf(clearBarrierSeq));
+        String targetSessionId = (clientSessionId != null && !clientSessionId.isBlank())
+                ? clientSessionId
+                : java.util.UUID.randomUUID().toString();
 
-        CompletableFuture<Void> interruptFuture = oldSession != null
-                                                          ? oldSession.interrupt()
-                                                          : CompletableFuture.completedFuture(null);
+        OpencodeSession newSession = createDefaultSession();
+        newSession.setPermissionMode(previousPermissionMode);
+        newSession.setProvider(previousProvider);
+        newSession.setModel(previousModel);
 
-        interruptFuture.thenRun(() -> {
-            if (oldSession != null) {
-                String oldEpoch = oldSession.getRuntimeSessionEpoch();
-                LOG.info("[Lifecycle] Requested daemon runtime reset for old epoch=" + oldEpoch);
-            }
-            LOG.info("Old session interrupted, creating new session");
+        StreamMessageCoalescer newCoalescer = host.createStreamCoalescer(targetSessionId);
+        if (newCoalescer == null) {
+            newCoalescer = host.getStreamCoalescer();
+        }
+        SessionCallbackAdapter newAdapter = host.createCallbackAdapter(targetSessionId, newCoalescer);
+        if (newAdapter != null) {
+            newSession.setCallback(newAdapter);
+        }
 
-            ApplicationManager.getApplication().invokeLater(() -> {
-                host.callJavaScript("onStreamEnd");
-                host.callJavaScript("showLoading", "false");
-            });
+        host.registerSession(targetSessionId, newSession, newAdapter, newCoalescer);
+        if (host.getHandlerContext() != null) {
+            host.getHandlerContext().registerSession(targetSessionId, newSession);
+        }
 
-            OpencodeSession newSession = createDefaultSession();
-            newSession.setPermissionMode(previousPermissionMode);
-            newSession.setProvider(previousProvider);
-            newSession.setModel(previousModel);
-            LOG.info("Restored session state to new session: mode=" + previousPermissionMode
-                             + ", provider=" + previousProvider + ", model=" + previousModel);
+        long clearBarrierSeq = (newCoalescer != null) ? newCoalescer.resetStreamState() : 0L;
+        host.callJavaScript("clearMessages", targetSessionId, String.valueOf(clearBarrierSeq));
 
-            completeNewSessionBootstrap(newSession, determineWorkingDirectory(),
-                    "New session created successfully, working directory: ");
-        }).exceptionally(ex -> {
-            LOG.error("Failed to create new session: " + ex.getMessage(), ex);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                host.callJavaScript("historyLoadComplete");
-                host.callJavaScript("updateStatus",
-                        JsUtils.escapeJs("Failed to create new session: " + ex.getMessage()));
-            });
-            return null;
+        ApplicationManager.getApplication().invokeLater(() -> {
+            host.callJavaScript("onStreamEnd", targetSessionId);
+            host.callJavaScript("showLoading", targetSessionId, "false");
         });
+
+        completeNewSessionBootstrap(newSession, determineWorkingDirectory(),
+                "New session created successfully, working directory: ");
     }
 
     /**
@@ -149,6 +172,16 @@ public class SessionLifecycleManager {
     public void loadHistorySession(String sessionId, String projectPath, String provider, String model) {
         LOG.info("Loading history session: " + sessionId + " from project: " + projectPath);
 
+        OpencodeSession existingSession = host.getSession(sessionId);
+        if (existingSession != null && sessionId.equals(existingSession.getSessionId())) {
+            LOG.info("Session " + sessionId + " already exists in pool, switching to it");
+            if (model != null && !model.trim().isEmpty()) {
+                existingSession.setModel(model.trim());
+            }
+            host.switchSession(sessionId);
+            return;
+        }
+
         OpencodeSession oldSession = host.getSession();
         String previousPermissionMode;
         String previousProvider;
@@ -172,62 +205,45 @@ public class SessionLifecycleManager {
                          + ", provider=" + previousProvider + ", model=" + modelToRestore
                          + (model != null && !model.trim().isEmpty() ? " (from history)" : " (previous)"));
 
-        host.invalidateSessionCallbacks();
-        long clearBarrierSeq = host.getStreamCoalescer().resetStreamState();
-        host.callJavaScript("clearMessages", String.valueOf(clearBarrierSeq));
-        host.clearPendingPermissionRequests();
-        host.clearPermissionDecisionMemory();
+        OpencodeSession newSession = createDefaultSession();
+        newSession.setPermissionMode(previousPermissionMode);
+        newSession.setProvider(provider != null && !provider.trim().isEmpty() ? provider : previousProvider);
+        newSession.setModel(modelToRestore);
+        LOG.info("Restored session state to loaded session: mode=" + previousPermissionMode
+                         + ", provider=" + newSession.getProvider() + ", model=" + modelToRestore);
 
-        CompletableFuture<Void> interruptFuture = oldSession != null
-                ? oldSession.interrupt()
-                : CompletableFuture.completedFuture(null);
+        StreamMessageCoalescer newCoalescer = host.createStreamCoalescer(sessionId);
+        if (newCoalescer == null) {
+            newCoalescer = host.getStreamCoalescer();
+        }
+        SessionCallbackAdapter newAdapter = host.createCallbackAdapter(sessionId, newCoalescer);
+        if (newAdapter != null) {
+            newSession.setCallback(newAdapter);
+        }
 
-        interruptFuture.thenRun(() -> {
-            if (oldSession != null) {
-                String oldEpoch = oldSession.getRuntimeSessionEpoch();
-                LOG.info("[Lifecycle] Requested daemon runtime reset before history load for old epoch="
-                        + oldEpoch);
-            }
+        host.registerSession(sessionId, newSession, newAdapter, newCoalescer);
+        if (host.getHandlerContext() != null) {
+            host.getHandlerContext().registerSession(sessionId, newSession);
+        }
 
-            OpencodeSession newSession = createDefaultSession();
-            newSession.setPermissionMode(previousPermissionMode);
-            newSession.setProvider(provider != null && !provider.trim().isEmpty() ? provider : previousProvider);
-            newSession.setModel(modelToRestore);
-            LOG.info("Restored session state to loaded session: mode=" + previousPermissionMode
-                             + ", provider=" + newSession.getProvider() + ", model=" + modelToRestore);
+        long clearBarrierSeq = (newCoalescer != null) ? newCoalescer.resetStreamState() : 0L;
+        host.callJavaScript("clearMessages", sessionId, String.valueOf(clearBarrierSeq));
 
-            host.setSession(newSession);
-            host.getHandlerContext().setSession(newSession);
-            host.setupSessionCallbacks();
+        String workingDir = (projectPath != null && !projectPath.isEmpty())
+                                ? projectPath : NodeDetector.convertToWslPath(determineWorkingDirectory());
+        newSession.setSessionInfo(sessionId, workingDir);
 
-            String workingDir = (projectPath != null && !projectPath.isEmpty())
-                                    ? projectPath : NodeDetector.convertToWslPath(determineWorkingDirectory());
-            newSession.setSessionInfo(sessionId, workingDir);
+        // Prewarm the opencode daemon for the historical session so the
+        // first message is fast (serve + SSE subscription + session resolve).
+        host.getOpenCodeSDKBridge().preconnect(sessionId, workingDir);
 
-            // Prewarm the opencode daemon for the historical session so the
-            // first message is fast (serve + SSE subscription + session resolve).
-            host.getOpenCodeSDKBridge().preconnect(sessionId, workingDir);
-
-            newSession.loadFromServer().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
-                // loadFromServer only enqueues updateMessages through the coalescer; if we
-                // call historyLoadComplete immediately the frontend releases the transition
-                // guard before the snapshot arrives (or a reordered clearMessages can wipe a
-                // stashed snapshot). Flush the coalescer first so messages land before complete.
-                completeHistoryLoadAfterCoalescerFlush(newSession);
-            })).exceptionally(ex -> {
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    // Release transition guard so the frontend is not permanently stuck
-                    host.callJavaScript("historyLoadComplete");
-                    host.callJavaScript("addErrorMessage",
-                            JsUtils.escapeJs("Failed to load session: " + ex.getMessage()));
-                });
-                return null;
-            });
-        }).exceptionally(ex -> {
-            LOG.error("Failed to load history session: " + ex.getMessage(), ex);
+        final StreamMessageCoalescer coalescerToFlush = newCoalescer;
+        newSession.loadFromServer().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
+            completeHistoryLoadAfterCoalescerFlush(sessionId, newSession, coalescerToFlush);
+        })).exceptionally(ex -> {
             ApplicationManager.getApplication().invokeLater(() -> {
-                host.callJavaScript("historyLoadComplete");
-                host.callJavaScript("addErrorMessage",
+                host.callJavaScript("historyLoadComplete", sessionId);
+                host.callJavaScript("addErrorMessage", sessionId,
                         JsUtils.escapeJs("Failed to load session: " + ex.getMessage()));
             });
             return null;
@@ -239,26 +255,25 @@ public class SessionLifecycleManager {
      * {@code historyLoadComplete} with the message count. Ensures the transcript
      * is not lost when the frontend holds {@code __sessionTransitioning} until complete.
      */
-    private void completeHistoryLoadAfterCoalescerFlush(OpencodeSession loadedSession) {
+    private void completeHistoryLoadAfterCoalescerFlush(String sessionId, OpencodeSession loadedSession, StreamMessageCoalescer coalescer) {
         if (host.isDisposed()) {
             return;
         }
         int messageCount = loadedSession != null ? loadedSession.getMessages().size() : 0;
-        StreamMessageCoalescer coalescer = host.getStreamCoalescer();
         if (coalescer == null) {
-            host.callJavaScript("historyLoadComplete", String.valueOf(messageCount));
-            syncRevertState(loadedSession);
+            host.callJavaScript("historyLoadComplete", sessionId, String.valueOf(messageCount));
+            syncRevertState(sessionId, loadedSession);
             return;
         }
         coalescer.flush(seq -> {
             if (!host.isDisposed()) {
-                host.callJavaScript("historyLoadComplete", String.valueOf(messageCount));
-                syncRevertState(loadedSession);
+                host.callJavaScript("historyLoadComplete", sessionId, String.valueOf(messageCount));
+                syncRevertState(sessionId, loadedSession);
             }
         });
     }
 
-    private void syncRevertState(OpencodeSession session) {
+    private void syncRevertState(String sessionId, OpencodeSession session) {
         if (session == null) {
             return;
         }
@@ -270,7 +285,7 @@ public class SessionLifecycleManager {
         } else {
             revertPayload.add("messageId", com.google.gson.JsonNull.INSTANCE);
         }
-        host.callJavaScript("onRevertStateUpdate", revertPayload.toString());
+        host.callJavaScript("onRevertStateUpdate", sessionId, revertPayload.toString());
     }
 
     /**

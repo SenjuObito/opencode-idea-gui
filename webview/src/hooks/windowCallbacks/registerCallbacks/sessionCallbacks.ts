@@ -28,21 +28,45 @@ export function registerSessionCallbacks(
     setCustomSessionTitle,
   } = options;
 
-  window.setSessionId = (sessionId: string) => {
+  window.setSessionId = (sessionId: string, tabId?: string) => {
     const oldId = currentSessionIdRef.current;
-    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
+    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
     releaseSessionTransition();
-    currentSessionIdRef.current = sessionId;
-    setCurrentSessionId(sessionId);
 
-    // B-011 + B-014: Persist custom title under the real SDK session ID.
-    const title = customSessionTitleRef.current;
-    if (title && oldId !== sessionId) {
-      if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
-        updateHistoryTitle(sessionId, title);
+    const tabsStore = window.__sessionTabsStore;
+    const tabs = tabsStore?.getTabs?.() || [];
+    const activeTabId = tabsStore?.getActiveTabId?.();
+
+    let targetTab = tabId ? tabs.find((t) => t.id === tabId || t.sessionId === tabId) : null;
+    if (!targetTab) {
+      const active = tabs.find((t) => t.id === activeTabId);
+      if (active && (!active.sessionId || active.sessionId === sessionId)) {
+        targetTab = active;
       } else {
-        applyHistoryTitleLocal(sessionId, title);
+        targetTab = tabs.find((t) => !t.sessionId);
       }
+    }
+
+    if (targetTab) {
+      const resolvedTabId = targetTab.id;
+      tabsStore?.updateTabSessionId?.(resolvedTabId, sessionId);
+
+      if (resolvedTabId === activeTabId) {
+        currentSessionIdRef.current = sessionId;
+        setCurrentSessionId(sessionId);
+
+        const title = customSessionTitleRef.current;
+        if (title && oldId !== sessionId) {
+          if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
+            updateHistoryTitle(sessionId, title);
+          } else {
+            applyHistoryTitleLocal(sessionId, title);
+          }
+        }
+      }
+    } else {
+      currentSessionIdRef.current = sessionId;
+      setCurrentSessionId(sessionId);
     }
   };
 
@@ -78,10 +102,12 @@ export function registerSessionCallbacks(
 
   window.updateSessionTitle = (sessionId: string, title: string) => {
     if (!title || !title.trim() || !sessionId) return;
+    const cleanTitle = title.trim();
     if (currentSessionIdRef.current === sessionId) {
-      setCustomSessionTitle(title.trim());
+      setCustomSessionTitle(cleanTitle);
     }
-    applyHistoryTitleLocal(sessionId, title.trim());
+    window.__sessionTabsStore?.updateTabTitle?.(sessionId, cleanTitle);
+    applyHistoryTitleLocal(sessionId, cleanTitle);
   };
 
   // =========================================================================

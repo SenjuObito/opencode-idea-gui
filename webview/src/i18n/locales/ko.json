@@ -29,7 +29,6 @@
   "chat": {
     "sendMessage": "{{provider}}에게 메시지 보내기",
     "createNewSession": "새 세션 만들기",
-    "confirmNewSession": "현재 세션에 메시지가 있습니다. 새 세션을 만드시겠습니까?",
     "confirmInterrupt": "대화가 진행 중입니다. 새 세션을 만들면 중단됩니다. 계속하시겠습니까?",
     "requestInterrupted": "사용자가 요청을 중단했습니다",
     "uploadedFiles": "업로드된 파일: {{files}}",
@@ -367,12 +366,6 @@
         "custom": "사용자 지정",
         "reset": "초기화",
         "hint": "내 메시지의 배경색을 사용자 지정합니다. 비워두면 테마 기본값을 따릅니다."
-      },
-      "newSessionConfirm": {
-        "label": "새 세션 생성 확인",
-        "enabled": "활성화",
-        "disabled": "비활성화",
-        "hint": "비활성화하면 메시지가 있는 세션에서 새로 만들기를 선택할 때 확인 대화 상자 없이 바로 새 세션을 만듭니다."
       },
       "compactConfirm": {
         "label": "세션 압축 시 확인",

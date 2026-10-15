@@ -58,6 +58,8 @@ export interface UseMessageSenderOptions {
   handleModeSelect?: (mode: PermissionMode) => void;
   openContextUsageDialog: (requestId?: string | null, loading?: boolean) => void;
   closeContextUsageDialog: (requestId?: string | null) => boolean;
+  currentSessionId?: string | null;
+  currentSessionIdRef?: RefObject<string | null>;
 }
 
 /**
@@ -91,6 +93,8 @@ export function useMessageSender({
   handleModeSelect,
   openContextUsageDialog,
   closeContextUsageDialog,
+  currentSessionId,
+  currentSessionIdRef,
 }: UseMessageSenderOptions) {
   /**
    * Check if the input is a new session command
@@ -256,9 +260,14 @@ export function useMessageSender({
 
     const reasoningEffortPayload = { reasoningEffort };
 
+    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+    const targetSessionId = currentSessionIdRef?.current ?? currentSessionId ?? undefined;
+
     if (hasAttachments) {
       try {
         const payload = JSON.stringify({
+          tabId: activeTabId,
+          sessionId: targetSessionId,
           text,
           attachments: (attachments || []).map(a => ({
             fileName: a.fileName,
@@ -273,6 +282,8 @@ export function useMessageSender({
       } catch (error) {
         console.error('[Frontend] Failed to serialize attachments payload', error);
         const fallbackPayload = JSON.stringify({
+          tabId: activeTabId,
+          sessionId: targetSessionId,
           text,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
@@ -282,6 +293,8 @@ export function useMessageSender({
       }
     } else {
       const payload = JSON.stringify({
+        tabId: activeTabId,
+        sessionId: targetSessionId,
         text,
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
@@ -289,7 +302,7 @@ export function useMessageSender({
       });
       sendBridgeEvent('send_message', payload);
     }
-  }, [currentProvider, selectedModel, reasoningEffort]);
+  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef]);
 
   /**
    * Execute message sending (from queue or directly)
@@ -451,13 +464,16 @@ export function useMessageSender({
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
 
-    sendBridgeEvent('interrupt_session');
+    const targetSessionId = currentSessionIdRef?.current ?? currentSessionId ?? undefined;
+    sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId: targetSessionId }));
   }, [
     isStreamingRef,
     streamingContentRef,
     streamingThinkingRef,
     contentUpdateTimeoutRef,
     thinkingUpdateTimeoutRef,
+    currentSessionId,
+    currentSessionIdRef,
   ]);
 
   return {

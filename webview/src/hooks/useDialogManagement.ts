@@ -5,7 +5,6 @@ import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
 import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
-import { useSession } from '../contexts/SessionContext';
 
 interface UseDialogManagementOptions {
   t: TFunction;
@@ -78,19 +77,70 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   const currentAskUserQuestionRequestRef = useRef<AskUserQuestionRequest | null>(null);
   const pendingAskUserQuestionRequestsRef = useRef<AskUserQuestionRequest[]>([]);
 
-  // Dialogs are session-scoped: a session switch invalidates every pending request.
-  const { currentSessionId } = useSession();
-  const lastSessionIdRef = useRef(currentSessionId);
+  // Mount window.__dialogStore for tab-level permission/question persistence
   useEffect(() => {
-    if (currentSessionId === lastSessionIdRef.current) return;
-    lastSessionIdRef.current = currentSessionId;
-    setPendingPermissionRequests([]);
-    setCurrentPermissionRequest(null);
-    setPermissionDialogOpen(false);
-    setPendingAskUserQuestionRequests([]);
-    setCurrentAskUserQuestionRequest(null);
-    setAskUserQuestionDialogOpen(false);
-  }, [currentSessionId]);
+    window.__dialogStore = {
+      getSnapshot: () => ({
+        permissions: currentPermissionRequestRef.current
+          ? [currentPermissionRequestRef.current, ...pendingPermissionRequestsRef.current]
+          : [...pendingPermissionRequestsRef.current],
+        questions: currentAskUserQuestionRequestRef.current
+          ? [currentAskUserQuestionRequestRef.current, ...pendingAskUserQuestionRequestsRef.current]
+          : [...pendingAskUserQuestionRequestsRef.current],
+      }),
+      restore: (permissions: PermissionRequest[], questions: AskUserQuestionRequest[]) => {
+        if (permissions && permissions.length > 0) {
+          currentPermissionRequestRef.current = permissions[0];
+          setCurrentPermissionRequest(permissions[0]);
+          pendingPermissionRequestsRef.current = permissions.slice(1);
+          setPendingPermissionRequests(permissions.slice(1));
+          permissionDialogOpenRef.current = true;
+          setPermissionDialogOpen(true);
+        } else {
+          currentPermissionRequestRef.current = null;
+          setCurrentPermissionRequest(null);
+          pendingPermissionRequestsRef.current = [];
+          setPendingPermissionRequests([]);
+          permissionDialogOpenRef.current = false;
+          setPermissionDialogOpen(false);
+        }
+
+        if (questions && questions.length > 0) {
+          currentAskUserQuestionRequestRef.current = questions[0];
+          setCurrentAskUserQuestionRequest(questions[0]);
+          pendingAskUserQuestionRequestsRef.current = questions.slice(1);
+          setPendingAskUserQuestionRequests(questions.slice(1));
+          askUserQuestionDialogOpenRef.current = true;
+          setAskUserQuestionDialogOpen(true);
+        } else {
+          currentAskUserQuestionRequestRef.current = null;
+          setCurrentAskUserQuestionRequest(null);
+          pendingAskUserQuestionRequestsRef.current = [];
+          setPendingAskUserQuestionRequests([]);
+          askUserQuestionDialogOpenRef.current = false;
+          setAskUserQuestionDialogOpen(false);
+        }
+      },
+      clearActive: () => {
+        currentPermissionRequestRef.current = null;
+        setCurrentPermissionRequest(null);
+        pendingPermissionRequestsRef.current = [];
+        setPendingPermissionRequests([]);
+        permissionDialogOpenRef.current = false;
+        setPermissionDialogOpen(false);
+
+        currentAskUserQuestionRequestRef.current = null;
+        setCurrentAskUserQuestionRequest(null);
+        pendingAskUserQuestionRequestsRef.current = [];
+        setPendingAskUserQuestionRequests([]);
+        askUserQuestionDialogOpenRef.current = false;
+        setAskUserQuestionDialogOpen(false);
+      },
+    };
+    return () => {
+      delete window.__dialogStore;
+    };
+  }, []);
 
   // PlanApproval dialog state
   const [planApprovalDialogOpen, setPlanApprovalDialogOpen] = useState(false);

@@ -49,7 +49,9 @@ function asRawObject(message: ClaudeMessage): ClaudeRawMessage | null {
 function getRawTimestamp(message: ClaudeMessage): number | null {
   const raw = asRawObject(message);
   const ts = raw?.timestamp ?? message.timestamp;
-  if (typeof ts === 'number' && Number.isFinite(ts)) return ts;
+  if (typeof ts === 'number' && Number.isFinite(ts)) {
+    return ts > 0 && ts < 100_000_000_000 ? ts * 1000 : ts;
+  }
   if (typeof ts === 'string' && ts) {
     const parsed = Date.parse(ts);
     if (Number.isFinite(parsed)) return parsed;
@@ -250,7 +252,10 @@ export function reconstructTurnMetadata(
         const promptTs = getRawTimestamp(messages[startIndex]);
         const assistantTs = getRawTimestamp(lastAssistant);
         if (promptTs != null && assistantTs != null && assistantTs >= promptTs) {
-          updated = { ...updated, durationMs: assistantTs - promptTs };
+          const diff = assistantTs - promptTs;
+          if (diff >= 0 && diff < 86_400_000) {
+            updated = { ...updated, durationMs: diff };
+          }
         }
       }
     }

@@ -70,11 +70,16 @@ public class OpencodeNotifier {
             return null;
         }
         String summary = session.getSummary();
-        if (summary == null) {
-            return null;
+        String sessionName = (summary != null && !summary.trim().isEmpty())
+                ? summary.trim()
+                : (session.getSessionId() != null && !session.getSessionId().trim().isEmpty()
+                        ? session.getSessionId().trim()
+                        : null);
+        String taskTitle = OpenCodeBuddyBundle.message("notifier.taskComplete.title");
+        if (sessionName != null) {
+            return "【" + sessionName + "】" + taskTitle;
         }
-        String trimmed = summary.trim();
-        return trimmed.isEmpty() ? null : trimmed;
+        return taskTitle;
     }
 
     /**

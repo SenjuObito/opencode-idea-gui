@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
@@ -21,6 +21,7 @@ import {
   useCompactConfirm,
   useSessionTabs,
 } from './hooks';
+import { convertMessagesToMarkdown, downloadMarkdown } from './utils/exportMarkdown';
 import {
   NEW_SESSION_COMMANDS,
   RESUME_COMMANDS,
@@ -37,7 +38,7 @@ import { ToastContainer } from './components/Toast';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatScreen } from './components/ChatScreen';
 import type { MessageListRevealHandle } from './components/ConversationSearch/types';
-import { useSubagentContextValues, useSetTaskEvents } from './contexts/SubagentContext';
+import { useSubagentContextValues, useSetTaskEvents, useTaskEvents } from './contexts/SubagentContext';
 import { useMessages } from './contexts/MessagesContext';
 import { useSession } from './contexts/SessionContext';
 import { useUIState } from './contexts/UIStateContext';
@@ -75,19 +76,20 @@ const App = () => {
   const {
     messages, setMessages,
     subagentHistories, setSubagentHistories,
-    setStatus,
-    loading, setLoading, setLoadingStartTime,
-    setIsThinking,
+    status, setStatus,
+    loading, setLoading, loadingStartTime, setLoadingStartTime,
+    isThinking, setIsThinking,
     streamingActive, setStreamingActive,
-    setSessionLoading,
+    sessionLoading, setSessionLoading,
     setSseTodos,
     sseTodos,
     isCompacting, setIsCompacting,
-    setCompactingStartTime,
+    compactingStartTime, setCompactingStartTime,
   } = useMessages();
 
   // task_events live in TaskEventProvider (SubagentContext) so their updates do
   // not re-render every MessagesContext consumer.
+  const taskEvents = useTaskEvents();
   const setTaskEvents = useSetTaskEvents();
 
   // ── Session state (extracted to SessionContext, stage 2 of TASK-P1-01) ──
@@ -104,6 +106,7 @@ const App = () => {
     currentView, setCurrentView,
     settingsInitialTab, setSettingsInitialTab,
     toasts, addToast, dismissToast, clearToasts,
+    contextInfo,
     setContextInfo,
     searchOpen, setSearchOpen,
   } = useUIState();
@@ -127,6 +130,15 @@ const App = () => {
     if (node) { messageNodeMapRef.current.set(id, node); }
     else { messageNodeMapRef.current.delete(id); }
   }, []);
+
+  const openSessionInTabRef = useRef<(
+    sessionId: string,
+    title?: string,
+    historyModel?: string,
+    historyMode?: string,
+    historyEffort?: string
+  ) => void>(() => {});
+  const appTabsRef = useRef<any[]>([]);
 
   // Imperative handle for the in-page search panel to expand collapsed earlier messages.
   const messageListRef = useRef<MessageListRevealHandle | null>(null);
@@ -290,17 +302,20 @@ const App = () => {
 
   const { cliModels, cliDefaultModel, cliCatalogHasEntries } = useCliModels(currentProvider);
 
-  const resetToPreferredModel = useCallback(() => {
-    const available = resolveProviderModels({
+  const availableModels = useMemo(() => {
+    return resolveProviderModels({
       provider: currentProvider,
       cliModels,
       cliCatalogHasEntries,
     });
-    const preferredId = getFirstPreferredModelId(currentProvider, available, cliDefaultModel);
+  }, [currentProvider, cliModels, cliCatalogHasEntries]);
+
+  const resetToPreferredModel = useCallback(() => {
+    const preferredId = getFirstPreferredModelId(currentProvider, availableModels, cliDefaultModel);
     if (preferredId) {
       handleModelSelect(preferredId);
     }
-  }, [currentProvider, cliModels, cliCatalogHasEntries, cliDefaultModel, handleModelSelect]);
+  }, [currentProvider, availableModels, cliDefaultModel, handleModelSelect]);
 
   // When models catalog arrives on initial load in a new session, immediately select the preferred model.
   const hasAutoSelectedOnStartupRef = useRef(false);
@@ -315,10 +330,9 @@ const App = () => {
 
   // ── Session management ──
   const {
-    showNewSessionConfirm, showInterruptConfirm,
+    showInterruptConfirm,
     suppressNextStatusToastRef,
     forceCreateNewSession,
-    handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
     toggleFavoriteSession, updateHistoryTitle, applyHistoryTitleLocal, convertToCliSession,
@@ -510,16 +524,14 @@ const App = () => {
   useEffect(() => {
     window.onForkSuccess = (json: string) => {
       try {
-        const payload = JSON.parse(json) as { sessionId?: string };
+        const payload = JSON.parse(json) as { sessionId?: string; sourceSessionId?: string };
         console.debug('[App] onForkSuccess', payload);
         const newSessionId = payload.sessionId;
         if (!newSessionId) return;
-        // Fork result toast with an explicit switch action; default is to stay
-        // in the current session when the toast times out.
-        addToast(t('chat.forkCreatedToast'), 'info', {
-          label: t('chat.forkSwitchAction'),
-          onClick: () => loadHistorySession(newSessionId),
-        }, { duration: 5000 });
+        const sourceTab = appTabsRef.current?.find((t) => t.sessionId === payload.sourceSessionId);
+        const forkedTitle = sourceTab ? `${sourceTab.title} (Fork)` : `${sessionTitle || 'Session'} (Fork)`;
+        openSessionInTabRef.current(newSessionId, forkedTitle);
+        addToast(t('chat.forkCreatedToast', { defaultValue: '会话已成功 Fork 并打开新标签页' }), 'success');
       } catch {
         // ignore malformed payloads
       }
@@ -735,6 +747,8 @@ const App = () => {
     handleModeSelect,
     openContextUsageDialog,
     closeContextUsageDialog,
+    currentSessionId,
+    currentSessionIdRef,
   });
 
   // ── "Interrupt then undo/redo" confirmation handlers (busy session) ──
@@ -984,20 +998,71 @@ const App = () => {
     closeTab,
     renameTab,
     forkTab,
+    openSessionInTab,
+    activeTabAutoOpenFileEnabled,
+    setActiveTabAutoOpenFileEnabled,
   } = useSessionTabs({
     currentSessionId,
+    setCurrentSessionId,
     sessionTitle,
     setCustomSessionTitle,
     updateHistoryTitle,
     messages,
     setMessages,
     loading,
+    setLoading,
     streamingActive,
+    setStreamingActive,
+    isThinking,
+    setIsThinking,
+    status,
+    setStatus,
+    sessionLoading,
+    setSessionLoading,
+    revertBoundaryId,
+    setRevertBoundaryId,
+    isCompacting,
+    setIsCompacting,
+    compactingStartTime,
+    setCompactingStartTime,
+    taskEvents,
+    setTaskEvents,
+    sseTodos,
+    setSseTodos,
+    subagentHistories,
+    setSubagentHistories,
+    filteredFileChanges,
+    permissionMode,
+    setPermissionMode,
+    selectedModel,
+    setSelectedModel: handleModelSelect,
+    reasoningEffort,
+    setReasoningEffort: handleReasoningChange,
+    contextInfo,
+    setContextInfo,
+    loadingStartTime,
+    setLoadingStartTime,
+    usagePercentage,
+    setUsagePercentage,
+    usageUsedTokens,
+    setUsageUsedTokens,
+    usageMaxTokens,
+    setUsageMaxTokens,
+    availableModels,
+    currentProvider,
     isShared,
+    setCurrentView,
+    chatInputRef,
+    defaultAutoOpenFileEnabled: autoOpenFileEnabled,
     forceCreateNewSession,
     loadHistorySession,
     t,
   });
+
+  useEffect(() => {
+    openSessionInTabRef.current = openSessionInTab;
+    appTabsRef.current = tabs;
+  }, [openSessionInTab, tabs]);
 
   // ── Render ──
   return (
@@ -1032,10 +1097,12 @@ const App = () => {
           setCurrentView('settings');
         }}
         onOpenSearch={() => setSearchOpen(true)}
-        onExport={() => {
-          if (currentSessionId) {
-            exportHistorySession(currentSessionId, sessionTitle);
-          }
+        onExportTab={(tab) => {
+          const tabMessages = tab.id === activeTabId ? messages : (tab.messages || []);
+          const title = tab.title || t('common.newSession', { defaultValue: '新会话' });
+          const md = convertMessagesToMarkdown(tabMessages, title);
+          downloadMarkdown(md, `${title}.md`);
+          addToast(t('history.exportSuccess', { defaultValue: '会话已导出' }), 'success');
         }}
       />
 
@@ -1104,7 +1171,7 @@ const App = () => {
               activeProviderConfig={activeProviderConfig}
               reasoningEffort={reasoningEffort}
               sendShortcut={sendShortcut}
-              autoOpenFileEnabled={autoOpenFileEnabled}
+              autoOpenFileEnabled={activeTabAutoOpenFileEnabled}
               usagePercentage={usagePercentage}
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
@@ -1112,7 +1179,7 @@ const App = () => {
               onModelSelect={handleModelSelect}
               onReasoningChange={handleReasoningChange}
               onToggleThinking={handleToggleThinking}
-              onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
+              onAutoOpenFileEnabledChange={setActiveTabAutoOpenFileEnabled}
               messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
             />
@@ -1122,7 +1189,16 @@ const App = () => {
               historyData={historyData}
               currentProvider={currentProvider}
               currentSessionId={currentSessionId}
-              onLoadSession={loadHistorySession}
+              onLoadSession={(sessionId) => {
+                const session = historyData?.sessions?.find(s => s.sessionId === sessionId);
+                openSessionInTab(
+                  sessionId,
+                  session?.title,
+                  session?.model,
+                  session?.agent || (session as any)?.mode,
+                  (session as any)?.reasoningEffort,
+                );
+              }}
               onDeleteSession={deleteHistorySession}
               onDeleteSessions={deleteHistorySessions}
               onExportSession={exportHistorySession}
@@ -1138,9 +1214,6 @@ const App = () => {
       <div id="image-preview-root" />
 
       <AppDialogs
-        showNewSessionConfirm={showNewSessionConfirm}
-        onConfirmNewSession={handleConfirmNewSession}
-        onCancelNewSession={handleCancelNewSession}
         showInterruptConfirm={showInterruptConfirm}
         onConfirmInterrupt={handleConfirmInterrupt}
         onCancelInterrupt={handleCancelInterrupt}

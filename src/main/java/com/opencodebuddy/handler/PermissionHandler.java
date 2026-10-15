@@ -248,17 +248,29 @@ public class PermissionHandler extends BaseMessageHandler {
         return future;
     }
 
-    /**
-     * Show permission request dialog (from PermissionRequest).
-     */
     public void showPermissionDialog(PermissionRequest request) {
-        LOG.info("[PermissionHandler] 显示权限请求对话框: " + request.getToolName());
+        showPermissionDialog(request, null);
+    }
+
+    /**
+     * Show permission request dialog (from PermissionRequest) with target session ID.
+     */
+    public void showPermissionDialog(PermissionRequest request, String targetSessionId) {
+        LOG.info("[PermissionHandler] 显示权限请求对话框: " + request.getToolName() + ", sessionId=" + targetSessionId);
 
         try {
             Gson gson = new Gson();
             JsonObject requestData = new JsonObject();
             requestData.addProperty("channelId", request.getChannelId());
             requestData.addProperty("toolName", request.getToolName());
+
+            String sessionId = targetSessionId;
+            if (sessionId == null && this.context.getSession() != null) {
+                sessionId = this.context.getSession().getSessionId();
+            }
+            if (sessionId != null) {
+                requestData.addProperty("sessionId", sessionId);
+            }
 
             JsonObject inputsJson = request.getInputs() != null
                     ? gson.toJsonTree(request.getInputs()).getAsJsonObject()
@@ -415,7 +427,14 @@ public class PermissionHandler extends BaseMessageHandler {
      * Show AskUserQuestion dialog (from OpenCode daemon/SSE).
      */
     public void onQuestionRequested(String jsonContent) {
-        LOG.info("[PermissionHandler] onQuestionRequested: " + jsonContent);
+        onQuestionRequested(jsonContent, null);
+    }
+
+    /**
+     * Show AskUserQuestion dialog (from OpenCode daemon/SSE) with target session ID.
+     */
+    public void onQuestionRequested(String jsonContent, String targetSessionId) {
+        LOG.info("[PermissionHandler] onQuestionRequested: " + jsonContent + ", targetSessionId=" + targetSessionId);
         try {
             Gson gson = new Gson();
             JsonObject payload = gson.fromJson(jsonContent, JsonObject.class);
@@ -430,6 +449,9 @@ public class PermissionHandler extends BaseMessageHandler {
                 requestId = "question-1";
             }
             String sessionId = stringOrNull(payload, "sessionId");
+            if (sessionId == null && targetSessionId != null && !targetSessionId.isBlank()) {
+                sessionId = targetSessionId;
+            }
             if (sessionId == null && context.getSession() != null) {
                 sessionId = context.getSession().getSessionId();
             }

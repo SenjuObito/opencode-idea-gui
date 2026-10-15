@@ -29,7 +29,6 @@
   "chat": {
     "sendMessage": "Envoyer un message à {{provider}}",
     "createNewSession": "Créer une nouvelle session",
-    "confirmNewSession": "La session actuelle contient des messages, êtes-vous sûr de vouloir créer une nouvelle session ?",
     "confirmInterrupt": "Une conversation est en cours, créer une nouvelle session l'interrompra, continuer ?",
     "requestInterrupted": "Demande interrompue par l'utilisateur",
     "uploadedFiles": "Fichiers téléchargés : {{files}}",
@@ -367,12 +366,6 @@
         "custom": "Personnalisé",
         "reset": "Réinitialiser",
         "hint": "Personnaliser la couleur de fond de vos messages. Laisser vide pour suivre le thème par défaut."
-      },
-      "newSessionConfirm": {
-        "label": "Confirmation de nouvelle session",
-        "enabled": "Activé",
-        "disabled": "Désactivé",
-        "hint": "Lorsqu'elle est désactivée, créer une nouvelle session dans une conversation contenant des messages se fera directement, sans afficher la boîte de dialogue de confirmation."
       },
       "compactConfirm": {
         "label": "Confirmation de compactage de session",

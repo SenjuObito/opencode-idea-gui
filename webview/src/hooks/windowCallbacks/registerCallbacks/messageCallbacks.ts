@@ -472,7 +472,41 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.updateMessages = (json, sequenceArg, baseIndexArg) => {
+  window.updateMessages = (arg0, arg1, arg2, arg3) => {
+    let targetSessionId: string | null = null;
+    let json: string;
+    let sequenceArg: string | number | undefined;
+    let baseIndexArg: string | number | undefined;
+
+    if (typeof arg1 === 'string') {
+      targetSessionId = arg0;
+      json = arg1;
+      sequenceArg = arg2;
+      baseIndexArg = arg3;
+    } else {
+      targetSessionId = null;
+      json = arg0;
+      sequenceArg = arg1;
+      baseIndexArg = arg2;
+    }
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          try {
+            const raw = JSON.parse(json);
+            if (Array.isArray(raw)) {
+              t.messages = raw;
+            }
+          } catch (e) {
+            console.error('[MultiSession] Failed to parse background updateMessages', e);
+          }
+        }
+      );
+      return;
+    }
+
     // During session transition, ignore message updates from stale session
     // callbacks to prevent cleared messages from being restored
     cardDebugLog('[updateMessages] called, transitioning:', window.__sessionTransitioning, 'seq:', sequenceArg, 'jsonLen:', json?.length);
@@ -536,7 +570,43 @@ export function registerMessageCallbacks(
     processUpdateMessages(json, sequence, baseIndexArg);
   };
 
-  window.updateMessageTail = processMessageTail;
+  window.updateMessageTail = (arg0, arg1, arg2, arg3) => {
+    let targetSessionId: string | null = null;
+    let json: string;
+    let baseIndexArg: string | number;
+    let sequenceArg: string | number | undefined;
+
+    if (typeof arg1 === 'string') {
+      targetSessionId = arg0;
+      json = arg1;
+      baseIndexArg = arg2 as any;
+      sequenceArg = arg3;
+    } else {
+      targetSessionId = null;
+      json = arg0;
+      baseIndexArg = arg1 as any;
+      sequenceArg = arg2;
+    }
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          try {
+            const raw = JSON.parse(json);
+            if (Array.isArray(raw)) {
+              t.messages = raw;
+            }
+          } catch (e) {
+            console.error('[MultiSession] Failed to parse background updateMessageTail', e);
+          }
+        }
+      );
+      return;
+    }
+
+    processMessageTail(json, baseIndexArg, sequenceArg);
+  };
 
   // ── opencode 恢复分页/回源：前插更早的历史页 ──
   // 宿主窗口（恢复或活跃会话逐出）之外的历史经 `load_earlier_messages` 回源，
@@ -626,7 +696,19 @@ export function registerMessageCallbacks(
     window.updateMessages(payload.json, payload.sequence ?? undefined);
   }
 
-  window.updateStatus = (text) => {
+  window.updateStatus = (arg0, arg1) => {
+    const [targetSessionId, text] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.status = text;
+        }
+      );
+      return;
+    }
+
     // Resolve localized message if key or known legacy string is passed
     let message = text;
     if (typeof text === 'string') {
@@ -645,8 +727,19 @@ export function registerMessageCallbacks(
     addToast(message);
   };
 
-  window.showLoading = (value) => {
+  window.showLoading = (arg0, arg1) => {
+    const [targetSessionId, value] = typeof arg1 !== 'undefined' ? [typeof arg0 === 'string' ? arg0 : null, arg1] : [null, arg0];
     const isLoading = isTruthy(value);
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.loading = isLoading;
+        }
+      );
+      return;
+    }
 
     // FIX: Ignore loading=false during streaming — onStreamEnd handles it uniformly.
     if (!isLoading && isStreamingRef.current) {
@@ -686,9 +779,33 @@ export function registerMessageCallbacks(
     });
   };
 
-  window.showThinkingStatus = (value) => setIsThinking(isTruthy(value));
-  window.showSummary = (summary) => {
+  window.showThinkingStatus = (arg0, arg1) => {
+    const [targetSessionId, value] = typeof arg1 !== 'undefined' ? [typeof arg0 === 'string' ? arg0 : null, arg1] : [null, arg0];
+    const isThinkingVal = isTruthy(value);
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.isThinking = isThinkingVal;
+        }
+      );
+      return;
+    }
+    setIsThinking(isThinkingVal);
+  };
+
+  window.showSummary = (arg0, arg1) => {
+    const [targetSessionId, summary] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
     if (!summary || !summary.trim()) return;
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.status = summary;
+        }
+      );
+      return;
+    }
     setStatus(summary);
   };
   window.setHistoryData = (data) => {
@@ -772,7 +889,23 @@ export function registerMessageCallbacks(
     });
   };
 
-  window.clearMessages = (barrierSequenceArg) => {
+  window.clearMessages = (arg0, arg1) => {
+    const [targetSessionId, barrierSequenceArg] = typeof arg1 !== 'undefined'
+      ? [typeof arg0 === 'string' ? arg0 : null, arg1]
+      : (typeof arg0 === 'string' && isNaN(Number(arg0)) ? [arg0, undefined] : [null, arg0]);
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.messages = [];
+          t.loading = false;
+          t.streamingActive = false;
+        }
+      );
+      return;
+    }
+
     cardDebugLog('[clearMessages] called, transitioning:', window.__sessionTransitioning, 'barrierSeq:', barrierSequenceArg);
     cardDebugLog('[clearMessages] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
     // Advance the sequence barrier so any updateMessages still in flight from
@@ -879,16 +1012,30 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.historyLoadComplete = (expectedMessageCountArg) => {
+  window.historyLoadComplete = (arg0, arg1) => {
+    const [targetSessionId, expectedMessageCountArg] = typeof arg1 !== 'undefined'
+      ? [typeof arg0 === 'string' ? arg0 : null, arg1]
+      : (typeof arg0 === 'string' && isNaN(Number(arg0)) ? [arg0, undefined] : [null, arg0]);
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.loading = false;
+          t.streamingActive = false;
+        }
+      );
+      // If the foreground active tab is not currently loading, ensure front-end loading bar is not stranded
+      options.setSessionLoading(false);
+      return;
+    }
+
     cardDebugLog('[HistoryLoadComplete] called, transitioning BEFORE release:', window.__sessionTransitioning, 'expectedMsgCount:', expectedMessageCountArg);
     cardDebugLog('[HistoryLoadComplete] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
     releaseSessionTransition();
     cardDebugLog('[HistoryLoadComplete] transitioning AFTER release:', window.__sessionTransitioning);
-    // Defer sessionLoading=false so the loading indicator has time to render.
-    // setTimeout(0) is too fast — React 18 batches it into the same frame as
-    // the message update, so the UI jumps from empty→messages with no visible
-    // loading state. 300ms gives the user a brief but perceptible loading flash.
-    setTimeout(() => { options.setSessionLoading(false); }, 300);
+    // Immediately release sessionLoading flag
+    options.setSessionLoading(false);
     // 同会话软刷新已完成，释放 loadHistorySession 的去抖守卫
     window.__softSessionReloadInFlight = null;
     const pendingToast = window.__pendingSessionTransitionToast;

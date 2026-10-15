@@ -20,6 +20,7 @@ export interface AskUserQuestionRequest {
     multiSelect?: boolean;
   }[];
   provider?: 'opencode' | 'codex';
+  sessionId?: string;
 }
 
 interface AskUserQuestionDialogProps {

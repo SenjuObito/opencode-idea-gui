@@ -1,6 +1,6 @@
 import { useState, useCallback, useSyncExternalStore, memo } from 'react';
 import type { TFunction } from 'i18next';
-import type { ClaudeContentBlock, ToolResultBlock, CompactSummaryMetadata } from '../../types';
+import type { OpencodeContentBlock, ToolResultBlock, CompactSummaryMetadata } from '../../types';
 
 import MarkdownBlock from '../MarkdownBlock';
 import CollapsibleTextBlock from '../CollapsibleTextBlock';
@@ -167,7 +167,7 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
 });
 
 export interface ContentBlockRendererProps {
-  block: ClaudeContentBlock;
+  block: OpencodeContentBlock;
   messageIndex: number;
   messageType: string;
   isStreaming: boolean;
@@ -325,6 +325,21 @@ export function ContentBlockRenderer({
     // inline in the flow. The answer comes from the host's onQuestionAnswered
     // bridge event (stored in questionAnswerStore), falling back to findToolResult.
     if (toolName === 'askuserquestion' || toolName === 'question') {
+      // Prioritize structured questionCard injected by OpenCodeMessageConverter
+      if (block.type === 'tool_use' && block.questionCard) {
+        const { status, questions, answers } = block.questionCard;
+        const storedAnswers = new Map<string, string>(Object.entries(answers || {}));
+        return (
+          <QuestionAnswerSummary
+            questions={questions as QuestionSummaryItem[]}
+            answer={null}
+            answers={storedAnswers}
+            status={status}
+            t={t}
+          />
+        );
+      }
+
       const blockId = block.id ?? '';
       const storedQA = getQuestionAnswer(blockId);
       console.log(`[ContentBlockRenderer] askuserquestion blockId="${blockId}" storedQA=${!!storedQA} block.input.questions=${JSON.stringify(block.input?.questions ?? []).substring(0, 300)}`);
@@ -403,13 +418,18 @@ export function ContentBlockRenderer({
         : parsedAnswerCount > 0
           ? 'answered'
           : 'unanswered';
+      let rawQuestions: unknown = block.input?.questions ?? block.input?.question ?? storedQA?.questions;
+      if (typeof block.input === 'string') {
+        try {
+          const parsed = JSON.parse(block.input);
+          rawQuestions = parsed?.questions ?? parsed?.question ?? rawQuestions;
+        } catch {
+          // ignore JSON parse error
+        }
+      }
       return (
         <QuestionAnswerSummary
-          questions={
-            ((block.input?.questions as QuestionSummaryItem[] | undefined)
-              ?? storedQA?.questions
-              ?? []) as QuestionSummaryItem[]
-          }
+          questions={(rawQuestions ?? []) as QuestionSummaryItem[]}
           answer={answerBlock}
           answers={storedAnswers}
           status={status}

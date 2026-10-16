@@ -71,7 +71,14 @@ public class OpenCodeSDKBridge {
      * all in-flight request futures so Java-side callers unblock.
      */
     public void abort() {
-        daemon.sendAbort();
+        abort(null);
+    }
+
+    /**
+     * Abort the turn for a specific session.
+     */
+    public void abort(String sessionId) {
+        daemon.sendAbort(sessionId);
     }
 
     public void addDaemonEventListener(DaemonBridge.DaemonEventListener listener) {

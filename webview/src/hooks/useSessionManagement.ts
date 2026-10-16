@@ -116,6 +116,7 @@ export function useSessionManagement({
   const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null) => {
     window.__sessionTransitioning = true;
     window.__sessionTransitionToken = createSessionTransitionToken();
+    window.__sessionTransitionTargetSessionId = nextSessionId;
     // 完整会话切换会取代任何在途的同会话软刷新，释放其去抖守卫。
     if (softReloadTimeoutRef.current !== null) {
       clearTimeout(softReloadTimeoutRef.current);
@@ -188,6 +189,7 @@ export function useSessionManagement({
         cardDebugLog('[SessionManagement] Transition guard timed out — auto-releasing');
         window.__sessionTransitioning = false;
         window.__sessionTransitionToken = null;
+        window.__sessionTransitionTargetSessionId = null;
         setSessionLoading(false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
@@ -271,6 +273,7 @@ export function useSessionManagement({
       // the empty-state flash that occurs when __sessionTransitioning is false.
       window.__sessionTransitioning = true;
       window.__sessionTransitionToken = createSessionTransitionToken();
+      window.__sessionTransitionTargetSessionId = sessionId;
       window.__softSessionReloadInFlight = sessionId;
       cardDebugLog('[SessionManagement] AFTER: __sessionTransitioning=', window.__sessionTransitioning, 'token set');
       if (softReloadTimeoutRef.current !== null) {
@@ -286,6 +289,7 @@ export function useSessionManagement({
           cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
           window.__sessionTransitioning = false;
           window.__sessionTransitionToken = null;
+          window.__sessionTransitionTargetSessionId = null;
         }
       }, 5_000);
       sendBridgeEvent('load_session', JSON.stringify({ sessionId }));

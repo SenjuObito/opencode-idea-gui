@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ClaudeContentBlock, ToolResultBlock } from '../../types';
+import type { OpencodeContentBlock, ToolResultBlock } from '../../types';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
 
 // Capture the props MarkdownBlock receives without rendering the real marked
@@ -28,8 +28,8 @@ const t = ((key: string) => key) as unknown as React.ComponentProps<
   typeof ContentBlockRenderer
 >['t'];
 
-const tableBlock = (): ClaudeContentBlock =>
-  ({ type: 'text', text: '| a |\n|---|\n| 1 |' }) as unknown as ClaudeContentBlock;
+const tableBlock = (): OpencodeContentBlock =>
+  ({ type: 'text', text: '| a |\n|---|\n| 1 |' }) as unknown as OpencodeContentBlock;
 
 function renderTextBlock({ isStreaming, isLastBlock }: { isStreaming: boolean; isLastBlock: boolean }) {
   markdownProps.isStreaming = undefined;
@@ -71,7 +71,7 @@ describe('ContentBlockRenderer block-level streaming', () => {
 });
 
 describe('ContentBlockRenderer askuserquestion', () => {
-  const askBlock = (): ClaudeContentBlock =>
+  const askBlock = (): OpencodeContentBlock =>
     ({
       type: 'tool_use',
       name: 'askuserquestion',
@@ -81,7 +81,7 @@ describe('ContentBlockRenderer askuserquestion', () => {
           { question: 'Pick a color?', header: 'Choice', options: [{ label: 'Red' }, { label: 'Blue' }] },
         ],
       },
-    }) as unknown as ClaudeContentBlock;
+    }) as unknown as OpencodeContentBlock;
 
   const answerResult = (): ToolResultBlock =>
     ({
@@ -132,13 +132,46 @@ describe('ContentBlockRenderer askuserquestion', () => {
     expect(queryByText('Red')).toBeFalsy();
   });
 
+  it('renders directly from block.questionCard without consulting findToolResult', () => {
+    const cardBlock: OpencodeContentBlock = {
+      type: 'tool_use',
+      name: 'question',
+      id: 'tool-card-1',
+      questionCard: {
+        status: 'answered',
+        questions: [{ question: '您希望将哪些部分改为双语？' }],
+        answers: { '您希望将哪些部分改为双语？': '全部改为双语' },
+      },
+    };
+
+    const { getByText } = render(
+      <ContentBlockRenderer
+        block={cardBlock}
+        messageIndex={0}
+        messageType="assistant"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={false}
+        isLastBlock={false}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('您希望将哪些部分改为双语？')).toBeTruthy();
+    expect(getByText('全部改为双语')).toBeTruthy();
+    expect(getByText('askUserQuestion.answeredStatus')).toBeTruthy();
+  });
+
   it('keeps permission requests suppressed', () => {
     const block = ({
       type: 'tool_use',
       name: 'requestpermissions',
       id: 'tool-2',
       input: {},
-    }) as unknown as ClaudeContentBlock;
+    }) as unknown as OpencodeContentBlock;
 
     const { container } = render(
       <ContentBlockRenderer
@@ -162,7 +195,7 @@ describe('ContentBlockRenderer askuserquestion', () => {
 
 describe('ContentBlockRenderer compact_notification', () => {
   it('renders success compact notification card with codicon-check and pill class', () => {
-    const block: ClaudeContentBlock = {
+    const block: OpencodeContentBlock = {
       type: 'compact_notification',
       status: 'success',
       headerText: '会话已压缩',
@@ -193,7 +226,7 @@ describe('ContentBlockRenderer compact_notification', () => {
   });
 
   it('renders failure compact notification card with codicon-warning and detail', () => {
-    const block: ClaudeContentBlock = {
+    const block: OpencodeContentBlock = {
       type: 'compact_notification',
       status: 'failure',
       headerText: '压缩会话失败',

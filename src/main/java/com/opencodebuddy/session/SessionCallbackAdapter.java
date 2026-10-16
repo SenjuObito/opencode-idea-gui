@@ -170,6 +170,22 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     }
 
     @Override
+    public void onRetryStatus(String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            // Dedicated channel (not updateStatus): a retry notice persists and
+            // carries a clickable action link, whereas updateStatus is a
+            // fire-and-forget toast that cannot render one.
+            jsTarget.callJavaScript("updateRetryStatus", getTargetSessionId(), JsUtils.escapeJs(jsonContent));
+        });
+    }
+
+    @Override
     public void onSessionIdReceived(String sessionId) {
         if (isInactive()) {
             return;

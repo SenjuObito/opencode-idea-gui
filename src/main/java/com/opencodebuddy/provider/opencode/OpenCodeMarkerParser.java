@@ -74,6 +74,31 @@ public final class OpenCodeMarkerParser {
             return;
         }
 
+        if (line.startsWith("[STATUS]")) {
+            // Two producers share this tag: the session.status:retry emitter
+            // (structured JSON: message/attempt/next/action) and stray
+            // "preconnect ready ..." console.log lines. Only the structured form
+            // is user-facing — preconnect noise must stay invisible, and it was
+            // invisible before this branch existed, so route just the object
+            // shape and drop everything else.
+            String payload = stripSeparator(line, "[STATUS]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            if (isJsonObject(decoded)) {
+                callback.onMessage("retry_status", decoded);
+            }
+            return;
+        }
+
+        if (line.startsWith("[TURN_ERROR]")) {
+            // A turn failure that surfaced after the local 180s timeout already
+            // reported one. Previously mis-routed to [SESSION_COMPACT_RESULT]
+            // (host only logged it), which buried the server's actual reason.
+            String payload = stripSeparator(line, "[TURN_ERROR]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            callback.onMessage("turn_error", isJsonObject(decoded) ? decoded : payload);
+            return;
+        }
+
         if (line.startsWith("[CONTENT]")) {
             String content = stripSeparator(line, "[CONTENT]");
             context.assistantContent.append(content);
@@ -199,5 +224,14 @@ public final class OpenCodeMarkerParser {
         } catch (Exception e) {
             return jsonStr;
         }
+    }
+
+    /** Whether {@code raw} is a bare JSON object literal (not a string payload). */
+    private static boolean isJsonObject(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String trimmed = raw.trim();
+        return trimmed.startsWith("{") && trimmed.endsWith("}") && trimmed.length() > 2;
     }
 }

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { groupBlocks } from './MessageItem';
-import type { ClaudeContentBlock } from '../../types';
+import type { OpencodeContentBlock } from '../../types';
 
-const tool = (id: string, name: string): ClaudeContentBlock => ({ type: 'tool_use', id, name, input: {} });
-const text = (value: string): ClaudeContentBlock => ({ type: 'text', text: value });
+const tool = (id: string, name: string): OpencodeContentBlock => ({ type: 'tool_use', id, name, input: {} });
+const text = (value: string): OpencodeContentBlock => ({ type: 'text', text: value });
 
 describe('groupBlocks - restored Codex command batches', () => {
   it('renders replayed shell commands as one existing Bash command group', () => {
-    const blocks: ClaudeContentBlock[] = [
+    const blocks: OpencodeContentBlock[] = [
       {
         type: 'tool_use',
         id: 'codex_exec_call_0',
@@ -89,5 +89,30 @@ describe('groupBlocks – agent group absorption', () => {
     expect(grouped.map((g) => g.type)).toEqual(['agent_group', 'single', 'read_group']);
     const g0 = grouped[0];
     if (g0.type === 'agent_group') expect(g0.followingBlocks).toEqual([]);
+  });
+
+  it('deduplicates identical bash tool blocks with same command or upgraded input', () => {
+    const blocks: OpencodeContentBlock[] = [
+      {
+        type: 'tool_use',
+        id: 'call_1',
+        name: 'bash',
+        input: {},
+      },
+      {
+        type: 'tool_use',
+        id: 'prt_1',
+        name: 'shell',
+        input: { command: 'pwd' },
+      },
+    ];
+    const grouped = groupBlocks(blocks);
+
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].type).toBe('bash_group');
+    if (grouped[0].type === 'bash_group') {
+      expect(grouped[0].blocks).toHaveLength(1);
+      expect((grouped[0].blocks[0].input as any)?.command).toBe('pwd');
+    }
   });
 });

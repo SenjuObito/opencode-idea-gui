@@ -17,6 +17,7 @@ export interface ChatHeaderProps {
   onShareTab: (tab: SessionTabData) => void;
   onCopyShareLinkTab: (tab: SessionTabData) => void;
   onUnshareTab: (tab: SessionTabData) => void;
+  onReorderTabs?: (sourceIndex: number, targetIndex: number) => void;
   onBack: () => void;
   onNewSession: () => void;
   onHistory: () => void;
@@ -37,6 +38,7 @@ export function ChatHeader({
   onShareTab,
   onCopyShareLinkTab,
   onUnshareTab,
+  onReorderTabs,
   onBack,
   onNewSession,
   onHistory,
@@ -67,6 +69,7 @@ export function ChatHeader({
             onShareTab={onShareTab}
             onCopyShareLinkTab={onCopyShareLinkTab}
             onUnshareTab={onUnshareTab}
+            onReorderTabs={onReorderTabs}
             t={t}
           />
         )}

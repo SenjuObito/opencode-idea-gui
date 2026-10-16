@@ -45,10 +45,23 @@ export function isCompactSummaryMetadata(obj: unknown): obj is CompactSummaryMet
   return true;
 }
 
+export interface QuestionCardData {
+  status: 'answered' | 'cancelled' | 'unanswered';
+  questions: Array<{
+    question: string;
+    header?: string;
+    multiSelect?: boolean;
+    custom?: boolean;
+    options?: Array<{ label: string; description?: string }>;
+    key?: string;
+  }>;
+  answers: Record<string, string>;
+}
+
 export type OpencodeContentBlock =
   | { type: 'text'; text?: string }
   | { type: 'thinking'; thinking?: string; text?: string }
-  | { type: 'tool_use'; id?: string; name?: string; input?: ToolInput }
+  | { type: 'tool_use'; id?: string; name?: string; input?: ToolInput; questionCard?: QuestionCardData }
   | { type: 'image'; src?: string; mediaType?: string; alt?: string }
   | { type: 'attachment'; fileName?: string; mediaType?: string }
   | { type: 'task_notification'; icon: string; summary: string; status: string; detail?: string }

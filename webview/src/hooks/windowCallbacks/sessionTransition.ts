@@ -105,4 +105,5 @@ export const releaseSessionTransition = (): void => {
     window.__sessionTransitioning = false;
   }
   window.__sessionTransitionToken = null;
+  window.__sessionTransitionTargetSessionId = null;
 };

@@ -10,7 +10,7 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
 import { sendBridgeEvent } from '../../../utils/bridge';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
-import { parseSequence } from '../parseSequence';
+import { parseSequence, advanceMinAcceptedSequence } from '../sequenceBarrier';
 import { getStreamEndHandlingMode } from '../messageSync';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 
@@ -626,7 +626,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // The fallback path sends sequence=-1 which means "no sequence info" —
     // it should not participate in sequence tracking.
     if (parsedSequence != null && parsedSequence >= 0) {
-      window.__minAcceptedUpdateSequence = Math.max(window.__minAcceptedUpdateSequence ?? 0, parsedSequence);
+      advanceMinAcceptedSequence(targetSessionId, parsedSequence);
     }
     // Notify backend about stream completion for tab status indicator
     sendBridgeEvent('tab_status_changed', JSON.stringify({ status: 'completed' }));

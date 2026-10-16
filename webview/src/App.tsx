@@ -999,11 +999,13 @@ const App = () => {
     closeTab,
     renameTab,
     forkTab,
+    reorderTabs,
     openSessionInTab,
     activeTabAutoOpenFileEnabled,
     setActiveTabAutoOpenFileEnabled,
   } = useSessionTabs({
     currentSessionId,
+    currentSessionIdRef,
     setCurrentSessionId,
     sessionTitle,
     setCustomSessionTitle,
@@ -1078,6 +1080,7 @@ const App = () => {
         onCloseTab={closeTab}
         onRenameTab={renameTab}
         onForkTab={forkTab}
+        onReorderTabs={reorderTabs}
         onShareTab={(tab) => {
           if (tab.id !== activeTabId) selectTab(tab.id);
           void handleShare();

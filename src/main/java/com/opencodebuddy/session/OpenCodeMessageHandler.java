@@ -61,6 +61,8 @@ public class OpenCodeMessageHandler implements MessageCallback {
                     callbackHandler.notifyStatusMessage(content);
                 }
             }
+            case "retry_status" -> handleRetryStatus(content);
+            case "turn_error" -> handleTurnError(content);
             case "node_log" -> {
                 if (content != null && !content.isBlank()) {
                     callbackHandler.notifyNodeLog(content);
@@ -95,12 +97,9 @@ public class OpenCodeMessageHandler implements MessageCallback {
         Message errorMessage = new Message(Message.Type.ERROR, error);
         state.addMessage(errorMessage);
 
-        // Signal stream-end BEFORE pushing the error snapshot so the webview's
-        // onStreamEnd cancellation drops the pending snapshot and the error
-        // bubble renders without a duplicate "API request failed" flash.
-        if (wasStreaming) {
-            callbackHandler.notifyStreamEnd();
-        }
+        // Always signal stream-end on error to guarantee streamCoalescer and frontend
+        // isStreamingRef are cleared, allowing showLoading(false) to take effect immediately.
+        callbackHandler.notifyStreamEnd();
         callbackHandler.notifyMessageUpdate(state.getMessages());
         resetStreamingAccumulator();
         callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
@@ -148,6 +147,9 @@ public class OpenCodeMessageHandler implements MessageCallback {
                 assistantContent.setLength(0);
                 assistantContent.append(parsed.content != null ? parsed.content : "");
             } else {
+                currentAssistantMessage = parsed;
+                assistantContent.setLength(0);
+                assistantContent.append(parsed.content != null ? parsed.content : "");
                 state.addMessage(parsed);
             }
             callbackHandler.notifyMessageUpdate(state.getMessages());
@@ -501,6 +503,59 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
     private void handleSessionCompactResult(String jsonContent) {
         LOG.info("[OpenCode] session compact result: " + jsonContent);
+    }
+
+    /**
+     * A rate-limit / quota retry reported by the server while a turn is still
+     * running ({@code session.status} with {@code type=retry}).
+     *
+     * <p>This is the only signal that explains a turn that is "spinning" for
+     * minutes: opencode is backing off because the free tier / account quota is
+     * exhausted, and its {@code action} carries the human-readable reason plus a
+     * subscribe/settings link. It used to be emitted by the daemon but never
+     * parsed host-side, so the user only ever saw the generic 180s local
+     * timeout afterwards.</p>
+     */
+    private void handleRetryStatus(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        LOG.info("[OpenCode] retry status: " + jsonContent);
+        callbackHandler.notifyRetryStatus(jsonContent);
+    }
+
+    /**
+     * A turn failure that arrived after the local timeout already reported one.
+     *
+     * <p>The daemon's 180s fallback deletes the active turn, so the server's
+     * late {@code session.error} has nothing left to settle it. It carries the
+     * real reason, so it is surfaced as a correction of the generic timeout
+     * message instead of being dropped (which is what routing it through the
+     * compaction-result channel effectively did).</p>
+     */
+    private void handleTurnError(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        String message = jsonContent;
+        try {
+            JsonObject payload = com.google.gson.JsonParser.parseString(jsonContent).getAsJsonObject();
+            String extracted = stringOrNull(payload, "message");
+            if (extracted != null && !extracted.isBlank()) {
+                message = extracted;
+            }
+        } catch (Exception ignored) {
+            // Not a JSON object — fall back to the raw payload as the message.
+        }
+
+        LOG.info("[OpenCode] turn error (late): " + message);
+        state.setError(message);
+        state.setBusy(false);
+        state.setLoading(false);
+        state.replaceLastErrorMessage(message);
+        callbackHandler.notifyStreamEnd();
+        callbackHandler.notifyMessageUpdate(state.getMessages());
+        callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
     }
 
     // ===== Streaming =====

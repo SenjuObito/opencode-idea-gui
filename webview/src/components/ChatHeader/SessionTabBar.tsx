@@ -14,6 +14,7 @@ export interface SessionTabBarProps {
   onShareTab: (tab: SessionTabData) => void;
   onCopyShareLinkTab: (tab: SessionTabData) => void;
   onUnshareTab: (tab: SessionTabData) => void;
+  onReorderTabs?: (sourceIndex: number, targetIndex: number) => void;
   t: TFunction;
 }
 
@@ -34,6 +35,7 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   onShareTab,
   onCopyShareLinkTab,
   onUnshareTab,
+  onReorderTabs,
   t,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,6 +49,25 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   const [visibleCount, setVisibleCount] = useState<number>(tabs.length);
   const editInputRef = useRef<HTMLInputElement>(null);
   const tabWidthsRef = useRef<Record<string, number>>({});
+
+  // ── Long-press to drag and reorder ──
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [dropIndicatorIndex, setDropIndicatorIndex] = useState<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const isDraggingActiveRef = useRef<boolean>(false);
+  const draggingTabIdRef = useRef<string | null>(null);
+  const dropIndicatorIndexRef = useRef<number | null>(null);
+  const tabElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const justFinishedDragRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    draggingTabIdRef.current = draggingTabId;
+  }, [draggingTabId]);
+
+  useEffect(() => {
+    dropIndicatorIndexRef.current = dropIndicatorIndex;
+  }, [dropIndicatorIndex]);
 
   // Enable horizontal scrolling with mouse wheel if needed
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -181,32 +202,165 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
     });
   }, []);
 
+  // ── Drag and Reorder listeners ──
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      // If long-press is not yet active, cancel if moved beyond 5px threshold
+      if (!isDraggingActiveRef.current) {
+        if (dragStartPosRef.current) {
+          const dist = Math.hypot(e.clientX - dragStartPosRef.current.x, e.clientY - dragStartPosRef.current.y);
+          if (dist > 5) {
+            if (longPressTimerRef.current) {
+              window.clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+            dragStartPosRef.current = null;
+          }
+        }
+        return;
+      }
+
+      // Dragging is active: determine drop insertion index
+      const mouseX = e.clientX;
+      let targetIndex = visibleTabs.length;
+
+      for (let i = 0; i < visibleTabs.length; i++) {
+        const tabItem = visibleTabs[i];
+        const el = tabElementsRef.current.get(tabItem.id);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const midX = rect.left + rect.width / 2;
+          if (mouseX < midX) {
+            targetIndex = i;
+            break;
+          }
+        }
+      }
+
+      dropIndicatorIndexRef.current = targetIndex;
+      setDropIndicatorIndex(targetIndex);
+    };
+
+    const handleGlobalMouseUp = () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      dragStartPosRef.current = null;
+
+      if (isDraggingActiveRef.current) {
+        isDraggingActiveRef.current = false;
+        justFinishedDragRef.current = true;
+        setTimeout(() => {
+          justFinishedDragRef.current = false;
+        }, 120);
+
+        const currentDraggingId = draggingTabIdRef.current;
+        const currentDropIndex = dropIndicatorIndexRef.current;
+
+        draggingTabIdRef.current = null;
+        dropIndicatorIndexRef.current = null;
+        setDraggingTabId(null);
+        setDropIndicatorIndex(null);
+
+        if (currentDraggingId && currentDropIndex != null) {
+          const sourceGlobalIndex = tabs.findIndex((t) => t.id === currentDraggingId);
+          if (sourceGlobalIndex >= 0) {
+            let targetGlobalIndex: number;
+            if (currentDropIndex < visibleTabs.length) {
+              const targetTab = visibleTabs[currentDropIndex];
+              targetGlobalIndex = tabs.findIndex((t) => t.id === targetTab.id);
+            } else {
+              const lastVisible = visibleTabs[visibleTabs.length - 1];
+              targetGlobalIndex = lastVisible ? tabs.findIndex((t) => t.id === lastVisible.id) : sourceGlobalIndex;
+            }
+
+            if (targetGlobalIndex >= 0 && sourceGlobalIndex !== targetGlobalIndex) {
+              onReorderTabs?.(sourceGlobalIndex, targetGlobalIndex);
+            }
+          }
+        }
+      }
+    };
+
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, [visibleTabs, tabs, onReorderTabs]);
+
+  const handleTabMouseDown = useCallback(
+    (e: React.MouseEvent, tab: SessionTabData, visibleIndex: number) => {
+      if (e.button !== 0) return; // Only primary button
+      if (editingTabId === tab.id) return;
+
+      dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+
+      const targetTabId = tab.id;
+      longPressTimerRef.current = setTimeout(() => {
+        isDraggingActiveRef.current = true;
+        draggingTabIdRef.current = targetTabId;
+        dropIndicatorIndexRef.current = visibleIndex;
+        setDraggingTabId(targetTabId);
+        setDropIndicatorIndex(visibleIndex);
+      }, 250) as unknown as number;
+    },
+    [editingTabId]
+  );
+
   return (
     <>
-      <div className="session-tabs-container" ref={containerRef} onWheel={handleWheel}>
-        {visibleTabs.map((tab) => {
+      <div
+        className={`session-tabs-container ${draggingTabId ? 'is-reordering' : ''}`}
+        ref={containerRef}
+        onWheel={handleWheel}
+      >
+        {visibleTabs.map((tab, idx) => {
           const isActive = tab.id === activeTabId;
           const isEditing = editingTabId === tab.id;
           const isBusy = tab.streamingActive || tab.loading;
+          const isDragging = tab.id === draggingTabId;
           const hasPendingAction =
             (tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0;
 
+          const showDropBefore = draggingTabId !== null && dropIndicatorIndex === idx;
+          const showDropAfter =
+            draggingTabId !== null &&
+            dropIndicatorIndex === visibleTabs.length &&
+            idx === visibleTabs.length - 1;
+
           return (
-            <div
-              key={tab.id}
-              ref={(el) => {
-                if (el) {
-                  const w = el.getBoundingClientRect().width;
-                  if (w > 0 && tabWidthsRef.current[tab.id] !== w) {
-                    tabWidthsRef.current[tab.id] = w;
+            <React.Fragment key={tab.id}>
+              {showDropBefore && <div className="session-tab-drop-indicator" />}
+              <div
+                ref={(el) => {
+                  if (el) {
+                    tabElementsRef.current.set(tab.id, el);
+                    const w = el.getBoundingClientRect().width;
+                    if (w > 0 && tabWidthsRef.current[tab.id] !== w) {
+                      tabWidthsRef.current[tab.id] = w;
+                    }
+                  } else {
+                    tabElementsRef.current.delete(tab.id);
                   }
-                }
-              }}
-              className={`session-tab-item ${isActive ? 'active' : ''} ${hasPendingAction ? 'has-attention' : ''}`}
-              onClick={() => onSelectTab(tab.id)}
-              onContextMenu={(e) => handleContextMenu(e, tab)}
-              title={hasPendingAction ? `${tab.title} (${t('common.pendingApproval', { defaultValue: '等待操作' })})` : tab.title}
-            >
+                }}
+                className={`session-tab-item ${isActive ? 'active' : ''} ${hasPendingAction ? 'has-attention' : ''} ${isDragging ? 'is-dragging' : ''}`}
+                onMouseDown={(e) => handleTabMouseDown(e, tab, idx)}
+                onClick={() => {
+                  if (justFinishedDragRef.current) return;
+                  onSelectTab(tab.id);
+                }}
+                onContextMenu={(e) => handleContextMenu(e, tab)}
+                title={hasPendingAction ? `${tab.title} (${t('common.pendingApproval', { defaultValue: '等待操作' })})` : tab.title}
+              >
               <div className="session-tab-icon">
                 {hasPendingAction ? (
                   <span
@@ -264,8 +418,10 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
                 <span className="codicon codicon-close" />
               </button>
             </div>
-          );
-        })}
+            {showDropAfter && <div className="session-tab-drop-indicator" />}
+          </React.Fragment>
+        );
+      })}
 
         {hasOverflow && (
           <div className="session-tab-overflow-wrapper">

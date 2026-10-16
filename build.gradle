@@ -297,7 +297,7 @@ tasks.named('buildSearchableOptions') {
     enabled = false
 }
 
-tasks.matching { it.name.startsWith('instrument') }.configureEach {
+tasks.matching { it.name == 'instrumentCode' || it.name == 'instrumentTestCode' }.configureEach {
     actions.clear()
     doLast {
         def target = name == 'instrumentCode' ? 'instrumentCode' : 'instrumentTestCode'

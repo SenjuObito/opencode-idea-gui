@@ -290,10 +290,29 @@ final class WebviewEventQueue<T> {
                 || !tail.functionName.equals(call.functionName)) {
             return false;
         }
-        String existing = tail.args.length == 0 || tail.args[0] == null ? "" : tail.args[0];
-        String incoming = call.args.length == 0 || call.args[0] == null ? "" : call.args[0];
-        tail.args[0] = existing + incoming;
-        return true;
+
+        // Two-argument shape: (targetSessionId, delta)
+        if (tail.args.length >= 2 && call.args.length >= 2) {
+            String tailSessionId = tail.args[0] != null ? tail.args[0] : "";
+            String callSessionId = call.args[0] != null ? call.args[0] : "";
+            if (!tailSessionId.equals(callSessionId)) {
+                return false; // Cannot merge deltas belonging to different sessions
+            }
+            String existingDelta = tail.args[1] != null ? tail.args[1] : "";
+            String incomingDelta = call.args[1] != null ? call.args[1] : "";
+            tail.args[1] = existingDelta + incomingDelta;
+            return true;
+        }
+
+        // Single-argument shape: (delta) - backward compatibility
+        if (tail.args.length == 1 && call.args.length == 1) {
+            String existing = tail.args[0] == null ? "" : tail.args[0];
+            String incoming = call.args[0] == null ? "" : call.args[0];
+            tail.args[0] = existing + incoming;
+            return true;
+        }
+
+        return false;
     }
 
     private boolean mergeWithTailLatest(JsCall<T> call) {
@@ -371,6 +390,9 @@ final class WebviewEventQueue<T> {
         return "updateStatus".equals(call.functionName)
                 || "showLoading".equals(call.functionName)
                 || "showThinkingStatus".equals(call.functionName)
+                // A newer retry notice supersedes the previous one; keeping the
+                // stale attempt/countdown would misreport the backoff sequence.
+                || "updateRetryStatus".equals(call.functionName)
                 || "setSessionId".equals(call.functionName)
                 || "onUsageUpdate".equals(call.functionName)
                 || "updateUsage".equals(call.functionName)

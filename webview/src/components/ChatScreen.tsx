@@ -7,6 +7,8 @@ import type {
 } from './ChatInputBox/types';
 import { MessageAnchorRail } from './MessageAnchorRail';
 import { MessageList } from './MessageList';
+import { MessagesErrorBoundary } from './MessagesErrorBoundary';
+import { RetryStatusBar } from './RetryStatusBar';
 import { ScrollControl } from './ScrollControl';
 import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
 import { WelcomeScreen } from './WelcomeScreen';
@@ -252,33 +254,35 @@ export const ChatScreen = ({
           <SessionIdContext.Provider value={sessionIdCtxValue}>
             <SubagentHistoryContext.Provider value={subagentHistoryCtxValue}>
               <ToolResultRawContext.Provider value={getToolResultRaw}>
-                <MessageList
-                  ref={messageListRef}
-                  messages={mergedMessages}
-                  messageKeys={messageKeySnapshot.keys}
-                  streamingActive={streamingActive}
-                  isThinking={isThinking}
-                  loading={loading}
-                  loadingStartTime={loadingStartTime}
-                  isCompacting={isCompacting}
-                  compactingStartTime={compactingStartTime}
-                  t={t}
-                  getMessageText={getMessageText}
-                  getContentBlocks={getContentBlocks}
-                  findToolResult={findToolResult}
-                  extractMarkdownContent={extractMarkdownContent}
-                  messagesEndRef={messagesEndRef}
-                  onMessageNodeRef={onMessageNodeRef}
-                  onCollapsedCountChange={setAnchorCollapsedCount}
-                  onNavigateToProviderSettings={onNavigateToProviderSettings}
-                  currentProvider={currentProvider}
-                  currentSessionId={currentSessionId}
-                  revertBoundaryId={revertBoundaryId}
-                  onUndo={onUndo}
-                  onRestore={onRestore}
-                  onFork={onFork}
-                  forkDisabled={streamingActive}
-                />
+                <MessagesErrorBoundary currentSessionId={currentSessionId} t={t}>
+                  <MessageList
+                    ref={messageListRef}
+                    messages={mergedMessages}
+                    messageKeys={messageKeySnapshot.keys}
+                    streamingActive={streamingActive}
+                    isThinking={isThinking}
+                    loading={loading}
+                    loadingStartTime={loadingStartTime}
+                    isCompacting={isCompacting}
+                    compactingStartTime={compactingStartTime}
+                    t={t}
+                    getMessageText={getMessageText}
+                    getContentBlocks={getContentBlocks}
+                    findToolResult={findToolResult}
+                    extractMarkdownContent={extractMarkdownContent}
+                    messagesEndRef={messagesEndRef}
+                    onMessageNodeRef={onMessageNodeRef}
+                    onCollapsedCountChange={setAnchorCollapsedCount}
+                    onNavigateToProviderSettings={onNavigateToProviderSettings}
+                    currentProvider={currentProvider}
+                    currentSessionId={currentSessionId}
+                    revertBoundaryId={revertBoundaryId}
+                    onUndo={onUndo}
+                    onRestore={onRestore}
+                    onFork={onFork}
+                    forkDisabled={streamingActive}
+                  />
+                </MessagesErrorBoundary>
               </ToolResultRawContext.Provider>
             </SubagentHistoryContext.Provider>
           </SessionIdContext.Provider>
@@ -286,6 +290,11 @@ export const ChatScreen = ({
       </div>
 
       <ScrollControl containerRef={messagesContainerRef} inputAreaRef={inputAreaRef} />
+
+      {/* Rate-limit / quota backoff notice for the running turn. Explains a
+          "stuck" spinner that would otherwise only surface as the generic
+          local 180s timeout, with no hint at the real cause. */}
+      <RetryStatusBar />
 
       <StatusPanelErrorBoundary>
         <StatusPanel
@@ -331,8 +340,8 @@ export const ChatScreen = ({
           onReasoningChange={onReasoningChange}
           onToggleThinking={onToggleThinking}
           sendShortcut={sendShortcut}
-          activeFile={contextInfo?.file}
-          selectedLines={contextInfo?.startLine !== undefined && contextInfo?.endLine !== undefined
+          activeFile={autoOpenFileEnabled ? contextInfo?.file : undefined}
+          selectedLines={autoOpenFileEnabled && contextInfo?.startLine !== undefined && contextInfo?.endLine !== undefined
             ? (contextInfo.startLine === contextInfo.endLine
                 ? `L${contextInfo.startLine}`
                 : `L${contextInfo.startLine}-${contextInfo.endLine}`)

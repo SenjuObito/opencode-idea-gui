@@ -84,8 +84,7 @@ public class OpenCodeBuddyBundleI18nTest {
         for (String suffix : LOCALE_SUFFIXES) {
             Properties props = loadBundleProperties(suffix);
             String val = props.getProperty("tab.defaultName");
-            assertNotNull("Bundle " + suffix + " missing key: tab.defaultName", val);
-            assertTrue("Bundle " + suffix + " tab.defaultName should contain {0} placeholder", val.contains("{0}"));
+            assertEquals("Bundle " + suffix + " tab.defaultName should be 'Chat'", "Chat", val);
         }
     }
 }

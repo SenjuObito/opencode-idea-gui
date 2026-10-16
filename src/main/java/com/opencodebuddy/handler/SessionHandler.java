@@ -232,7 +232,7 @@ public class SessionHandler extends BaseMessageHandler {
         final Boolean finalRequestedAutoOpenFile = requestedAutoOpenFile;
 
         if (finalPrompt != null && finalPrompt.startsWith("!") && finalPrompt.trim().length() > 1) {
-            String command = finalPrompt.substring(1).trim();
+            final String command = finalPrompt.substring(1).trim();
             CompletableFuture.runAsync(() -> {
                 String currentWorkingDir = determineWorkingDirectory();
                 String previousCwd = targetSession != null ? targetSession.getCwd() : context.getSession().getCwd();
@@ -248,7 +248,7 @@ public class SessionHandler extends BaseMessageHandler {
                 }
 
                 if (targetSession != null) {
-                    targetSession.sendShell(command)
+                    targetSession.sendShell(finalPrompt, command)
                             .exceptionally(ex -> {
                                 LOG.error("Failed to execute shell command", ex);
                                 if (project != null) {

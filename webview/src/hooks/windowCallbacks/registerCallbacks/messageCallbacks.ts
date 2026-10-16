@@ -16,13 +16,19 @@ import {
   appendOptimisticMessageIfMissing,
   ensureStreamingAssistantInList,
   getRawUuid,
+  isUserMessageContentMatch,
   preserveLastAssistantIdentity,
   preserveLatestMessagesOnShrink,
   preserveStreamingAssistantContent,
   stripDuplicateTrailingToolMessages,
 } from '../messageSync';
 import { releaseSessionTransition } from '../sessionTransition';
-import { parseSequence } from '../parseSequence';
+import {
+  parseSequence,
+  getMinAcceptedSequence,
+  advanceMinAcceptedSequence,
+  resetMinAcceptedSequence,
+} from '../sequenceBarrier';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { collectUnresolvedToolUseIds } from './streamingCallbacks';
 import i18n from '../../../i18n/config';
@@ -155,7 +161,9 @@ export function registerMessageCallbacks(
     // already guard, but processUpdateMessages is the canonical setter and
     // should be self-defending.
     if (window.__sessionTransitioning) {
-      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+      const activeSessionId = window.__sessionTransitionTargetSessionId
+        || options.currentSessionIdRef?.current
+        || window.__sessionTabsStore?.getActiveSessionId?.();
       const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
       if (!isTargetActiveSession) {
         cardDebugLog('[processUpdateMessages] BLOCKED: sessionTransitioning');
@@ -163,9 +171,10 @@ export function registerMessageCallbacks(
       }
       cardDebugLog('[processUpdateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
     }
-    const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
+    const effectiveSessionId = targetSessionId || options.currentSessionIdRef?.current;
+    const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) {
-      cardDebugLog('[processUpdateMessages] BLOCKED: seq', sequence, '< minAccepted', minAcceptedSequence);
+      cardDebugLog('[processUpdateMessages] BLOCKED: seq', sequence, '< minAccepted', minAcceptedSequence, 'sessionId:', effectiveSessionId);
       return;
     }
 
@@ -178,7 +187,7 @@ export function registerMessageCallbacks(
       if (!Array.isArray(raw)) return;
       const backendMessages = raw as ClaudeMessage[];
       if (sequence != null) {
-        window.__minAcceptedUpdateSequence = Math.max(minAcceptedSequence, sequence);
+        advanceMinAcceptedSequence(effectiveSessionId, sequence);
       }
 
       // ── 窗口语义（opencode 活跃会话滑动窗口）──
@@ -235,6 +244,9 @@ export function registerMessageCallbacks(
                 // Preserve frontend-only durationMs across backend updates
                 if (typeof oldMsg.durationMs === 'number' && newMsg.type === 'assistant') {
                   newMsg = { ...newMsg, durationMs: oldMsg.durationMs };
+                }
+                if (oldMsg.type === 'user' && newMsg.type === 'user' && isUserMessageContentMatch(oldMsg.content || '', newMsg.content || '')) {
+                  newMsg = { ...newMsg, content: oldMsg.content };
                 }
                 if (
                   oldMsg.timestamp === newMsg.timestamp &&
@@ -332,6 +344,9 @@ export function registerMessageCallbacks(
               if (typeof oldMsg.durationMs === 'number' && newMsg.type === 'assistant') {
                 newMsg = { ...newMsg, durationMs: oldMsg.durationMs };
               }
+              if (oldMsg.type === 'user' && newMsg.type === 'user' && isUserMessageContentMatch(oldMsg.content || '', newMsg.content || '')) {
+                newMsg = { ...newMsg, content: oldMsg.content };
+              }
               if (i < parsed.length - 1) {
                 if (
                   oldMsg.timestamp === newMsg.timestamp &&
@@ -415,8 +430,9 @@ export function registerMessageCallbacks(
       const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
       if (!isTargetActiveSession) return;
     }
+    const effectiveSessionId = targetSessionId || options.currentSessionIdRef?.current;
     const sequence = parseSequence(sequenceArg);
-    const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
+    const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) return;
 
     if (isStreamingRef.current && window.__lastStreamActivityAt !== undefined) {
@@ -432,7 +448,7 @@ export function registerMessageCallbacks(
       const tail = JSON.parse(json) as ClaudeMessage[];
       if (!Array.isArray(tail)) return;
       if (sequence != null) {
-        window.__minAcceptedUpdateSequence = Math.max(minAcceptedSequence, sequence);
+        advanceMinAcceptedSequence(effectiveSessionId, sequence);
       }
 
       setMessages((prev) => {
@@ -506,7 +522,11 @@ export function registerMessageCallbacks(
       baseIndexArg = arg2;
     }
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    const isForegroundSession = !targetSessionId
+      || (targetSessionId === (window.__sessionTransitionTargetSessionId || options.currentSessionIdRef?.current))
+      || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
+
+    if (!isForegroundSession && targetSessionId && window.__sessionTabsStore) {
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
@@ -527,7 +547,9 @@ export function registerMessageCallbacks(
     // callbacks to prevent cleared messages from being restored
     cardDebugLog('[updateMessages] called, transitioning:', window.__sessionTransitioning, 'seq:', sequenceArg, 'jsonLen:', json?.length);
     if (window.__sessionTransitioning) {
-      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+      const activeSessionId = window.__sessionTransitionTargetSessionId
+        || options.currentSessionIdRef?.current
+        || window.__sessionTabsStore?.getActiveSessionId?.();
       const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
       if (!isTargetActiveSession) {
         cardDebugLog('[updateMessages] BLOCKED by sessionTransitioning');
@@ -535,8 +557,9 @@ export function registerMessageCallbacks(
       }
       cardDebugLog('[updateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
     }
+    const effectiveSessionId = targetSessionId || options.currentSessionIdRef?.current;
     const sequence = parseSequence(sequenceArg);
-    const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
+    const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) {
       return;
     }
@@ -943,10 +966,7 @@ export function registerMessageCallbacks(
     // strictly smaller sequence. Closes the "new session does not clear" race.
     const barrierSequence = parseSequence(barrierSequenceArg);
     if (barrierSequence != null) {
-      window.__minAcceptedUpdateSequence = Math.max(
-        window.__minAcceptedUpdateSequence ?? 0,
-        barrierSequence,
-      );
+      resetMinAcceptedSequence(targetSessionId, barrierSequence);
     }
     // Cancel any pending deferred updateMessages to prevent stale data from
     // being applied after messages are cleared.
@@ -1043,7 +1063,11 @@ export function registerMessageCallbacks(
       ? [typeof arg0 === 'string' ? arg0 : null, arg1]
       : (typeof arg0 === 'string' && isNaN(Number(arg0)) ? [arg0, undefined] : [null, arg0]);
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    const isForeground = !targetSessionId
+      || (targetSessionId === (window.__sessionTransitionTargetSessionId || options.currentSessionIdRef?.current))
+      || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
+
+    if (!isForeground && targetSessionId && window.__sessionTabsStore) {
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
@@ -1051,6 +1075,10 @@ export function registerMessageCallbacks(
           t.streamingActive = false;
         }
       );
+      // If foreground active tab is currently transitioning targeting this session, ensure guard is released
+      if (window.__sessionTransitionTargetSessionId === targetSessionId) {
+        releaseSessionTransition();
+      }
       // If the foreground active tab is not currently loading, ensure front-end loading bar is not stranded
       options.setSessionLoading(false);
       return;

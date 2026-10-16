@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 
 /**
  * Converts opencode SDK message entries ({@code [{info, parts}]}, as returned
- * by daemon {@code opencode.listMessages}) into the Claude-compatible message
+ * by daemon {@code opencode.listMessages}) into the OpenCode-compatible message
  * JSON the Java session/history layer consumes.
  *
  * <p>User messages are restored for display, not replay: server-generated
@@ -223,12 +223,19 @@ public final class OpenCodeMessageConverter {
                 String callId = part.has("callID") && !part.get("callID").isJsonNull()
                         ? part.get("callID").getAsString() : string(part, "id");
                 String toolName = string(part, "tool");
+                if ("shell".equalsIgnoreCase(toolName)) {
+                    toolName = "bash";
+                }
                 JsonObject block = new JsonObject();
                 block.addProperty("type", "tool_use");
                 block.addProperty("id", callId);
                 block.addProperty("name", toolName);
-                block.add("input", state.has("input") && state.get("input").isJsonObject()
-                        ? state.getAsJsonObject("input") : new JsonObject());
+                if (isQuestionTool(toolName)) {
+                    normalizeQuestionToolBlock(block, state);
+                } else {
+                    block.add("input", state.has("input") && state.get("input").isJsonObject()
+                            ? state.getAsJsonObject("input") : new JsonObject());
+                }
                 blocks.add(block);
 
                 // Completed/errored tool output → separate [tool_result] user message.
@@ -380,6 +387,116 @@ public final class OpenCodeMessageConverter {
         String marker = "\n... [truncated, total " + s.length() + " chars]";
         int available = Math.max(0, MAX_TOOL_RESULT_CHARS - marker.length());
         return s.substring(0, available) + marker;
+    }
+
+    private static boolean isQuestionTool(String toolName) {
+        return "question".equalsIgnoreCase(toolName) || "askuserquestion".equalsIgnoreCase(toolName);
+    }
+
+    private static void normalizeQuestionToolBlock(JsonObject block, JsonObject state) {
+        JsonArray normalizedQuestions = new JsonArray();
+        JsonElement rawInput = state.get("input");
+        if (rawInput != null && rawInput.isJsonObject()) {
+            JsonObject inputObj = rawInput.getAsJsonObject();
+            if (inputObj.has("questions") && inputObj.get("questions").isJsonArray()) {
+                for (JsonElement qElem : inputObj.getAsJsonArray("questions")) {
+                    if (qElem.isJsonObject()) {
+                        JsonObject qObj = qElem.getAsJsonObject();
+                        JsonObject item = new JsonObject();
+                        String qText = qObj.has("question") && !qObj.get("question").isJsonNull()
+                                ? qObj.get("question").getAsString()
+                                : (qObj.has("text") && !qObj.get("text").isJsonNull() ? qObj.get("text").getAsString() : "");
+                        item.addProperty("question", qText);
+                        item.addProperty("header", string(qObj, "header"));
+                        item.addProperty("multiSelect", qObj.has("multiple") ? qObj.get("multiple").getAsBoolean()
+                                : (qObj.has("multiSelect") && qObj.get("multiSelect").getAsBoolean()));
+                        item.addProperty("custom", !qObj.has("custom") || qObj.get("custom").getAsBoolean());
+                        item.add("options", qObj.has("options") && qObj.get("options").isJsonArray()
+                                ? qObj.getAsJsonArray("options") : new JsonArray());
+                        if (qObj.has("key")) item.add("key", qObj.get("key"));
+                        normalizedQuestions.add(item);
+                    } else if (qElem.isJsonPrimitive()) {
+                        JsonObject item = new JsonObject();
+                        item.addProperty("question", qElem.getAsString());
+                        item.addProperty("header", "");
+                        item.addProperty("multiSelect", false);
+                        item.addProperty("custom", true);
+                        item.add("options", new JsonArray());
+                        normalizedQuestions.add(item);
+                    }
+                }
+            } else if (inputObj.has("question") && inputObj.get("question").isJsonPrimitive()) {
+                JsonObject item = new JsonObject();
+                item.addProperty("question", inputObj.get("question").getAsString());
+                item.addProperty("header", string(inputObj, "header"));
+                item.addProperty("multiSelect", false);
+                item.addProperty("custom", true);
+                item.add("options", inputObj.has("options") && inputObj.get("options").isJsonArray()
+                        ? inputObj.getAsJsonArray("options") : new JsonArray());
+                normalizedQuestions.add(item);
+            }
+        } else if (rawInput != null && rawInput.isJsonPrimitive()) {
+            JsonObject item = new JsonObject();
+            item.addProperty("question", rawInput.getAsString());
+            item.addProperty("header", "");
+            item.addProperty("multiSelect", false);
+            item.addProperty("custom", true);
+            item.add("options", new JsonArray());
+            normalizedQuestions.add(item);
+        }
+
+        JsonObject normalizedInput = new JsonObject();
+        normalizedInput.add("questions", normalizedQuestions);
+        block.add("input", normalizedInput);
+
+        JsonObject answersObj = new JsonObject();
+        String output = string(state, "output");
+        String error = string(state, "error");
+        boolean isCancelled = !error.isEmpty() || output.contains("question rejected");
+
+        // 优先从 OpenCode 原生 metadata.answers (二维数组) 还原答案
+        if (state.has("metadata") && state.get("metadata").isJsonObject()) {
+            JsonObject meta = state.getAsJsonObject("metadata");
+            if (meta.has("answers") && meta.get("answers").isJsonArray()) {
+                JsonArray answersArr = meta.getAsJsonArray("answers");
+                for (int i = 0; i < answersArr.size(); i++) {
+                    JsonElement aElem = answersArr.get(i);
+                    String ansStr = "";
+                    if (aElem.isJsonArray()) {
+                        List<String> list = new ArrayList<>();
+                        for (JsonElement item : aElem.getAsJsonArray()) {
+                            if (item.isJsonPrimitive()) list.add(item.getAsString());
+                        }
+                        ansStr = String.join(", ", list);
+                    } else if (aElem.isJsonPrimitive()) {
+                        ansStr = aElem.getAsString();
+                    }
+                    if (i < normalizedQuestions.size()) {
+                        String qText = string(normalizedQuestions.get(i).getAsJsonObject(), "question");
+                        if (!qText.isEmpty()) {
+                            answersObj.addProperty(qText, ansStr);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 兜底：如果 metadata 没有答案，但 output 不为空且非取消状态，从 output 字符串提取
+        if (answersObj.size() == 0 && !output.isEmpty() && !isCancelled) {
+            Pattern p = Pattern.compile("\"([^\"]+)\"\\s*=\\s*\"([^\"]+)\"");
+            Matcher m = p.matcher(output);
+            while (m.find()) {
+                answersObj.addProperty(m.group(1), m.group(2));
+            }
+        }
+
+        String status = isCancelled ? "cancelled" : (answersObj.size() > 0 ? "answered" : "unanswered");
+
+        JsonObject questionCard = new JsonObject();
+        questionCard.addProperty("status", status);
+        questionCard.add("questions", normalizedQuestions);
+        questionCard.add("answers", answersObj);
+        block.add("questionCard", questionCard);
     }
 
     private static String string(JsonObject obj, String key) {

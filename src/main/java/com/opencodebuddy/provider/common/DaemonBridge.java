@@ -462,29 +462,39 @@ public class DaemonBridge {
      * Also completes all pending request futures so Java-side blocking calls unblock.
      */
     public void sendAbort() {
+        sendAbort(null);
+    }
+
+    /**
+     * Send an abort command to cancel requests. When {@code sessionId} is non-null,
+     * only aborts the turn for that specific session on the daemon side and leaves other
+     * sessions' in-flight requests intact.
+     */
+    public void sendAbort(String sessionId) {
         DaemonGenerationContext context = daemonContext;
-        // Send abort command to daemon so it stops the active SDK query
         try {
             if (context != null && context.isActive()) {
                 JsonObject abort = new JsonObject();
                 abort.addProperty("id", "abort-" + System.currentTimeMillis());
                 abort.addProperty("method", "abort");
+                if (sessionId != null && !sessionId.isEmpty()) {
+                    JsonObject params = new JsonObject();
+                    params.addProperty("sessionId", sessionId);
+                    abort.add("params", params);
+                }
                 synchronized (context.stdin) {
                     context.stdin.write(abort.toString());
                     context.stdin.newLine();
                     context.stdin.flush();
                 }
-                LOG.info("[DaemonBridge] Sent abort command");
+                LOG.info("[DaemonBridge] Sent abort command" + (sessionId != null ? " for session=" + sessionId : ""));
             }
         } catch (IOException e) {
             LOG.debug("[DaemonBridge] Error sending abort command: " + e.getMessage());
         }
 
-        // Complete all pending request futures so Java-side callers unblock.
-        // Use onComplete(false) instead of onError() so that user-initiated aborts
-        // are treated as a normal (unsuccessful) completion rather than an error,
-        // matching the graceful handling that Codex uses.
-        if (context != null) {
+        // Only drain all requests when aborting everything (no specific session target)
+        if (context != null && (sessionId == null || sessionId.isEmpty())) {
             for (RequestHandler handler : context.drainRequests()) {
                 handler.onAbort();
             }

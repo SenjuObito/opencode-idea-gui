@@ -106,6 +106,22 @@ public class OpencodeSession {
         default void onStatusMessage(String message) {
         }
 
+        /**
+         * The server is retrying the current turn (rate limit / quota) and has
+         * told us why.
+         *
+         * <p>opencode emits {@code session.status} with {@code type=retry}
+         * together with a human-readable {@code message} and an {@code action}
+         * ({@code reason}, {@code title}, {@code message}, {@code label},
+         * {@code link}). Without surfacing it the only thing the user ever sees
+         * is the generic local 180s timeout minutes later, with no hint that the
+         * free tier or account quota is the actual cause.</p>
+         *
+         * @param jsonContent structured payload, always a JSON object literal
+         */
+        default void onRetryStatus(String jsonContent) {
+        }
+
         void onSessionIdReceived(String sessionId);
 
         void onPermissionRequested(PermissionRequest request);
@@ -652,6 +668,13 @@ public class OpencodeSession {
      * Send a shell command in the session context (opencode `!` semantics).
      */
     public CompletableFuture<Void> sendShell(String command) {
+        return sendShell(null, command);
+    }
+
+    /**
+     * Send a shell command with a specific user-visible display prompt.
+     */
+    public CompletableFuture<Void> sendShell(String displayPrompt, String command) {
         lastTurnStartedAtMillis = System.currentTimeMillis();
         manuallyInterrupted = false;
         String normalizedCommand = (command != null) ? command.trim() : "";
@@ -659,8 +682,12 @@ public class OpencodeSession {
             return CompletableFuture.completedFuture(null);
         }
 
-        Message userMessage = new Message(Message.Type.USER, "!" + normalizedCommand);
-        sendService.updateSessionStateForSend(userMessage, "!" + normalizedCommand);
+        String effectivePrompt = (displayPrompt != null && !displayPrompt.trim().isEmpty())
+                ? displayPrompt.trim()
+                : "!" + normalizedCommand;
+
+        Message userMessage = new Message(Message.Type.USER, effectivePrompt);
+        sendService.updateSessionStateForSend(userMessage, effectivePrompt);
 
         return launchClaude().thenCompose(chId ->
                 sendService.sendShellToOpenCode(chId, normalizedCommand)
@@ -691,9 +718,16 @@ public class OpencodeSession {
             return CompletableFuture.completedFuture(null);
         }
 
+        // The abort must target the opencode session id (`ses_*`), not the local
+        // channel UUID — the daemon passes this value straight to `sdk.abort()`,
+        // and opencode rejects non-`ses_` ids with
+        // `Expected a string starting with "ses"`, leaving the server-side turn
+        // retrying forever while the UI already cleared its loading state.
+        String sessionId = state.getSessionId();
+
         return CompletableFuture.runAsync(() -> {
             try {
-                providerRouter.interruptChannel(provider, channelId);
+                providerRouter.interruptChannel(provider, channelId, sessionId);
                 if (!isCurrentChannel(provider, channelId)) {
                     return;
                 }

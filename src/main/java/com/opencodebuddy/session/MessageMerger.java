@@ -94,6 +94,12 @@ public class MessageMerger {
                     baseContent.set(idx, elementCopy);
                     continue;
                 } else if (key != null) {
+                    int semanticMatchIdx = findMatchingToolUseIndex(baseContent, block);
+                    if (semanticMatchIdx >= 0) {
+                        baseContent.set(semanticMatchIdx, elementCopy);
+                        indexByKey.put(key, semanticMatchIdx);
+                        continue;
+                    }
                     baseContent.add(elementCopy);
                     indexByKey.put(key, baseContent.size() - 1);
                     continue;
@@ -152,6 +158,73 @@ public class MessageMerger {
             return "tool_result:" + block.get("tool_use_id").getAsString();
         }
 
+        return null;
+    }
+
+    private int findMatchingToolUseIndex(JsonArray baseContent, JsonObject incomingBlock) {
+        String incomingType = getContentBlockType(incomingBlock);
+        if (!"tool_use".equals(incomingType)) {
+            return -1;
+        }
+        String incomingName = normalizeToolName(incomingBlock.has("name") && incomingBlock.get("name").isJsonPrimitive()
+                ? incomingBlock.get("name").getAsString() : "");
+        JsonObject incomingInput = incomingBlock.has("input") && incomingBlock.get("input").isJsonObject()
+                ? incomingBlock.getAsJsonObject("input") : new JsonObject();
+        String incomingCommand = extractToolCommand(incomingInput);
+
+        for (int i = 0; i < baseContent.size(); i++) {
+            JsonElement el = baseContent.get(i);
+            if (!el.isJsonObject()) continue;
+            JsonObject existing = el.getAsJsonObject();
+            if (!"tool_use".equals(getContentBlockType(existing))) continue;
+            String existingName = normalizeToolName(existing.has("name") && existing.get("name").isJsonPrimitive()
+                    ? existing.get("name").getAsString() : "");
+            if (!incomingName.equals(existingName)) continue;
+
+            JsonObject existingInput = existing.has("input") && existing.get("input").isJsonObject()
+                    ? existing.getAsJsonObject("input") : new JsonObject();
+
+            // 1. 完全相同的 input
+            if (incomingInput.toString().equals(existingInput.toString())) {
+                return i;
+            }
+
+            // 2. 旧块 input 为空，新块有完整 input（参数晋级原地替换）
+            if (existingInput.size() == 0 && incomingInput.size() > 0) {
+                return i;
+            }
+
+            // 3. 针对 bash/shell 工具，如果两者的 command 匹配（或其中一个尚未解析 command）
+            if ("bash".equals(incomingName)) {
+                String existingCommand = extractToolCommand(existingInput);
+                if (existingCommand != null && existingCommand.equals(incomingCommand)) {
+                    return i;
+                }
+                if (existingCommand == null || existingCommand.isEmpty() || incomingCommand == null || incomingCommand.isEmpty()) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static String normalizeToolName(String name) {
+        if (name == null) return "";
+        String trimmed = name.trim();
+        if ("shell".equalsIgnoreCase(trimmed)) {
+            return "bash";
+        }
+        return trimmed;
+    }
+
+    private static String extractToolCommand(JsonObject input) {
+        if (input == null) return null;
+        if (input.has("command") && input.get("command").isJsonPrimitive()) {
+            return input.get("command").getAsString();
+        }
+        if (input.has("cmd") && input.get("cmd").isJsonPrimitive()) {
+            return input.get("cmd").getAsString();
+        }
         return null;
     }
 

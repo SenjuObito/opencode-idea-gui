@@ -33,6 +33,46 @@ public class WebviewEventQueueTest {
     }
 
     @Test
+    public void mergesAdjacentContentDeltasWithTargetSessionIdWithoutCorruptingSessionId() {
+        AtomicReference<Object> browser = new AtomicReference<>(new Object());
+        AtomicBoolean disposed = new AtomicBoolean();
+        List<Runnable> scheduled = new ArrayList<>();
+        List<String> scripts = new ArrayList<>();
+        WebviewEventQueue<Object> queue = newQueue(browser, disposed, scheduled, scripts);
+
+        queue.enqueue("onContentDelta", "ses_123", "Hello ");
+        queue.enqueue("onContentDelta", "ses_123", "World!");
+
+        assertEquals(1, scheduled.size());
+        scheduled.remove(0).run();
+
+        assertEquals(1, scripts.size());
+        assertTrue(scripts.get(0).contains("window.onContentDelta('ses_123', 'Hello World!')"));
+        assertFalse(scripts.get(0).contains("ses_123ses_123"));
+        queue.dispose();
+    }
+
+    @Test
+    public void doesNotMergeDeltasOfDifferentSessions() {
+        AtomicReference<Object> browser = new AtomicReference<>(new Object());
+        AtomicBoolean disposed = new AtomicBoolean();
+        List<Runnable> scheduled = new ArrayList<>();
+        List<String> scripts = new ArrayList<>();
+        WebviewEventQueue<Object> queue = newQueue(browser, disposed, scheduled, scripts);
+
+        queue.enqueue("onContentDelta", "ses_1", "part1");
+        queue.enqueue("onContentDelta", "ses_2", "part2");
+
+        assertEquals(1, scheduled.size());
+        scheduled.remove(0).run();
+
+        assertEquals(1, scripts.size());
+        assertTrue(scripts.get(0).contains("window.onContentDelta('ses_1', 'part1')"));
+        assertTrue(scripts.get(0).contains("window.onContentDelta('ses_2', 'part2')"));
+        queue.dispose();
+    }
+
+    @Test
     public void mergesTailLatestOnlyEvents() {
         AtomicReference<Object> browser = new AtomicReference<>(new Object());
         AtomicBoolean disposed = new AtomicBoolean();

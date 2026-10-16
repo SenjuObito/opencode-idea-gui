@@ -72,6 +72,12 @@ interface Window {
   updateStatus?: (arg0: string, arg1?: string) => void;
 
   /**
+   * Report a server-side retry (rate limit / quota) for the running turn.
+   * Payload is a JSON object: { sessionID, type, message, attempt, next, action }.
+   */
+  updateRetryStatus?: (arg0?: string, arg1?: string) => void;
+
+  /**
    * Show loading indicator
    */
   showLoading?: (arg0: string | boolean, arg1?: string | boolean) => void;
@@ -829,6 +835,7 @@ interface Window {
    * Set to true during new session creation to prevent stale callbacks from writing old messages via updateMessages.
    */
   __sessionTransitioning?: boolean;
+  __sessionTransitionTargetSessionId?: string | null;
 
   /**
    * Session transition token (debug/logging only).
@@ -904,7 +911,10 @@ interface Window {
   __pendingUpdateRaf?: number | null;
   __pendingUpdateJson?: string | null;
   __pendingUpdateSequence?: number | null;
+  /** Global fallback minimum accepted update sequence. Kept for backward compatibility. */
   __minAcceptedUpdateSequence?: number;
+  /** Per-session minimum accepted update sequence map, isolating sequence counters between sessions. */
+  __sessionMinAcceptedUpdateSequence?: Map<string, number> | Record<string, number>;
   /** Number of paged history messages prepended ahead of the backend session snapshot. */
   __prependedHistoryMessageCount?: number;
   /** Backend index represented by the first non-prepended message; zero means its full prefix is present. */

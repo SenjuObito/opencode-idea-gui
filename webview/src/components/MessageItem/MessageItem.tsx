@@ -305,11 +305,74 @@ export function groupBlocks(blocks: ClaudeContentBlock[]): GroupedBlock[] {
     }
   };
 
+  const deduplicateBashBlocks = (rawBlocks: ClaudeContentBlock[]): ClaudeContentBlock[] => {
+    if (rawBlocks.length <= 1) return rawBlocks;
+    const result: ClaudeContentBlock[] = [];
+    let emptyInputBlockIdx = -1;
+
+    for (const b of rawBlocks) {
+      if (b.type !== 'tool_use') {
+        result.push(b);
+        continue;
+      }
+      const toolId = b.id || '';
+      const input = (b.input && typeof b.input === 'object') ? (b.input as Record<string, unknown>) : {};
+      const cmd = typeof input.command === 'string' ? input.command.trim() : (typeof input.cmd === 'string' ? input.cmd.trim() : '');
+      const hasInput = Object.keys(input).length > 0;
+
+      // 检查是否已有相同 toolId
+      const sameIdIdx = toolId ? result.findIndex((existing) => existing.type === 'tool_use' && existing.id === toolId) : -1;
+      if (sameIdIdx >= 0) {
+        const existing = result[sameIdIdx];
+        const existingInput = (existing.type === 'tool_use' && existing.input && typeof existing.input === 'object')
+          ? (existing.input as Record<string, unknown>)
+          : {};
+        if (Object.keys(input).length >= Object.keys(existingInput).length) {
+          result[sameIdIdx] = b;
+        }
+        continue;
+      }
+
+      // 检查是否已有相同 command
+      if (cmd) {
+        const sameCmdIdx = result.findIndex((existing) => {
+          if (existing.type !== 'tool_use') return false;
+          const exInput = (existing.input && typeof existing.input === 'object') ? (existing.input as Record<string, unknown>) : {};
+          const exCmd = typeof exInput.command === 'string' ? exInput.command.trim() : (typeof exInput.cmd === 'string' ? exInput.cmd.trim() : '');
+          return exCmd === cmd;
+        });
+        if (sameCmdIdx >= 0) {
+          const existing = result[sameCmdIdx];
+          const existingInput = (existing.type === 'tool_use' && existing.input && typeof existing.input === 'object')
+            ? (existing.input as Record<string, unknown>)
+            : {};
+          if (Object.keys(input).length >= Object.keys(existingInput).length) {
+            result[sameCmdIdx] = b;
+          }
+          continue;
+        }
+
+        // 如果存在之前 input 为空的占位 bash 块，原地晋级替换
+        if (emptyInputBlockIdx >= 0) {
+          result[emptyInputBlockIdx] = b;
+          emptyInputBlockIdx = -1;
+          continue;
+        }
+      } else if (!hasInput) {
+        emptyInputBlockIdx = result.length;
+      }
+
+      result.push(b);
+    }
+    return result;
+  };
+
   const flushBashGroup = () => {
     if (currentBashGroup.length > 0) {
+      const deduped = deduplicateBashBlocks(currentBashGroup);
       groupedBlocks.push({
         type: 'bash_group',
-        blocks: [...currentBashGroup],
+        blocks: deduped,
         startIndex: bashGroupStartIndex,
       });
       currentBashGroup = [];

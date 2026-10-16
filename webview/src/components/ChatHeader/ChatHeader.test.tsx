@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatHeader } from './ChatHeader';
 import type { SessionTabData } from './types';
@@ -110,5 +110,34 @@ describe('ChatHeader', () => {
 
     fireEvent.click(exportBtn);
     expect(onExportTab).toHaveBeenCalledWith(expect.objectContaining({ id: 'tab-1' }));
+  });
+
+  it('triggers onReorderTabs after long-press and drag', () => {
+    vi.useFakeTimers();
+    const onReorderTabs = vi.fn();
+    render(<ChatHeader {...defaultProps} onReorderTabs={onReorderTabs} />);
+
+    const tab1 = screen.getByText('Tab 1');
+    const tab2 = screen.getByText('Tab 2');
+
+    vi.spyOn(tab1.parentElement!, 'getBoundingClientRect').mockReturnValue({
+      left: 10, right: 100, width: 90, top: 0, bottom: 30, height: 30, x: 10, y: 0, toJSON: () => {},
+    });
+    vi.spyOn(tab2.parentElement!, 'getBoundingClientRect').mockReturnValue({
+      left: 110, right: 200, width: 90, top: 0, bottom: 30, height: 30, x: 110, y: 0, toJSON: () => {},
+    });
+
+    fireEvent.mouseDown(tab1.parentElement!, { clientX: 20, clientY: 10, button: 0 });
+    act(() => {
+      vi.advanceTimersByTime(260);
+    });
+
+    act(() => {
+      fireEvent.mouseMove(document, { clientX: 180, clientY: 10 });
+      fireEvent.mouseUp(document);
+    });
+
+    expect(onReorderTabs).toHaveBeenCalledWith(0, 1);
+    vi.useRealTimers();
   });
 });

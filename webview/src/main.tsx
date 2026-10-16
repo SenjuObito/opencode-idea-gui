@@ -5,6 +5,7 @@ import './vscodeBridge';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+import { onRetryStatusFromHost } from './components/RetryStatusBar';
 import { MessagesProvider } from './contexts/MessagesContext';
 import { SessionProvider } from './contexts/SessionContext';
 import { UIStateProvider } from './contexts/UIStateContext';
@@ -481,6 +482,13 @@ if (typeof window !== 'undefined' && !window.showLoading) {
   window.showLoading = (value: string | boolean) => {
     window.__pendingLoadingState = value === true || value === 'true';
   };
+}
+
+// Register the retry/quota notice sink once, at module scope. It must exist even
+// when no chat view is mounted (the host emits it during a running turn), and it
+// feeds a module-level buffer that RetryStatusBar hydrates from on mount.
+if (typeof window !== 'undefined') {
+  window.updateRetryStatus = onRetryStatusFromHost;
 }
 
 // Pre-register addUserMessage to handle backend-inserted user messages before React initializes

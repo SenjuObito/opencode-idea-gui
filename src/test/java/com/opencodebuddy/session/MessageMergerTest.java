@@ -314,4 +314,38 @@ public class MessageMergerTest {
         assertEquals(1, mergedContent.size());
         assertEquals("full answer", mergedContent.get(0).getAsJsonObject().get("text").getAsString());
     }
+
+    @Test
+    public void mergeAssistantMessageReplacesShellToolUseWithBashAndDoesNotDuplicate() {
+        MessageMerger merger = new MessageMerger();
+
+        JsonObject emptyInput = new JsonObject();
+        JsonObject existingRaw = assistantMessage(
+                toolUseBlockWithInput("call_shell_1", "bash", emptyInput)
+        );
+
+        JsonObject fullInput = new JsonObject();
+        fullInput.addProperty("command", "pwd");
+        JsonObject newRaw = assistantMessage(
+                toolUseBlockWithInput("prt_shell_1", "shell", fullInput)
+        );
+
+        JsonArray mergedContent = merger.mergeAssistantMessage(existingRaw, newRaw)
+                .getAsJsonObject("message")
+                .getAsJsonArray("content");
+
+        assertEquals(1, mergedContent.size());
+        JsonObject mergedBlock = mergedContent.get(0).getAsJsonObject();
+        assertEquals("tool_use", mergedBlock.get("type").getAsString());
+        assertEquals("pwd", mergedBlock.getAsJsonObject("input").get("command").getAsString());
+    }
+
+    private static JsonObject toolUseBlockWithInput(String id, String name, JsonObject input) {
+        JsonObject block = new JsonObject();
+        block.addProperty("type", "tool_use");
+        block.addProperty("id", id);
+        block.addProperty("name", name);
+        block.add("input", input);
+        return block;
+    }
 }

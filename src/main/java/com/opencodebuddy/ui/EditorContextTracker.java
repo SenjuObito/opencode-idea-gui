@@ -1,6 +1,5 @@
 package com.opencodebuddy.ui;
 
-import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.util.IgnoreRuleMatcher;
 import com.opencodebuddy.util.JsUtils;
 import com.intellij.openapi.application.ApplicationManager;
@@ -146,23 +145,6 @@ public class EditorContextTracker {
         ApplicationManager.getApplication().invokeLater(() -> {
             if (disposed) { return; }
 
-            // Check if auto-open file is enabled
-            try {
-                String projectPath = project.getBasePath();
-                if (projectPath != null) {
-                    OpenCodeBuddySettingsService settingsService =
-                        new OpenCodeBuddySettingsService();
-                    boolean autoOpenFileEnabled = settingsService.getAutoOpenFileEnabled(projectPath);
-                    if (!autoOpenFileEnabled) {
-                        // If auto-open file is disabled, clear the ContextBar display
-                        callback.clearSelectionInfo();
-                        return;
-                    }
-                }
-            } catch (Exception e) {
-                LOG.warn("Failed to check autoOpenFileEnabled: " + e.getMessage());
-            }
-
             try {
                 FileEditorManager editorManager = FileEditorManager.getInstance(project);
                 Editor editor = editorManager.getSelectedTextEditor();
@@ -221,6 +203,20 @@ public class EditorContextTracker {
                 LOG.warn("Failed to update context info: " + e.getMessage());
             }
         });
+    }
+
+    public void setActiveTabAutoOpenFile(boolean enabled) {
+        // No-op: EditorContextTracker is decoupled from tab-level auto open settings.
+    }
+
+    public void refreshCurrentEditorContext() {
+        if (disposed) return;
+        ApplicationManager.getApplication().invokeLater(this::updateContextInfo);
+    }
+
+    public void clearSelectionInfo() {
+        if (disposed) return;
+        ApplicationManager.getApplication().invokeLater(callback::clearSelectionInfo);
     }
 
     /**

@@ -43,6 +43,17 @@ public class CallbackHandler {
     }
 
     /**
+     * Notify of a server-side retry (rate limit / quota) while a turn runs.
+     *
+     * @param jsonContent structured payload: message / attempt / next / action
+     */
+    public void notifyRetryStatus(String jsonContent) {
+        if (callback != null) {
+            callback.onRetryStatus(jsonContent);
+        }
+    }
+
+    /**
      * Notify that a session ID was received.
      */
     public void notifySessionIdReceived(String sessionId) {

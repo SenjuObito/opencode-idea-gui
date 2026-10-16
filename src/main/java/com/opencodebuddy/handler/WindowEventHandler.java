@@ -21,7 +21,8 @@ public class WindowEventHandler extends BaseMessageHandler {
         "history_render_complete", "surface_damage_applied",
         "refresh_slash_commands",
         "fork_session", "share_session", "unshare_session",
-        "revert_session", "unrevert_session", "compact_session"
+        "revert_session", "unrevert_session", "compact_session",
+        "refresh_editor_context"
     };
 
     /**
@@ -39,6 +40,7 @@ public class WindowEventHandler extends BaseMessageHandler {
         void onHistoryRenderComplete(long commitEpoch);
         void onSurfaceDamageApplied(String token, String phase, boolean applied);
         void onRefreshSlashCommands();
+        default void onRefreshEditorContext(boolean enabled) {}
     }
 
     private final Callback callback;
@@ -102,9 +104,26 @@ public class WindowEventHandler extends BaseMessageHandler {
             case "compact_session":
                 handleCompactSession(content);
                 return true;
+            case "refresh_editor_context":
+                handleRefreshEditorContext(content);
+                return true;
             default:
                 return false;
         }
+    }
+
+    private void handleRefreshEditorContext(String content) {
+        boolean enabled = true;
+        if (content != null && !content.isEmpty()) {
+            try {
+                com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseString(content).getAsJsonObject();
+                if (obj.has("enabled")) {
+                    enabled = obj.get("enabled").getAsBoolean();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        callback.onRefreshEditorContext(enabled);
     }
 
 

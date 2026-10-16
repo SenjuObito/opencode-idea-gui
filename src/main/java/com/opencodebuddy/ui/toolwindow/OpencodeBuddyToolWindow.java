@@ -1,6 +1,5 @@
 package com.opencodebuddy.ui.toolwindow;
 
-import com.opencodebuddy.action.tab.CreateNewTabAction;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.settings.TabStateService;
@@ -58,37 +57,16 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
         return instances.get(project);
     }
 
+    public static String getDefaultTabName() {
+        return OpenCodeBuddyBundle.message("tab.defaultName");
+    }
+
     public static String getDefaultTabName(int index) {
-        return OpenCodeBuddyBundle.message("tab.defaultName", index);
+        return getDefaultTabName();
     }
 
     public static String getNextTabName(ToolWindow toolWindow) {
-        if (toolWindow == null) {
-            return getDefaultTabName(1);
-        }
-
-        ContentManager contentManager = toolWindow.getContentManager();
-        int maxNumber = 0;
-
-        for (Content content : contentManager.getContents()) {
-            String displayName = content.getDisplayName();
-            if (displayName == null) {
-                continue;
-            }
-            // Extract the numeric part so status suffixes like "..." (answering) or "(completed)" still count.
-            java.util.regex.Matcher matcher = TAB_NAME_PATTERN.matcher(displayName);
-            if (matcher.find()) {
-                try {
-                    int number = Integer.parseInt(matcher.group(1));
-                    if (number > maxNumber) {
-                        maxNumber = number;
-                    }
-                } catch (NumberFormatException ignored) {
-                }
-            }
-        }
-
-        return getDefaultTabName(maxNumber + 1);
+        return getDefaultTabName();
     }
 
     static void registerWindow(Project project, OpencodeBuddyChatWindow window) {
@@ -269,7 +247,6 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
 
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
-        toolWindow.setTitleActions(java.util.List.of(new CreateNewTabAction()));
         registerShutdownHook();
 
         // 开屏一定是新会话：先丢掉上次的标签布局与每标签会话绑定，避免任何残留
@@ -285,7 +262,7 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
         } else {
             LOG.info("[ToolWindow] ai-bridge not ready, showing loading panel");
             JPanel loadingPanel = createLoadingPanel();
-            Content loadingContent = contentFactory.createContent(loadingPanel, getDefaultTabName(1), false);
+            Content loadingContent = contentFactory.createContent(loadingPanel, getDefaultTabName(), false);
             contentManager.addContent(loadingContent);
 
             ApplicationManager.getApplication().executeOnPooledThread(() -> {
@@ -461,7 +438,7 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
             Content loadingContent
     ) {
         OpencodeBuddyChatWindow firstChatWindow = new OpencodeBuddyChatWindow(project, false);
-        String firstTabName = getDefaultTabName(1);
+        String firstTabName = getDefaultTabName();
 
         loadingContent.setComponent(firstChatWindow.getContent());
         loadingContent.setDisplayName(firstTabName);
@@ -489,7 +466,7 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
             ContentManager contentManager
     ) {
         OpencodeBuddyChatWindow chatWindow = new OpencodeBuddyChatWindow(project, false);
-        String tabName = getDefaultTabName(1);
+        String tabName = getDefaultTabName();
 
         Content content = contentFactory.createContent(chatWindow.getContent(), tabName, false);
         content.setDisposer(chatWindow::dispose);

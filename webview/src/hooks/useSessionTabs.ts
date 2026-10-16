@@ -6,6 +6,7 @@ import type { SessionTabData } from '../components/ChatHeader/types';
 import type { ModelInfo, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { getFirstPreferredModelId, resolveSessionModel } from '../components/ChatInputBox/modelSelectUtils';
 import { sendBridgeEvent } from '../utils/bridge';
+import { clearSessionSequenceBarrier } from './windowCallbacks/sequenceBarrier';
 
 interface UseSessionTabsOptions {
   currentSessionId: string | null;
@@ -63,11 +64,13 @@ interface UseSessionTabsOptions {
   defaultAutoOpenFileEnabled?: boolean;
   forceCreateNewSession: () => void;
   loadHistorySession: (sessionId: string) => void;
+  currentSessionIdRef?: React.RefObject<string | null>;
   t: TFunction;
 }
 
 export function useSessionTabs({
   currentSessionId,
+  currentSessionIdRef,
   setCurrentSessionId,
   sessionTitle,
   setCustomSessionTitle,
@@ -305,10 +308,20 @@ export function useSessionTabs({
 
   const isActiveSession = useCallback((sessionId: string | null | undefined): boolean => {
     if (!sessionId) return false;
+    if (currentSessionIdRef?.current && currentSessionIdRef.current === sessionId) return true;
     const currentActive = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
     if (!currentActive) return false;
-    return currentActive.sessionId === sessionId || currentActive.id === sessionId;
-  }, []);
+    if (currentActive.sessionId === sessionId || currentActive.id === sessionId) return true;
+    // If active tab is a new session (not yet bound to a sessionId), and no other tab claims it,
+    // it belongs to the active tab (e.g. initial streaming before setSessionId arrives).
+    if (!currentActive.sessionId) {
+      const isClaimedByOtherTab = tabsRef.current.some((t) => t.id !== currentActive.id && t.sessionId === sessionId);
+      if (!isClaimedByOtherTab) {
+        return true;
+      }
+    }
+    return false;
+  }, [currentSessionIdRef]);
 
   const updateBackgroundTab = useCallback((
     predicate: (tab: SessionTabData) => boolean,
@@ -446,9 +459,13 @@ export function useSessionTabs({
       const targetTab = tabsRef.current.find((t) => t.id === targetTabId);
       if (!targetTab) return;
 
+      activeTabIdRef.current = targetTabId;
       setActiveTabId(targetTabId);
 
       // Restore target tab's snapshot into active view
+      if (currentSessionIdRef) {
+        currentSessionIdRef.current = targetTab.sessionId;
+      }
       setCurrentSessionId?.(targetTab.sessionId);
       setCustomSessionTitle(targetTab.title || null);
       setMessages(targetTab.messages || []);
@@ -483,8 +500,12 @@ export function useSessionTabs({
         sendBridgeEvent('set_model', resolvedModel);
       }
 
-      // Restore contextInfo
-      setContextInfo?.(targetTab.contextInfo ?? null);
+      // Restore contextInfo if target tab has a specific snapshot
+      const isAutoOpen = targetTab.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
+      sendBridgeEvent('refresh_editor_context', JSON.stringify({ tabId: targetTab.id, enabled: isAutoOpen }));
+      if (targetTab.contextInfo) {
+        setContextInfo?.(targetTab.contextInfo);
+      }
 
       // Restore turnStartedAt & usage tracking to prevent cross-session pollution
       const targetTurnStartedAt = targetTab.turnStartedAt ?? null;
@@ -584,25 +605,28 @@ export function useSessionTabs({
 
       if (isCurrentEmptyDraft && currentActive) {
         // Reuse current blank draft tab
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === currentActive.id
-              ? {
-                  ...t,
-                  sessionId,
-                  title: resolvedTitle,
-                  pendingPermissions: [],
-                  pendingQuestions: [],
-                  selectedModel: resolvedModel,
-                  permissionMode: resolvedMode,
-                  reasoningEffort: resolvedEffort,
-                  filteredFileChanges: [],
-                  contextInfo: null,
-                  autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
-                }
-              : t
-          )
+        const updatedTabs = tabsRef.current.map((t) =>
+          t.id === currentActive.id
+            ? {
+                ...t,
+                sessionId,
+                title: resolvedTitle,
+                pendingPermissions: [],
+                pendingQuestions: [],
+                selectedModel: resolvedModel,
+                permissionMode: resolvedMode,
+                reasoningEffort: resolvedEffort,
+                filteredFileChanges: [],
+                contextInfo: null,
+                autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
+              }
+            : t
         );
+        tabsRef.current = updatedTabs;
+        setTabs(updatedTabs);
+        if (currentSessionIdRef) {
+          currentSessionIdRef.current = sessionId;
+        }
         setCurrentSessionId?.(sessionId);
         setCustomSessionTitle(resolvedTitle);
       } else {
@@ -628,8 +652,14 @@ export function useSessionTabs({
           contextInfo: null,
         };
 
-        setTabs((prev) => [...prev, newTab]);
+        const updatedTabs = [...tabsRef.current, newTab];
+        tabsRef.current = updatedTabs;
+        activeTabIdRef.current = newId;
+        setTabs(updatedTabs);
         setActiveTabId(newId);
+        if (currentSessionIdRef) {
+          currentSessionIdRef.current = sessionId;
+        }
         setCurrentSessionId?.(sessionId);
         setCustomSessionTitle(resolvedTitle);
       }
@@ -656,7 +686,6 @@ export function useSessionTabs({
       sendBridgeEvent('set_mode', resolvedMode);
       setReasoningEffort?.(resolvedEffort);
       sendBridgeEvent('set_reasoning_effort', resolvedEffort);
-      setContextInfo?.(null);
 
       // Reset timer & usage for newly opened history session
       setLoadingStartTime?.(null);
@@ -754,8 +783,14 @@ export function useSessionTabs({
       contextInfo: null,
     };
 
-    setTabs((prev) => [...prev, newTab]);
+    const updatedTabs = [...tabsRef.current, newTab];
+    tabsRef.current = updatedTabs;
+    activeTabIdRef.current = newId;
+    setTabs(updatedTabs);
     setActiveTabId(newId);
+    if (currentSessionIdRef) {
+      currentSessionIdRef.current = null;
+    }
     setCurrentSessionId?.(null);
     setCustomSessionTitle(null);
     setMessages([]);
@@ -780,7 +815,6 @@ export function useSessionTabs({
     sendBridgeEvent('set_mode', 'default');
     setReasoningEffort?.('medium');
     sendBridgeEvent('set_reasoning_effort', 'medium');
-    setContextInfo?.(null);
 
     // Reset turn timer & usage metrics for new tab
     setLoadingStartTime?.(null);
@@ -838,6 +872,7 @@ export function useSessionTabs({
       }
       if (closingTab?.sessionId) {
         sendBridgeEvent('close_session', JSON.stringify({ sessionId: closingTab.sessionId }));
+        clearSessionSequenceBarrier(closingTab.sessionId);
       }
 
       setTabs((prev) => {
@@ -882,7 +917,6 @@ export function useSessionTabs({
           sendBridgeEvent('set_mode', 'default');
           setReasoningEffort?.('medium');
           sendBridgeEvent('set_reasoning_effort', 'medium');
-          setContextInfo?.(null);
           setLoadingStartTime?.(null);
           window.__turnStartedAt = undefined;
           setUsagePercentage?.(0);
@@ -897,7 +931,11 @@ export function useSessionTabs({
           const closedIndex = prev.findIndex((t) => t.id === tabId);
           const nextActive = nextTabs[Math.max(0, closedIndex - 1)];
           if (nextActive) {
+            activeTabIdRef.current = nextActive.id;
             setActiveTabId(nextActive.id);
+            if (currentSessionIdRef) {
+              currentSessionIdRef.current = nextActive.sessionId;
+            }
             setCurrentSessionId?.(nextActive.sessionId);
             setCustomSessionTitle(nextActive.title || null);
             setMessages(nextActive.messages || []);
@@ -931,7 +969,9 @@ export function useSessionTabs({
               sendBridgeEvent('set_model', resolvedModel);
             }
 
-            setContextInfo?.(nextActive.contextInfo ?? null);
+            if (nextActive.contextInfo) {
+              setContextInfo?.(nextActive.contextInfo);
+            }
 
             // Restore turnStartedAt & usage tracking for the switched active tab
             const nextTurnStartedAt = nextActive.turnStartedAt ?? null;
@@ -1042,6 +1082,21 @@ export function useSessionTabs({
         return tab;
       })
     );
+    sendBridgeEvent('refresh_editor_context', JSON.stringify({ tabId: activeTabIdRef.current, enabled }));
+  }, []);
+
+  // Reorder tabs (supports long-press drag and drop reordering)
+  const reorderTabs = useCallback((sourceIndex: number, targetIndex: number) => {
+    if (sourceIndex === targetIndex) return;
+    setTabs((prev) => {
+      if (sourceIndex < 0 || sourceIndex >= prev.length || targetIndex < 0 || targetIndex >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
   }, []);
 
   return {
@@ -1052,6 +1107,7 @@ export function useSessionTabs({
     closeTab,
     renameTab,
     forkTab,
+    reorderTabs,
     openSessionInTab,
     activeTabAutoOpenFileEnabled,
     setActiveTabAutoOpenFileEnabled,

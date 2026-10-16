@@ -3498,6 +3498,13 @@ public class OpencodeBuddyChatWindow {
             public void closeSession(String targetSessionId) {
                 OpencodeBuddyChatWindow.this.closeSession(targetSessionId);
             }
+
+            @Override
+            public void onRefreshEditorContext(boolean enabled) {
+                if (!disposed && editorContextTracker != null) {
+                    editorContextTracker.refreshCurrentEditorContext();
+                }
+            }
         };
     }
 }

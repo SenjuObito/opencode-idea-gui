@@ -475,6 +475,33 @@ public class SessionState {
     }
 
     /**
+     * Reflect a late-arriving turn failure in the transcript.
+     *
+     * <p>When the local 180s timeout already reported the failure, this
+     * correction must rewrite that row instead of appending another one — two
+     * error bubbles for a single failed turn reads as two failures. When no
+     * trailing error row exists (the late server error is not always preceded by
+     * a local timeout), one is appended.</p>
+     *
+     * @param message the authoritative error text
+     * @return {@code true} when an existing trailing error row was rewritten
+     */
+    public boolean replaceLastErrorMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        int last = messages.size() - 1;
+        if (last >= 0 && messages.get(last).type == OpencodeSession.Message.Type.ERROR) {
+            OpencodeSession.Message target = messages.get(last);
+            target.content = message;
+            target.timestamp = System.currentTimeMillis();
+            return true;
+        }
+        messages.add(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, message));
+        return false;
+    }
+
+    /**
      * Update the last modified time to the current time.
      */
     public void updateLastModifiedTime() {

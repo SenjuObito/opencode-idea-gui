@@ -174,11 +174,30 @@ public class SessionLifecycleManager {
 
         OpencodeSession existingSession = host.getSession(sessionId);
         if (existingSession != null && sessionId.equals(existingSession.getSessionId())) {
-            LOG.info("Session " + sessionId + " already exists in pool, switching to it");
+            LOG.info("Session " + sessionId + " already exists in pool, restoring to frontend: " + sessionId);
             if (model != null && !model.trim().isEmpty()) {
                 existingSession.setModel(model.trim());
             }
             host.switchSession(sessionId);
+
+            StreamMessageCoalescer coalescer = host.getStreamCoalescer(sessionId);
+            if (coalescer == null) {
+                coalescer = host.getStreamCoalescer();
+            }
+            long clearBarrierSeq = (coalescer != null) ? coalescer.resetStreamState() : 0L;
+            host.callJavaScript("clearMessages", sessionId, String.valueOf(clearBarrierSeq));
+
+            final StreamMessageCoalescer coalescerToFlush = coalescer;
+            existingSession.loadFromServer().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
+                completeHistoryLoadAfterCoalescerFlush(sessionId, existingSession, coalescerToFlush);
+            })).exceptionally(ex -> {
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    host.callJavaScript("historyLoadComplete", sessionId);
+                    host.callJavaScript("addErrorMessage", sessionId,
+                            JsUtils.escapeJs("Failed to load session: " + ex.getMessage()));
+                });
+                return null;
+            });
             return;
         }
 
@@ -221,6 +240,13 @@ public class SessionLifecycleManager {
             newSession.setCallback(newAdapter);
         }
 
+        String effectiveDir = determineWorkingDirectory();
+        String nodePath = NodeDetector.getInstance().getCachedNodePath();
+        String workingDir = (projectPath != null && !projectPath.isEmpty())
+                                ? projectPath
+                                : (NodeDetector.isWslPath(nodePath) ? NodeDetector.convertToWslPath(effectiveDir) : effectiveDir);
+        newSession.setSessionInfo(sessionId, workingDir);
+
         host.registerSession(sessionId, newSession, newAdapter, newCoalescer);
         host.switchSession(sessionId);
         if (host.getHandlerContext() != null) {
@@ -229,13 +255,6 @@ public class SessionLifecycleManager {
 
         long clearBarrierSeq = (newCoalescer != null) ? newCoalescer.resetStreamState() : 0L;
         host.callJavaScript("clearMessages", sessionId, String.valueOf(clearBarrierSeq));
-
-        String effectiveDir = determineWorkingDirectory();
-        String nodePath = NodeDetector.getInstance().getCachedNodePath();
-        String workingDir = (projectPath != null && !projectPath.isEmpty())
-                                ? projectPath
-                                : (NodeDetector.isWslPath(nodePath) ? NodeDetector.convertToWslPath(effectiveDir) : effectiveDir);
-        newSession.setSessionInfo(sessionId, workingDir);
 
         // Prewarm the opencode daemon for the historical session so the
         // first message is fast (serve + SSE subscription + session resolve).

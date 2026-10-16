@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import type { TFunction } from 'i18next';
 import type { ToolResultBlock } from '../../types';
 import './QuestionAnswerSummary.css';
@@ -139,7 +139,47 @@ export const QuestionAnswerSummary = memo(function QuestionAnswerSummary({
   status = 'answered',
   answers,
 }: QuestionAnswerSummaryProps) {
-  if (!questions.length) return null;
+  const normalizedQuestions: QuestionSummaryItem[] = useMemo(() => {
+    if (!questions) return [];
+    if (Array.isArray(questions)) {
+      return questions
+        .map((q) => {
+          if (typeof q === 'string') return { question: q };
+          if (q && typeof q === 'object' && typeof (q as QuestionSummaryItem).question === 'string') {
+            return q as QuestionSummaryItem;
+          }
+          return null;
+        })
+        .filter((q): q is QuestionSummaryItem => q !== null && q.question.trim().length > 0);
+    }
+    if (typeof questions === 'string' && (questions as string).trim().length > 0) {
+      return [{ question: (questions as string).trim() }];
+    }
+    if (typeof questions === 'object') {
+      const maybeObj = questions as Record<string, unknown>;
+      if (typeof maybeObj.question === 'string' && maybeObj.question.trim().length > 0) {
+        return [{
+          question: maybeObj.question.trim(),
+          header: typeof maybeObj.header === 'string' ? maybeObj.header : undefined,
+          options: Array.isArray(maybeObj.options) ? maybeObj.options : undefined,
+          multiSelect: Boolean(maybeObj.multiSelect),
+        }];
+      }
+      const values = Object.values(maybeObj)
+        .map((v) => {
+          if (typeof v === 'string') return { question: v };
+          if (v && typeof v === 'object' && typeof (v as QuestionSummaryItem).question === 'string') {
+            return v as QuestionSummaryItem;
+          }
+          return null;
+        })
+        .filter((v): v is QuestionSummaryItem => v !== null && v.question.trim().length > 0);
+      if (values.length > 0) return values;
+    }
+    return [];
+  }, [questions]);
+
+  if (!normalizedQuestions.length) return null;
 
   const answerText = toAnswerText(answer?.content);
 
@@ -165,7 +205,7 @@ export const QuestionAnswerSummary = memo(function QuestionAnswerSummary({
         </span>
       </div>
       <div className="qas-body">
-        {questions.map((q, idx) => {
+        {normalizedQuestions.map((q, idx) => {
           const header = q.header && q.header !== 'Other'
             ? q.header
             : t('askUserQuestion.fallbackHeader', '问题');

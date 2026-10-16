@@ -119,6 +119,7 @@ public class ChatWindowDelegate {
 
         default void switchSession(String sessionId) {}
         default void closeSession(String sessionId) {}
+        default void onRefreshEditorContext(boolean enabled) {}
     }
 
     private final DelegateHost host;
@@ -330,6 +331,9 @@ public class ChatWindowDelegate {
             }
             @Override public void onRefreshSlashCommands() {
                 host.getSessionLifecycleManager().fetchSlashCommandsOnStartup();
+            }
+            @Override public void onRefreshEditorContext(boolean enabled) {
+                host.onRefreshEditorContext(enabled);
             }
         }));
 

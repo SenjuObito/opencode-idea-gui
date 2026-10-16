@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { TFunction } from 'i18next';
-import type { ClaudeContentBlock, ToolResultBlock } from '../../types';
+import type { OpencodeContentBlock, ToolResultBlock } from '../../types';
 import { QuestionAnswerSummary } from './QuestionAnswerSummary';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
 
@@ -121,13 +121,13 @@ describe('QuestionAnswerSummary status badge', () => {
 });
 
 describe('ContentBlockRenderer askuserquestion status inference', () => {
-  const askBlock = (): ClaudeContentBlock =>
+  const askBlock = (): OpencodeContentBlock =>
     ({
       type: 'tool_use',
       name: 'askuserquestion',
       id: 'tool-1',
       input: { questions },
-    }) as unknown as ClaudeContentBlock;
+    }) as unknown as OpencodeContentBlock;
 
   function renderAsk(findToolResult: () => ToolResultBlock | null) {
     return render(
@@ -205,5 +205,38 @@ describe('ContentBlockRenderer askuserquestion status inference', () => {
     expect(container.querySelector('.qas-unanswered-badge')).toBeNull();
     expect(container.querySelector('.codicon-check')).toBeNull();
     expect(getByText('已取消')).toBeTruthy();
+  });
+
+  it('safely handles non-array string questions without throwing e.map is not a function', () => {
+    const { container } = render(
+      <QuestionAnswerSummary
+        questions={'Single string question' as any}
+        answer={null}
+        t={t}
+      />,
+    );
+    expect(container.querySelector('.qas-question')?.textContent).toBe('Single string question');
+  });
+
+  it('safely handles single object question without throwing e.map is not a function', () => {
+    const { container } = render(
+      <QuestionAnswerSummary
+        questions={{ question: 'Object based question' } as any}
+        answer={null}
+        t={t}
+      />,
+    );
+    expect(container.querySelector('.qas-question')?.textContent).toBe('Object based question');
+  });
+
+  it('safely renders null when questions is invalid or empty', () => {
+    const { container } = render(
+      <QuestionAnswerSummary
+        questions={{} as any}
+        answer={null}
+        t={t}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 });

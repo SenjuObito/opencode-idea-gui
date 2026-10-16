@@ -48,10 +48,24 @@ public class SessionProviderRouter {
         return result;
     }
 
-    /** Abort the active turn. */
-    public void interruptChannel(String provider, String channelId) {
+    /**
+     * Abort the active turn.
+     *
+     * <p>{@code channelId} is the local channel identifier (a random UUID) and is
+     * deliberately NOT forwarded: the daemon hands the value straight to
+     * {@code sdk.abort(...)}, and opencode rejects anything that is not a session
+     * id with {@code Expected a string starting with "ses"}. The abort target must
+     * therefore be the real opencode session id ({@code ses_*}); when it is not
+     * known yet the daemon falls back to aborting every active turn.
+     *
+     * @param channelId local channel id, kept for routing symmetry with
+     *                  {@link #launchChannel}
+     * @param sessionId opencode session id ({@code ses_*}), or {@code null} when
+     *                  no turn has produced a session id yet
+     */
+    public void interruptChannel(String provider, String channelId, String sessionId) {
         if (openCodeSDKBridge != null) {
-            openCodeSDKBridge.abort();
+            openCodeSDKBridge.abort(sessionId);
         }
     }
 

@@ -15,6 +15,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -60,6 +61,16 @@ public class OpenCodeSDKBridge {
 
     public boolean isDaemonAlive() {
         return daemon.isAlive();
+    }
+
+    /**
+     * Latest engine-resolution snapshot from the daemon, or null when the daemon
+     * has not reported one yet. Read-only.
+     *
+     * @see DaemonBridge#getEngineStatus()
+     */
+    public JsonObject getEngineStatus() {
+        return daemon.getEngineStatus();
     }
 
     public void stopDaemon() {
@@ -336,6 +347,11 @@ public class OpenCodeSDKBridge {
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
         params.addProperty("directory", cwd != null ? cwd : "");
         JsonArray entries = new JsonArray();
+        // daemon 在第一条数据行之前会广播 {messagesStart:true,count:N}。这是唯一
+        // 能区分「这个会话真的没有消息」和「消息发了却没被收到」的信号——
+        // 2026-10-17 的线上故障正是后者：daemon 正常播报 N 条，宿主一条都没收集到，
+        // 却照样返回成功，用户看到的是一个空白标签页且没有任何报错。
+        AtomicInteger announcedCount = new AtomicInteger(-1);
         // 失败必须传出去：过去 onError/onComplete 都是空实现，thenApply 又无条件
         // 返回「已收集到的部分条目」，于是 daemon/serve 未就绪导致的查询失败被静默
         // 降级成「这个会话没有消息」——打开标签页得到一片空白，且没有任何提示，
@@ -350,7 +366,10 @@ public class OpenCodeSDKBridge {
                 }
                 try {
                     JsonObject obj = JsonParser.parseString(trimmed).getAsJsonObject();
-                    if (obj.has("messageEntry") && obj.get("messageEntry").isJsonObject()) {
+                    if (obj.has("messagesStart") && obj.get("messagesStart").getAsBoolean()) {
+                        announcedCount.set(obj.has("count") && !obj.get("count").isJsonNull()
+                                ? obj.get("count").getAsInt() : -1);
+                    } else if (obj.has("messageEntry") && obj.get("messageEntry").isJsonObject()) {
                         entries.add(obj.getAsJsonObject("messageEntry"));
                     } else if (obj.has("messages") && obj.get("messages").isJsonArray()) {
                         entries.addAll(obj.getAsJsonArray("messages"));
@@ -382,6 +401,18 @@ public class OpenCodeSDKBridge {
             if (error != null || !success) {
                 throw new IllegalStateException(
                         error != null ? error : "opencode.listMessages failed");
+            }
+            int announced = announcedCount.get();
+            if (announced > 0 && entries.size() != announced) {
+                // 播报与实收不一致 = 响应行在路上被弄丢了（典型原因：被按 session
+                // 路由到了别处）。必须报错：静默返回空列表会把「加载失败」伪装成
+                // 「空会话」，用户看到空白页面且无从判断。
+                PluginFileLogger.error("DAEMON", "opencode.listMessages announced " + announced
+                        + " entries for session " + sessionId + " but collected " + entries.size()
+                        + " — response lines were routed elsewhere");
+                throw new IllegalStateException(
+                        "opencode.listMessages for session " + sessionId + " announced " + announced
+                                + " entries but collected " + entries.size());
             }
             return entries;
         });
@@ -487,6 +518,7 @@ public class OpenCodeSDKBridge {
             params.addProperty("directory", directory);
         }
         params.addProperty("questionID", questionId != null ? questionId : "");
+        params.addProperty("requestId", questionId != null ? questionId : "");
         if (answers != null) {
             params.add("answers", answers);
         }
@@ -506,6 +538,7 @@ public class OpenCodeSDKBridge {
             params.addProperty("directory", directory);
         }
         params.addProperty("questionID", questionId != null ? questionId : "");
+        params.addProperty("requestId", questionId != null ? questionId : "");
         return request("opencode.rejectQuestion", params, noopCallback());
     }
 

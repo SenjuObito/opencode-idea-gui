@@ -46,10 +46,18 @@ public class SessionState {
 
     /**
      * Canonical whitelist of valid Claude/Codex reasoning effort levels.
+     *
+     * "default" is not a real effort level: it means "send no variant at all" so
+     * opencode applies the model's own catalog settings (a session without an
+     * explicit variant reports back `variant: "default"`). It must be accepted
+     * here — otherwise it would be dropped silently, leaving the previous level
+     * stored while the UI shows Default, and the next send would transmit that
+     * stale level. `normalizeRequestedReasoningEffort` turns it into null.
      */
     public static final Set<String> VALID_REASONING_EFFORTS;
     static {
         Set<String> efforts = new HashSet<>();
+        efforts.add("default");
         efforts.add("low");
         efforts.add("medium");
         efforts.add("high");
@@ -477,11 +485,10 @@ public class SessionState {
     /**
      * Reflect a late-arriving turn failure in the transcript.
      *
-     * <p>When the local 180s timeout already reported the failure, this
+     * <p>When a previously reported local failure already exists, this
      * correction must rewrite that row instead of appending another one — two
      * error bubbles for a single failed turn reads as two failures. When no
-     * trailing error row exists (the late server error is not always preceded by
-     * a local timeout), one is appended.</p>
+     * trailing error row exists, one is appended.</p>
      *
      * @param message the authoritative error text
      * @return {@code true} when an existing trailing error row was rewritten

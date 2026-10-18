@@ -64,9 +64,9 @@ export const AppDialogs = ({
     handlePlanApprovalApprove, handlePlanApprovalReject,
     contextUsageDialogOpen, contextUsageIsLoading, contextUsageData, closeContextUsageDialog,
     permissionDialogOpen, currentPermissionRequest,
-    handlePermissionApprove, handlePermissionApproveAlways, handlePermissionSkip,
+    handlePermissionApprove, handlePermissionApproveAlways, handlePermissionSkip, handlePermissionTimeout,
     askUserQuestionDialogOpen, currentAskUserQuestionRequest,
-    handleAskUserQuestionSubmit, handleAskUserQuestionSkip,
+    handleAskUserQuestionSubmit, handleAskUserQuestionSkip, handleAskUserQuestionTimeout,
   } = useDialogs();
   const {
     addModelDialogOpen, setAddModelDialogOpen,
@@ -90,6 +90,7 @@ export const AppDialogs = ({
         onApprove={handlePermissionApprove}
         onApproveAlways={handlePermissionApproveAlways}
         onSkip={handlePermissionSkip}
+        onTimeout={handlePermissionTimeout}
         timeoutSeconds={permissionDialogTimeoutSeconds}
       />
       <AskUserQuestionDialog
@@ -97,6 +98,7 @@ export const AppDialogs = ({
         request={currentAskUserQuestionRequest}
         onSubmit={handleAskUserQuestionSubmit}
         onCancel={handleAskUserQuestionSkip}
+        onTimeout={handleAskUserQuestionTimeout}
         timeoutSeconds={permissionDialogTimeoutSeconds}
       />
       <PlanApprovalDialog

@@ -107,4 +107,50 @@ describe('useSessionTabs - Context Decoupling', () => {
     // Crucial check: setContextInfo(null) must NOT have been called to wipe the environment
     expect(setContextInfo).not.toHaveBeenCalledWith(null);
   });
+
+  it('claimUnboundTab prioritizes the currently active tab when multiple tabs are unbound', () => {
+    const setCurrentSessionId = vi.fn();
+    const currentSessionIdRef = { current: null as string | null };
+
+    const { result } = renderHook(() =>
+      useSessionTabs({
+        currentSessionId: null,
+        currentSessionIdRef,
+        setCurrentSessionId,
+        sessionTitle: null,
+        setCustomSessionTitle: dummyFn,
+        updateHistoryTitle: dummyFn,
+        messages: staticEmptyMessages,
+        setMessages: dummyFn,
+        loading: false,
+        streamingActive: false,
+        contextInfo: null,
+        setContextInfo: dummyFn,
+        defaultAutoOpenFileEnabled: false,
+        isShared: false,
+        forceCreateNewSession: dummyFn,
+        loadHistorySession: dummyFn,
+        t: mockT,
+      })
+    );
+
+    // Initial tab-1 is unbound (sessionId: null)
+    expect(result.current.tabs.length).toBe(1);
+    expect(result.current.tabs[0].sessionId).toBeNull();
+
+    // Now suppose another tab is loaded or created, but active tab is set to tab-2
+    // Simulate by invoking claimUnboundTab
+    expect(window.__sessionTabsStore?.claimUnboundTab).toBeDefined();
+
+    // Claim target session: should bind to tab-1 (the active tab)
+    act(() => {
+      const claimed = window.__sessionTabsStore!.claimUnboundTab!('session-active-123');
+      expect(claimed).toBe(true);
+    });
+
+    expect(result.current.tabs[0].sessionId).toBe('session-active-123');
+    expect(currentSessionIdRef.current).toBe('session-active-123');
+    expect(setCurrentSessionId).toHaveBeenCalledWith('session-active-123');
+  });
 });
+

@@ -3,6 +3,7 @@ package com.opencodebuddy.session;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.diagnostic.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,9 +35,57 @@ import java.util.regex.Pattern;
  */
 public final class OpenCodeMessageConverter {
 
+    private static final Logger LOG = Logger.getInstance(OpenCodeMessageConverter.class);
+
     private static final int MAX_TOOL_RESULT_CHARS = 20_000;
 
     private OpenCodeMessageConverter() {
+    }
+
+    /**
+     * Read a JSON value as a string without ever throwing.
+     *
+     * <p>v2 turned several fields that used to be plain strings into objects —
+     * {@code tool.state.error} became {@code {type, message}}, for instance.
+     * Gson's {@code getAsString()} on a non-primitive throws
+     * {@link UnsupportedOperationException} whose message is just the element
+     * type ("JsonObject"), and nothing used to catch it, so one such field
+     * failed the entire history load. Returning "" for a non-primitive keeps
+     * the value readable when it *is* a string and harmless when it is not.</p>
+     */
+    private static String textOf(JsonElement element) {
+        if (element == null || element.isJsonNull() || !element.isJsonPrimitive()) {
+            return "";
+        }
+        return element.getAsString();
+    }
+
+    /** Read a boolean flag without throwing on a missing/non-primitive value. */
+    private static boolean isTrue(JsonObject obj, String key) {
+        return obj != null && obj.has(key) && obj.get(key).isJsonPrimitive()
+                && obj.get(key).getAsBoolean();
+    }
+
+    /**
+     * {@code tool.state.error} is a string on v1 and {@code {type, message}} on
+     * v2. Accept both shapes rather than crashing on the one we did not expect.
+     */
+    private static String errorText(JsonObject state) {
+        if (state == null || !state.has("error")) {
+            return "";
+        }
+        JsonElement err = state.get("error");
+        if (err.isJsonPrimitive()) {
+            return err.getAsString();
+        }
+        if (err.isJsonObject()) {
+            JsonObject obj = err.getAsJsonObject();
+            // Prefer the human-readable message; fall back to the type so the
+            // result is never empty when the server did say something.
+            String message = textOf(obj.get("message"));
+            return !message.isEmpty() ? message : textOf(obj.get("type"));
+        }
+        return "";
     }
 
     public static List<JsonObject> convert(JsonElement element) {
@@ -48,19 +97,30 @@ public final class OpenCodeMessageConverter {
             if (!entryElement.isJsonObject()) {
                 continue;
             }
-            JsonObject entry = entryElement.getAsJsonObject();
-            JsonObject info = entry.has("info") && entry.get("info").isJsonObject()
-                    ? entry.getAsJsonObject("info") : new JsonObject();
-            JsonArray parts = entry.has("parts") && entry.get("parts").isJsonArray()
-                    ? entry.getAsJsonArray("parts") : new JsonArray();
-            String role = info.has("role") && !info.get("role").isJsonNull()
-                    ? info.get("role").getAsString() : "";
-            if ("user".equals(role)) {
-                out.add(buildUserMessage(parts, info));
-            } else if ("assistant".equals(role)) {
-                out.addAll(buildAssistantMessages(parts, info));
+            // One malformed entry must not fail the whole restore. History used
+            // to come back as "Failed to load messages for session X: JsonObject"
+            // — a Gson type error from a single field — and render a blank tab
+            // with no way to see the rest of the conversation. Skipping the
+            // entry keeps everything else visible and logs what was dropped.
+            try {
+                JsonObject entry = entryElement.getAsJsonObject();
+                JsonObject info = entry.has("info") && entry.get("info").isJsonObject()
+                        ? entry.getAsJsonObject("info") : new JsonObject();
+                JsonArray parts = entry.has("parts") && entry.get("parts").isJsonArray()
+                        ? entry.getAsJsonArray("parts") : new JsonArray();
+                String role = string(info, "role");
+                if ("user".equals(role)) {
+                    out.add(buildUserMessage(parts, info));
+                } else if ("assistant".equals(role)) {
+                    out.addAll(buildAssistantMessages(parts, info));
+                } else if ("compaction".equals(role) || isTrue(info, "isCompactSummary")) {
+                    out.add(buildCompactionMessage(parts, info));
+                }
+                // system / other roles skipped
+            } catch (RuntimeException e) {
+                LOG.warn("[OpenCodeMessageConverter] skipped a malformed message entry: "
+                        + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
-            // system / other roles skipped
         }
         return out;
     }
@@ -83,11 +143,11 @@ public final class OpenCodeMessageConverter {
                 if (isSynthetic(part)) {
                     continue;
                 }
-                text.append(part.get("text").getAsString());
+                text.append(textOf(part.get("text")));
             } else if ("file".equals(type)) {
                 JsonObject block = filePartToBlock(part);
                 if (block != null) {
-                    if ("image".equals(block.get("type").getAsString())) {
+                    if ("image".equals(textOf(block.get("type")))) {
                         imageBlocks.add(block);
                     } else {
                         attachmentBlocks.add(block);
@@ -131,6 +191,45 @@ public final class OpenCodeMessageConverter {
         }
 
         return createMessage("user", displayText, info, blocks);
+    }
+
+    private static JsonObject buildCompactionMessage(JsonArray parts, JsonObject info) {
+        StringBuilder text = new StringBuilder();
+        for (JsonElement partElement : parts) {
+            if (partElement.isJsonObject()) {
+                JsonObject part = partElement.getAsJsonObject();
+                if ("text".equals(string(part, "type")) && part.has("text") && !part.get("text").isJsonNull()) {
+                    text.append(textOf(part.get("text")));
+                }
+            }
+        }
+        String summaryText = text.toString();
+        if (summaryText.isEmpty() && info.has("summary")) {
+            summaryText = textOf(info.get("summary"));
+        }
+
+        JsonArray blocks = new JsonArray();
+        JsonObject textBlock = new JsonObject();
+        textBlock.addProperty("type", "text");
+        textBlock.addProperty("text", summaryText);
+        blocks.add(textBlock);
+
+        JsonObject msg = createMessage("user", summaryText, info, blocks);
+        JsonObject raw = msg.getAsJsonObject("raw");
+        raw.addProperty("isCompactSummary", true);
+
+        if (info.has("compactMetadata") && info.get("compactMetadata").isJsonObject()) {
+            raw.add("compactMetadata", info.get("compactMetadata").deepCopy());
+            raw.add("summarizeMetadata", info.get("compactMetadata").deepCopy());
+        } else {
+            JsonObject meta = new JsonObject();
+            meta.addProperty("userContext", summaryText);
+            meta.addProperty("trigger", "manual");
+            raw.add("compactMetadata", meta);
+            raw.add("summarizeMetadata", meta);
+        }
+
+        return msg;
     }
 
     private static boolean isSynthetic(JsonObject part) {
@@ -199,6 +298,10 @@ public final class OpenCodeMessageConverter {
         StringBuilder text = new StringBuilder();
         List<JsonObject> toolResults = new ArrayList<>();
 
+        boolean hasAbortedNotice = false;
+        String abortedNoticeText = "已停止生成";
+        String errorContent = "";
+
         for (JsonElement partElement : parts) {
             if (!partElement.isJsonObject()) {
                 continue;
@@ -206,7 +309,25 @@ public final class OpenCodeMessageConverter {
             JsonObject part = partElement.getAsJsonObject();
             String type = string(part, "type");
             if ("text".equals(type) && part.has("text") && !part.get("text").isJsonNull()) {
-                String value = part.get("text").getAsString();
+                String value = textOf(part.get("text"));
+                if (isAbortedPart(part)) {
+                    hasAbortedNotice = true;
+                    if (!value.isBlank()) {
+                        abortedNoticeText = value;
+                    }
+                    continue;
+                }
+                String trimmed = value.trim();
+                boolean isErrorPart = isTrue(part, "isError") || (trimmed.startsWith("[Error:") && trimmed.endsWith("]"));
+                if (isErrorPart) {
+                    String extracted = trimmed.startsWith("[Error:") && trimmed.endsWith("]")
+                            ? trimmed.substring(7, trimmed.length() - 1).trim()
+                            : trimmed;
+                    if (!extracted.isEmpty()) {
+                        errorContent = extracted;
+                        continue;
+                    }
+                }
                 text.append(value);
                 JsonObject block = new JsonObject();
                 block.addProperty("type", "text");
@@ -215,13 +336,13 @@ public final class OpenCodeMessageConverter {
             } else if ("reasoning".equals(type) && part.has("text") && !part.get("text").isJsonNull()) {
                 JsonObject block = new JsonObject();
                 block.addProperty("type", "thinking");
-                block.addProperty("thinking", part.get("text").getAsString());
+                block.addProperty("thinking", textOf(part.get("text")));
                 blocks.add(block);
             } else if ("tool".equals(type)) {
                 JsonObject state = part.has("state") && part.get("state").isJsonObject()
                         ? part.getAsJsonObject("state") : new JsonObject();
                 String callId = part.has("callID") && !part.get("callID").isJsonNull()
-                        ? part.get("callID").getAsString() : string(part, "id");
+                        ? textOf(part.get("callID")) : string(part, "id");
                 String toolName = string(part, "tool");
                 if ("shell".equalsIgnoreCase(toolName)) {
                     toolName = "bash";
@@ -240,7 +361,7 @@ public final class OpenCodeMessageConverter {
 
                 // Completed/errored tool output → separate [tool_result] user message.
                 String output = string(state, "output");
-                String error = string(state, "error");
+                String error = errorText(state);
                 if (!output.isEmpty() || !error.isEmpty()) {
                     JsonObject resultRaw = new JsonObject();
                     JsonObject message = new JsonObject();
@@ -334,15 +455,86 @@ public final class OpenCodeMessageConverter {
             }
         }
 
-        JsonObject assistant = new JsonObject();
-        assistant.addProperty("type", "assistant");
-        assistant.addProperty("content", text.toString());
-        assistant.addProperty("timestamp", timestamp(info));
-        assistant.add("raw", raw);
+        if (!hasAbortedNotice && isAbortedTurn(info, parts)) {
+            hasAbortedNotice = true;
+        }
+
+        if (errorContent.isEmpty() && !hasAbortedNotice && !isAbortedTurn(info, parts)) {
+            errorContent = errorText(info);
+        }
+
         List<JsonObject> out = new ArrayList<>();
-        out.add(assistant);
+        if (blocks.size() > 0 || (!hasAbortedNotice && errorContent.isEmpty())) {
+            JsonObject assistant = new JsonObject();
+            assistant.addProperty("type", "assistant");
+            assistant.addProperty("content", text.toString());
+            assistant.addProperty("timestamp", timestamp(info));
+            assistant.add("raw", raw);
+            out.add(assistant);
+        }
+
         out.addAll(toolResults);
+
+        if (hasAbortedNotice) {
+            JsonObject notification = new JsonObject();
+            notification.addProperty("type", "notification");
+            notification.addProperty("content", abortedNoticeText);
+            notification.addProperty("timestamp", timestamp(info));
+            JsonObject notifRaw = new JsonObject();
+            notifRaw.addProperty("type", "notification");
+            notifRaw.addProperty("subtype", "stopped");
+            notifRaw.addProperty("aborted", true);
+            notification.add("raw", notifRaw);
+            out.add(notification);
+        }
+
+        if (!errorContent.isEmpty()) {
+            JsonObject errorMsg = new JsonObject();
+            errorMsg.addProperty("type", "error");
+            errorMsg.addProperty("content", errorContent);
+            errorMsg.addProperty("timestamp", timestamp(info));
+            JsonObject errorRaw = new JsonObject();
+            errorRaw.addProperty("type", "error");
+            errorMsg.add("raw", errorRaw);
+            out.add(errorMsg);
+        }
+
         return out;
+    }
+
+    private static boolean isAbortedPart(JsonObject part) {
+        if (isTrue(part, "aborted")) {
+            return true;
+        }
+        if ("text".equals(string(part, "type"))) {
+            String txt = textOf(part.get("text")).trim();
+            return "已停止生成".equals(txt) || "Generation stopped".equalsIgnoreCase(txt);
+        }
+        return false;
+    }
+
+    private static boolean isAbortedTurn(JsonObject info, JsonArray parts) {
+        if (isTrue(info, "aborted")) {
+            return true;
+        }
+        String finish = string(info, "finish");
+        if ("interrupted".equalsIgnoreCase(finish) || "abort".equalsIgnoreCase(finish)) {
+            return true;
+        }
+        if (info.has("error") && !info.get("error").isJsonNull()) {
+            String errStr = info.get("error").toString().toLowerCase();
+            if (errStr.contains("aborted") || errStr.contains("interrupted")) {
+                return true;
+            }
+        }
+        if (parts != null) {
+            for (JsonElement p : parts) {
+                if (p.isJsonObject() && isAbortedPart(p.getAsJsonObject())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static JsonObject createMessage(String type, String content, JsonObject info, JsonArray blocks) {
@@ -404,8 +596,8 @@ public final class OpenCodeMessageConverter {
                         JsonObject qObj = qElem.getAsJsonObject();
                         JsonObject item = new JsonObject();
                         String qText = qObj.has("question") && !qObj.get("question").isJsonNull()
-                                ? qObj.get("question").getAsString()
-                                : (qObj.has("text") && !qObj.get("text").isJsonNull() ? qObj.get("text").getAsString() : "");
+                                ? textOf(qObj.get("question"))
+                                : textOf(qObj.get("text"));
                         item.addProperty("question", qText);
                         item.addProperty("header", string(qObj, "header"));
                         item.addProperty("multiSelect", qObj.has("multiple") ? qObj.get("multiple").getAsBoolean()
@@ -417,7 +609,7 @@ public final class OpenCodeMessageConverter {
                         normalizedQuestions.add(item);
                     } else if (qElem.isJsonPrimitive()) {
                         JsonObject item = new JsonObject();
-                        item.addProperty("question", qElem.getAsString());
+                        item.addProperty("question", textOf(qElem));
                         item.addProperty("header", "");
                         item.addProperty("multiSelect", false);
                         item.addProperty("custom", true);
@@ -427,7 +619,7 @@ public final class OpenCodeMessageConverter {
                 }
             } else if (inputObj.has("question") && inputObj.get("question").isJsonPrimitive()) {
                 JsonObject item = new JsonObject();
-                item.addProperty("question", inputObj.get("question").getAsString());
+                item.addProperty("question", textOf(inputObj.get("question")));
                 item.addProperty("header", string(inputObj, "header"));
                 item.addProperty("multiSelect", false);
                 item.addProperty("custom", true);
@@ -437,7 +629,7 @@ public final class OpenCodeMessageConverter {
             }
         } else if (rawInput != null && rawInput.isJsonPrimitive()) {
             JsonObject item = new JsonObject();
-            item.addProperty("question", rawInput.getAsString());
+            item.addProperty("question", textOf(rawInput));
             item.addProperty("header", "");
             item.addProperty("multiSelect", false);
             item.addProperty("custom", true);
@@ -469,7 +661,7 @@ public final class OpenCodeMessageConverter {
                         }
                         ansStr = String.join(", ", list);
                     } else if (aElem.isJsonPrimitive()) {
-                        ansStr = aElem.getAsString();
+                        ansStr = textOf(aElem);
                     }
                     if (i < normalizedQuestions.size()) {
                         String qText = string(normalizedQuestions.get(i).getAsJsonObject(), "question");
@@ -500,8 +692,7 @@ public final class OpenCodeMessageConverter {
     }
 
     private static String string(JsonObject obj, String key) {
-        return obj != null && obj.has(key) && !obj.get(key).isJsonNull()
-                ? obj.get(key).getAsString() : "";
+        return obj != null && obj.has(key) ? textOf(obj.get(key)) : "";
     }
 
     private static int readInt(JsonObject obj, String key) {

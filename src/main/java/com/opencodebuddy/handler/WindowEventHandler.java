@@ -99,7 +99,7 @@ public class WindowEventHandler extends BaseMessageHandler {
                 handleRevertSession(content);
                 return true;
             case "unrevert_session":
-                handleUnrevertSession();
+                handleUnrevertSession(content);
                 return true;
             case "compact_session":
                 handleCompactSession(content);
@@ -132,11 +132,44 @@ public class WindowEventHandler extends BaseMessageHandler {
     // =========================================================================
 
     private void handleForkSession(String content) {
-        String parsedId = parseSessionId(content);
-        String sessionId = (parsedId != null && !parsedId.isEmpty()) ? parsedId : sessionIdOrEmpty();
-        LOG.info("[fork] request content=\"" + content + "\" sessionId=\"" + sessionId + "\"");
-        if (sessionId.isEmpty()) {
+        String targetSessionId = sessionIdOrEmpty();
+        String messageId = null;
+        boolean isFull = false;
+
+        if (content != null) {
+            String trimmed = content.trim();
+            if ("full".equals(trimmed)) {
+                isFull = true;
+            } else if (trimmed.startsWith("{")) {
+                try {
+                    com.google.gson.JsonObject obj = new com.google.gson.Gson().fromJson(trimmed, com.google.gson.JsonObject.class);
+                    if (obj != null) {
+                        if (obj.has("sessionId") && !obj.get("sessionId").isJsonNull()) {
+                            String s = obj.get("sessionId").getAsString();
+                            if (s != null && !s.isBlank()) {
+                                targetSessionId = s.trim();
+                            }
+                        }
+                        if (obj.has("type") && "full".equals(obj.get("type").getAsString())) {
+                            isFull = true;
+                        }
+                        if (obj.has("messageId") && !obj.get("messageId").isJsonNull()) {
+                            messageId = obj.get("messageId").getAsString();
+                        } else if (obj.has("messageID") && !obj.get("messageID").isJsonNull()) {
+                            messageId = obj.get("messageID").getAsString();
+                        }
+                    }
+                } catch (Exception ignored) {}
+            } else if (!trimmed.isEmpty()) {
+                messageId = trimmed;
+            }
+        }
+
+        final String sessionId = targetSessionId;
+        LOG.info("[fork] request content=\"" + content + "\" sessionId=\"" + sessionId + "\" isFull=" + isFull + " messageId=" + messageId);
+        if (sessionId == null || sessionId.isEmpty()) {
             LOG.warn("[fork] skipped: no active sessionId");
+            callJavaScript("onForkError", "no active session");
             return;
         }
 
@@ -150,28 +183,15 @@ public class WindowEventHandler extends BaseMessageHandler {
             return;
         }
 
-        boolean isFull = false;
-        if (content != null) {
-            String trimmed = content.trim();
-            if ("full".equals(trimmed)) {
-                isFull = true;
-            } else if (trimmed.startsWith("{")) {
-                try {
-                    com.google.gson.JsonObject obj = new com.google.gson.Gson().fromJson(trimmed, com.google.gson.JsonObject.class);
-                    if (obj != null && obj.has("type") && "full".equals(obj.get("type").getAsString())) {
-                        isFull = true;
-                    }
-                } catch (Exception ignored) {}
-            }
-        }
-
         if (isFull) {
             requestFork(sessionId, null);
             return;
         }
 
-        withMessageId(sessionId, content, "fork", resolvedId -> {
+        withMessageId(sessionId, messageId, "fork", resolvedId -> {
             requestFork(sessionId, resolvedId);
+        }, err -> {
+            callJavaScript("onForkError", err != null ? err : "");
         });
     }
 
@@ -261,12 +281,42 @@ public class WindowEventHandler extends BaseMessageHandler {
         });
     }
 
-    private void handleRevertSession(String messageId) {
-        String parsedId = parseSessionId(messageId);
-        String sessionId = (parsedId != null && !parsedId.isEmpty()) ? parsedId : sessionIdOrEmpty();
+    private void handleRevertSession(String content) {
+        String targetSessionId = sessionIdOrEmpty();
+        String messageId = null;
+
+        if (content != null) {
+            String trimmed = content.trim();
+            if (trimmed.startsWith("{")) {
+                try {
+                    com.google.gson.JsonObject obj = new com.google.gson.Gson().fromJson(trimmed, com.google.gson.JsonObject.class);
+                    if (obj != null) {
+                        if (obj.has("sessionId") && !obj.get("sessionId").isJsonNull()) {
+                            String s = obj.get("sessionId").getAsString();
+                            if (s != null && !s.isBlank()) {
+                                targetSessionId = s.trim();
+                            }
+                        }
+                        if (obj.has("messageId") && !obj.get("messageId").isJsonNull()) {
+                            messageId = obj.get("messageId").getAsString();
+                        } else if (obj.has("messageID") && !obj.get("messageID").isJsonNull()) {
+                            messageId = obj.get("messageID").getAsString();
+                        }
+                    }
+                } catch (Exception ignored) {}
+            } else if (!trimmed.isEmpty()) {
+                messageId = trimmed;
+            }
+        }
+
+        final String sessionId = targetSessionId;
         LOG.info("[revert] request messageId=\"" + messageId + "\" sessionId=\"" + sessionId + "\"");
-        if (sessionId.isEmpty()) {
+        if (sessionId == null || sessionId.isEmpty()) {
             LOG.warn("[revert] skipped: no active sessionId");
+            com.google.gson.JsonObject err = new com.google.gson.JsonObject();
+            err.addProperty("op", "undo");
+            err.addProperty("error", "no active session");
+            callJavaScript("onRevertError", err.toString());
             return;
         }
 
@@ -299,16 +349,39 @@ public class WindowEventHandler extends BaseMessageHandler {
                         callJavaScript("onRevertError", err.toString());
                         return;
                     }
-                    pushRevertStateFromResponse(joinLines(chunks));
+                    pushRevertStateFromResponse(sessionId, joinLines(chunks), resolvedId);
                 }
             });
+        }, err -> {
+            com.google.gson.JsonObject errObj = new com.google.gson.JsonObject();
+            errObj.addProperty("op", "undo");
+            errObj.addProperty("error", err != null ? err : "");
+            callJavaScript("onRevertError", errObj.toString());
         });
     }
 
-    private void handleUnrevertSession() {
-        String sessionId = sessionIdOrEmpty();
+    private void handleUnrevertSession(String content) {
+        String targetSessionId = null;
+        if (content != null && !content.isBlank()) {
+            String trimmed = content.trim();
+            if (trimmed.startsWith("{")) {
+                try {
+                    com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseString(trimmed).getAsJsonObject();
+                    if (obj.has("sessionId") && !obj.get("sessionId").isJsonNull()) {
+                        targetSessionId = obj.get("sessionId").getAsString();
+                    }
+                } catch (Exception ignored) {}
+            } else if (!trimmed.isEmpty()) {
+                targetSessionId = trimmed;
+            }
+        }
+        if (targetSessionId == null || targetSessionId.isBlank()) {
+            targetSessionId = sessionIdOrEmpty();
+        }
+
+        final String sessionId = targetSessionId;
         LOG.info("[unrevert] request sessionId=\"" + sessionId + "\"");
-        if (sessionId.isEmpty()) {
+        if (sessionId == null || sessionId.isEmpty()) {
             LOG.warn("[unrevert] skipped: no active sessionId");
             return;
         }
@@ -340,23 +413,44 @@ public class WindowEventHandler extends BaseMessageHandler {
                     callJavaScript("onRevertError", err.toString());
                     return;
                 }
-                pushRevertStateFromResponse(joinLines(chunks));
+                pushRevertStateFromResponse(sessionId, joinLines(chunks), null);
             }
         });
     }
 
-    private void pushRevertStateFromResponse(String raw) {
+    private void pushRevertStateFromResponse(String sessionId, String raw, String fallbackMessageId) {
         com.google.gson.JsonObject payload = extractJsonObject(java.util.List.of(raw));
         com.google.gson.JsonObject sessionObj = payload != null && payload.has("session") && payload.get("session").isJsonObject()
                 ? payload.getAsJsonObject("session") : null;
-        com.google.gson.JsonObject revertObj = sessionObj != null && sessionObj.has("revert") && sessionObj.get("revert").isJsonObject()
-                ? sessionObj.getAsJsonObject("revert") : null;
-        String messageId = null;
-        if (revertObj != null && revertObj.has("messageID") && !revertObj.get("messageID").isJsonNull()) {
-            messageId = revertObj.get("messageID").getAsString();
+        com.google.gson.JsonObject revertObj = null;
+        if (payload != null) {
+            if (payload.has("revert") && payload.get("revert").isJsonObject()) {
+                revertObj = payload.getAsJsonObject("revert");
+            } else if (sessionObj != null && sessionObj.has("revert") && sessionObj.get("revert").isJsonObject()) {
+                revertObj = sessionObj.getAsJsonObject("revert");
+            } else if (payload.has("messageID") && !payload.get("messageID").isJsonNull()) {
+                revertObj = payload;
+            } else if (sessionObj != null && sessionObj.has("messageID") && !sessionObj.get("messageID").isJsonNull()) {
+                revertObj = sessionObj;
+            }
         }
-        boolean hasRevert = revertObj != null;
-        LOG.info("[revert-state] hasRevert=" + hasRevert + " messageId=" + messageId);
+
+        String messageId = null;
+        if (revertObj != null) {
+            if (revertObj.has("messageID") && !revertObj.get("messageID").isJsonNull()) {
+                messageId = revertObj.get("messageID").getAsString();
+            } else if (revertObj.has("messageId") && !revertObj.get("messageId").isJsonNull()) {
+                messageId = revertObj.get("messageId").getAsString();
+            } else if (revertObj.has("id") && !revertObj.get("id").isJsonNull()) {
+                messageId = revertObj.get("id").getAsString();
+            }
+        }
+        if ((messageId == null || messageId.isBlank()) && fallbackMessageId != null && !fallbackMessageId.isBlank()) {
+            messageId = fallbackMessageId;
+        }
+
+        boolean hasRevert = fallbackMessageId != null || (revertObj != null && messageId != null && !messageId.isBlank());
+        LOG.info("[revert-state] sessionId=" + sessionId + " hasRevert=" + hasRevert + " messageId=" + messageId);
 
         com.opencodebuddy.session.OpencodeSession session = context.getSession();
         if (session != null) {
@@ -370,10 +464,17 @@ public class WindowEventHandler extends BaseMessageHandler {
         } else {
             out.add("messageId", com.google.gson.JsonNull.INSTANCE);
         }
-        callJavaScript("onRevertStateUpdate", out.toString());
+        if (sessionId != null && !sessionId.isBlank()) {
+            out.addProperty("sessionId", sessionId);
+            callJavaScript("onRevertStateUpdate", sessionId, out.toString());
+        } else {
+            callJavaScript("onRevertStateUpdate", out.toString());
+        }
     }
 
-    private void withMessageId(String sessionId, String messageId, String label, java.util.function.Consumer<String> run) {
+    private void withMessageId(String sessionId, String messageId, String label,
+                                java.util.function.Consumer<String> run,
+                                java.util.function.Consumer<String> onError) {
         if (messageId != null && !messageId.isBlank() && !"latest".equals(messageId.trim())) {
             run.accept(messageId.trim());
             return;
@@ -382,7 +483,11 @@ public class WindowEventHandler extends BaseMessageHandler {
         String cwd = context.resolveEffectiveWorkingDirectory();
         context.getOpenCodeSDKBridge().listMessages(sessionId, cwd).whenComplete((element, error) -> {
             if (error != null || element == null || !element.isJsonArray()) {
-                LOG.warn("[" + label + "] listMessages failed — abort: " + (error != null ? error.getMessage() : "empty result"));
+                String errorMsg = error != null ? error.getMessage() : "empty result";
+                LOG.warn("[" + label + "] listMessages failed — abort: " + errorMsg);
+                if (onError != null) {
+                    onError.accept(errorMsg);
+                }
                 return;
             }
             String latestUserId = null;
@@ -394,19 +499,27 @@ public class WindowEventHandler extends BaseMessageHandler {
                 com.google.gson.JsonObject info = entry.has("info") && entry.get("info").isJsonObject()
                         ? entry.getAsJsonObject("info") : entry;
                 String role = info.has("role") && !info.get("role").isJsonNull()
-                        ? info.get("role").getAsString() : "";
+                        ? info.get("role").getAsString()
+                        : (entry.has("role") && !entry.get("role").isJsonNull() ? entry.get("role").getAsString() : "");
                 if ("user".equals(role)) {
+                    String id = null;
                     if (info.has("id") && !info.get("id").isJsonNull()) {
-                        String id = info.get("id").getAsString();
-                        if (id != null && !id.isBlank()) {
-                            latestUserId = id;
-                        }
+                        id = info.get("id").getAsString();
+                    } else if (entry.has("id") && !entry.get("id").isJsonNull()) {
+                        id = entry.get("id").getAsString();
+                    }
+                    if (id != null && !id.isBlank()) {
+                        latestUserId = id;
                     }
                 }
             }
             LOG.info("[" + label + "] resolved latest user message id=" + (latestUserId != null ? latestUserId : "(none)"));
             if (latestUserId != null) {
                 run.accept(latestUserId);
+            } else {
+                if (onError != null) {
+                    onError.accept("no user message found");
+                }
             }
         });
     }
@@ -429,23 +542,36 @@ public class WindowEventHandler extends BaseMessageHandler {
             }
         }
         final String resolvedModel = (model != null && !model.isBlank()) ? model.trim() : null;
-        String parsedId = parseSessionId(content);
-        final String targetSessionId = (parsedId != null && !parsedId.isEmpty()) ? parsedId : sessionIdOrEmpty();
-        requestDaemonJson("summarize", () -> singleSessionParams(targetSessionId, resolvedModel), new ResponseHandler() {
+        String targetSessionId = sessionIdOrEmpty();
+        if (content != null && content.trim().startsWith("{")) {
+            try {
+                com.google.gson.JsonElement el = com.google.gson.JsonParser.parseString(content);
+                if (el.isJsonObject() && el.getAsJsonObject().has("sessionId") && !el.getAsJsonObject().get("sessionId").isJsonNull()) {
+                    targetSessionId = el.getAsJsonObject().get("sessionId").getAsString();
+                }
+            } catch (Exception ignored) {}
+        }
+        final String finalTargetSessionId = targetSessionId;
+        final boolean[] errorReported = {false};
+        requestDaemonJson("summarize", () -> singleSessionParams(finalTargetSessionId, resolvedModel), new ResponseHandler() {
             @Override
             public void onError(String error) {
-                LOG.error("[WindowEventHandler] Compact session failed: " + error);
-                callJavaScript("onCompactError", targetSessionId, error != null ? error : "");
+                if (errorReported[0]) return;
+                errorReported[0] = true;
+                LOG.warn("[WindowEventHandler] Compact session failed: " + error);
+                callJavaScript("onCompactError", finalTargetSessionId, error != null ? error : "");
             }
 
             @Override
             public void onComplete(boolean success, java.util.List<String> chunks) {
                 if (success) {
                     LOG.info("[WindowEventHandler] Compact session succeeded");
-                    callJavaScript("onCompactSuccess", targetSessionId);
-                } else {
-                    LOG.error("[WindowEventHandler] Compact session failed (success=false)");
-                    callJavaScript("onCompactError", targetSessionId, "");
+                    new com.opencodebuddy.handler.UsagePushService(context).refreshContextBar();
+                    callJavaScript("onCompactSuccess", finalTargetSessionId);
+                } else if (!errorReported[0]) {
+                    errorReported[0] = true;
+                    LOG.warn("[WindowEventHandler] Compact session failed (success=false)");
+                    callJavaScript("onCompactError", finalTargetSessionId, "");
                 }
             }
         });
@@ -465,6 +591,8 @@ public class WindowEventHandler extends BaseMessageHandler {
             java.util.List<String> chunks = new java.util.ArrayList<>();
             context.getOpenCodeSDKBridge().request("opencode." + command, params.build(),
                     new com.opencodebuddy.provider.common.DaemonBridge.DaemonOutputCallback() {
+                private boolean errorFired = false;
+
                 @Override
                 public void onLine(String line) {
                     chunks.add(line);
@@ -476,12 +604,16 @@ public class WindowEventHandler extends BaseMessageHandler {
 
                 @Override
                 public void onError(String error) {
+                    errorFired = true;
                     LOG.warn("[WindowEventHandler] opencode." + command + " failed: " + error);
                     handler.onError(error);
                 }
 
                 @Override
                 public void onComplete(boolean success) {
+                    if (!success && errorFired) {
+                        return;
+                    }
                     handler.onComplete(success, chunks);
                 }
             });

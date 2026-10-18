@@ -65,6 +65,30 @@ public class WindowEventHandlerTest {
     }
 
     @Test
+    public void dispatchesCompactSessionErrorExactlyOnceOnFailure() {
+        MockJsCallback jsCallback = new MockJsCallback();
+        OpenCodeSDKBridge bridge = new OpenCodeSDKBridge(null, new Gson()) {
+            @Override
+            public CompletableFuture<Boolean> request(
+                    String method, JsonObject params, DaemonBridge.DaemonOutputCallback callback) {
+                assertEquals("opencode.summarize", method);
+                callback.onError("Nothing to compact yet");
+                callback.onComplete(false);
+                return CompletableFuture.completedFuture(false);
+            }
+        };
+
+        HandlerContext context = new HandlerContext(null, bridge, null, jsCallback);
+        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback());
+
+        JsonObject payload = new JsonObject();
+        payload.addProperty("sessionId", "session_123");
+        assertTrue(handler.handle("compact_session", payload.toString()));
+        assertEquals(1, jsCallback.calls.size());
+        assertEquals("onCompactError:session_123,Nothing to compact yet", jsCallback.calls.get(0));
+    }
+
+    @Test
     public void dispatchesUnshareSessionSuccess() {
         MockJsCallback jsCallback = new MockJsCallback();
         OpenCodeSDKBridge bridge = new OpenCodeSDKBridge(null, new Gson()) {

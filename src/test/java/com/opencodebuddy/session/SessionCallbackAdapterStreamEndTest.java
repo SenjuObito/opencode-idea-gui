@@ -198,6 +198,7 @@ public class SessionCallbackAdapterStreamEndTest {
     public void blockResetFlushesBufferedDeltasBeforeClearing() throws Exception {
         RecordingJsTarget jsTarget = new RecordingJsTarget();
         SessionCallbackAdapter adapter = new SessionCallbackAdapter(
+                "ses_test",
                 null,
                 jsTarget,
                 null,

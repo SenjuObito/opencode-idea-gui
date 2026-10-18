@@ -208,6 +208,71 @@ public class OpenCodeMessageConverterTest {
         assertEquals(20480, msgUsage.get("cache_read_input_tokens").getAsInt());
     }
 
+    @Test
+    public void standaloneAbortedTurnConvertsToNotification() {
+        String parts = "[{\"type\":\"text\",\"text\":\"已停止生成\",\"aborted\":true}]";
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entry("assistant", parts)));
+        assertEquals(1, out.size());
+        JsonObject notification = out.get(0);
+        assertEquals("notification", notification.get("type").getAsString());
+        assertEquals("已停止生成", notification.get("content").getAsString());
+        JsonObject raw = notification.getAsJsonObject("raw");
+        assertNotNull(raw);
+        assertTrue(raw.has("aborted") && raw.get("aborted").getAsBoolean());
+    }
+
+    @Test
+    public void abortedWithPriorTextSplitsIntoAssistantAndNotification() {
+        String parts = "["
+                + "{\"type\":\"text\",\"text\":\"Here is the partial content\"},"
+                + "{\"type\":\"text\",\"text\":\"已停止生成\",\"aborted\":true}"
+                + "]";
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entry("assistant", parts)));
+        assertEquals(2, out.size());
+        JsonObject assistant = out.get(0);
+        assertEquals("assistant", assistant.get("type").getAsString());
+        assertEquals("Here is the partial content", assistant.get("content").getAsString());
+
+        JsonObject notification = out.get(1);
+        assertEquals("notification", notification.get("type").getAsString());
+        assertEquals("已停止生成", notification.get("content").getAsString());
+    }
+
+    @Test
+    public void convertsCompactionEntryToUserCompactSummary() {
+        String parts = "[{\"type\":\"text\",\"text\":\"This session was compacted.\"}]";
+        JsonObject entryObj = entry("compaction", parts);
+        JsonObject info = entryObj.getAsJsonObject("info");
+        JsonObject meta = new JsonObject();
+        meta.addProperty("trigger", "manual");
+        meta.addProperty("userContext", "This session was compacted.");
+        info.add("compactMetadata", meta);
+        info.addProperty("isCompactSummary", true);
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
+        assertEquals(1, out.size());
+        JsonObject user = out.get(0);
+        assertEquals("user", user.get("type").getAsString());
+        assertEquals("This session was compacted.", user.get("content").getAsString());
+        JsonObject raw = user.getAsJsonObject("raw");
+        assertNotNull(raw);
+        assertTrue(raw.get("isCompactSummary").getAsBoolean());
+        assertNotNull(raw.getAsJsonObject("compactMetadata"));
+        assertEquals("manual", raw.getAsJsonObject("compactMetadata").get("trigger").getAsString());
+    }
+
+    @Test
+    public void convertsErrorEntryToErrorMessage() {
+        String parts = "[{\"type\":\"text\",\"text\":\"[Error: Rate limit exceeded. Please try again later.]\"}]";
+        JsonObject entryObj = entry("assistant", parts);
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
+        assertEquals(1, out.size());
+        JsonObject errorMsg = out.get(0);
+        assertEquals("error", errorMsg.get("type").getAsString());
+        assertEquals("Rate limit exceeded. Please try again later.", errorMsg.get("content").getAsString());
+    }
+
     private static JsonElement wrap(JsonObject entry) {
         JsonArray arr = new JsonArray();
         arr.add(entry);

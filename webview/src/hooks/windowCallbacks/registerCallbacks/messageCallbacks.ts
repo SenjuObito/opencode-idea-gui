@@ -12,6 +12,7 @@ import type { ClaudeMessage } from '../../../types';
 import type { ContextUsageData } from '../../../components/ContextUsageDialog';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 import { debugError } from '../../../utils/debug';
+import { resolveSessionId } from '../../../utils/sessionIdentity';
 import {
   appendOptimisticMessageIfMissing,
   ensureStreamingAssistantInList,
@@ -115,6 +116,33 @@ export function registerMessageCallbacks(
       : 0;
   };
 
+  const sessionBaseIndexMap = new Map<string, number>();
+
+  const getBaseIndexForSession = (sessionId: string | null): number => {
+    if (sessionId && sessionBaseIndexMap.has(sessionId)) {
+      return sessionBaseIndexMap.get(sessionId)!;
+    }
+    const tab = sessionId ? window.__sessionTabsStore?.getTabs?.().find((t) => t.sessionId === sessionId) : null;
+    if (tab && typeof tab.messageBaseIndex === 'number') {
+      return tab.messageBaseIndex;
+    }
+    return typeof window.__messageBaseIndex === 'number' ? window.__messageBaseIndex : 0;
+  };
+
+  const setBaseIndexForSession = (sessionId: string | null, baseIndex: number): void => {
+    if (sessionId) {
+      sessionBaseIndexMap.set(sessionId, baseIndex);
+    }
+    const tab = sessionId ? window.__sessionTabsStore?.getTabs?.().find((t) => t.sessionId === sessionId) : null;
+    if (tab) {
+      tab.messageBaseIndex = baseIndex;
+    }
+    const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
+      window.__messageBaseIndex = baseIndex;
+    }
+  };
+
   // Expose a cancellation function so onStreamEnd can cancel stale rAF-deferred
   // updateMessages calls, preventing them from overwriting the final state after
   // streaming refs are cleared.
@@ -171,7 +199,7 @@ export function registerMessageCallbacks(
       }
       cardDebugLog('[processUpdateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
     }
-    const effectiveSessionId = targetSessionId || options.currentSessionIdRef?.current;
+    const effectiveSessionId = targetSessionId ?? null;
     const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) {
       cardDebugLog('[processUpdateMessages] BLOCKED: seq', sequence, '< minAccepted', minAcceptedSequence, 'sessionId:', effectiveSessionId);
@@ -200,11 +228,11 @@ export function registerMessageCallbacks(
         ? Number(baseIndexArg)
         : null;
       const hasWindowBase = baseIndex != null && Number.isSafeInteger(baseIndex) && baseIndex >= 0;
-      const prevWindowBase = window.__messageBaseIndex ?? 0;
+      const prevWindowBase = getBaseIndexForSession(effectiveSessionId);
       const windowChanged = hasWindowBase && (baseIndex as number) !== prevWindowBase;
       if (windowChanged) {
         const newBase = baseIndex as number;
-        window.__messageBaseIndex = newBase;
+        setBaseIndexForSession(effectiveSessionId, newBase);
         setMessages((prev) => {
           const listStart = window.__opencodeListStart ?? 0;
           // 保留 prev 中全局序号 < newBase 的头部（分页内容 + 旧窗口头部），
@@ -224,7 +252,7 @@ export function registerMessageCallbacks(
         return;
       }
 
-      window.__messageBaseIndex = hasWindowBase ? (baseIndex as number) : 0;
+      setBaseIndexForSession(effectiveSessionId, hasWindowBase ? (baseIndex as number) : 0);
 
       setMessages((prev) => {
         const prependedCount = getPrependedHistoryMessageCount(prev.length);
@@ -430,7 +458,7 @@ export function registerMessageCallbacks(
       const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
       if (!isTargetActiveSession) return;
     }
-    const effectiveSessionId = targetSessionId || options.currentSessionIdRef?.current;
+    const effectiveSessionId = targetSessionId ?? null;
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) return;
@@ -456,7 +484,7 @@ export function registerMessageCallbacks(
         const prependedHistory = prependedCount > 0
           ? prev.slice(0, prependedCount)
           : [];
-        const storedBaseIndex = window.__messageBaseIndex;
+        const storedBaseIndex = getBaseIndexForSession(effectiveSessionId);
         const currentBaseIndex = typeof storedBaseIndex === 'number' && Number.isSafeInteger(storedBaseIndex)
           ? Math.max(0, storedBaseIndex)
           : 0;
@@ -465,7 +493,7 @@ export function registerMessageCallbacks(
         let merged = hasFullPrefix
           ? [...prev.slice(0, prependedCount + baseIndex), ...tail]
           : [...prependedHistory, ...tail];
-        window.__messageBaseIndex = hasFullPrefix ? 0 : baseIndex;
+        setBaseIndexForSession(effectiveSessionId, hasFullPrefix ? 0 : baseIndex);
 
         merged = appendOptimisticMessageIfMissing(prev, merged);
         merged = preserveLastAssistantIdentity(prev, merged, findLastAssistantIndex);
@@ -496,6 +524,9 @@ export function registerMessageCallbacks(
           merged,
           { skipTrailingTurn: isStreamingRef.current },
         );
+        if (merged.length === 0 && prev.length > 0 && isStreamingRef.current) {
+          return prev;
+        }
         return finalizeMessageList(prev, merged);
       });
     } catch (error) {
@@ -522,12 +553,16 @@ export function registerMessageCallbacks(
       baseIndexArg = arg2;
     }
 
+    if (targetSessionId && window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
     const isForegroundSession = !targetSessionId
       || (targetSessionId === (window.__sessionTransitionTargetSessionId || options.currentSessionIdRef?.current))
       || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
 
     if (!isForegroundSession && targetSessionId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.updateBackgroundTab(
+      const stored = window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
           try {
@@ -540,7 +575,13 @@ export function registerMessageCallbacks(
           }
         }
       );
-      return;
+      // `stored === false` means no tab claims this session (it may be a session
+      // the tab bar has not bound yet). Fall through to the active path instead
+      // of dropping the snapshot: a lost snapshot shows up as a conversation
+      // that simply never renders.
+      if (stored) {
+        return;
+      }
     }
 
     // During session transition, ignore message updates from stale session
@@ -557,7 +598,7 @@ export function registerMessageCallbacks(
       }
       cardDebugLog('[updateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
     }
-    const effectiveSessionId = targetSessionId || options.currentSessionIdRef?.current;
+    const effectiveSessionId = targetSessionId ?? null;
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) {
@@ -637,21 +678,37 @@ export function registerMessageCallbacks(
       sequenceArg = arg2;
     }
 
+    if (targetSessionId && window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
+      const stored = window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
           try {
-            const raw = JSON.parse(json);
-            if (Array.isArray(raw)) {
-              t.messages = raw;
+            const tail = JSON.parse(json);
+            if (Array.isArray(tail)) {
+              const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
+              const currentMessages = t.messages || [];
+              if (Number.isSafeInteger(base) && base >= 0 && base <= currentMessages.length) {
+                t.messages = [...currentMessages.slice(0, base), ...tail];
+              } else if (currentMessages.length > 0) {
+                t.messages = [...currentMessages, ...tail];
+              } else {
+                t.messages = tail;
+              }
+              t.messageBaseIndex = Number.isSafeInteger(base) ? base : 0;
             }
           } catch (e) {
             console.error('[MultiSession] Failed to parse background updateMessageTail', e);
           }
         }
       );
-      return;
+      // No tab claims this session — apply to the active path rather than drop.
+      if (stored) {
+        return;
+      }
     }
 
     processMessageTail(json, baseIndexArg, sequenceArg, targetSessionId);
@@ -773,14 +830,24 @@ export function registerMessageCallbacks(
       suppressNextStatusToastRef.current = false;
       return;
     }
+    // Turn errors are rendered directly in the message transcript and StatusNoticeBar banner;
+    // suppress redundant toast notifications.
+    if (typeof text === 'string' && text.startsWith('Error:')) {
+      return;
+    }
     addToast(message);
   };
 
   window.showLoading = (arg0, arg1) => {
-    const [targetSessionId, value] = typeof arg1 !== 'undefined' ? [typeof arg0 === 'string' ? arg0 : null, arg1] : [null, arg0];
+    const value = typeof arg1 !== 'undefined' ? arg1 : arg0;
+    const targetSessionId = resolveSessionId(
+      typeof arg1 !== 'undefined' ? arg0 : null,
+      'showLoading',
+    );
     const isLoading = isTruthy(value);
+    if (targetSessionId === null) return;
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
@@ -790,11 +857,14 @@ export function registerMessageCallbacks(
       return;
     }
 
-    // FIX: Ignore loading=false during streaming — onStreamEnd handles it uniformly.
-    if (!isLoading && isStreamingRef.current) {
-      return;
-    }
-
+    // No "ignore loading=false while streaming" guard here any more.
+    //
+    // It existed because the turn terminal was unreliable, so an early clear had
+    // to be blocked. The daemon now emits an explicit, per-session, idempotent
+    // [TURN_END], so a loading=false that arrives here is authoritative: it is
+    // this session's own writer saying the turn is over. Deferring it to an
+    // onStreamEnd that may never arrive is what left tabs spinning forever.
+    //
     // Notify backend about loading state change for tab indicator
     sendBridgeEvent('tab_loading_changed', JSON.stringify({ loading: isLoading }));
 
@@ -899,43 +969,66 @@ export function registerMessageCallbacks(
     window.showSummary?.(pendingSummary);
   }
 
-  window.patchMessageUuid = (content, uuid) => {
+  // 宿主多会话约定：(sessionId, content, uuid)。归属先解析：不属于当前活跃
+  // 会话的补丁写进对应的后台 tab，绝不落到前台列表——否则又回到「拿归属当投递」
+  // 的老问题。签名曾与宿主错位（宿主发 3 参、这里只收 2 参），导致 content 槽位
+  // 收到的是 sessionId，整个补丁静默失效。
+  const patchUuidInList = (prev: ClaudeMessage[], content: string, uuid: string): ClaudeMessage[] => {
+    for (let i = prev.length - 1; i >= 0; i -= 1) {
+      const message = prev[i];
+      if (message.type !== 'user') continue;
+      if (getRawUuid(message)) continue;
+
+      const rawText = extractRawBlocks(message.raw)
+        .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+        .map((block) => String(block.text))
+        .join('\n');
+      if ((message.content || '') !== content && rawText !== content) continue;
+
+      const raw: ClaudeMessage['raw'] =
+        typeof message.raw === 'object' && message.raw
+          ? { ...message.raw, uuid }
+          : {
+              uuid,
+              message: {
+                content: [{ type: 'text' as const, text: message.content || content }],
+              },
+            };
+
+      const next = [...prev];
+      next[i] = {
+        ...message,
+        raw,
+      };
+      return next;
+    }
+
+    cardDebugLog('[patchMessageUuid] no matching unresolved user message found for content:', content);
+    return prev;
+  };
+
+  window.patchMessageUuid = (arg0, arg1, arg2) => {
+    const targetSessionId = resolveSessionId(arg0, 'patchMessageUuid');
+    const content = arg1;
+    const uuid = arg2;
+    if (!targetSessionId || !content || !uuid) return;
+
+    if (
+      targetSessionId &&
+      window.__sessionTabsStore &&
+      !window.__sessionTabsStore.isActiveSession(targetSessionId)
+    ) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.messages = patchUuidInList(t.messages ?? [], content, uuid);
+        }
+      );
+      return;
+    }
+
     if (window.__sessionTransitioning) return;
-    if (!content || !uuid) return;
-
-    setMessages((prev) => {
-      for (let i = prev.length - 1; i >= 0; i -= 1) {
-        const message = prev[i];
-        if (message.type !== 'user') continue;
-        if (getRawUuid(message)) continue;
-
-        const rawText = extractRawBlocks(message.raw)
-          .filter((block) => block?.type === 'text' && typeof block.text === 'string')
-          .map((block) => String(block.text))
-          .join('\n');
-        if ((message.content || '') !== content && rawText !== content) continue;
-
-        const raw: ClaudeMessage['raw'] =
-          typeof message.raw === 'object' && message.raw
-            ? { ...message.raw, uuid }
-            : {
-                uuid,
-                message: {
-                  content: [{ type: 'text' as const, text: message.content || content }],
-                },
-              };
-
-        const next = [...prev];
-        next[i] = {
-          ...message,
-          raw,
-        };
-        return next;
-      }
-
-      console.debug('[patchMessageUuid] no matching unresolved user message found for content:', content);
-      return prev;
-    });
+    setMessages((prev) => patchUuidInList(prev, content, uuid));
   };
 
   window.clearMessages = (arg0, arg1) => {

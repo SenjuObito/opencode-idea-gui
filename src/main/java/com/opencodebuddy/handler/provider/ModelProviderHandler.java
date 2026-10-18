@@ -2,6 +2,7 @@ package com.opencodebuddy.handler.provider;
 
 import com.opencodebuddy.handler.UsagePushService;
 import com.opencodebuddy.handler.core.HandlerContext;
+import com.opencodebuddy.session.OpencodeSession;
 
 import com.opencodebuddy.provider.CustomModelContextWindowProvider;
 import com.opencodebuddy.provider.ModelContextWindowCatalog;
@@ -11,9 +12,6 @@ import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * Handles model selection and reasoning effort for the OpenCode-only build.
  * The provider is fixed to {@code opencode}; model ids are
@@ -22,21 +20,6 @@ import java.util.Map;
 public class ModelProviderHandler {
 
     private static final Logger LOG = Logger.getInstance(ModelProviderHandler.class);
-
-    static final Map<String, Integer> MODEL_CONTEXT_LIMITS = new HashMap<>();
-    static {
-        // Known models limits
-        MODEL_CONTEXT_LIMITS.put("qwen3-coder", 256_000);
-        MODEL_CONTEXT_LIMITS.put("grok-code", 256_000);
-        MODEL_CONTEXT_LIMITS.put("claude-sonnet-4-5", 200_000);
-        MODEL_CONTEXT_LIMITS.put("claude-sonnet-4-7", 200_000);
-        MODEL_CONTEXT_LIMITS.put("claude-opus-4", 200_000);
-        MODEL_CONTEXT_LIMITS.put("claude-opus-4-1", 200_000);
-        MODEL_CONTEXT_LIMITS.put("claude-3-7-sonnet", 200_000);
-        MODEL_CONTEXT_LIMITS.put("gpt-5", 400_000);
-        MODEL_CONTEXT_LIMITS.put("gpt-5-codex", 400_000);
-        MODEL_CONTEXT_LIMITS.put("gpt-4o", 128_000);
-    }
 
     private static final String FIXED_PROVIDER = "opencode";
 
@@ -49,14 +32,47 @@ public class ModelProviderHandler {
         this.usagePushService = usagePushService;
     }
 
+    /**
+     * Resolve the session a model/effort change belongs to.
+     *
+     * <p>Payloads may carry a {@code sessionId}: the webview hosts several sessions
+     * and each tab owns its own selection, so "the window's current session" is not
+     * a safe default — writing there changes the wrong conversation while the UI
+     * reports success. Older payloads (bare strings) fall back to the current
+     * session, which keeps the legacy single-tab behaviour intact.</p>
+     */
+    private OpencodeSession resolveTargetSession(String sessionId) {
+        if (sessionId != null && !sessionId.trim().isEmpty()) {
+            OpencodeSession scoped = context.getSession(sessionId.trim());
+            if (scoped != null) {
+                return scoped;
+            }
+            LOG.warn("[ModelProviderHandler] Unknown sessionId " + sessionId
+                    + " — falling back to the window's current session");
+        }
+        return context.getSession();
+    }
+
     public void handleSetModel(String content) {
         try {
             String model = content;
+            // `silent` marks a value a tab switch is restoring rather than a user
+            // choice. Such a replay must not clear the session's context usage or
+            // push an empty usage row, otherwise alternating between two tabs
+            // with different models zeroes the usage ring every time.
+            boolean silent = false;
+            String targetSessionId = null;
             if (content != null && !content.isEmpty()) {
                 try {
                     JsonObject json = gson.fromJson(content, JsonObject.class);
                     if (json.has("model")) {
                         model = json.get("model").getAsString();
+                    }
+                    if (json.has("silent") && !json.get("silent").isJsonNull()) {
+                        silent = json.get("silent").getAsBoolean();
+                    }
+                    if (json.has("sessionId") && !json.get("sessionId").isJsonNull()) {
+                        targetSessionId = json.get("sessionId").getAsString();
                     }
                 } catch (Exception e) {
                     // content itself is the model
@@ -66,22 +82,25 @@ public class ModelProviderHandler {
             String previousModel = context.getCurrentModel();
             boolean modelChanged = previousModel == null || !previousModel.equals(model);
             LOG.info("[ModelProviderHandler] Setting model to: " + model
-                    + " (was: " + previousModel + ")");
+                    + " (was: " + previousModel + ")"
+                    + (silent ? " [silent restore]" : "")
+                    + (targetSessionId != null ? " [session=" + targetSessionId + "]" : ""));
             context.setCurrentModel(model);
 
-            if (context.getSession() != null) {
-                context.getSession().setModel(model);
-                if (modelChanged) {
+            OpencodeSession targetSession = resolveTargetSession(targetSessionId);
+            if (targetSession != null) {
+                targetSession.setModel(model);
+                if (modelChanged && !silent) {
                     TokenUsageUtils.clearContextUsageFromSessionMessages(
-                            context.getSession().getMessages());
+                            targetSession.getMessages());
                 }
             }
 
-            if (modelChanged) {
+            if (modelChanged && !silent) {
                 usagePushService.clearUsageDisplay();
             }
 
-            if (context.getProject() != null) {
+            if (!silent && context.getProject() != null) {
                 com.opencodebuddy.notifications.OpencodeNotifier.setModel(context.getProject(), model);
             }
 
@@ -106,20 +125,26 @@ public class ModelProviderHandler {
     public void handleSetReasoningEffort(String content) {
         try {
             String effort = content;
+            String targetSessionId = null;
             if (content != null && !content.isEmpty()) {
                 try {
                     JsonObject json = gson.fromJson(content, JsonObject.class);
                     if (json.has("reasoningEffort")) {
                         effort = json.get("reasoningEffort").getAsString();
                     }
+                    if (json.has("sessionId") && !json.get("sessionId").isJsonNull()) {
+                        targetSessionId = json.get("sessionId").getAsString();
+                    }
                 } catch (Exception e) {
                     // content itself is the effort
                 }
             }
-            if (context.getSession() != null) {
-                context.getSession().setReasoningEffort(effort);
+            OpencodeSession targetSession = resolveTargetSession(targetSessionId);
+            if (targetSession != null) {
+                targetSession.setReasoningEffort(effort);
             }
-            LOG.info("[ModelProviderHandler] Set reasoning effort (variant): " + effort);
+            LOG.info("[ModelProviderHandler] Set reasoning effort (variant): " + effort
+                    + (targetSessionId != null ? " [session=" + targetSessionId + "]" : ""));
         } catch (Exception e) {
             LOG.error("[ModelProviderHandler] Failed to set reasoning effort: " + e.getMessage(), e);
         }
@@ -127,12 +152,12 @@ public class ModelProviderHandler {
 
     public static int getModelContextLimit(String model) {
         if (model == null || model.isEmpty()) {
-            return 200_000;
+            return 0;
         }
 
         String trimmed = model.trim();
 
-        // 1. Explicit bracketed capacity suffix, e.g. "claude-sonnet-4-7 [1m]" or "model[200k]"
+        // Explicit bracketed capacity suffix, e.g. "claude-sonnet-4-7 [1m]" or "model[200k]"
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\s*\\[([0-9.]+)([kKmM])\\]\\s*$");
         java.util.regex.Matcher matcher = pattern.matcher(trimmed);
 
@@ -149,32 +174,12 @@ public class ModelProviderHandler {
             }
         }
 
-        Integer known = MODEL_CONTEXT_LIMITS.get(trimmed);
-        if (known != null) {
-            return known;
-        }
-
-        // 2. Strip provider prefix if present (e.g. "anthropic/claude-3-7-sonnet" -> "claude-3-7-sonnet")
-        int slashIdx = trimmed.indexOf('/');
-        String bareModel = slashIdx >= 0 ? trimmed.substring(slashIdx + 1) : trimmed;
-        known = MODEL_CONTEXT_LIMITS.get(bareModel);
-        if (known != null) {
-            return known;
-        }
-
-        // 3. Prefix matching
-        for (Map.Entry<String, Integer> entry : MODEL_CONTEXT_LIMITS.entrySet()) {
-            if (trimmed.startsWith(entry.getKey()) || bareModel.startsWith(entry.getKey())) {
-                return entry.getValue();
-            }
-        }
-
-        return 200_000;
+        return 0;
     }
 
     /**
      * Resolve a model's context window, preferring real provider metadata over
-     * the hardcoded table.
+     * any bracketed fallback.
      *
      * <p>Resolution order:</p>
      * <ol>
@@ -182,7 +187,7 @@ public class ModelProviderHandler {
      *   <li>{@link ModelContextWindowCatalog} — the live opencode model list
      *       (models.dev {@code limit.context})</li>
      *   <li>{@link #getModelContextLimit(String)} — bracketed capacity suffix,
-     *       then the hardcoded table, then the 200k default</li>
+     *       otherwise 0 (unknown)</li>
      * </ol>
      *
      * <p>Ids carrying an explicit capacity suffix miss the catalog by design and

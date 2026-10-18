@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { sendBridgeEvent } from '../utils/bridge';
+import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
 
 export interface UseHistoryLoaderOptions {
   currentView: 'chat' | 'history' | 'settings';
@@ -26,7 +26,7 @@ export function useHistoryLoader(options: UseHistoryLoaderOptions): void {
         if (historyRetryCount < MAX_HISTORY_RETRIES) {
           currentTimer = setTimeout(requestHistoryData, 100);
         } else {
-          console.warn('[Frontend] Failed to load history data: bridge not available after', MAX_HISTORY_RETRIES, 'retries');
+          cardDebugLog('[Frontend] Failed to load history data: bridge not available after', MAX_HISTORY_RETRIES, 'retries');
         }
       }
     };

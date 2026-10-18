@@ -52,11 +52,20 @@ const mkRequest = (overrides: Partial<AskUserQuestionRequest> = {}): AskUserQues
   ...overrides,
 });
 
-const renderDialog = (request: AskUserQuestionRequest | null) => {
+const renderDialog = (
+  request: AskUserQuestionRequest | null,
+  onTimeout?: (id: string) => void,
+) => {
   const onSubmit = vi.fn();
   const onCancel = vi.fn();
   const result = render(
-    <AskUserQuestionDialog isOpen request={request} onSubmit={onSubmit} onCancel={onCancel} />,
+    <AskUserQuestionDialog
+      isOpen
+      request={request}
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+      onTimeout={onTimeout}
+    />,
   );
   return { onSubmit, onCancel, ...result };
 };
@@ -138,7 +147,19 @@ describe('AskUserQuestionDialog', () => {
     expect(onCancel).toHaveBeenCalledWith('req-1');
   });
 
-  it('timeout invokes onCancel for the active request even when the countdown is gated', () => {
+  it('timeout invokes onTimeout for the active request when provided', () => {
+    const onTimeout = vi.fn();
+    const { onCancel } = renderDialog(mkRequest(), onTimeout);
+    countdown.markSubmitted.mockReturnValue(false);
+    act(() => {
+      countdown.lastOpts?.onTimeout?.();
+    });
+    expect(countdown.markSubmitted).not.toHaveBeenCalled();
+    expect(onTimeout).toHaveBeenCalledWith('req-1');
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('timeout falls back to onCancel when onTimeout is not provided', () => {
     const { onCancel } = renderDialog(mkRequest());
     countdown.markSubmitted.mockReturnValue(false);
     act(() => {

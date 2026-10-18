@@ -108,4 +108,8 @@ public class SessionCallbackFacade {
     public void notifyRevertStateUpdate(boolean hasRevert) {
         callbackHandler.notifyRevertStateUpdate(hasRevert);
     }
+
+    public void notifyTurnEnd(String jsonContent) {
+        callbackHandler.notifyTurnEnd(jsonContent);
+    }
 }

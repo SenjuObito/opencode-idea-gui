@@ -11,6 +11,7 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
 import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBootstrap';
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
+import { cardDebugLog } from '../../../utils/bridge';
 
 export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -57,12 +58,17 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
               : undefined;
 
         if (used !== undefined && max !== undefined && used > max * 2) {
-          console.warn(
+          cardDebugLog(
             '[Frontend] Usage data may be incorrect: used=' + used + ', max=' + max,
           );
         }
 
         const safePercentage = Math.max(0, Math.min(100, data.percentage));
+
+        // 兜底：Java 端未传 sessionId 时，沿用当前前端 active session，避免跨 tab 污染
+        if (!targetSessionId && window.__sessionTabsStore) {
+          targetSessionId = window.__sessionTabsStore.getActiveSessionId();
+        }
 
         // If targetSessionId belongs to a background tab, update the background tab's data directly
         if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
@@ -77,9 +83,28 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
           return;
         }
 
+        // Active tab (or no sessionId): update global UI state AND persist into the
+        // current active tab so tab-switching restores the correct per-tab
+        // model / maxTokens / usedTokens.
         setUsagePercentage(safePercentage);
         setUsageUsedTokens(used);
         setUsageMaxTokens(max);
+
+        if (window.__sessionTabsStore) {
+          const activeTabId = window.__sessionTabsStore.getActiveTabId();
+          const activeSessionId = window.__sessionTabsStore.getActiveSessionId();
+          const effectiveSessionId = targetSessionId || activeSessionId;
+          if (effectiveSessionId) {
+            window.__sessionTabsStore.updateBackgroundTab(
+              (t) => t.sessionId === effectiveSessionId || t.id === activeTabId,
+              (tab) => {
+                tab.usagePercentage = safePercentage;
+                tab.usageUsedTokens = used;
+                tab.usageMaxTokens = max;
+              }
+            );
+          }
+        }
       }
     } catch (error) {
       console.error('[Frontend] Failed to parse usage update:', error);

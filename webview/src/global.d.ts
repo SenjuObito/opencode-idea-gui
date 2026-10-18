@@ -292,7 +292,7 @@ interface Window {
    * Revert state update callback - JSON `{ hasRevert: boolean, messageId?: string }`
    * where messageId is the opencode revert boundary (the undone user message).
    */
-  onRevertStateUpdate?: (json: string) => void;
+  onRevertStateUpdate?: (...args: any[]) => void;
 
   /**
    * Authoritative server-side deletion — JSON array of opencode message ids.
@@ -505,6 +505,39 @@ interface Window {
    * Update linkify/navigation capabilities used by Markdown rendering.
    */
   updateLinkifyCapabilities?: (json: string) => void;
+
+  /**
+   * Legacy windowed-JCEF repaint requested after its IntelliJ content tab is
+   * activated. Not used on OSR platforms, where Java drives the surface damage
+   * fence below instead.
+   */
+  onTabActivated?: () => void;
+
+  /**
+   * Strict two-frame OSR damage pulse, owned by a Java SurfaceFrameFence attempt
+   * token. Each function returns whether the mutation was applied for that exact
+   * token; Java only advances its paint gate after receiving the matching
+   * `surface_damage_applied` ack — never on executeJavaScript() returning.
+   */
+  __ccguiSurfaceDamagePhaseA?: (token: string) => boolean;
+  __ccguiSurfaceDamagePhaseB?: (token: string) => boolean;
+  __ccguiSurfaceDamageReplace?: (previousToken: string, nextToken: string) => boolean;
+  __ccguiSurfaceDamageFinish?: (token: string) => boolean;
+  __ccguiSurfaceDamageCancel?: (token: string, predecessorToken?: string) => boolean;
+
+  /**
+   * Request one more OSR surface publication of the current DOM (tab switch).
+   * Bumps the history render commit epoch, which is the only revision source the
+   * Java frame fence accepts.
+   */
+  __requestSurfaceRepublish?: () => void;
+
+  /**
+   * Rebuild the tab strip after a webview reload. Payload is
+   * `{"sessions":[{"sessionId":"..."}],"activeSessionId":"..."}` — the sessions
+   * Java still hosts in memory. Transcripts load on demand.
+   */
+  restoreSessionTabs?: (json: string) => void;
 
   /**
    * File path resolved callback - receives the resolved absolute path for a file link tooltip.
@@ -746,7 +779,7 @@ interface Window {
   /**
    * Revert/unrevert failure callback - receives JSON `{ op: 'undo' | 'redo', error? }`
    */
-  onRevertError?: (json: string) => void;
+  onRevertError?: (arg: any) => void;
 
   /**
    * Compact (summarize) session success callback
@@ -812,6 +845,16 @@ interface Window {
    * Stream end callback - called when streaming ends
    */
   onStreamEnd?: (arg0?: string | number, arg1?: string | number) => void;
+  /**
+   * Daemon's authoritative per-session turn terminal.
+   *
+   * Carries the session id plus a JSON payload with `{ turnId, reason }`.
+   * Idempotent on `(sessionId, turnId)`: the daemon emits it once per settled
+   * turn regardless of whether the turn was streamed, errored, aborted or the
+   * serve process exited — the cases where `onStreamEnd` never arrived and a tab
+   * kept spinning.
+   */
+  onTurnEnd?: (targetSessionId: string, json?: string) => void;
 
   /**
    * Streaming heartbeat callback
@@ -1154,13 +1197,26 @@ interface Window {
     getActiveTabAutoOpenFileEnabled?: () => boolean;
     getTabs: () => any[];
     isActiveSession: (sessionId: string | null | undefined) => boolean;
+    /**
+     * @returns true when a tab matched `predicate`. Callers must check this: a
+     *     false return means the write had nowhere to go.
+     */
     updateBackgroundTab: (
       predicate: (tab: any) => boolean,
       updater: (tab: any) => void
-    ) => void;
+    ) => boolean;
     updateTabSessionId: (tabId: string, sessionId: string) => void;
     updateTabTitle: (sessionId: string, newTitle: string) => void;
     closeTabBySessionId?: (sessionId: string) => void;
+    claimUnboundTab?: (targetSessionId: string) => boolean;
+    /**
+     * Archive the active tab's live streaming runtime before a session
+     * transition wipes it. The outgoing turn may still be running in the
+     * background and needs its accumulator when the user returns.
+     */
+    archiveActiveStreamingRuntime?: () => void;
+    /** Drop the archived runtime belonging to this session (called on stream end). */
+    clearStreamingRuntimeFor?: (sessionId: string) => void;
   };
 
   /**

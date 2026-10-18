@@ -347,7 +347,7 @@
       "permissionDialogTimeout": {
         "label": "Tiempo de espera de diálogos de permisos y preguntas",
         "unit": "segundos",
-        "hint": "Establece el tiempo de espera para los diálogos de preguntas de OpenCode y los diálogos de solicitud de permisos (30~3600 segundos). Después del tiempo de espera, el diálogo se cerrará automáticamente y OpenCode continuará."
+        "hint": "Establece el tiempo de espera para los diálogos de preguntas de OpenCode y los diálogos de solicitud de permisos (30~3600 segundos). Si se agota el tiempo sin respuesta, el diálogo se cerrará automáticamente y la sesión se detendrá."
       },
       "chatBgColor": {
         "label": "Color de fondo del chat",
@@ -1538,6 +1538,10 @@
     "parseError": "Error al analizar el resultado"
   },
   "reasoning": {
+    "default": {
+      "label": "Predeterminado",
+      "description": "Usar el valor predeterminado del modelo"
+    },
     "cycleHint": "Cambiar el nivel de razonamiento",
     "title": "Seleccionar profundidad de razonamiento",
     "low": {
@@ -1648,6 +1652,11 @@
           "step0": "Ejecuta el comando siguiente en una terminal para ver tu versión. Se recomienda Node 22 o la LTS actual — los usuarios han reportado muchos problemas con Node 24, prefiere Node 20 o 22:"
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "Cuota de modelo agotada",
+      "notice": "La cuota gratuita o del plan para este modelo se ha agotado. Cambie de modelo o mejore su suscripción.",
+      "upgrade": "Mejorar suscripción"
     }
   },
   "openCodeModes": {

@@ -23,19 +23,22 @@ public class SessionSendService {
     private final SessionCallbackFacade callbackFacade;
     private final SessionContextService contextService;
     private final OpenCodeSDKBridge bridge;
+    private final SessionStreamRouter streamRouter;
 
     public SessionSendService(
             Project project,
             SessionState state,
             SessionCallbackFacade callbackFacade,
             OpenCodeSDKBridge bridge,
-            SessionContextService contextService
+            SessionContextService contextService,
+            SessionStreamRouter streamRouter
     ) {
         this.project = project;
         this.state = state;
         this.callbackFacade = callbackFacade;
         this.bridge = bridge;
         this.contextService = contextService;
+        this.streamRouter = streamRouter;
     }
 
     public void prepareContextCollector(EditorContextCollector contextCollector) {
@@ -136,11 +139,17 @@ public class SessionSendService {
         if (trimmed.isEmpty()) {
             return null;
         }
-        if (SessionState.isValidReasoningEffort(trimmed)) {
-            return trimmed;
+        if (!SessionState.isValidReasoningEffort(trimmed)) {
+            LOG.warn("[ReasoningEffort][Backend] Invalid requested reasoningEffort ignored: " + effort);
+            return null;
         }
-        LOG.warn("[ReasoningEffort][Backend] Invalid requested reasoningEffort ignored: " + effort);
-        return null;
+        // "default" means "no variant" — opencode then applies the model's own
+        // catalog settings (and reports back `variant: "default"`). Returning
+        // null keeps the field off the wire for both engines.
+        if ("default".equals(trimmed)) {
+            return null;
+        }
+        return trimmed;
     }
 
     public static String normalizeRequestedPermissionMode(String mode) {
@@ -180,10 +189,12 @@ public class SessionSendService {
             String variant,
             String command
     ) {
-        OpenCodeMessageHandler handler = new OpenCodeMessageHandler(
-                state,
-                callbackFacade.getCallbackHandler()
-        );
+        // The session's own handler, not a per-send one: markers for this session
+        // are routed by session id (see DaemonBridge.deliverDataLine), so in-turn
+        // and out-of-turn markers must land in the SAME handler or the streaming
+        // accumulators would diverge. OpenCodeMessageHandler resets them on every
+        // [MESSAGE_START], so sharing one instance across turns is safe.
+        OpenCodeMessageHandler handler = streamRouter.getMessageCallback();
 
         // opencode native slash commands: "/name args..." → /session/{id}/command.
         // Context injection and agent prompts are skipped for commands.
@@ -238,10 +249,7 @@ public class SessionSendService {
     }
 
     public CompletableFuture<Void> sendShellToOpenCode(String channelId, String command) {
-        OpenCodeMessageHandler handler = new OpenCodeMessageHandler(
-                state,
-                callbackFacade.getCallbackHandler()
-        );
+        OpenCodeMessageHandler handler = streamRouter.getMessageCallback();
 
         String modelForSend = normalizeModelForSend(state.getModel());
         String effectivePermissionMode = resolveEffectivePermissionMode(

@@ -20,7 +20,7 @@ import static org.junit.Assert.assertTrue;
  * {@code [TURN_ERROR]}. Both used to be lost host-side — {@code [STATUS]} had no
  * parser branch at all, and the late error was mis-routed to the compaction
  * channel (logged and dropped) — so the only thing a user ever saw was the
- * generic local 180s timeout.
+ * generic local timeout.
  */
 public class OpenCodeRetryStatusRoutingTest {
 
@@ -81,6 +81,19 @@ public class OpenCodeRetryStatusRoutingTest {
         assertTrue(callback.contents.get(0).contains("Rate limit exceeded"));
     }
 
+    @Test
+    public void sessionCompactResultMarkerRoutesDecodedObject() {
+        RecordingCallback callback = new RecordingCallback();
+        OpenCodeMarkerParser.StreamContext context = new OpenCodeMarkerParser.StreamContext();
+
+        String payload = "{\"sessionID\":\"ses_1\",\"success\":true}";
+        parser.processOutputLine("[SESSION_COMPACT_RESULT] " + payload, callback, new SDKResult(), context);
+
+        assertEquals(1, callback.types.size());
+        assertEquals("session_compact_result", callback.types.get(0));
+        assertTrue(callback.contents.get(0).contains("ses_1"));
+    }
+
     // ===== Handler =====
 
     @Test
@@ -101,12 +114,12 @@ public class OpenCodeRetryStatusRoutingTest {
 
     @Test
     public void lateTurnErrorRewritesTheGenericTimeoutRow() {
-        // The 180s timeout already reported a failure; the late authoritative
-        // reason must correct that row, not add a second error bubble.
+        // A previously reported local failure row is corrected by the late
+        // authoritative server reason, not duplicated as a second error bubble.
         state.setBusy(false);
         state.setLoading(false);
         state.addMessage(new OpencodeSession.Message(
-                OpencodeSession.Message.Type.ERROR, "OpenCode 请求等待超时 (180s)。"));
+                OpencodeSession.Message.Type.ERROR, "Local request failure."));
         callbackHandler.setCallback(new BaseCallback());
 
         handler.onMessage("turn_error",

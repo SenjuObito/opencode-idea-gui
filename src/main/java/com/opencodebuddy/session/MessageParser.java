@@ -74,6 +74,9 @@ public class MessageParser {
         } else if ("assistant".equals(type)) {
             String content = extractMessageContent(msg);
             return new OpencodeSession.Message(OpencodeSession.Message.Type.ASSISTANT, content, rawMessage);
+        } else if ("error".equals(type)) {
+            String content = extractMessageContent(msg);
+            return new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, content, rawMessage);
         }
 
         return null;

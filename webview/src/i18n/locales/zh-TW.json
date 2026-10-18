@@ -348,7 +348,7 @@
       "permissionDialogTimeout": {
         "label": "權限與提問對話框超時時間",
         "unit": "秒",
-        "hint": "設定 OpenCode 提問對話框和權限請求對話框的超時時間（30~3600 秒）。超時後對話框將自動關閉，OpenCode 會繼續執行。"
+        "hint": "設定 OpenCode 提問對話框和權限請求對話框的超時時間（30~3600 秒）。超時未回答將自動關閉對話框並停止會話。"
       },
       "chatBgColor": {
         "label": "聊天背景色",
@@ -1552,6 +1552,10 @@
     "parseError": "解析結果失敗"
   },
   "reasoning": {
+    "default": {
+      "label": "default",
+      "description": "使用模型預設設定"
+    },
     "cycleHint": "切換推理力度",
     "title": "選擇思考深度",
     "low": {
@@ -1677,6 +1681,11 @@
           "step0": "在終端機執行以下指令查看版本號。建議使用 Node 22 或目前最新 LTS 版本 — 使用者反饋 Node 24 報錯較多，請優先使用 20 或 22："
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "模型額度已用盡",
+      "notice": "目前模型免費額度或帳號配額已耗盡，請切換模型或升級配額。",
+      "upgrade": "升級訂閱"
     }
   },
   "openCodeModes": {

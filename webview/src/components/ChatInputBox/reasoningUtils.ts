@@ -1,23 +1,25 @@
 import { useEffect, useMemo } from 'react';
-import { REASONING_LEVELS, type ReasoningEffort, type ReasoningInfo } from './types';
-
-export function isReasoningVisible(currentProvider?: string, selectedModel?: string): boolean {
-  void currentProvider;
-  void selectedModel;
-  return true;
-}
+import {
+  getAvailableReasoningLevels,
+  type ReasoningEffort,
+  type ReasoningInfo,
+} from './types';
 
 /**
- * Reasoning effort maps 1:1 to the opencode model variant (docs/models#variants).
- * Variants vary per model; the static low/medium/high list is the common subset.
+ * Re-exported from `types.ts` so there is exactly one implementation of the
+ * variant filtering. A local copy used to live here with a two-argument
+ * signature, which silently ignored the `modelVariants` argument and kept
+ * returning every level — the reason the selector never respected a model's
+ * catalog.
  */
-export function getAvailableReasoningLevels(
+export { getAvailableReasoningLevels } from './types';
+
+export function isReasoningVisible(
   currentProvider?: string,
   selectedModel?: string,
-): ReasoningInfo[] {
-  void currentProvider;
-  void selectedModel;
-  return REASONING_LEVELS;
+  modelVariants?: string[],
+): boolean {
+  return getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants).length > 0;
 }
 
 export function resolveCurrentReasoningLevel(
@@ -33,20 +35,27 @@ export function useReasoningEffortGuard(
   onChange: (effort: ReasoningEffort) => void,
   selectedModel?: string,
   currentProvider?: string,
+  modelVariants?: string[],
 ): {
   isVisible: boolean;
   availableLevels: ReasoningInfo[];
   currentLevel: ReasoningInfo | undefined;
 } {
-  const isVisible = isReasoningVisible(currentProvider, selectedModel);
   const availableLevels = useMemo(
-    () => getAvailableReasoningLevels(currentProvider, selectedModel),
-    [currentProvider, selectedModel],
+    () => getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants),
+    [currentProvider, selectedModel, modelVariants],
   );
+  const isVisible = availableLevels.length > 0;
   const currentLevel = resolveCurrentReasoningLevel(value, availableLevels);
 
   useEffect(() => {
-    if (!isVisible || availableLevels.some((level) => level.id === value)) {
+    if (!isVisible) {
+      if (value !== 'default') {
+        onChange('default');
+      }
+      return;
+    }
+    if (availableLevels.some((level) => level.id === value)) {
       return;
     }
     if (currentLevel) {

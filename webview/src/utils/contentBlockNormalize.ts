@@ -332,9 +332,19 @@ export function normalizeBlocks(
           return;
         }
 
+        const isAborted = Boolean(
+          (candidate as Record<string, unknown>).aborted ||
+          (candidate as Record<string, unknown>).finish === 'interrupted' ||
+          (candidate as Record<string, unknown>).finishReason === 'interrupted' ||
+          (raw && typeof raw === 'object' && (raw as Record<string, unknown>).aborted) ||
+          rawText.trim() === '已停止生成' ||
+          rawText.trim() === 'Generation stopped'
+        );
+
         blocks.push({
           type: 'text',
           text: localizeMessage(rawText),
+          ...(isAborted ? { aborted: true } : {}),
         });
       } else if (type === 'thinking') {
         const thinking =
@@ -422,7 +432,12 @@ export function normalizeBlocks(
       if (!content.trim() || (isUserMessage && containsAnyTag(content, FILTERED_NORMALIZE_TAGS))) {
         return null;
       }
-      return [{ type: 'text' as const, text: localizeMessage(content) }];
+      const isAborted = Boolean(
+        (raw && typeof raw === 'object' && (raw as Record<string, unknown>).aborted) ||
+        content.trim() === '已停止生成' ||
+        content.trim() === 'Generation stopped'
+      );
+      return [{ type: 'text' as const, text: localizeMessage(content), ...(isAborted ? { aborted: true } : {}) }];
     }
     if (Array.isArray(content)) {
       const result = buildBlocksFromArray(content);
@@ -438,7 +453,12 @@ export function normalizeBlocks(
     // Try getting from raw.text or other possible fields
     if (typeof raw === 'object') {
       if ('text' in raw && typeof raw.text === 'string' && raw.text.trim()) {
-        return [{ type: 'text' as const, text: localizeMessage(raw.text) }];
+        const isAborted = Boolean(
+          (raw as Record<string, unknown>).aborted ||
+          raw.text.trim() === '已停止生成' ||
+          raw.text.trim() === 'Generation stopped'
+        );
+        return [{ type: 'text' as const, text: localizeMessage(raw.text), ...(isAborted ? { aborted: true } : {}) }];
       }
       // If no content at all, return null instead of showing "(unable to parse content)"
       // This way shouldShowMessage will filter out this message

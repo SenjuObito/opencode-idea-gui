@@ -245,6 +245,11 @@ final class WebviewEventQueue<T> {
     private List<JsCall<T>> takeBatch(T targetBrowser) {
         List<JsCall<T>> batch = new ArrayList<>();
         int estimatedChars = 0;
+        // Tracked incrementally instead of re-scanning `batch` on every call:
+        // `containsMessageSnapshot(batch)` is O(batch), so the old version was
+        // O(n^2) per drain (worst case ~32k predicate calls at the 256-call cap)
+        // on the very path that has to stay ahead of a ~100 delta/s stream.
+        boolean batchHasSnapshot = false;
         Iterator<JsCall<T>> iterator = pending.iterator();
         while (iterator.hasNext()) {
             JsCall<T> call = iterator.next();
@@ -254,7 +259,7 @@ final class WebviewEventQueue<T> {
             }
             int callChars = call.estimatedChars();
             if (!batch.isEmpty()
-                    && containsMessageSnapshot(batch)
+                    && batchHasSnapshot
                     && isSnapshotResetBoundary(call)) {
                 break;
             }
@@ -263,13 +268,12 @@ final class WebviewEventQueue<T> {
             }
             iterator.remove();
             batch.add(call);
+            if (isMessageSnapshot(call)) {
+                batchHasSnapshot = true;
+            }
             estimatedChars += callChars;
         }
         return batch;
-    }
-
-    private static boolean containsMessageSnapshot(List<? extends JsCall<?>> calls) {
-        return calls.stream().anyMatch(WebviewEventQueue::isMessageSnapshot);
     }
 
     private static boolean isMessageSnapshot(JsCall<?> call) {

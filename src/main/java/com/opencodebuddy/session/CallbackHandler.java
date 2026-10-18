@@ -241,4 +241,15 @@ public class CallbackHandler {
             callback.onMessagesRemoved(messageIds);
         }
     }
+
+    /**
+     * Notify that the daemon declared a turn over for a specific session
+     * ({@code [TURN_END]}). Authoritative, idempotent, and independent of which
+     * session is currently displayed.
+     */
+    public void notifyTurnEnd(String jsonContent) {
+        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
+            callback.onTurnEnd(jsonContent);
+        }
+    }
 }

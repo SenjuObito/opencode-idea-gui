@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { sendBridgeEvent } from '../../utils/bridge';
 import type { ModelInfo } from '../../components/ChatInputBox/types';
-import { OPENCODE_MODELS } from '../../components/ChatInputBox/types';
+import { OPENCODE_MODELS, isKnownNonReasoningModel } from '../../components/ChatInputBox/types';
 
 type CliModelsByProvider = Record<string, ModelInfo[]>;
 
@@ -69,6 +69,12 @@ function fallbackModels(providerId: string): ModelInfo[] {
 
 function normalizeModels(raw: unknown): ModelInfo[] {
   if (!Array.isArray(raw)) return [];
+  // Detect whether the incoming catalog provides variant metadata (OpenCode v2 capability).
+  // In OpenCode v1, no model has a variants array. In OpenCode v2, models declare variants (or empty array).
+  const catalogHasVariantsSupport = raw.some(
+    (item) => item && typeof item === 'object' && Array.isArray((item as Record<string, unknown>).variants)
+  );
+
   const out: ModelInfo[] = [];
   const seen = new Set<string>();
   for (const item of raw) {
@@ -81,9 +87,23 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       ? row.label.trim()
       : id;
     const description = typeof row.description === 'string' ? row.description : undefined;
-    const variants = Array.isArray(row.variants)
-      ? row.variants.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+
+    const rawVariants = Array.isArray(row.variants) ? row.variants : undefined;
+    const parsedVariants = rawVariants
+      ? rawVariants.filter((v: unknown): v is string => typeof v === 'string' && v.trim() !== '')
       : undefined;
+    const hasExplicitVariants = rawVariants !== undefined;
+
+    let variants: string[] | undefined;
+    if (hasExplicitVariants) {
+      variants = parsedVariants;
+    } else if (catalogHasVariantsSupport || isKnownNonReasoningModel(id)) {
+      variants = [];
+    } else {
+      // Pure OpenCode v1 catalog: variants metadata unknown
+      variants = undefined;
+    }
+
     const rawContextWindow = Number(row.contextWindow);
     const contextWindow = Number.isInteger(rawContextWindow) && rawContextWindow > 0
       ? rawContextWindow
@@ -92,7 +112,7 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       id,
       label,
       description,
-      ...(variants && variants.length > 0 ? { variants } : {}),
+      ...(variants !== undefined ? { variants } : {}),
       ...(contextWindow ? { contextWindow } : {}),
     });
   }

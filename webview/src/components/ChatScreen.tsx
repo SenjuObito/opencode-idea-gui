@@ -8,7 +8,6 @@ import type {
 import { MessageAnchorRail } from './MessageAnchorRail';
 import { MessageList } from './MessageList';
 import { MessagesErrorBoundary } from './MessagesErrorBoundary';
-import { RetryStatusBar } from './RetryStatusBar';
 import { ScrollControl } from './ScrollControl';
 import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
 import { WelcomeScreen } from './WelcomeScreen';
@@ -291,11 +290,6 @@ export const ChatScreen = ({
 
       <ScrollControl containerRef={messagesContainerRef} inputAreaRef={inputAreaRef} />
 
-      {/* Rate-limit / quota backoff notice for the running turn. Explains a
-          "stuck" spinner that would otherwise only surface as the generic
-          local 180s timeout, with no hint at the real cause. */}
-      <RetryStatusBar />
-
       <StatusPanelErrorBoundary>
         <StatusPanel
           todos={globalTodos}
@@ -317,6 +311,8 @@ export const ChatScreen = ({
         <ChatInputBox
           ref={chatInputRef}
           isLoading={loading}
+          messages={mergedMessages}
+          getMessageText={getMessageText}
           selectedModel={selectedModel}
           permissionMode={permissionMode}
           currentProvider={currentProvider}

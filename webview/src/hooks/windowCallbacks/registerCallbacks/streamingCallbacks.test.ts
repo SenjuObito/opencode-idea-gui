@@ -227,7 +227,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
     );
 
     // No onStreamStart happened; streaming refs are at their idle defaults.
-    window.onStreamEnd!();
+    window.onStreamEnd!('ses_test');
 
     expect(window.__deniedToolIds).toBeDefined();
     expect(window.__deniedToolIds!.has('tool-1')).toBe(true);
@@ -250,7 +250,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
     );
     const before = getMessages();
 
-    window.onStreamEnd!();
+    window.onStreamEnd!('ses_test');
 
     // Nothing dangling → no id denied, and the list reference is unchanged.
     expect(window.__deniedToolIds?.has('tool-2') ?? false).toBe(false);
@@ -292,7 +292,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
       },
     ]);
 
-    window.onStreamEnd!('99');
+    window.onStreamEnd!('ses_test', '99');
 
     const messages = getMessages();
     expect(messages).toHaveLength(3);

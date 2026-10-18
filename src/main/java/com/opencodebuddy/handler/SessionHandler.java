@@ -546,17 +546,43 @@ public class SessionHandler extends BaseMessageHandler {
             targetSession = context.getSession(tabId);
         }
 
-        if (targetSession != null) {
-            final String resolvedSessionId = targetSessionId != null ? targetSessionId
-                    : (tabId != null ? tabId : targetSession.getSessionId());
-            targetSession.interrupt().thenRun(() -> {
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    // [FIX] Notify frontend that stream has ended and reset loading state for this session
-                    context.callJavaScript("onStreamEnd", resolvedSessionId != null ? resolvedSessionId : "");
-                    context.callJavaScript("showLoading", resolvedSessionId != null ? resolvedSessionId : "", "false");
-                });
-            });
+        if (targetSession == null && (targetSessionId == null || targetSessionId.isBlank())) {
+            // No identity at all: fall back to the window's current session, but
+            // say so. Silently doing nothing here is how a tab stayed "loading"
+            // forever after the user pressed stop.
+            OpencodeSession current = context.getSession();
+            if (current != null) {
+                LOG.warn("[SessionHandler] interrupt without sessionId/tabId; using the current session "
+                        + current.getSessionId());
+                targetSession = current;
+                targetSessionId = current.getSessionId();
+            }
         }
+
+        final String resolvedSessionId = targetSessionId != null ? targetSessionId : tabId;
+
+        if (targetSession == null) {
+            // We cannot interrupt what we cannot find — but we must still release
+            // the frontend, otherwise the tab spins forever.
+            LOG.warn("[SessionHandler] interrupt: no session found for sessionId=" + targetSessionId
+                    + " tabId=" + tabId + "; releasing frontend state only");
+            if (resolvedSessionId != null && !resolvedSessionId.isBlank()) {
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    context.callJavaScript("onStreamEnd", resolvedSessionId);
+                    context.callJavaScript("showLoading", resolvedSessionId, "false");
+                });
+            }
+            return;
+        }
+
+        targetSession.interrupt().thenRun(() -> {
+            ApplicationManager.getApplication().invokeLater(() -> {
+                // Authoritative terminal for this session: no empty-string identity,
+                // so the frontend can never mis-attribute it to the active tab.
+                context.callJavaScript("onStreamEnd", resolvedSessionId != null ? resolvedSessionId : "");
+                context.callJavaScript("showLoading", resolvedSessionId != null ? resolvedSessionId : "", "false");
+            });
+        });
     }
 
     /**

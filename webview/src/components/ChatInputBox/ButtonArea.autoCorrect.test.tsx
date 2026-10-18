@@ -161,4 +161,43 @@ describe('ButtonArea 模型自动纠偏（延迟）', () => {
     });
     expect(onModelSelect).not.toHaveBeenCalled();
   });
+
+  it('hides ReasoningSelect when selected model is mimo or has no variants', () => {
+    mockUseCliModels.mockReturnValue(
+      cliModelsResult({
+        cliModels: [
+          { id: 'opencode/claude-3-7', label: 'Claude 3.7', variants: ['low', 'high'] },
+          { id: 'xiaomi/mimo-v2.5-free', label: 'MiMo Free', variants: [] },
+        ],
+      }),
+    );
+
+    const onReasoningChange = vi.fn();
+    const { rerender, container } = render(
+      <ButtonArea
+        {...baseProps}
+        selectedModel="opencode/claude-3-7"
+        reasoningEffort="high"
+        onReasoningChange={onReasoningChange}
+      />,
+    );
+
+    // With claude-3-7, reasoning button is present
+    expect(container.querySelector('.codicon-lightbulb')).toBeTruthy();
+
+    // Switch to mimo
+    rerender(
+      <ButtonArea
+        {...baseProps}
+        selectedModel="xiaomi/mimo-v2.5-free"
+        reasoningEffort="high"
+        onReasoningChange={onReasoningChange}
+      />,
+    );
+
+    // With mimo, reasoning button is completely hidden
+    expect(container.querySelector('.codicon-lightbulb')).toBeNull();
+    // And onReasoningChange is called to reset effort to 'default'
+    expect(onReasoningChange).toHaveBeenCalledWith('default');
+  });
 });

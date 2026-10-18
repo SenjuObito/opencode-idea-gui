@@ -641,7 +641,17 @@ export const preserveLatestMessagesOnShrink = (
 ): ClaudeMessage[] => {
   // Always check for shrink regardless of provider
   if (nextList.length >= prevList.length) return nextList;
-  if (prevList.length === 0 || nextList.length === 0) return nextList;
+  if (prevList.length === 0) return nextList;
+  if (nextList.length === 0) {
+    if (typeof window !== 'undefined' && (window as any).__hasActiveRevert) {
+      return nextList;
+    }
+    const hasStreamingTail = prevList.some((msg) => msg.type === 'assistant' && (msg.isStreaming || !!msg.__turnId));
+    if (hasStreamingTail) {
+      return prevList;
+    }
+    return nextList;
+  }
 
   // FIX: If there is an active revert/undo operation, shrinking the message list is
   // an expected outcome of undoing turns. Do not artificially restore the reverted tail!

@@ -33,9 +33,13 @@ export interface SessionTabData {
   usagePercentage?: number;
   usageUsedTokens?: number;
   usageMaxTokens?: number;
+  messageBaseIndex?: number;
+  opencodeListStart?: number;
+  prependedHistoryMessageCount?: number;
   draft?: {
     text: string;
     attachments: any[];
     fileTags: any[];
+    quotes?: Record<string, { text: string }>;
   };
 }

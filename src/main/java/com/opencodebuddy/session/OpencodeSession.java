@@ -53,6 +53,13 @@ public class OpencodeSession {
     // Callback facade
     private final SessionCallbackFacade callbackFacade;
 
+    /**
+     * Per-session owner of the daemon output pipeline. This session's data-plane
+     * sink: the daemon tags each line with its session, the bridge hands it here,
+     * and it is parsed into exactly this session's callback.
+     */
+    private final SessionStreamRouter streamRouter;
+
     // SDK bridge
     private final OpenCodeSDKBridge openCodeSDKBridge;
 
@@ -114,7 +121,7 @@ public class OpencodeSession {
          * together with a human-readable {@code message} and an {@code action}
          * ({@code reason}, {@code title}, {@code message}, {@code label},
          * {@code link}). Without surfacing it the only thing the user ever sees
-         * is the generic local 180s timeout minutes later, with no hint that the
+         * is a generic local timeout minutes later, with no hint that the
          * free tier or account quota is the actual cause.</p>
          *
          * @param jsonContent structured payload, always a JSON object literal
@@ -215,6 +222,21 @@ public class OpencodeSession {
          */
         default void onMessagesRemoved(List<String> messageIds) {
         }
+
+        /**
+         * The daemon's authoritative, session-scoped turn terminal (INV-C).
+         *
+         * <p>Payload is bare JSON: {@code {"sessionId":"ses_…","turnId":1042,
+         * "reason":"idle"|"aborted"|"error"|"timeout"|"disconnected"}}.</p>
+         *
+         * <p>Deliberately distinct from {@link #onStreamEnd()} (the data-plane
+         * "no more content" edge): this one names the session and the turn, so it
+         * can clear the right session's running state even when that session is
+         * not the active one, and a duplicate or late arrival for an
+         * already-settled turn can be ignored instead of re-triggering cleanup.</p>
+         */
+        default void onTurnEnd(String jsonContent) {
+        }
     }
 
     public OpencodeSession(
@@ -230,6 +252,7 @@ public class OpencodeSession {
         this.messageMerger = new com.opencodebuddy.session.MessageMerger();
         this.contextCollector = new com.opencodebuddy.session.EditorContextCollector(project);
         this.callbackFacade = new SessionCallbackFacade(project);
+        this.streamRouter = new SessionStreamRouter(state, callbackFacade.getCallbackHandler());
         this.contextService = new SessionContextService(project);
         this.providerRouter = new SessionProviderRouter(openCodeSDKBridge);
         this.sendService = new SessionSendService(
@@ -237,7 +260,8 @@ public class OpencodeSession {
                 state,
                 callbackFacade,
                 openCodeSDKBridge,
-                contextService);
+                contextService,
+                streamRouter);
         this.messageOrchestrator = new SessionMessageOrchestrator(
                 project,
                 state,
@@ -274,6 +298,15 @@ public class OpencodeSession {
 
     public SessionCallbackFacade getCallbackFacade() {
         return callbackFacade;
+    }
+
+    /**
+     * This session's daemon output pipeline (data-plane sink). Registered with
+     * the bridge so lines tagged with this session's id reach the right handler
+     * regardless of which request happens to be in flight.
+     */
+    public SessionStreamRouter getStreamRouter() {
+        return streamRouter;
     }
 
     public com.opencodebuddy.session.EditorContextCollector getContextCollector() {

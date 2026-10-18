@@ -155,4 +155,43 @@ describe('useChatComputations findToolResult', () => {
     expect(hit?.tool_use_id).toBe('tool-json-str');
     expect(hit?.content).toBe('output text');
   });
+
+  it('sessionTitle returns default newSession even when user messages exist without customSessionTitle', async () => {
+    const { renderHook } = await import('@testing-library/react');
+    const { useChatComputations } = await import('./useChatComputations');
+
+    const messages: ClaudeMessage[] = [
+      {
+        type: 'user',
+        content: 'hi, can you help me write code?',
+      },
+    ];
+
+    const currentSessionIdRef = { current: 'ses_2' };
+    const { result, rerender } = renderHook(
+      ({ customTitle }: { customTitle: string | null }) =>
+        useChatComputations({
+          t: ((k: string) => (k === 'common.newSession' ? '新会话' : k)) as any,
+          messages,
+          mergedMessages: messages,
+          subagentHistories: {},
+          customSessionTitle: customTitle,
+          streamingActive: false,
+          currentProvider: 'opencode',
+          currentSessionId: 'ses_2',
+          currentSessionIdRef,
+          getContentBlocks: () => [],
+          sseTodos: null,
+        }),
+      { initialProps: { customTitle: null } }
+    );
+
+    // Should NOT extract 'hi, can you he...' optimistically; should strictly remain '新会话'
+    expect(result.current.sessionTitle).toBe('新会话');
+
+    // When server/OpenCode updates the title via customSessionTitle (e.g. 'Greeting')
+    rerender({ customTitle: 'Greeting' });
+    expect(result.current.sessionTitle).toBe('Greeting');
+  });
 });
+

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  DEFAULT_REASONING_LEVEL,
   REASONING_LEVELS,
   getAvailableReasoningLevels,
   type ReasoningEffort,
@@ -74,19 +75,33 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
     preferredAlignment: 'right',
   });
 
-  // Determine visibility: opencode：variants 已知时按档位有无判断（空列表视为不支持，隐藏选择器）。
-  const isVisible = modelVariants && modelVariants.length > 0
-    ? getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants).length > 0
-    : true;
-
   // Build the list of available levels for the current model.
   // opencode：按所选模型的 variants 动态取档；其他 provider 回退静态规则。
   const availableLevels = getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants);
 
-  const currentLevel = availableLevels.find(l => l.id === value) || availableLevels[availableLevels.length - 2] || availableLevels[0];
+  // Determine visibility:
+  //   - If availableLevels is empty (model explicitly has no variants, e.g. mimo), hide the selector.
+  //   - If availableLevels has entries, show the selector.
+  const isVisible = availableLevels.length > 0;
+
+  // When the model changes, the previously selected level may not exist in the
+  // new catalog. Fall back to Default (send no variant) — it is valid for every
+  // model, unlike an arbitrary positional pick from the list.
+  const currentLevel = useMemo(
+    () => availableLevels.find(l => l.id === value)
+      ?? availableLevels.find(l => l.id === DEFAULT_REASONING_LEVEL.id)
+      ?? availableLevels[0],
+    [availableLevels, value],
+  );
 
   useEffect(() => {
-    if (!isVisible || availableLevels.some(level => level.id === value)) {
+    if (!isVisible) {
+      if (value !== 'default') {
+        onChange('default');
+      }
+      return;
+    }
+    if (availableLevels.some(level => level.id === value)) {
       return;
     }
     if (currentLevel) {
@@ -98,8 +113,13 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
    * Get translated text for reasoning level
    */
   const getReasoningText = (levelId: ReasoningEffort, field: 'label' | 'description') => {
+    if (field === 'label' && levelId === 'default') {
+      return 'default';
+    }
     const key = `reasoning.${levelId}.${field}`;
-    const fallback = REASONING_LEVELS.find(l => l.id === levelId)?.[field] || levelId;
+    const fallback = (REASONING_LEVELS.find(l => l.id === levelId)
+      ?? (levelId === DEFAULT_REASONING_LEVEL.id ? DEFAULT_REASONING_LEVEL : null))?.[field]
+      || levelId;
     return t(key, { defaultValue: fallback });
   };
 

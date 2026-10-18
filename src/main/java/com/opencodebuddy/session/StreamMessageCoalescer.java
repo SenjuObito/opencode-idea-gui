@@ -121,8 +121,34 @@ public class StreamMessageCoalescer {
         this.sessionId = sessionId;
     }
 
+    /**
+     * The session id stamped on every snapshot this coalescer pushes.
+     *
+     * <p>{@code null} means un-attributable. It is deliberately not coerced to
+     * {@code ""}: an empty id is what the frontend used to read as "the session
+     * currently on screen", so a snapshot from a session whose id had not been
+     * reported yet silently overwrote the active tab's messages.</p>
+     *
+     * @return the session id, or {@code null} before it has been resolved
+     */
     private String getTargetSessionId() {
-        return sessionId != null ? sessionId : "";
+        return sessionId != null && !sessionId.isBlank() ? sessionId : null;
+    }
+
+    /** One-shot warning so a missing id is visible instead of silent. */
+    private volatile boolean unattributedWarned = false;
+
+    /**
+     * @return true when this coalescer can attribute its snapshots to a session
+     */
+    private boolean hasIdentity() {
+        final boolean ok = sessionId != null && !sessionId.isBlank();
+        if (!ok && !unattributedWarned) {
+            unattributedWarned = true;
+            LOG.warn("StreamMessageCoalescer has no session id; snapshots are dropped until it is set "
+                    + "(setSessionId must be called when the session is bound)");
+        }
+        return ok;
     }
 
     /**
@@ -429,6 +455,15 @@ public class StreamMessageCoalescer {
                 // prevent afterSendOnEdt from running.  When afterSendOnEdt carries
                 // the onStreamEnd signal, failing to run it permanently freezes the UI.
                 try {
+                    // Never push a snapshot that cannot name its session: the
+                    // frontend reads an empty id as "the active tab", which is how
+                    // one session's transcript replaced another's.
+                    if (!hasIdentity()) {
+                        if (afterSendOnEdt != null) {
+                            afterSendOnEdt.accept(sequence);
+                        }
+                        return;
+                    }
                     if (tailUpdate) {
                         callbackTarget.callJavaScript(
                                 "updateMessageTail",

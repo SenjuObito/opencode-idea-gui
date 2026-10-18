@@ -8,6 +8,7 @@
 
 import type { MutableRefObject } from 'react';
 import { cardDebugLog } from '../../utils/bridge';
+import { forceWebviewRepaint } from '../../utils/forceWebviewRepaint';
 
 export interface ResetTransientUiStateOptions {
   clearToasts: () => void;
@@ -32,6 +33,17 @@ export interface ResetTransientUiStateOptions {
 
   // Turn tracking ref (for streaming assistant isolation)
   streamingTurnIdRef: MutableRefObject<number>;
+
+  /**
+   * Called immediately BEFORE the streaming refs below are wiped.
+   *
+   * Leaving a session does not mean the session stopped running — a background
+   * turn keeps pushing deltas into its own tab. Archiving the live streaming
+   * runtime here is what lets the user switch back and continue seamlessly
+   * instead of inheriting an empty accumulator that would render the *previous*
+   * session's text into this one.
+   */
+  onBeforeResetTransientState?: () => void;
 }
 
 /**
@@ -64,6 +76,15 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     } else {
       cardDebugLog('[resetTransientUiState] SKIPPED: setSessionLoading not called');
     }
+    // Archive the outgoing session's live streaming runtime before wiping it.
+    // Must run BEFORE the ref resets below: `loadHistorySession` leaves the
+    // previous turn running in the background, and that turn still needs its
+    // accumulator / turnId when the user comes back to it.
+    try {
+      opts.onBeforeResetTransientState?.();
+    } catch (error) {
+      cardDebugLog('[resetTransientUiState] archive streaming runtime failed:', error);
+    }
     opts.isStreamingRef.current = false;
     opts.useBackendStreamingRenderRef.current = false;
     opts.streamingMessageIndexRef.current = -1;
@@ -93,12 +114,22 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     if (typeof window.__cancelPendingUpdateMessages === 'function') {
       window.__cancelPendingUpdateMessages();
     }
+    // Clear JCEF native-rendering ghosting left behind by the outgoing session's
+    // overlays and input-box content after the transition unmounts/reflows them.
+    // Windowed JCEF only: on OSR the content swap is published through the Java
+    // surface fence once the new transcript commits.
+    forceWebviewRepaint('session-transition');
   };
 };
 
 /**
  * Release the session transition guard flags set by beginSessionTransition
  * (useSessionManagement).
+ *
+ * Note: unlike cc-gui this project does not buffer `updateMessages` while the
+ * guard is active — `messageCallbacks.updateMessages` *drops* payloads from
+ * non-target sessions and lets the target through (messageCallbacks.ts:589-600).
+ * So there is nothing to flush here.
  */
 export const releaseSessionTransition = (): void => {
   if (window.__sessionTransitioning) {

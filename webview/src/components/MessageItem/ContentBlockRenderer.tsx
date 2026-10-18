@@ -210,6 +210,19 @@ export function ContentBlockRenderer({
   useSyncExternalStore(subscribeQuestionAnswer, getQuestionAnswerSnapshot);
 
   if (block.type === 'text') {
+    // A user-initiated stop. The server records "the user pressed stop" as an
+    // error (`finish:'error'`, `error.message:'Step interrupted'`); the host
+    // rewrites it into a neutral notice and tags it `aborted`. Rendering that as
+    // a normal assistant bubble reads like a crash, so it gets its own quiet,
+    // centred treatment.
+    if (block.aborted) {
+      return (
+        <div className="turn-stopped-notice">
+          <span className="turn-stopped-notice-icon" aria-hidden="true">■</span>
+          <span className="turn-stopped-notice-text">{block.text || ''}</span>
+        </div>
+      );
+    }
     return messageType === 'user' ? (
       <CollapsibleTextBlock content={block.text ?? ''} />
     ) : (

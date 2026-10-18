@@ -325,7 +325,7 @@
       "permissionDialogTimeout": {
         "label": "Tempo Limite de Diálogos de Permissão e Pergunta",
         "unit": "segundos",
-        "hint": "Defina o tempo limite para os diálogos de perguntas do OpenCode e os diálogos de solicitação de permissão (30~3600 segundos). Após o tempo limite, o diálogo será fechado automaticamente e o OpenCode continuará."
+        "hint": "Defina o tempo limite para os diálogos de perguntas do OpenCode e os diálogos de solicitação de permissão (30~3600 segundos). Se o tempo limite expirar sem resposta, o diálogo será fechado automaticamente e a sessão será interrompida."
       },
       "chatBgColor": {
         "label": "Plano de Fundo do Chat",
@@ -1595,6 +1595,10 @@
     "parseError": "Falha ao interpretar resultado"
   },
   "reasoning": {
+    "default": {
+      "label": "Padrão",
+      "description": "Usar o padrão do modelo"
+    },
     "cycleHint": "Alternar nível de raciocínio",
     "title": "Selecionar profundidade de raciocínio",
     "low": {
@@ -1705,6 +1709,11 @@
           "step0": "Execute o comando abaixo em um terminal para ver sua versão. Node 22 ou a LTS atual é recomendado — usuários relataram muitos problemas no Node 24, então prefira Node 20 ou 22:"
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "Cota do modelo esgotada",
+      "notice": "A cota gratuita ou do plano para este modelo foi esgotada. Mude de modelo ou faça upgrade da assinatura.",
+      "upgrade": "Fazer upgrade da assinatura"
     }
   },
   "openCodeModes": {

@@ -90,12 +90,19 @@ public final class OpenCodeMarkerParser {
         }
 
         if (line.startsWith("[TURN_ERROR]")) {
-            // A turn failure that surfaced after the local 180s timeout already
+            // A turn failure that surfaced after a local timeout already
             // reported one. Previously mis-routed to [SESSION_COMPACT_RESULT]
             // (host only logged it), which buried the server's actual reason.
             String payload = stripSeparator(line, "[TURN_ERROR]").trim();
             String decoded = decodeJsonStringPayload(payload);
             callback.onMessage("turn_error", isJsonObject(decoded) ? decoded : payload);
+            return;
+        }
+
+        if (line.startsWith("[SESSION_COMPACT_RESULT]")) {
+            String payload = stripSeparator(line, "[SESSION_COMPACT_RESULT]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            callback.onMessage("session_compact_result", isJsonObject(decoded) ? decoded : payload);
             return;
         }
 
@@ -130,6 +137,16 @@ public final class OpenCodeMarkerParser {
 
         if (line.startsWith("[STREAM_END]")) {
             callback.onMessage("stream_end", "");
+            return;
+        }
+
+        if (line.startsWith("[TURN_END]")) {
+            // Authoritative, session-scoped turn terminal (INV-C). Bare JSON:
+            //   {"sessionId":"ses_…","turnId":1042,"reason":"idle"|"aborted"|…}
+            // Unlike [STREAM_END] it names the session and the turn, so it can
+            // clear the right session's running state — and be ignored when it is
+            // a duplicate/late signal for a turn that already settled.
+            callback.onMessage("turn_end", stripSeparator(line, "[TURN_END]").trim());
             return;
         }
 

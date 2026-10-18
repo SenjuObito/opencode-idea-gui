@@ -137,7 +137,13 @@ public class UsagePushService {
 
     void sendUsagePayload(JsonObject usageUpdate) {
         String usageJson = gson.toJson(usageUpdate);
-        context.callJavaScript("window.onUsageUpdate", context.escapeJs(usageJson));
+        OpencodeSession session = context.getSession();
+        String sessionId = (session != null) ? session.getSessionId() : null;
+        if (sessionId != null && !sessionId.isEmpty()) {
+            context.callJavaScript("window.onUsageUpdate", sessionId, context.escapeJs(usageJson));
+        } else {
+            context.callJavaScript("window.onUsageUpdate", context.escapeJs(usageJson));
+        }
     }
 
     /**

@@ -84,12 +84,33 @@ export function registerWindowCallbacks(
     contentUpdateTimeoutRef: options.contentUpdateTimeoutRef,
     thinkingUpdateTimeoutRef: options.thinkingUpdateTimeoutRef,
     streamingTurnIdRef: options.streamingTurnIdRef,
+    // Leaving a session does not stop its turn. Archive the live streaming
+    // runtime before the refs below are wiped, otherwise a session that keeps
+    // running in the background loses its accumulator / turnId and the next
+    // activation renders the previous session's text into the new one.
+    onBeforeResetTransientState: () => {
+      window.__sessionTabsStore?.archiveActiveStreamingRuntime?.();
+    },
   });
 
   // Expose as single entry point for session transition cleanup.
   // beginSessionTransition (useSessionManagement) calls this to synchronously
   // clear both React state AND internal refs in one shot.
   window.__resetTransientUiState = resetTransientUiState;
+
+  /**
+   * Ask Java for one more OSR surface publication of the current DOM.
+   *
+   * Switching tabs replaces the whole transcript inside a single surface — the
+   * same situation as a history render, but it produces no
+   * `history_dom_committed`. Without this the OSR backing image keeps showing
+   * the outgoing session until some later paint happens to arrive.
+   */
+  window.__requestSurfaceRepublish = () => {
+    const refreshEpoch = (window.__historySurfaceRefreshEpoch ?? 0) + 1;
+    window.__historySurfaceRefreshEpoch = refreshEpoch;
+    requestHistoryRenderCommit(refreshEpoch);
+  };
 
   // =========================================================================
   // Register callback groups

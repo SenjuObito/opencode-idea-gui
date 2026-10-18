@@ -8,11 +8,12 @@
 import { startTransition } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
 import { parseSequence, advanceMinAcceptedSequence } from '../sequenceBarrier';
 import { getStreamEndHandlingMode } from '../messageSync';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
+import { resolveSessionId } from '../../../utils/sessionIdentity';
 
 /**
  * Per-session turn start timestamp registry to prevent cross-session timer pollution
@@ -264,6 +265,10 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       targetSessionId = arg0;
     }
 
+    if (targetSessionId && window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       const now = Date.now();
       sessionTurnStartTimes.set(targetSessionId, now);
@@ -457,26 +462,44 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   window.onContentDelta = (arg0: string, arg1?: string) => {
-    const [targetSessionId, delta] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+    const delta = typeof arg1 !== 'undefined' ? arg1 : arg0;
+    // An empty id is NOT "the active session". Routing a delta there is exactly
+    // how two concurrently-streaming sessions swapped text.
+    const targetSessionId = resolveSessionId(
+      typeof arg1 !== 'undefined' ? arg0 : null,
+      'onContentDelta',
+    );
+    if (targetSessionId === null) return;
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    if (window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
+    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
           t.streamingActive = true;
           t.loading = true;
-          if (t.messages && t.messages.length > 0) {
-            const last = t.messages[t.messages.length - 1];
-            if (last && last.type === 'assistant') {
-              last.content = (last.content || '') + delta;
-            } else {
-              t.messages.push({
-                type: 'assistant',
-                content: delta,
-                isStreaming: true,
-                timestamp: new Date().toISOString(),
-              });
-            }
+          // Copy-on-write: `updateBackgroundTab` clones the tab object but shares
+          // the messages array with whatever the active view may already hold.
+          // Mutating in place would let React skip a re-render after the user
+          // switches to this tab (the array reference never changed), silently
+          // dropping the deltas that arrived in between.
+          const messages = t.messages;
+          const lastIndex = messages && messages.length > 0 ? messages.length - 1 : -1;
+          const last = lastIndex >= 0 ? messages[lastIndex] : undefined;
+          if (last && last.type === 'assistant') {
+            const next = messages.slice();
+            next[lastIndex] = { ...last, content: (last.content || '') + delta };
+            t.messages = next;
+          } else if (messages) {
+            t.messages = [...messages, {
+              type: 'assistant',
+              content: delta,
+              isStreaming: true,
+              timestamp: new Date().toISOString(),
+            }];
           } else {
             t.messages = [{
               type: 'assistant',
@@ -498,9 +521,18 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   window.onThinkingDelta = (arg0: string, arg1?: string) => {
-    const [targetSessionId, delta] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+    const delta = typeof arg1 !== 'undefined' ? arg1 : arg0;
+    const targetSessionId = resolveSessionId(
+      typeof arg1 !== 'undefined' ? arg0 : null,
+      'onThinkingDelta',
+    );
+    if (targetSessionId === null) return;
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    if (window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
+    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
@@ -543,6 +575,28 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     });
   };
 
+  /**
+   * Re-dispatch a terminal that arrived while the UI was mid session-switch.
+   *
+   * The old code did `if (window.__sessionTransitioning) return;` — a terminal
+   * arriving during a switch was swallowed outright, which is one way a tab kept
+   * showing a spinner long after its turn had ended. A terminal is never safe to
+   * drop, so it is retried until the transition completes (bounded, so a stuck
+   * transition flag cannot spin forever).
+   */
+  const TRANSITION_DEFER_MAX_MS = 5000;
+  const deferUntilTransitionComplete = (retry: () => void): void => {
+    const startedAt = Date.now();
+    const tick = (): void => {
+      if (!window.__sessionTransitioning || Date.now() - startedAt > TRANSITION_DEFER_MAX_MS) {
+        retry();
+        return;
+      }
+      setTimeout(tick, 50);
+    };
+    setTimeout(tick, 50);
+  };
+
   window.onStreamEnd = (arg0?: string | number, arg1?: string | number) => {
     let targetSessionId: string | null = null;
     let sequence: string | number | undefined;
@@ -556,7 +610,17 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       targetSessionId = arg0;
     }
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    // A terminal with no identity is dropped rather than applied to the active
+    // tab: applying it there is how stopping session B cleared session A's
+    // spinner while leaving B's own tab spinning.
+    targetSessionId = resolveSessionId(targetSessionId, 'onStreamEnd');
+    if (targetSessionId === null) return;
+
+    if (window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
+    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       const turnStartedAt = sessionTurnStartTimes.get(targetSessionId);
       sessionTurnStartTimes.delete(targetSessionId);
       const streamEndedAt = Date.now();
@@ -586,10 +650,19 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
           }
         }
       );
+      // The turn is over: drop the archived streaming runtime. Keeping it would
+      // make the tab restore `isStreaming=true` the next time it is activated,
+      // leaving its spinner stuck forever.
+      window.__sessionTabsStore?.clearStreamingRuntimeFor?.(targetSessionId);
       return;
     }
 
-    if (window.__sessionTransitioning) return;
+    if (window.__sessionTransitioning) {
+      deferUntilTransitionComplete(() => {
+        window.onStreamEnd?.(arg0 as string | number | undefined, arg1 as string | number | undefined);
+      });
+      return;
+    }
 
     // Idempotency guard: dual-path delivery (primary via flush callback +
     // fallback via Alarm) may send onStreamEnd twice for the same turn.
@@ -692,7 +765,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       } catch (error) {
         // __pendingUpdateJson is produced internally by the bridge; a parse failure
         // indicates an upstream contract violation worth surfacing for diagnosis.
-        console.warn('[Frontend] Failed to parse __pendingUpdateJson on stream end:', error);
+        cardDebugLog('[Frontend] Failed to parse __pendingUpdateJson on stream end:', error);
       }
     }
 
@@ -770,6 +843,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     autoExpandedThinkingKeysRef.current.clear();
+
+    // Drop the archived runtime for this session too. The refs above only cover
+    // the *live* copy; if this tab was activated after being archived, a stale
+    // snapshot would reinstate `isStreaming=true` on the next switch.
+    window.__sessionTabsStore?.clearStreamingRuntimeFor?.(targetSessionId);
 
     // Mark that streaming just ended - used by mergeConsecutiveAssistantMessages to
     // distinguish recently-ended streaming messages from true history messages.
@@ -995,6 +1073,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // This prevents cross-turn content merging where new thinking/text deltas
   // would append to previous turn's buffered content.
   window.onBlockReset = (targetSessionId?: string) => {
+    if (targetSessionId && window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       return;
     }
@@ -1035,5 +1116,64 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       return;
     }
     window.__lastStreamActivityAt = Date.now();
+  };
+
+  // ── [TURN_END]: the daemon's authoritative, per-session turn terminal ──────
+  //
+  // `onStreamEnd` is tied to one adapter's flush pipeline and is therefore
+  // suppressible: it can be swallowed by a session transition, lost when the
+  // serve process dies mid-turn, or never emitted for a turn that errored before
+  // it streamed. All three left a tab showing a spinner that nobody would ever
+  // clear — the third symptom.
+  //
+  // The daemon now emits [TURN_END] whenever a turn settles, for every session,
+  // carrying the session id and a turnId taken from the server's own
+  // `durable.seq` (monotonic per session, so no client-side counter to skew).
+  // Keyed on (sessionId, turnId) this is idempotent, so it is safe for it to
+  // arrive alongside — or instead of — onStreamEnd.
+  const processedTurnEndKeys = new Set<string>();
+
+  window.onTurnEnd = (targetSessionId: string, json?: string) => {
+    const sessionId = resolveSessionId(targetSessionId, 'onTurnEnd');
+    if (sessionId === null) return;
+
+    let turnId: string | number | undefined;
+    if (typeof json === 'string' && json.length > 0) {
+      try {
+        const parsed = JSON.parse(json) as { turnId?: string | number };
+        turnId = parsed.turnId;
+      } catch {
+        // Payload is metadata only; identity is what matters here.
+      }
+    }
+
+    const key = `${sessionId}#${turnId ?? 'none'}`;
+    if (processedTurnEndKeys.has(key)) return;
+    processedTurnEndKeys.add(key);
+    // Bounded: a long-lived window must not accumulate these forever.
+    if (processedTurnEndKeys.size > 256) {
+      processedTurnEndKeys.clear();
+    }
+
+    const tabsStore = window.__sessionTabsStore;
+    if (tabsStore && !tabsStore.isActiveSession(sessionId)) {
+      tabsStore.updateBackgroundTab(
+        (t) => t.sessionId === sessionId,
+        (t) => {
+          t.streamingActive = false;
+          t.loading = false;
+          t.isThinking = false;
+        }
+      );
+      return;
+    }
+
+    clearStallWatchdog();
+    setStreamingActive(false);
+    setLoading(false);
+    setLoadingStartTime(null);
+    setIsThinking(false);
+    // A turn that ended without its tool_result never gets one now.
+    finalizeUnresolvedToolUses();
   };
 }

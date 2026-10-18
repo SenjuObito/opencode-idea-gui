@@ -107,6 +107,59 @@ describe('extractSubagentsFromMessages', () => {
     });
   });
 
+  // opencode v2 renamed the v1 `task` tool to `subagent` and its arguments
+  // (`subagent_type` -> `agent`, `run_in_background` -> `background`).
+  const assistantWithV2Subagent = (toolUseId: string, background = false): ClaudeMessage => ({
+    type: 'assistant',
+    content: '',
+    raw: {
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: toolUseId,
+            name: 'subagent',
+            input: {
+              agent: 'explore',
+              description: 'v2 子代理调研',
+              prompt: '调研索引服务',
+              ...(background ? { background: true } : {}),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  it('recognizes the opencode v2 subagent tool and its `agent` argument', () => {
+    const messages = [assistantWithV2Subagent('tu_v2'), toolResultMessage('tu_v2')];
+
+    const subagents = extractSubagentsFromMessages(
+      messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages),
+    );
+
+    expect(subagents).toHaveLength(1);
+    expect(subagents[0]).toMatchObject({
+      id: 'tu_v2',
+      type: 'explore',
+      description: 'v2 子代理调研',
+      status: 'completed',
+    });
+  });
+
+  it('keeps a v2 background subagent running until its terminal signal lands', () => {
+    // No launch ack and no terminal event yet: `background: true` must keep it
+    // running instead of marking it completed on the (absent) result.
+    const messages = [assistantWithV2Subagent('tu_v2_bg', true)];
+
+    const subagents = extractSubagentsFromMessages(
+      messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages), {},
+    );
+
+    expect(subagents).toHaveLength(1);
+    expect(subagents[0]).toMatchObject({ id: 'tu_v2_bg', isAsync: true, status: 'running' });
+  });
+
   it('attaches completed Agent result metadata including stable agent id', () => {
     const messages = [assistantWithAgent('tooluse_backend'), toolResultMessage('tooluse_backend')];
 

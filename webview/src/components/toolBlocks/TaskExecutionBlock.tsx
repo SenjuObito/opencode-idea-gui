@@ -1,13 +1,14 @@
 import { memo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ToolInput, ToolResultBlock } from '../../types';
-import { normalizeToolName } from '../../utils/toolConstants';
+import { AGENT_TOOL_NAMES, isToolName, normalizeToolName } from '../../utils/toolConstants';
 import { sendBridgeEvent } from '../../utils/bridge';
 import {
   extractResultText,
   isAsyncAgentInput,
   parseAgentToolMeta,
   parseSpawnAgentMeta,
+  readAgentType,
   readToolUseStatus,
 } from '../../utils/subagentResult';
 import {
@@ -51,11 +52,16 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
   // defined for tool_use blocks in practice; the guard keeps hook order stable.
   const normalizedName = input ? normalizeToolName(name ?? '') : '';
   const isSpawnAgent = normalizedName === 'spawn_agent';
-  const isAgentTool = normalizedName === 'agent' || normalizedName === 'task' || normalizedName === 'spawn_agent';
+  // v1: task / agent; opencode v2 renamed `task` to `subagent`. Accepting both
+  // keeps the card rendering on v1 and v2 without an engine branch here.
+  const isAgentTool = isToolName(name, AGENT_TOOL_NAMES);
   const {
     description,
     prompt,
-    subagent_type: subagentType,
+    // v1 reads `subagent_type`, v2 renamed it to `agent`. Both are consumed via
+    // readAgentType below and stripped here so they never render twice in `rest`.
+    subagent_type: _subagentType,
+    agent: _agent,
     model: _model,
     reasoning_effort: _reasoningEffort,
     reasoningEffort: _reasoningEffortCamel,
@@ -67,6 +73,8 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
     agentPath: _agentPathCamel,
     ...rest
   } = input ?? ({} as ToolInput);
+  // v1: subagent_type / agent_type; opencode v2 renamed the argument to `agent`.
+  const subagentType = readAgentType(input);
   const spawnMeta = isSpawnAgent && input
     ? parseSpawnAgentMeta(input as Record<string, unknown>, result)
     : {};

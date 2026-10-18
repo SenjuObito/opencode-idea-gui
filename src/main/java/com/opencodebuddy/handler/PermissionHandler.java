@@ -236,6 +236,9 @@ public class PermissionHandler extends BaseMessageHandler {
                     // current dialog so the queue can drain for the next
                     // request — see issue #1360.
                     forceCloseFrontendDialog("forceClosePermissionDialog", channelId);
+                    if (this.context != null && this.context.getSession() != null) {
+                        this.context.getSession().interrupt();
+                    }
                 }
             });
 
@@ -264,9 +267,21 @@ public class PermissionHandler extends BaseMessageHandler {
             requestData.addProperty("channelId", request.getChannelId());
             requestData.addProperty("toolName", request.getToolName());
 
-            String sessionId = targetSessionId;
-            if (sessionId == null && this.context.getSession() != null) {
-                sessionId = this.context.getSession().getSessionId();
+            // Identity comes from the request itself (filled by the daemon marker
+            // handler from the normalized payload) — NOT from "whatever session is
+            // currently active". Falling back to the active session is exactly how
+            // a prompt from session B got rendered in session A, and how a prompt
+            // for a session that was not active at all ended up nowhere while the
+            // server settled it as rejected ("已取消" with no dialog).
+            String sessionId = request.getSessionId();
+            if ((sessionId == null || sessionId.isBlank()) && targetSessionId != null && !targetSessionId.isBlank()) {
+                sessionId = targetSessionId;
+            }
+            if (sessionId == null || sessionId.isBlank()) {
+                LOG.warn("[PermissionHandler] permission request carries no session identity"
+                        + " (channelId=" + request.getChannelId() + ", tool=" + request.getToolName()
+                        + "); refusing to guess the active session");
+                sessionId = null;
             }
             if (sessionId != null) {
                 requestData.addProperty("sessionId", sessionId);
@@ -448,12 +463,17 @@ public class PermissionHandler extends BaseMessageHandler {
             if (requestId == null || requestId.isBlank()) {
                 requestId = "question-1";
             }
+            // Same rule as permissions: identity travels with the request. The
+            // daemon's [QUESTION_REQUEST] marker always carries sessionID, so a
+            // missing one is a real defect upstream, not something to paper over
+            // by borrowing the active session's id.
             String sessionId = stringOrNull(payload, "sessionId");
             if (sessionId == null && targetSessionId != null && !targetSessionId.isBlank()) {
                 sessionId = targetSessionId;
             }
-            if (sessionId == null && context.getSession() != null) {
-                sessionId = context.getSession().getSessionId();
+            if (sessionId == null) {
+                LOG.warn("[PermissionHandler] question request carries no session identity"
+                        + " (requestId=" + requestId + "); refusing to guess the active session");
             }
             String toolName = stringOrNull(payload, "tool");
             JsonArray questions = payload.has("questions") && payload.get("questions").isJsonArray()
@@ -570,6 +590,9 @@ public class PermissionHandler extends BaseMessageHandler {
                     LOG.warn("[ASK_USER_QUESTION][SHOW_DIALOG] Safety-net timeout fired (webview unreachable) for requestId=" + requestId);
                     pendingAskUserQuestionRequests.remove(requestId);
                     forceCloseFrontendDialog("forceCloseAskUserQuestionDialog", requestId);
+                    if (this.context != null && this.context.getSession() != null) {
+                        this.context.getSession().interrupt();
+                    }
                 }
             });
 
@@ -613,14 +636,6 @@ public class PermissionHandler extends BaseMessageHandler {
                 return;
             }
 
-            // Emit complete Q&A data to webview
-            JsonObject onQAData = new JsonObject();
-            onQAData.addProperty("callId", pending.toolName != null ? pending.toolName : "");
-            onQAData.addProperty("requestId", requestId);
-            onQAData.add("questions", pending.questions);
-            onQAData.add("answers", answers);
-            callJavaScript("window.onQuestionAnswered", escapeJs(gson.toJson(onQAData)));
-
             JsonArray orderedAnswers = buildOrderedAnswers(pending.questions, answers);
 
             OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
@@ -630,10 +645,24 @@ public class PermissionHandler extends BaseMessageHandler {
                             if (error != null || !Boolean.TRUE.equals(ok)) {
                                 String msg = error != null ? error.getMessage() : "daemon rejected";
                                 LOG.warn("[OpenCode] replyQuestion failed: id=" + requestId + " error=" + msg);
+                                pendingQuestions.put(requestId, pending);
                                 callJavaScript("window.showToast", escapeJs("回答提交失败: " + msg));
                                 forceCloseFrontendDialog("invalidateQuestionCard", requestId);
+                            } else {
+                                // Emit complete Q&A data to webview only after successful reply
+                                JsonObject onQAData = new JsonObject();
+                                onQAData.addProperty("callId", pending.toolName != null ? pending.toolName : "");
+                                onQAData.addProperty("requestId", requestId);
+                                onQAData.add("questions", pending.questions);
+                                onQAData.add("answers", answers);
+                                callJavaScript("window.onQuestionAnswered", escapeJs(gson.toJson(onQAData)));
                             }
                         });
+            } else {
+                LOG.warn("[OpenCode] replyQuestion failed: bridge is null for requestId: " + requestId);
+                pendingQuestions.put(requestId, pending);
+                callJavaScript("window.showToast", escapeJs("回答提交失败: bridge is not available"));
+                forceCloseFrontendDialog("invalidateQuestionCard", requestId);
             }
         } catch (Exception e) {
             LOG.error("[ASK_USER_QUESTION][HANDLE_RESPONSE] ERROR: errorClass=" + errorClass(e), e);
@@ -680,11 +709,28 @@ public class PermissionHandler extends BaseMessageHandler {
             JsonArray itemAnswers = new JsonArray();
             if (questions.get(i).isJsonObject()) {
                 JsonObject qObj = questions.get(i).getAsJsonObject();
-                String qText = qObj.has("question") && !qObj.get("question").isJsonNull()
-                        ? qObj.get("question").getAsString()
-                        : (qObj.has("text") && !qObj.get("text").isJsonNull() ? qObj.get("text").getAsString() : "");
-                if (answers != null && qText != null && answers.has(qText) && !answers.get(qText).isJsonNull()) {
-                    com.google.gson.JsonElement val = answers.get(qText);
+                String qText = stringOrNull(qObj, "question");
+                if (qText == null) {
+                    qText = stringOrNull(qObj, "text");
+                }
+                String qKey = stringOrNull(qObj, "key");
+                String qId = stringOrNull(qObj, "id");
+                String qTitle = stringOrNull(qObj, "title");
+
+                com.google.gson.JsonElement val = null;
+                if (answers != null) {
+                    if (qText != null && answers.has(qText) && !answers.get(qText).isJsonNull()) {
+                        val = answers.get(qText);
+                    } else if (qKey != null && answers.has(qKey) && !answers.get(qKey).isJsonNull()) {
+                        val = answers.get(qKey);
+                    } else if (qId != null && answers.has(qId) && !answers.get(qId).isJsonNull()) {
+                        val = answers.get(qId);
+                    } else if (qTitle != null && answers.has(qTitle) && !answers.get(qTitle).isJsonNull()) {
+                        val = answers.get(qTitle);
+                    }
+                }
+
+                if (val != null) {
                     if (val.isJsonArray()) {
                         for (com.google.gson.JsonElement v : val.getAsJsonArray()) {
                             if (v.isJsonPrimitive()) {

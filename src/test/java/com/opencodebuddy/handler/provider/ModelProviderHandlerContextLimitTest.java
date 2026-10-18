@@ -14,7 +14,7 @@ import static org.junit.Assert.assertEquals;
 
 /**
  * Pins the context-window resolution order: explicit user configuration beats
- * live provider metadata, which beats the hardcoded table.
+ * live provider metadata, which beats bracketed suffix fallback.
  */
 public class ModelProviderHandlerContextLimitTest {
 
@@ -50,8 +50,7 @@ public class ModelProviderHandlerContextLimitTest {
     }
 
     @Test
-    public void catalogBeatsTheHardcodedFallbackForModelsTheTableNeverHeardOf() {
-        // Not in MODEL_CONTEXT_LIMITS — previously always the 200k default.
+    public void catalogProvidesContextLimitForKnownModels() {
         assertEquals(1_000_000,
                 ModelProviderHandler.getModelContextLimit(PROVIDER, "deepseek/deepseek-v4-pro"));
         assertEquals(1_000_000,
@@ -59,8 +58,7 @@ public class ModelProviderHandlerContextLimitTest {
     }
 
     @Test
-    public void catalogBeatsTheHardcodedTableForModelsBothKnow() {
-        // "gpt-5" is pinned at 400k in the table; live metadata says otherwise.
+    public void catalogUpdatesTakeEffect() {
         ModelContextWindowCatalog catalog = ModelContextWindowCatalog.getInstance();
         catalog.updateFromModelsPayload(JsonParser.parseString(
                 "{\"models\": [{\"id\": \"openai/gpt-5\", \"contextWindow\": 500000}]}")
@@ -92,18 +90,19 @@ public class ModelProviderHandlerContextLimitTest {
     }
 
     @Test
-    public void unknownModelsKeepTheHistorical200kDefault() {
-        assertEquals(200_000, ModelProviderHandler.getModelContextLimit(PROVIDER, "nobody/knows-this"));
-        assertEquals(200_000, ModelProviderHandler.getModelContextLimit(PROVIDER, null));
-        assertEquals(200_000, ModelProviderHandler.getModelContextLimit(PROVIDER, ""));
+    public void unknownModelsReturnZero() {
+        assertEquals(0, ModelProviderHandler.getModelContextLimit(PROVIDER, "nobody/knows-this"));
+        assertEquals(0, ModelProviderHandler.getModelContextLimit(PROVIDER, null));
+        assertEquals(0, ModelProviderHandler.getModelContextLimit(PROVIDER, ""));
     }
 
     @Test
-    public void coldCatalogFallsBackToTheHardcodedTable() {
+    public void coldCatalogFallsBackToBracketedSuffixOrZero() {
         ModelContextWindowCatalog.setInstanceForTests(ModelContextWindowCatalog.createForTests());
 
-        assertEquals(400_000, ModelProviderHandler.getModelContextLimit(PROVIDER, "gpt-5"));
-        assertEquals(256_000, ModelProviderHandler.getModelContextLimit(PROVIDER, "anthropic/qwen3-coder"));
-        assertEquals(200_000, ModelProviderHandler.getModelContextLimit(PROVIDER, "deepseek-v4-pro"));
+        assertEquals(1_000_000, ModelProviderHandler.getModelContextLimit(PROVIDER, "any-model[1m]"));
+        assertEquals(0, ModelProviderHandler.getModelContextLimit(PROVIDER, "gpt-5"));
+        assertEquals(0, ModelProviderHandler.getModelContextLimit(PROVIDER, "anthropic/qwen3-coder"));
+        assertEquals(0, ModelProviderHandler.getModelContextLimit(PROVIDER, "deepseek-v4-pro"));
     }
 }

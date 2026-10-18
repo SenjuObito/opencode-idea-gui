@@ -507,16 +507,22 @@ public class NodeDetector {
             ProcessBuilder pb = new ProcessBuilder("node", "--version");
             Process process = pb.start();
 
-            String version = null;
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                version = reader.readLine();
-            }
-
+            // Wait for exit BEFORE draining stdout. Reading first would block
+            // indefinitely on a wedged probe (a login-shell hook waiting on I/O,
+            // a hung `wsl` handshake), so the 5s budget below could never be
+            // reached — the caller stayed blocked for as long as the child did.
+            // A `--version` probe emits a short line, so draining after exit
+            // cannot deadlock on a full pipe.
             boolean finished = process.waitFor(5, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 return null;
+            }
+
+            String version = null;
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                version = reader.readLine();
             }
 
             int exitCode = process.exitValue();
@@ -639,16 +645,22 @@ public class NodeDetector {
             }
             Process process = pb.start();
 
-            String version = null;
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                version = reader.readLine();
-            }
-
+            // Wait for exit BEFORE draining stdout. Reading first would block
+            // indefinitely on a wedged probe (a login-shell hook waiting on I/O,
+            // a hung `wsl` handshake), so the 5s budget below could never be
+            // reached — the caller stayed blocked for as long as the child did.
+            // A `--version` probe emits a short line, so draining after exit
+            // cannot deadlock on a full pipe.
             boolean finished = process.waitFor(5, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 return null;
+            }
+
+            String version = null;
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                version = reader.readLine();
             }
 
             int exitCode = process.exitValue();

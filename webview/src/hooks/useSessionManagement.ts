@@ -300,6 +300,19 @@ export function useSessionManagement({
     // Switching to a different session: in multi-session architecture,
     // do not interrupt the in-flight background turn.
     cardDebugLog('[SessionManagement] different session, calling beginSessionTransition');
+    // Rebind the active tab to the incoming session BEFORE the transition.
+    //
+    // The outgoing session may still be streaming. `isActiveSession` resolves
+    // against `currentSessionIdRef`, but `updateBackgroundTab` matches on
+    // `tab.sessionId` — leaving the old binding in place would make the
+    // outgoing session's deltas land in the tab that now displays the new one,
+    // interleaving two conversations. Rebinding releases the old session, whose
+    // late deltas then fall through to the logged orphan path instead of
+    // corrupting the visible transcript.
+    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.();
+    if (activeTabId) {
+      window.__sessionTabsStore?.updateTabSessionId?.(activeTabId, sessionId);
+    }
     beginSessionTransition(sessionId, session?.title ?? null);
     sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
     setCurrentView('chat');

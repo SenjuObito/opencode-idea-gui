@@ -1488,3 +1488,39 @@ describe('applyMessagesRemoved', () => {
     expect(next).toEqual([kept('d')]);
   });
 });
+
+describe('aborted and stopped turn message blocks', () => {
+  const normalizeBlocksFn = () => null;
+  const localizeMessage = (s: string) => s;
+
+  it('marks aborted block when text is 已停止生成', () => {
+    const msg: ClaudeMessage = {
+      type: 'notification',
+      content: '已停止生成',
+    };
+    const blocks = getContentBlocks(msg, normalizeBlocksFn, localizeMessage);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: 'text',
+      text: '已停止生成',
+      aborted: true,
+    });
+  });
+
+  it('marks aborted block when raw has aborted flag', () => {
+    const msg: ClaudeMessage = {
+      type: 'notification',
+      content: 'Generation stopped',
+      raw: {
+        aborted: true,
+      },
+    };
+    const blocks = getContentBlocks(msg, normalizeBlocksFn, localizeMessage);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: 'text',
+      text: 'Generation stopped',
+      aborted: true,
+    });
+  });
+});

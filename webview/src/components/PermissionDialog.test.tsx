@@ -54,7 +54,11 @@ const mkRequest = (overrides: Partial<PermissionRequest> = {}): PermissionReques
   ...overrides,
 });
 
-const renderDialog = (request: PermissionRequest | null, onApproveAlways?: (id: string) => void) => {
+const renderDialog = (
+  request: PermissionRequest | null,
+  onApproveAlways?: (id: string) => void,
+  onTimeout?: (id: string) => void,
+) => {
   const onApprove = vi.fn();
   const onSkip = vi.fn();
   const approveAlways = onApproveAlways ?? vi.fn();
@@ -64,6 +68,7 @@ const renderDialog = (request: PermissionRequest | null, onApproveAlways?: (id: 
       request={request}
       onApprove={onApprove}
       onSkip={onSkip}
+      onTimeout={onTimeout}
       onApproveAlways={approveAlways}
     />,
   );
@@ -119,7 +124,19 @@ describe('PermissionDialog', () => {
     expect(document.querySelector('.warning-mode')).toBeTruthy();
   });
 
-  it('timeout invokes onSkip for the active request even when the countdown is gated', () => {
+  it('timeout invokes onTimeout for the active request when provided', () => {
+    const onTimeout = vi.fn();
+    const { onSkip } = renderDialog(mkRequest(), undefined, onTimeout);
+    countdown.markSubmitted.mockReturnValue(false);
+    act(() => {
+      countdown.lastOpts?.onTimeout?.();
+    });
+    expect(countdown.markSubmitted).not.toHaveBeenCalled();
+    expect(onTimeout).toHaveBeenCalledWith('chan-1');
+    expect(onSkip).not.toHaveBeenCalled();
+  });
+
+  it('timeout falls back to onSkip when onTimeout is not provided', () => {
     const { onSkip } = renderDialog(mkRequest());
     countdown.markSubmitted.mockReturnValue(false);
     act(() => {

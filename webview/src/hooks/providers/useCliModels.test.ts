@@ -240,5 +240,50 @@ describe('useCliModels', () => {
     // State remains unaffected
     expect(result.current.cliModelsLoading).toBe(true);
   });
+
+  it('normalizes variants correctly in v2 catalogs with variant metadata', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      models: [
+        { id: 'anthropic/claude-3-7-sonnet', label: 'Claude 3.7 Sonnet', variants: ['low', 'medium', 'high'] },
+        { id: 'xiaomi/mimo-v2.5-free', label: 'MiMo Free' }, // omitted variants in v2 catalog
+        { id: 'google/gemini-2.5-flash', label: 'Gemini Flash', variants: [] }, // explicit empty variants
+      ],
+    });
+
+    expect(result.current.cliModels).toEqual([
+      { id: 'anthropic/claude-3-7-sonnet', label: 'Claude 3.7 Sonnet', variants: ['low', 'medium', 'high'] },
+      { id: 'xiaomi/mimo-v2.5-free', label: 'MiMo Free', variants: [] },
+      { id: 'google/gemini-2.5-flash', label: 'Gemini Flash', variants: [] },
+    ]);
+  });
+
+  it('preserves undefined variants for general models in pure v1 catalogs while marking mimo as []', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      models: [
+        { id: 'general-v1-model', label: 'General Model' },
+        { id: 'mimo-v2.5-pro', label: 'MiMo Pro' },
+      ],
+    });
+
+    expect(result.current.cliModels[0]).toEqual({
+      id: 'general-v1-model',
+      label: 'General Model',
+    });
+    expect(result.current.cliModels[0].variants).toBeUndefined();
+
+    expect(result.current.cliModels[1]).toEqual({
+      id: 'mimo-v2.5-pro',
+      label: 'MiMo Pro',
+      variants: [],
+    });
+  });
 });
 

@@ -37,6 +37,7 @@ public class EnvironmentConfigurator {
     private static final Pattern WSL_MOUNT_PATH_PATTERN = Pattern.compile("^/mnt/([a-zA-Z])(?:/(.*))?$");
 
     private final OpenCodeBuddySettingsService settingsService;
+    private final CliSpecResolver cliSpecResolver;
     private volatile String cachedPermissionDir = null;
     private volatile String sessionId = null;
 
@@ -46,6 +47,7 @@ public class EnvironmentConfigurator {
 
     EnvironmentConfigurator(OpenCodeBuddySettingsService settingsService) {
         this.settingsService = settingsService;
+        this.cliSpecResolver = new CliSpecResolver(settingsService);
     }
 
     /**
@@ -163,6 +165,30 @@ public class EnvironmentConfigurator {
         }
 
         configurePermissionEnv(env, nodeExecutable);
+
+        // 6. Publish the user's CLI settings as the resolver's authoritative L0 tier.
+        //    This is the single convergence point for every launch path (daemon.js
+        //    and the one-shot channel-manager.js), so the injection cannot drift
+        //    between them.
+        applyCliSpecEnvironment(env, nodeExecutable);
+    }
+
+    /**
+     * Write the user's CLI settings into the child environment under the
+     * {@code OPENCODEBUDDY_*} contract consumed by {@code utils/cli-path.js}.
+     *
+     * <p>Values are translated for a WSL node exactly like the permission directory
+     * is: a Windows-shaped path is meaningless inside WSL (it would be created
+     * literally, backslashes and all), and the variables must additionally be listed
+     * in {@code WSLENV} or WSL drops them on the way in.</p>
+     */
+    private void applyCliSpecEnvironment(Map<String, String> env, String nodeExecutable) {
+        CliSpecResolver.CliSpec spec = cliSpecResolver.resolve(nodeExecutable);
+        boolean isWsl = NodeDetector.isWslPath(nodeExecutable);
+        for (Map.Entry<String, String> entry : spec.toEnvironment().entrySet()) {
+            String value = entry.getValue();
+            env.put(entry.getKey(), isWsl ? NodeDetector.convertToWslPath(value) : value);
+        }
     }
 
     static String resolveHomeForNodeEnvironment(String nodeExecutable, String currentHome) {
@@ -250,7 +276,13 @@ public class EnvironmentConfigurator {
     private static final String[] WSL_PROPAGATED_KEYS = {
             CLAUDE_PERMISSION_ENV,
             CLAUDE_SESSION_ID_ENV,
-            CLAUDE_PERMISSION_SAFETY_NET_ENV
+            CLAUDE_PERMISSION_SAFETY_NET_ENV,
+            // CLI settings contract (L0). Without these entries a WSL daemon sees
+            // none of them, silently degrading the user's explicit choice back to
+            // an environment scan.
+            CliSpecResolver.ENV_CLI_PATH,
+            CliSpecResolver.ENV_NODE_BIN,
+            CliSpecResolver.ENV_CONFIG_DIR
     };
 
     /** Appends permission-bridge keys to WSLENV so they reach the daemon inside WSL. */

@@ -108,4 +108,31 @@ public class MessageJsonConverterTest {
         assertEquals("tool-1", transportToolResult.get("tool_use_id").getAsString());
         assertTrue(transportToolResult.get("content").getAsString().contains("truncated"));
     }
+
+    @Test
+    public void convertMessagesToJsonPreservesCompactFields() {
+        JsonObject raw = new JsonObject();
+        raw.addProperty("type", "user");
+        raw.addProperty("isCompactSummary", true);
+        JsonObject compactMeta = new JsonObject();
+        compactMeta.addProperty("trigger", "manual");
+        compactMeta.addProperty("messagesSummarized", 10);
+        raw.add("compactMetadata", compactMeta);
+
+        OpencodeSession.Message sessionMessage = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.USER,
+                "Summary content",
+                raw
+        );
+
+        JsonArray transportMessages = JsonParser.parseString(
+                MessageJsonConverter.convertMessagesToJson(List.of(sessionMessage))
+        ).getAsJsonArray();
+
+        JsonObject transportRaw = transportMessages.get(0).getAsJsonObject().getAsJsonObject("raw");
+        assertTrue(transportRaw.get("isCompactSummary").getAsBoolean());
+        assertTrue(transportRaw.has("compactMetadata"));
+        assertEquals("manual", transportRaw.getAsJsonObject("compactMetadata").get("trigger").getAsString());
+        assertEquals(10, transportRaw.getAsJsonObject("compactMetadata").get("messagesSummarized").getAsInt());
+    }
 }

@@ -10,6 +10,8 @@ import {
   createQuoteChipElement,
   expandQuoteTokens,
   pruneQuoteRegistry,
+  exportQuotes,
+  restoreQuotes,
 } from './quoteRegistry';
 
 describe('quoteRegistry token round-trip', () => {
@@ -58,6 +60,38 @@ describe('pruneQuoteRegistry', () => {
 
     expect(getQuote(a)).toBeUndefined();
     expect(getQuote(b)).toBeUndefined();
+  });
+
+  it('keeps entries in preservedIds even if not in activeIds', () => {
+    const active = registerQuote('active');
+    const preserved = registerQuote('in other tab draft');
+    const stale = registerQuote('stale');
+
+    pruneQuoteRegistry(new Set([active]), new Set([preserved]));
+
+    expect(getQuote(active)).toBeDefined();
+    expect(getQuote(preserved)).toBeDefined();
+    expect(getQuote(stale)).toBeUndefined();
+  });
+});
+
+describe('exportQuotes and restoreQuotes', () => {
+  it('exports and restores quotes across tab switching', () => {
+    const q1 = registerQuote('quote 1 content');
+    const q2 = registerQuote('quote 2 content');
+    const token1 = makeQuoteToken(q1);
+
+    const exportedSubset = exportQuotes(`some text with ${token1}`);
+    expect(exportedSubset[q1]).toEqual({ text: 'quote 1 content' });
+    expect(exportedSubset[q2]).toBeUndefined();
+
+    // Clear registry
+    pruneQuoteRegistry(new Set());
+    expect(getQuote(q1)).toBeUndefined();
+
+    // Restore exported quote
+    restoreQuotes(exportedSubset);
+    expect(getQuote(q1)).toEqual({ text: 'quote 1 content' });
   });
 });
 

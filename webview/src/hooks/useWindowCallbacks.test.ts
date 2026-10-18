@@ -98,6 +98,10 @@ describe('useWindowCallbacks integration', () => {
     window.__sessionTransitioning = false;
     window.__sessionTransitionToken = null;
     window.__minAcceptedUpdateSequence = 0;
+    // Per-session barriers are the authoritative ones now, and — unlike the
+    // global baseline — they are NOT reset by the production code, so a value
+    // leaked by an earlier test would silently block later snapshots.
+    delete window.__sessionMinAcceptedUpdateSequence;
     window.__prependedHistoryMessageCount = 0;
     window.__messageBaseIndex = 0;
     window.__pendingSessionTransitionToast = undefined;
@@ -426,7 +430,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!(JSON.stringify(staleMessages));
+      window.updateMessages!('ses_test', JSON.stringify(staleMessages));
     });
 
     // setMessages should NOT be called because guard is active
@@ -445,7 +449,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!(JSON.stringify(freshMessages));
+      window.updateMessages!('ses_test', JSON.stringify(freshMessages));
     });
 
     // setMessages SHOULD be called
@@ -477,14 +481,14 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateMessages!(JSON.stringify([]), 1);
+      window.updateMessages!('ses_test', JSON.stringify([]), 1);
       window.historyLoadComplete!('1');
     });
 
     expect(window.__pendingHistoryRefreshMessageCount).toBe(1);
 
     act(() => {
-      window.updateMessages!(JSON.stringify([
+      window.updateMessages!('ses_test', JSON.stringify([
         { type: 'user', content: 'restored history' },
       ]), 2);
     });
@@ -494,7 +498,7 @@ describe('useWindowCallbacks integration', () => {
     expect(window.sendToJava).toHaveBeenCalledWith('history_dom_committed:1');
 
     act(() => {
-      window.updateMessages!(JSON.stringify([
+      window.updateMessages!('ses_test', JSON.stringify([
         { type: 'user', content: 'normal follow-up' },
       ]), 3);
     });
@@ -557,7 +561,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateMessages!(JSON.stringify([
+      window.updateMessages!('ses_test', JSON.stringify([
         { type: 'assistant', content: 'already restored' },
       ]), 1);
     });
@@ -574,12 +578,14 @@ describe('useWindowCallbacks integration', () => {
   it('keeps the restored-history refresh pending when a stale snapshot is rejected', () => {
     const opts = createOptions();
     vi.useFakeTimers();
-    window.__minAcceptedUpdateSequence = 5;
+    // Barrier is per-session now (a single global baseline let one session's
+    // sequence number block another session's snapshots).
+    window.__sessionMinAcceptedUpdateSequence = new Map([['ses_test', 5]]);
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
       window.historyLoadComplete!(1);
-      window.updateMessages!(JSON.stringify([
+      window.updateMessages!('ses_test', JSON.stringify([
         { type: 'assistant', content: 'stale history' },
       ]), 4);
     });
@@ -587,7 +593,7 @@ describe('useWindowCallbacks integration', () => {
     expect(window.__pendingHistoryRefreshMessageCount).toBe(1);
 
     act(() => {
-      window.updateMessages!(JSON.stringify([
+      window.updateMessages!('ses_test', JSON.stringify([
         { type: 'assistant', content: 'current history' },
       ]), 5);
     });
@@ -606,7 +612,7 @@ describe('useWindowCallbacks integration', () => {
     act(() => {
       window.historyLoadComplete!(1);
       window.clearMessages!();
-      window.updateMessages!(JSON.stringify([
+      window.updateMessages!('ses_test', JSON.stringify([
         { type: 'assistant', content: 'new session' },
       ]), 1);
     });
@@ -761,7 +767,7 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages(initial);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!(JSON.stringify([
+    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
       { type: 'user', content: 'new-398' },
       { type: 'assistant', content: 'new-399' },
     ]), 398, 7));
@@ -771,7 +777,9 @@ describe('useWindowCallbacks integration', () => {
     expect(buffer.current[398]?.content).toBe('new-398');
     expect(buffer.current[399]?.content).toBe('new-399');
     expect(window.__messageBaseIndex).toBe(0);
-    expect(window.__minAcceptedUpdateSequence).toBe(7);
+    // Barrier is per-session now: one shared baseline let a busy session's
+    // sequence number block another session's snapshots.
+    expect((window.__sessionMinAcceptedUpdateSequence as Map<string, number>).get('ses_test')).toBe(7);
   });
 
   it('keeps prepended history aligned when patching the backend tail', () => {
@@ -800,7 +808,7 @@ describe('useWindowCallbacks integration', () => {
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 100,
       }));
-      window.updateMessageTail!(JSON.stringify([
+      window.updateMessageTail!('ses_test', JSON.stringify([
         { type: 'user', content: 'updated-398' },
         { type: 'assistant', content: 'updated-399' },
       ]), 398, 7);
@@ -840,7 +848,7 @@ describe('useWindowCallbacks integration', () => {
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
       }));
-      window.updateMessages!(JSON.stringify([
+      window.updateMessages!('ses_test', JSON.stringify([
         { type: 'user', content: 'current-user' },
         { type: 'assistant', content: 'updated-answer' },
         { type: 'user', content: 'new-user' },
@@ -858,7 +866,7 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!(JSON.stringify([
+    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
       {
         type: 'user',
         content: 'question',
@@ -892,21 +900,21 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!(JSON.stringify([
+    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
       { type: 'user', content: 'message-220' },
       { type: 'assistant', content: 'message-221' },
     ]), 220, 7));
     expect(buffer.current.map((message) => message.content)).toEqual(['message-220', 'message-221']);
     expect(window.__messageBaseIndex).toBe(220);
 
-    act(() => window.updateMessageTail!(JSON.stringify([
+    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
       { type: 'user', content: 'message-221' },
       { type: 'assistant', content: 'message-222' },
     ]), 221, 8));
     expect(buffer.current.map((message) => message.content)).toEqual(['message-221', 'message-222']);
     expect(window.__messageBaseIndex).toBe(221);
 
-    act(() => window.updateMessageTail!(JSON.stringify([
+    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
       { type: 'user', content: 'compacted-170' },
       { type: 'assistant', content: 'compacted-171' },
     ]), 170, 9));
@@ -919,28 +927,28 @@ describe('useWindowCallbacks integration', () => {
       { type: 'user', content: 'current' },
       { type: 'assistant', content: 'answer' },
     ]);
-    window.__minAcceptedUpdateSequence = 8;
+    window.__sessionMinAcceptedUpdateSequence = new Map([['ses_test', 8]]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!(JSON.stringify([
+    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
       { type: 'assistant', content: 'stale' },
     ]), 1, 7));
-    act(() => window.updateMessageTail!(JSON.stringify([
+    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
       { type: 'assistant', content: 'invalid-base' },
     ]), '1oops', 9));
 
     expect(buffer.current.map((message) => message.content)).toEqual(['current', 'answer']);
-    expect(window.__minAcceptedUpdateSequence).toBe(8);
+    expect((window.__sessionMinAcceptedUpdateSequence as Map<string, number>).get('ses_test')).toBe(8);
   });
 
   it('resets the tail base when a full snapshot arrives', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
-    act(() => window.updateMessageTail!(JSON.stringify([
+    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
       { type: 'assistant', content: 'tail-only' },
     ]), 220, 7));
 
-    act(() => window.updateMessages!(JSON.stringify([
+    act(() => window.updateMessages!('ses_test', JSON.stringify([
       { type: 'user', content: 'full-user' },
       { type: 'assistant', content: 'full-answer' },
     ]), 8));
@@ -960,7 +968,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.patchMessageUuid?.('Generated attachment summary', 'uuid-123');
+      window.patchMessageUuid?.('sess-123', 'Generated attachment summary', 'uuid-123');
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1000,7 +1008,7 @@ describe('useWindowCallbacks integration', () => {
     window.__sessionTransitioning = true;
 
     act(() => {
-      window.patchMessageUuid?.('hello', 'uuid-guarded');
+      window.patchMessageUuid?.('sess-123', 'hello', 'uuid-guarded');
     });
 
     expect(opts.setMessages).not.toHaveBeenCalled();
@@ -1197,7 +1205,7 @@ describe('useWindowCallbacks integration', () => {
 
     // Step 2: During transition, stale messages are blocked
     act(() => {
-      window.updateMessages!(JSON.stringify([{ type: 'assistant', content: 'stale' }]));
+      window.updateMessages!('ses_test', JSON.stringify([{ type: 'assistant', content: 'stale' }]));
     });
     expect(opts.setMessages).not.toHaveBeenCalled();
 
@@ -1215,7 +1223,7 @@ describe('useWindowCallbacks integration', () => {
 
     // Step 5: After guard release, new messages work
     act(() => {
-      window.updateMessages!(
+      window.updateMessages!('ses_test',
         JSON.stringify([{ type: 'user', content: 'new message' }])
       );
     });
@@ -1231,14 +1239,14 @@ describe('useWindowCallbacks integration', () => {
     });
 
     act(() => {
-      window.onStreamEnd?.('10');
+      window.onStreamEnd?.('ses_test', '10');
     });
 
     opts.isStreamingRef.current = false;
     (opts.setMessages as any).mockClear();
 
     act(() => {
-      window.updateMessages!(
+      window.updateMessages!('ses_test',
         JSON.stringify([{ type: 'assistant', content: 'stale backlog', timestamp: new Date().toISOString() }]),
         '9',
       );
@@ -1247,7 +1255,7 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setMessages).not.toHaveBeenCalled();
 
     act(() => {
-      window.updateMessages!(
+      window.updateMessages!('ses_test',
         JSON.stringify([{ type: 'assistant', content: 'final snapshot', timestamp: new Date().toISOString() }]),
         '10',
       );
@@ -1295,7 +1303,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!(JSON.stringify([
+      window.updateMessages!('ses_test', JSON.stringify([
         {
           type: 'assistant',
           content: 'Working',
@@ -1473,7 +1481,7 @@ describe('useWindowCallbacks integration', () => {
 
       // First onStreamEnd — should process
       act(() => {
-        window.onStreamEnd!('10');
+        window.onStreamEnd!('ses_test', '10');
       });
       expect(window.__streamEndProcessedTurnId).toBe(turnId);
 
@@ -1482,7 +1490,7 @@ describe('useWindowCallbacks integration', () => {
 
       // Second onStreamEnd with same turn — should be no-op
       act(() => {
-        window.onStreamEnd!('10');
+        window.onStreamEnd!('ses_test', '10');
       });
 
       // setStreamingActive should not have been called again (idempotency)
@@ -1535,7 +1543,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!('5'); });
+      act(() => { window.onStreamEnd!('ses_test', '5'); });
 
       expect(window.__deniedToolIds?.has('tool-1')).toBe(false);
       expect(window.__deniedToolIds?.has('tool-2')).toBe(true);
@@ -1565,7 +1573,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!('5'); });
+      act(() => { window.onStreamEnd!('ses_test', '5'); });
 
       expect(window.__deniedToolIds?.has('tool-x')).toBe(false);
     });
@@ -1598,7 +1606,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!('5'); });
+      act(() => { window.onStreamEnd!('ses_test', '5'); });
 
       expect(window.__deniedToolIds?.has('tool-1')).toBe(false);
       expect(window.__deniedToolIds?.has('tool-2')).toBe(false);
@@ -1688,7 +1696,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!('5'); });
+      act(() => { window.onStreamEnd!('ses_test', '5'); });
 
       // last-B (most recent turn) is flagged; old-A (earlier turn) is intentionally NOT.
       expect(window.__deniedToolIds?.has('last-B')).toBe(true);
@@ -1774,7 +1782,7 @@ describe('useWindowCallbacks integration', () => {
       ];
 
       act(() => {
-        window.updateMessages!(JSON.stringify(staleSnapshot));
+        window.updateMessages!('ses_test', JSON.stringify(staleSnapshot));
       });
 
       // streamingMessageIndexRef must NOT be redirected to index 1 (assistant1)
@@ -1839,7 +1847,7 @@ describe('useWindowCallbacks integration', () => {
       ];
 
       act(() => {
-        window.updateMessages!(JSON.stringify(staleSnapshot));
+        window.updateMessages!('ses_test', JSON.stringify(staleSnapshot));
       });
 
       // streamingMessageIndexRef must NOT be redirected to index 1 (assistant1)
@@ -1863,8 +1871,8 @@ describe('useWindowCallbacks integration', () => {
       expect(opts.isStreamingRef.current).toBe(true);
 
       // Simulate first turn's thinking + content deltas
-      act(() => { window.onThinkingDelta!('Turn1Thinking'); });
-      act(() => { window.onContentDelta!('Turn1Content'); });
+      act(() => { window.onThinkingDelta!('ses_test', 'Turn1Thinking'); });
+      act(() => { window.onContentDelta!('ses_test', 'Turn1Content'); });
 
       // Block reset signal arrives (a new assistant turn within the same
       // stream). The Java layer keeps ONE assistant message for the whole
@@ -1879,10 +1887,10 @@ describe('useWindowCallbacks integration', () => {
       expect(opts.isStreamingRef.current).toBe(true);
 
       // Second turn's deltas append to the cumulative buffer.
-      act(() => { window.onThinkingDelta!('Turn2Thinking'); });
+      act(() => { window.onThinkingDelta!('ses_test', 'Turn2Thinking'); });
       expect(opts.streamingThinkingRef.current).toBe('Turn1ThinkingTurn2Thinking');
 
-      act(() => { window.onContentDelta!('Turn2Content'); });
+      act(() => { window.onContentDelta!('ses_test', 'Turn2Content'); });
       expect(opts.streamingContentRef.current).toBe('Turn1ContentTurn2Content');
 
       // Cross-turn separation is enforced downstream by the sync functions'
@@ -1932,7 +1940,7 @@ describe('useWindowCallbacks integration', () => {
     ): ((prev: ClaudeMessage[]) => ClaudeMessage[]) => {
       window.__pendingUpdateJson = JSON.stringify(pendingSnapshot);
       act(() => {
-        window.onStreamEnd!('10');
+        window.onStreamEnd!('ses_test', '10');
       });
       delete (window as unknown as Record<string, unknown>).__pendingUpdateJson;
       return (opts.setMessages as any).mock.calls[0][0];
@@ -2093,7 +2101,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!('20');
+        window.onStreamEnd!('ses_test', '20');
       });
 
       // The buffer holds the state React would have committed.
@@ -2166,7 +2174,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!('30');
+        window.onStreamEnd!('ses_test', '30');
       });
 
       const result = buffer.current;
@@ -2223,7 +2231,7 @@ describe('useWindowCallbacks integration', () => {
 
       act(() => {
         window.onStreamStart!();
-        window.onStreamEnd!('40');
+        window.onStreamEnd!('ses_test', '40');
       });
 
       // Verify: no tools should be marked as interrupted.
@@ -2288,7 +2296,7 @@ describe('useWindowCallbacks integration', () => {
       // in the same synchronous EDT block (same React batch).
       act(() => {
         window.onPermissionDenied!();
-        window.onStreamEnd!('50');
+        window.onStreamEnd!('ses_test', '50');
       });
 
       const result = buffer.current;
@@ -2399,7 +2407,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!('60');
+        window.onStreamEnd!('ses_test', '60');
       });
 
       const result = buffer.current;
@@ -2438,7 +2446,7 @@ describe('useWindowCallbacks integration', () => {
 
       expect(() => {
         act(() => {
-          window.onStreamEnd!('70');
+          window.onStreamEnd!('ses_test', '70');
         });
       }).not.toThrow();
 
@@ -2496,7 +2504,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!('80');
+        window.onStreamEnd!('ses_test', '80');
       });
 
       const result = buffer.current;
@@ -2507,6 +2515,80 @@ describe('useWindowCallbacks integration', () => {
       expect(window.__deniedToolIds?.has('shell-call-1')).toBe(false);
 
       delete window.__pendingUpdateJson;
+    });
+
+    it('isolates sliding window baseIndex across multiple sessions', () => {
+      const { opts, buffer } = createOptsWithMessages(
+        Array.from({ length: 50 }, (_, i) => ({ type: i % 2 === 0 ? 'user' : 'assistant', content: `msg-${i}` }))
+      );
+      opts.currentSessionIdRef.current = 'session-active';
+      renderHook(() => useWindowCallbacks(opts));
+
+      // Simulate a background session 'session-bg' having a tail update with baseIndex 30
+      window.__sessionTabsStore = {
+        getActiveTabId: () => 'tab-active',
+        getActiveSessionId: () => 'session-active',
+        getActiveTabAutoOpenFileEnabled: () => false,
+        getTabs: () => [
+          { id: 'tab-active', sessionId: 'session-active', title: 'Active', messages: [], messageBaseIndex: 0, isShared: false, loading: false, streamingActive: false, pendingPermissions: [], pendingQuestions: [], autoOpenFileEnabled: false, selectedModel: '', permissionMode: 'default', reasoningEffort: 'medium', filteredFileChanges: [], contextInfo: null },
+          { id: 'tab-bg', sessionId: 'session-bg', title: 'BG', messages: [], messageBaseIndex: 0, isShared: false, loading: false, streamingActive: false, pendingPermissions: [], pendingQuestions: [], autoOpenFileEnabled: false, selectedModel: '', permissionMode: 'default', reasoningEffort: 'medium', filteredFileChanges: [], contextInfo: null },
+        ],
+        isActiveSession: (sid) => sid === 'session-active',
+        updateBackgroundTab: (pred, updater) => {
+          const tab = window.__sessionTabsStore?.getTabs().find(pred);
+          if (tab) { updater(tab); return true; }
+          return false;
+        },
+        updateTabSessionId: vi.fn(),
+        updateTabTitle: vi.fn(),
+        closeTabBySessionId: vi.fn(),
+      };
+
+      // Background session receives tail update
+      act(() => {
+        window.updateMessageTail!('session-bg', JSON.stringify([
+          { type: 'user', content: 'bg-tail-30' },
+        ]), 30, 1);
+      });
+
+      // Active session baseIndex must NOT be polluted by background session
+      expect(window.__messageBaseIndex).toBe(0);
+
+      // Active session receives tail update at baseIndex 40
+      act(() => {
+        window.updateMessageTail!('session-active', JSON.stringify([
+          { type: 'user', content: 'active-tail-40' },
+          { type: 'assistant', content: 'active-tail-41' },
+        ]), 40, 2);
+      });
+
+      // Active session has full prefix (0..39) preserved + tail (40..41)
+      expect(buffer.current.length).toBe(42);
+      expect(buffer.current[0].content).toBe('msg-0');
+      expect(buffer.current[39].content).toBe('msg-39');
+      expect(buffer.current[40].content).toBe('active-tail-40');
+      expect(buffer.current[41].content).toBe('active-tail-41');
+
+      delete window.__sessionTabsStore;
+    });
+
+    it('shrink protection prevents active streaming messages from being wiped by empty snapshot', () => {
+      const { opts, buffer } = createOptsWithMessages([
+        { type: 'user', content: 'hello' },
+        { type: 'assistant', content: 'streaming reply...', isStreaming: true, __turnId: 1 },
+      ]);
+      opts.isStreamingRef.current = true;
+      opts.streamingTurnIdRef.current = 1;
+      renderHook(() => useWindowCallbacks(opts));
+
+      // Push an empty snapshot mid-stream (e.g. backend race)
+      act(() => {
+        window.updateMessages!('ses_test', JSON.stringify([]), 5);
+      });
+
+      // Conversation must NOT be wiped to empty []
+      expect(buffer.current.length).toBeGreaterThan(0);
+      expect(buffer.current.some((m) => m.type === 'assistant')).toBe(true);
     });
   });
 });

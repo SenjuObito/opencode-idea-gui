@@ -164,10 +164,38 @@ const App = () => {
     streamingContentRef, streamingThinkingRef, isStreamingRef, useBackendStreamingRenderRef,
     streamingMessageIndexRef, contentUpdateTimeoutRef, thinkingUpdateTimeoutRef,
     lastContentUpdateRef, lastThinkingUpdateRef, autoExpandedThinkingKeysRef,
+    trailingStructuralTextBoundaryRef,
     streamingTurnIdRef, turnIdCounterRef,
     findLastAssistantIndex, extractRawBlocks,
     getOrCreateStreamingAssistantIndex, patchAssistantForStreaming,
   } = useStreamingMessages();
+
+  // Per-session streaming runtime exchange: these single-instance refs are
+  // saved/restored as a unit when the active session changes, so a background
+  // turn cannot leak its accumulator into whichever session is opened next.
+  const streamingRuntimeRefs = useMemo(() => ({
+    isStreamingRef,
+    streamingContentRef,
+    streamingThinkingRef,
+    useBackendStreamingRenderRef,
+    streamingMessageIndexRef,
+    streamingTurnIdRef,
+    lastContentUpdateRef,
+    lastThinkingUpdateRef,
+    autoExpandedThinkingKeysRef,
+    trailingStructuralTextBoundaryRef,
+  }), [
+    isStreamingRef,
+    streamingContentRef,
+    streamingThinkingRef,
+    useBackendStreamingRenderRef,
+    streamingMessageIndexRef,
+    streamingTurnIdRef,
+    lastContentUpdateRef,
+    lastThinkingUpdateRef,
+    autoExpandedThinkingKeysRef,
+    trailingStructuralTextBoundaryRef,
+  ]);
 
   // (Toast helpers moved to UIStateContext)
 
@@ -189,7 +217,7 @@ const App = () => {
     handleReasoningChange, handleToggleThinking,
     handleSendShortcutChange,
     handleAutoOpenFileEnabledChange,
-  } = useModelProviderState({ addToast, t });
+  } = useModelProviderState({ addToast, t, currentSessionId, currentSessionIdRef });
 
   // ── Global drag event interception ──
   useEffect(() => {
@@ -446,15 +474,16 @@ const App = () => {
    */
   const dispatchRevert = useCallback((message: ClaudeMessage) => {
     const id = getMessageId(message);
+    const sid = currentSessionIdRef.current;
     if (!id) {
       // live 消息尚未回填 opencode id —— 让宿主通过 listMessages 解析最后一条用户消息
       console.warn('[App] undo: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('revert_session', 'latest');
-      applyRevertState(true);
+      sendBridgeEvent('revert_session', JSON.stringify({ sessionId: sid, messageId: 'latest' }));
+      applyRevertState(true, 'latest');
       return;
     }
     console.debug('[App] undo: reverting to message', id);
-    sendBridgeEvent('revert_session', id);
+    sendBridgeEvent('revert_session', JSON.stringify({ sessionId: sid, messageId: id }));
     // Optimistic: boundary is the undone user message; the host's
     // onRevertStateUpdate push carries the authoritative pointer.
     applyRevertState(true, id);
@@ -479,7 +508,8 @@ const App = () => {
       setPendingRevert({ op: 'redo' });
       return;
     }
-    sendBridgeEvent('unrevert_session');
+    const sid = currentSessionIdRef.current;
+    sendBridgeEvent('unrevert_session', JSON.stringify({ sessionId: sid }));
     applyRevertState(false);
   }, [applyRevertState, streamingActive]);
 
@@ -492,12 +522,13 @@ const App = () => {
       return;
     }
     const id = getMessageId(message);
+    const sid = currentSessionIdRef.current;
     if (!id) {
       console.warn('[App] fork: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('fork_session', 'latest');
+      sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, messageId: 'latest' }));
       return;
     }
-    sendBridgeEvent('fork_session', id);
+    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, messageId: id }));
   }, [streamingActive, addToast, t, getMessageId]);
 
   /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
@@ -506,7 +537,8 @@ const App = () => {
       addToast(t('chat.forkDisabledTooltip'), 'warning');
       return;
     }
-    sendBridgeEvent('fork_session', 'full');
+    const sid = currentSessionIdRef.current;
+    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, type: 'full' }));
   }, [streamingActive, addToast, t]);
 
   // Latest user message id, used by the builtin /undo slash command.
@@ -592,14 +624,27 @@ const App = () => {
       const reason = (detail ?? '').trim();
       addToast(reason ? `${t('chat.unshareFailed', { defaultValue: '取消分享失败' })}: ${reason}` : t('chat.unshareFailed', { defaultValue: '取消分享失败' }), 'error');
     };
-    window.onRevertError = (json: string) => {
+    window.onRevertError = (arg: unknown) => {
       let op = 'undo';
+      let errorDetail = '';
       try {
-        op = (JSON.parse(json) as { op?: string }).op ?? 'undo';
+        if (typeof arg === 'object' && arg !== null) {
+          op = (arg as { op?: string }).op ?? 'undo';
+          errorDetail = (arg as { error?: string }).error ?? '';
+        } else if (typeof arg === 'string') {
+          try {
+            const parsed = JSON.parse(arg) as { op?: string; error?: string };
+            op = parsed.op ?? 'undo';
+            errorDetail = parsed.error ?? '';
+          } catch {
+            errorDetail = arg;
+          }
+        }
       } catch {
         // keep default
       }
-      addToast(op === 'undo' ? t('chat.revertFailed') : t('chat.restoreFailed'), 'error');
+      const baseMsg = op === 'undo' ? t('chat.revertFailed') : t('chat.restoreFailed');
+      addToast(errorDetail ? `${baseMsg}: ${errorDetail}` : baseMsg, 'error');
       // 清除乐观撤销边界，避免重载前占位条还在、而底层消息却已恢复的矛盾状态。
       applyRevertState(false);
       // 回滚乐观状态：重载会话让宿主推送真实的 revert 指针与消息列表
@@ -608,10 +653,26 @@ const App = () => {
         loadHistorySession(sessionId);
       }
     };
-    window.onRevertStateUpdate = (json: string) => {
+    window.onRevertStateUpdate = (...args: unknown[]) => {
       try {
-        const payload = JSON.parse(json) as { hasRevert?: boolean; messageId?: string | null };
-        console.debug('[App] onRevertStateUpdate', payload);
+        let jsonStr = '';
+        let targetSessionId: string | null = null;
+        if (args.length >= 2 && typeof args[0] === 'string' && typeof args[1] === 'string') {
+          targetSessionId = args[0];
+          jsonStr = args[1];
+        } else if (args.length === 1) {
+          if (typeof args[0] === 'string') {
+            jsonStr = args[0];
+          } else if (typeof args[0] === 'object' && args[0] !== null) {
+            jsonStr = JSON.stringify(args[0]);
+          }
+        } else if (args.length >= 2 && typeof args[1] === 'object' && args[1] !== null) {
+          targetSessionId = typeof args[0] === 'string' ? args[0] : null;
+          jsonStr = JSON.stringify(args[1]);
+        }
+        if (!jsonStr) return;
+        const payload = JSON.parse(jsonStr) as { hasRevert?: boolean; messageId?: string | null; sessionId?: string };
+        console.debug('[App] onRevertStateUpdate', { targetSessionId, payload });
         const next = !!payload.hasRevert;
         const nextId = payload.messageId ?? null;
         const prevHasRevert = hasRevertStateRef.current;
@@ -619,7 +680,7 @@ const App = () => {
         const changed = next !== prevHasRevert || nextId !== prevId;
         applyRevertState(next, nextId);
 
-        const sessionId = currentSessionIdRef.current;
+        const sessionId = targetSessionId || payload.sessionId || currentSessionIdRef.current;
         const currentKey = `${sessionId}:${next}:${nextId}`;
         if (changed || (next && lastLoadedRevertStateRef.current !== currentKey)) {
           lastLoadedRevertStateRef.current = currentKey;
@@ -627,8 +688,8 @@ const App = () => {
             loadHistorySession(sessionId);
           }
         }
-      } catch {
-        // ignore malformed payloads
+      } catch (err) {
+        console.warn('[App] malformed onRevertStateUpdate payload', err, args);
       }
     };
     // 服务端权威删除：opencode 在下一次 prompt 时把 revert 点之后的消息真正删掉，
@@ -658,6 +719,10 @@ const App = () => {
       requestAnimationFrame(() => {
         scrollToBottom();
       });
+      const activeSessionId = targetSessionId || currentSessionIdRef.current;
+      if (activeSessionId) {
+        void loadHistorySession(activeSessionId);
+      }
     };
     window.onCompactError = (targetSessionId?: string, detail?: string) => {
       if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
@@ -665,7 +730,22 @@ const App = () => {
       }
       setIsCompacting(false);
       setCompactingStartTime(null);
-      setMessages((prev) => [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)]);
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.type === 'notification') {
+          const raw = last.raw as Record<string, unknown> | undefined;
+          if (raw?.compactStatus === 'failure') {
+            // Already showing a failure notice; if current has no detail but new one does, enrich it
+            if (!raw.compactDetail && detail) {
+              const updated = [...prev];
+              updated[updated.length - 1] = createCompactFailureNotice(t('chat.compactFailed'), detail);
+              return updated;
+            }
+            return prev;
+          }
+        }
+        return [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)];
+      });
       requestAnimationFrame(() => {
         scrollToBottom();
       });
@@ -763,7 +843,8 @@ const App = () => {
     if (pending.op === 'undo') {
       dispatchRevert(pending.target);
     } else {
-      sendBridgeEvent('unrevert_session');
+      const sid = currentSessionIdRef.current;
+      sendBridgeEvent('unrevert_session', JSON.stringify({ sessionId: sid }));
       applyRevertState(false);
     }
   }, [pendingRevert, interruptSession, dispatchRevert, applyRevertState]);
@@ -803,7 +884,7 @@ const App = () => {
   // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
   const doCompact = useCallback(() => {
     consumeRevertBoundary();
-    sendBridgeEvent('compact_session', JSON.stringify({ model: selectedModel }));
+    sendBridgeEvent('compact_session', JSON.stringify({ sessionId: currentSessionId, model: selectedModel }));
     setIsCompacting(true);
     setCompactingStartTime(Date.now());
     userPausedRef.current = false;
@@ -812,7 +893,7 @@ const App = () => {
     requestAnimationFrame(() => {
       scrollToBottom();
     });
-  }, [consumeRevertBoundary, selectedModel, setIsCompacting, setCompactingStartTime, scrollToBottom, userPausedRef, isUserAtBottomRef]);
+  }, [consumeRevertBoundary, currentSessionId, selectedModel, setIsCompacting, setCompactingStartTime, scrollToBottom, userPausedRef, isUserAtBottomRef]);
   const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
     useCompactConfirm(doCompact, loading || isCompacting);
 
@@ -1059,6 +1140,7 @@ const App = () => {
     defaultAutoOpenFileEnabled: autoOpenFileEnabled,
     forceCreateNewSession,
     loadHistorySession,
+    streamingRuntimeRefs,
     t,
   });
 

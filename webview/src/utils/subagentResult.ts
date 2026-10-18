@@ -2,6 +2,25 @@ import type { ToolResultBlock } from '../types';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
 
 /**
+ * Read the subagent/agent type from an Agent/Task tool input.
+ *
+ * v1 (opencode `task`, Claude Code `Agent`) uses `subagent_type` / `agent_type`
+ * (snake_case and camelCase); opencode v2 renamed the tool to `subagent` and
+ * the argument to `agent`. The v2 alias is read last so v1 inputs resolve
+ * exactly as before — this is the single source of truth for the type label
+ * shared by useSubagents, TaskExecutionBlock and AgentGroupBlock.
+ */
+export function readAgentType(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
+  const record = input as Record<string, unknown>;
+  for (const key of ['subagent_type', 'subagentType', 'agent_type', 'agentType', 'agent']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+/**
  * Extract concatenated text content from a tool_result block.
  *
  * Shared by useSubagents, AgentGroupBlock, and TaskExecutionBlock so the
@@ -64,6 +83,10 @@ export function isAsyncAgentInput(
   }
   const record = input as Record<string, unknown>;
   if (record.run_in_background === true || record.runInBackground === true) return true;
+  // opencode v2 renamed the `task` tool to `subagent` and its async switch to
+  // `background: true` (same semantics: return immediately, notify the parent
+  // when the child session finishes).
+  if (record.background === true) return true;
   return isAsyncLaunchStatus(toolUseStatus) || isAsyncLaunchText(result);
 }
 

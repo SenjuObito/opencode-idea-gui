@@ -13,29 +13,35 @@ export { parseSequence };
 
 /**
  * Retrieves the minimum accepted update sequence for a given session.
- * If targetSessionId has an entry in __sessionMinAcceptedUpdateSequence, that entry is used.
- * Otherwise falls back to window.__minAcceptedUpdateSequence ?? 0.
+ *
+ * Strictly per-session. There is deliberately **no** global fallback any more:
+ * a single shared baseline let one session's high sequence number permanently
+ * block the snapshots of another session that had just been loaded or switched
+ * to (whose coalescer restarts at 0). An unknown session gets a fresh baseline
+ * of 0, i.e. accept — the permissive direction, because dropping a snapshot is
+ * invisible to the user while blocking one freezes the whole tab.
  */
 export const getMinAcceptedSequence = (sessionId?: string | null): number => {
-  if (sessionId && window.__sessionMinAcceptedUpdateSequence) {
-    let sessionSeq: number | undefined;
-    if (window.__sessionMinAcceptedUpdateSequence instanceof Map) {
-      sessionSeq = window.__sessionMinAcceptedUpdateSequence.get(sessionId);
-    } else {
-      sessionSeq = (window.__sessionMinAcceptedUpdateSequence as Record<string, number>)[sessionId];
-    }
-    if (typeof sessionSeq === 'number' && Number.isFinite(sessionSeq)) {
-      return sessionSeq;
-    }
+  if (!sessionId || !window.__sessionMinAcceptedUpdateSequence) {
+    return 0;
   }
-  return window.__minAcceptedUpdateSequence ?? 0;
+  let sessionSeq: number | undefined;
+  if (window.__sessionMinAcceptedUpdateSequence instanceof Map) {
+    sessionSeq = window.__sessionMinAcceptedUpdateSequence.get(sessionId);
+  } else {
+    sessionSeq = (window.__sessionMinAcceptedUpdateSequence as Record<string, number>)[sessionId];
+  }
+  return typeof sessionSeq === 'number' && Number.isFinite(sessionSeq) ? sessionSeq : 0;
 };
 
 /**
  * Checks whether the given session is considered the active foreground session in the UI.
+ *
+ * An empty id is **not** the foreground session. Treating it as such is what let
+ * an unattributable write adopt the active tab's sequence baseline.
  */
 const isForegroundSession = (sessionId?: string | null): boolean => {
-  if (!sessionId) return true;
+  if (!sessionId) return false;
   if (sessionId === window.__sessionTransitionTargetSessionId) return true;
   if (window.__sessionTabsStore?.isActiveSession(sessionId)) return true;
   return false;
@@ -61,7 +67,9 @@ export const advanceMinAcceptedSequence = (
     }
   }
 
-  // Also advance the global fallback if this is the active foreground session or unspecified
+  // `isForegroundSession` is retained for the (still meaningful) case of a
+  // *known* session that is currently on screen; the shared global baseline it
+  // used to also advance has been removed — see getMinAcceptedSequence.
   if (isForegroundSession(sessionId)) {
     window.__minAcceptedUpdateSequence = Math.max(window.__minAcceptedUpdateSequence ?? 0, sequence);
   }

@@ -140,6 +140,47 @@
     box-sizing: border-box;
 }
 
+/* Stopped turn notice (neutral, quiet system notification) */
+.message.is-turn-stopped {
+    align-items: center;
+    padding: 6px 20px;
+}
+
+.message.is-turn-stopped .message-content {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.turn-stopped-notice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    background-color: var(--bg-secondary, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    color: var(--text-tertiary, #888);
+    font-size: 12px;
+    line-height: 1.4;
+    user-select: none;
+    margin: 2px 0;
+
+    .turn-stopped-notice-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        color: var(--text-tertiary, #888);
+        opacity: 0.8;
+    }
+
+    .turn-stopped-notice-text {
+        font-size: 12px;
+        color: var(--text-secondary, #999);
+    }
+}
+
 .message-header-row {
     display: flex;
     align-items: center;

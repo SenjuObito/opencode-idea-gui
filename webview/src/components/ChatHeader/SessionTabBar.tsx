@@ -50,16 +50,18 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   const editInputRef = useRef<HTMLInputElement>(null);
   const tabWidthsRef = useRef<Record<string, number>>({});
 
-  // ── Long-press to drag and reorder ──
+  // ── Drag to reorder tabs (no long-press wait) ──
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropIndicatorIndex, setDropIndicatorIndex] = useState<number | null>(null);
-  const longPressTimerRef = useRef<number | null>(null);
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingActiveRef = useRef<boolean>(false);
   const draggingTabIdRef = useRef<string | null>(null);
   const dropIndicatorIndexRef = useRef<number | null>(null);
   const tabElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const justFinishedDragRef = useRef<boolean>(false);
+  // 正在随鼠标跟随的 DOM 元素及鼠标相对该元素左上角的偏移量
+  const draggingElementRef = useRef<HTMLDivElement | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     draggingTabIdRef.current = draggingTabId;
@@ -205,29 +207,42 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   // ── Drag and Reorder listeners ──
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      // If long-press is not yet active, cancel if moved beyond 5px threshold
-      if (!isDraggingActiveRef.current) {
-        if (dragStartPosRef.current) {
-          const dist = Math.hypot(e.clientX - dragStartPosRef.current.x, e.clientY - dragStartPosRef.current.y);
-          if (dist > 5) {
-            if (longPressTimerRef.current) {
-              window.clearTimeout(longPressTimerRef.current);
-              longPressTimerRef.current = null;
-            }
-            dragStartPosRef.current = null;
-          }
-        }
-        return;
+      if (!isDraggingActiveRef.current || !dragStartPosRef.current) return;
+
+      const dist = Math.hypot(e.clientX - dragStartPosRef.current.x, e.clientY - dragStartPosRef.current.y);
+
+      // Not yet a real drag: wait until the mouse moves beyond a small threshold
+      // so a plain click still selects the tab without any drag visual flicker.
+      if (dist <= 5) return;
+
+      // Enter drag visual state once we move beyond the threshold.
+      const targetTabId = draggingTabIdRef.current;
+      if (targetTabId) {
+        setDraggingTabId(targetTabId);
+        setDropIndicatorIndex(dropIndicatorIndexRef.current);
       }
 
-      // Dragging is active: determine drop insertion index
+      // 让被拖拽的 tab 标题固定定位并跟随鼠标移动（脱离文档流，其余 tab 自动让路）
+      const followEl = draggingElementRef.current;
+      if (followEl) {
+        followEl.classList.add('session-tab-item-following');
+        followEl.style.position = 'fixed';
+        followEl.style.left = `${e.clientX - (dragOffsetRef.current?.x ?? 0)}px`;
+        followEl.style.top = `${e.clientY - (dragOffsetRef.current?.y ?? 0)}px`;
+        followEl.style.zIndex = '9999';
+        followEl.style.pointerEvents = 'none';
+        followEl.style.transition = 'none';
+        followEl.style.width = `${followEl.offsetWidth}px`;
+      }
+
+      // 计算 drop 插入索引：基于鼠标 X 与各 tab 中点比较（跳过已脱离流的拖拽元素）
       const mouseX = e.clientX;
       let targetIndex = visibleTabs.length;
 
       for (let i = 0; i < visibleTabs.length; i++) {
         const tabItem = visibleTabs[i];
         const el = tabElementsRef.current.get(tabItem.id);
-        if (el) {
+        if (el && el !== followEl) {
           const rect = el.getBoundingClientRect();
           const midX = rect.left + rect.width / 2;
           if (mouseX < midX) {
@@ -241,45 +256,66 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
       setDropIndicatorIndex(targetIndex);
     };
 
-    const handleGlobalMouseUp = () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      if (!isDraggingActiveRef.current) return;
+
+      isDraggingActiveRef.current = false;
+
+      const startPos = dragStartPosRef.current;
       dragStartPosRef.current = null;
 
-      if (isDraggingActiveRef.current) {
-        isDraggingActiveRef.current = false;
+      const currentDraggingId = draggingTabIdRef.current;
+      const currentDropIndex = dropIndicatorIndexRef.current;
+
+      // 清理被拖拽元素的 fixed 跟随样式，恢复正常文档流布局
+      const followEl = draggingElementRef.current;
+      if (followEl) {
+        followEl.classList.remove('session-tab-item-following');
+        followEl.style.position = '';
+        followEl.style.left = '';
+        followEl.style.top = '';
+        followEl.style.zIndex = '';
+        followEl.style.pointerEvents = '';
+        followEl.style.transition = '';
+        followEl.style.width = '';
+      }
+      draggingElementRef.current = null;
+      dragOffsetRef.current = null;
+
+      draggingTabIdRef.current = null;
+      dropIndicatorIndexRef.current = null;
+      setDraggingTabId(null);
+      setDropIndicatorIndex(null);
+
+      // 短按（几乎未移动）：视为普通点击，由 onClick 负责选中标签，不重排
+      // 拖拽（移动超过阈值）：执行顺序调整，并 120ms 内抑制 onClick 误触
+      const isShortPress = startPos
+        ? Math.hypot(e.clientX - startPos.x, e.clientY - startPos.y) <= 5
+        : true;
+
+      if (!isShortPress && currentDraggingId && currentDropIndex != null) {
+        const sourceGlobalIndex = tabs.findIndex((t) => t.id === currentDraggingId);
+        if (sourceGlobalIndex >= 0) {
+          let targetGlobalIndex: number;
+          if (currentDropIndex < visibleTabs.length) {
+            const targetTab = visibleTabs[currentDropIndex];
+            targetGlobalIndex = tabs.findIndex((t) => t.id === targetTab.id);
+          } else {
+            const lastVisible = visibleTabs[visibleTabs.length - 1];
+            targetGlobalIndex = lastVisible ? tabs.findIndex((t) => t.id === lastVisible.id) : sourceGlobalIndex;
+          }
+
+          if (targetGlobalIndex >= 0 && sourceGlobalIndex !== targetGlobalIndex) {
+            onReorderTabs?.(sourceGlobalIndex, targetGlobalIndex);
+          }
+        }
+      }
+
+      if (!isShortPress) {
         justFinishedDragRef.current = true;
         setTimeout(() => {
           justFinishedDragRef.current = false;
         }, 120);
-
-        const currentDraggingId = draggingTabIdRef.current;
-        const currentDropIndex = dropIndicatorIndexRef.current;
-
-        draggingTabIdRef.current = null;
-        dropIndicatorIndexRef.current = null;
-        setDraggingTabId(null);
-        setDropIndicatorIndex(null);
-
-        if (currentDraggingId && currentDropIndex != null) {
-          const sourceGlobalIndex = tabs.findIndex((t) => t.id === currentDraggingId);
-          if (sourceGlobalIndex >= 0) {
-            let targetGlobalIndex: number;
-            if (currentDropIndex < visibleTabs.length) {
-              const targetTab = visibleTabs[currentDropIndex];
-              targetGlobalIndex = tabs.findIndex((t) => t.id === targetTab.id);
-            } else {
-              const lastVisible = visibleTabs[visibleTabs.length - 1];
-              targetGlobalIndex = lastVisible ? tabs.findIndex((t) => t.id === lastVisible.id) : sourceGlobalIndex;
-            }
-
-            if (targetGlobalIndex >= 0 && sourceGlobalIndex !== targetGlobalIndex) {
-              onReorderTabs?.(sourceGlobalIndex, targetGlobalIndex);
-            }
-          }
-        }
       }
     };
 
@@ -288,30 +324,33 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
     return () => {
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
     };
   }, [visibleTabs, tabs, onReorderTabs]);
 
   const handleTabMouseDown = useCallback(
     (e: React.MouseEvent, tab: SessionTabData, visibleIndex: number) => {
       if (e.button !== 0) return; // Only primary button
+      if (e.detail > 1) return;   // Ignore multi-clicks (double-click opens rename)
       if (editingTabId === tab.id) return;
 
       dragStartPosRef.current = { x: e.clientX, y: e.clientY };
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
+      draggingTabIdRef.current = tab.id;
+      dropIndicatorIndexRef.current = visibleIndex;
 
-      const targetTabId = tab.id;
-      longPressTimerRef.current = setTimeout(() => {
-        isDraggingActiveRef.current = true;
-        draggingTabIdRef.current = targetTabId;
-        dropIndicatorIndexRef.current = visibleIndex;
-        setDraggingTabId(targetTabId);
-        setDropIndicatorIndex(visibleIndex);
-      }, 250) as unknown as number;
+      // 记录被按下的 tab 元素，以及鼠标相对该元素左上角的偏移量，
+      // 用于拖拽时让标题精准跟随鼠标。
+      const el = e.currentTarget as HTMLDivElement;
+      draggingElementRef.current = el;
+      const rect = el.getBoundingClientRect();
+      dragOffsetRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+
+      // Enter "may-drag" mode immediately on press — no long-press wait.
+      // The actual drag visual starts once the mouse moves beyond a small threshold
+      // (see handleGlobalMouseMove), so a plain click still selects the tab cleanly.
+      isDraggingActiveRef.current = true;
     },
     [editingTabId]
   );
@@ -343,12 +382,16 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
               <div
                 ref={(el) => {
                   if (el) {
+                    // 拖拽跟随期间，该元素已脱离文档流并由 JS 直接操作位置，
+                    // 避免 React 重渲染时丢失或覆盖该引用。
+                    if (draggingElementRef.current === el) return;
                     tabElementsRef.current.set(tab.id, el);
                     const w = el.getBoundingClientRect().width;
                     if (w > 0 && tabWidthsRef.current[tab.id] !== w) {
                       tabWidthsRef.current[tab.id] = w;
                     }
                   } else {
+                    if (draggingElementRef.current === el) return;
                     tabElementsRef.current.delete(tab.id);
                   }
                 }}

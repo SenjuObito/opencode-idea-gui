@@ -190,11 +190,50 @@ public final class ModelContextWindowCatalog {
 
     /**
      * Read the window a payload entry advertises.
+     * <p>
+     * Resolution order:
+     * <ol>
+     *   <li>Top-level {@code contextWindow} — the opencode daemon normalized form</li>
+     *   <li>Nested {@code limit.context} — the raw models.dev form passed through
+     *       by the opencode SDK ({@code opencode.getModels / opencode.listModels})</li>
+     *   <li>Snake-case {@code context_window}</li>
+     * </ol>
      *
      * @return the token count, or null when the entry carries no usable value
      */
     private static Integer readContextWindow(JsonObject model) {
+        // 1. Top-level contextWindow (opencode daemon normalized form)
         JsonElement element = model.get(CONTEXT_WINDOW_KEY);
+        Integer value = readPositiveInt(element);
+        if (value != null) {
+            return value;
+        }
+
+        // 2. Nested limit.context (models.dev original form from opencode SDK)
+        if (model.has("limit") && model.get("limit").isJsonObject()) {
+            JsonObject limit = model.getAsJsonObject("limit");
+            element = limit.get("context");
+            value = readPositiveInt(element);
+            if (value != null) {
+                return value;
+            }
+        }
+
+        // 3. Snake-case variant
+        element = model.get("context_window");
+        value = readPositiveInt(element);
+        if (value != null) {
+            return value;
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse a positive integer from a JsonElement, tolerant of numbers and
+     * numeric strings.
+     */
+    private static Integer readPositiveInt(JsonElement element) {
         if (element == null || element.isJsonNull() || !element.isJsonPrimitive()) {
             return null;
         }

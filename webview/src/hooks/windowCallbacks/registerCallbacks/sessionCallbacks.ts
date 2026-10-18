@@ -107,7 +107,7 @@ export function registerSessionCallbacks(
   window.updateSessionTitle = (sessionId: string, title: string) => {
     if (!title || !title.trim() || !sessionId) return;
     const cleanTitle = title.trim();
-    if (currentSessionIdRef.current === sessionId) {
+    if (currentSessionIdRef.current === sessionId || !currentSessionIdRef.current) {
       setCustomSessionTitle(cleanTitle);
     }
     window.__sessionTabsStore?.updateTabTitle?.(sessionId, cleanTitle);
@@ -124,7 +124,7 @@ export function registerSessionCallbacks(
       if (provider) {
         sendBridgeEvent('deep_search_history', provider);
       } else {
-        console.warn('[Frontend] Provider unavailable for conversion state reload');
+        cardDebugLog('[Frontend] Provider unavailable for conversion state reload');
       }
     };
 

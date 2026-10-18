@@ -43,6 +43,7 @@ import java.awt.dnd.DropTargetDropEvent;
 import java.io.File;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.IntPredicate;
@@ -110,6 +111,76 @@ public class WebviewInitializer {
     private int pageGeneration;
     private PageLoadKind nextBrowserPageLoadKind = PageLoadKind.INITIAL_LOAD;
 
+    /**
+     * Invalidates a background preparation whose browser lifecycle is already
+     * gone (recreate raced a slow probe). Mirrors the generation guard in the
+     * upstream cc-gui initializer.
+     */
+    private final AtomicInteger preparationGeneration = new AtomicInteger();
+    /** Prevents two concurrent preparations for the same window. */
+    private final AtomicBoolean preparationInProgress = new AtomicBoolean();
+    /**
+     * Page prepared off the EDT, consumed once by the EDT branch that creates
+     * the browser. Volatile because the producer is a pooled thread.
+     */
+    private volatile String preparedHtml;
+
+    /** Outcome of the off-EDT preparation phase. */
+    private enum PreparationOutcome {
+        READY,
+        INVALID_NODE_PATH,
+        VERSION_UNSUPPORTED,
+        WAIT_FOR_EXTRACTION,
+        RETRY_ENVIRONMENT,
+        ENVIRONMENT_UNAVAILABLE,
+        FAILED
+    }
+
+    private static final class PreparedInitialization {
+        final PreparationOutcome outcome;
+        final NodeDetectionResult nodeResult;
+        final String invalidNodePath;
+        final String html;
+        final String message;
+
+        private PreparedInitialization(
+                PreparationOutcome outcome,
+                NodeDetectionResult nodeResult,
+                String invalidNodePath,
+                String html,
+                String message
+        ) {
+            this.outcome = outcome;
+            this.nodeResult = nodeResult;
+            this.invalidNodePath = invalidNodePath;
+            this.html = html;
+            this.message = message;
+        }
+
+        static PreparedInitialization ready(NodeDetectionResult nodeResult, String html) {
+            return new PreparedInitialization(PreparationOutcome.READY, nodeResult, null, html, null);
+        }
+
+        static PreparedInitialization of(PreparationOutcome outcome) {
+            return new PreparedInitialization(outcome, null, null, null, null);
+        }
+
+        static PreparedInitialization invalidNodePath(String path, String message) {
+            return new PreparedInitialization(
+                    PreparationOutcome.INVALID_NODE_PATH, null, path, null, message);
+        }
+
+        static PreparedInitialization failed(String message) {
+            return new PreparedInitialization(
+                    PreparationOutcome.FAILED, null, null, null, message);
+        }
+
+        static PreparedInitialization versionUnsupported(NodeDetectionResult nodeResult) {
+            return new PreparedInitialization(
+                    PreparationOutcome.VERSION_UNSUPPORTED, nodeResult, null, null, null);
+        }
+    }
+
     public WebviewInitializer(WebviewHost host) {
         this.host = host;
     }
@@ -118,6 +189,10 @@ public class WebviewInitializer {
      * Create and configure UI components (browser, JS bridge, drag-and-drop).
      */
     public void createUIComponents() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            invokeLaterForToolWindow(this::createUIComponents);
+            return;
+        }
         if (this.host.isDisposed()) {
             return;
         }
@@ -149,29 +224,54 @@ public class WebviewInitializer {
             return;
         }
 
-        com.opencodebuddy.bridge.NodeDetector nodeDetector = com.opencodebuddy.bridge.NodeDetector.getInstance();
-
-        String savedNodePath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getNodePath();
-
-        if (savedNodePath != null && !savedNodePath.trim().isEmpty()) {
-            String trimmed = savedNodePath.trim();
-            nodeDetector.setNodeExecutable(trimmed);
-            NodeDetectionResult nodeResult = nodeDetector.verifyAndCacheNodePath(trimmed);
-            if (nodeResult == null || !nodeResult.isFound()) {
-                showInvalidNodePathPanel(trimmed, nodeResult != null ? nodeResult.getErrorMessage() : null);
-                return;
-            }
-            continueCreateUIComponentsAfterNodeSetup(nodeResult);
+        if (!preparationInProgress.compareAndSet(false, true)) {
+            LOG.debug("Skip duplicate webview initialization: preparation is already running");
             return;
         }
 
-        // No saved path: auto-detection spawns shell probes that block the calling
-        // thread for several seconds per attempt (and may hang instead of exiting in
-        // VM/container environments), so it must never run on the EDT. Detect on a
-        // pooled thread, then continue initialization back on the EDT.
-        LOG.info("No saved Node.js path found, scheduling auto-detection on background thread...");
+        int generation = preparationGeneration.incrementAndGet();
+
+        // Everything below used to run inline on the EDT and froze the IDE for up
+        // to tens of seconds per tab: `node --version` subprocess waits, the
+        // environment probe (up to 30s on a cold cache), and building the page
+        // (9.7 MB read + several whole-document rewrites). Only browser creation
+        // and Swing mounting need the EDT.
         showLoadingPanel();
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+        LOG.info("Preparing webview environment and HTML on a background thread...");
+        ApplicationManager.getApplication().executeOnPooledThread(
+                () -> prepareInitializationOnPooledThread(generation));
+    }
+
+    /** Resolve every blocking startup input, then hand the result back to the EDT. */
+    private void prepareInitializationOnPooledThread(int generation) {
+        PreparedInitialization prepared;
+        try {
+            prepared = prepareInitializationOffEdt();
+        } catch (Throwable error) {
+            LOG.error("Failed to prepare webview initialization: " + error.getMessage(), error);
+            prepared = PreparedInitialization.failed(error.getMessage());
+        }
+        final PreparedInitialization result = prepared;
+        invokeLaterForToolWindow(() -> applyPreparedInitialization(generation, result));
+    }
+
+    private PreparedInitialization prepareInitializationOffEdt() {
+        com.opencodebuddy.bridge.NodeDetector nodeDetector =
+                com.opencodebuddy.bridge.NodeDetector.getInstance();
+        String savedNodePath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getNodePath();
+
+        NodeDetectionResult nodeResult;
+        if (savedNodePath != null && !savedNodePath.trim().isEmpty()) {
+            String trimmed = savedNodePath.trim();
+            nodeDetector.setNodeExecutable(trimmed);
+            nodeResult = nodeDetector.verifyAndCacheNodePath(trimmed);
+            if (nodeResult == null || !nodeResult.isFound()) {
+                return PreparedInitialization.invalidNodePath(
+                        trimmed, nodeResult != null ? nodeResult.getErrorMessage() : null);
+            }
+        } else {
+            // Auto-detection spawns shell probes that block for seconds per
+            // attempt and may hang outright in VM/container environments.
             NodeDetectionResult detected;
             try {
                 detected = nodeDetector.detectNodeWithDetails();
@@ -183,30 +283,113 @@ public class WebviewInitializer {
             if (detected != null && detected.isFound() && detected.getNodePath() != null) {
                 if (NodeDetector.isVersionSupported(detected.getNodeVersion())) {
                     try {
-                        new com.opencodebuddy.settings.OpenCodeBuddySettingsService().setNodePath(detected.getNodePath());
-                    } catch (Exception ignored) {}
+                        new com.opencodebuddy.settings.OpenCodeBuddySettingsService()
+                                .setNodePath(detected.getNodePath());
+                    } catch (Exception ignored) {
+                        // Persisting the path is a convenience; detection already succeeded.
+                    }
                 }
                 nodeDetector.setNodeExecutable(detected.getNodePath());
                 nodeDetector.verifyAndCacheNodePath(detected.getNodePath());
                 LOG.info("Auto-detected Node.js: " + detected.getNodePath()
-                    + " (" + detected.getNodeVersion() + ")");
+                        + " (" + detected.getNodeVersion() + ")");
             } else {
                 // Fall back to invoking "node" by name (the same fallback
                 // NodeDetector.findNodeExecutable uses) so checkEnvironment can
                 // still pass when node is reachable on PATH but the probes failed.
-                LOG.warn("Failed to auto-detect Node.js path. Error: " +
-                    (detected != null ? detected.getErrorMessage() : "Unknown error"));
+                LOG.warn("Failed to auto-detect Node.js path. Error: "
+                        + (detected != null ? detected.getErrorMessage() : "Unknown error"));
                 nodeDetector.setNodeExecutable("node");
             }
+            nodeResult = detected;
+        }
 
-            final NodeDetectionResult nodeResult = detected;
-            invokeLaterForToolWindow(() -> {
-                if (host.isDisposed()) {
-                    return;
+        if (nodeResult != null && nodeResult.isFound() && nodeResult.getNodeVersion() != null
+                && !NodeDetector.isVersionSupported(nodeResult.getNodeVersion())) {
+            return PreparedInitialization.versionUnsupported(nodeResult);
+        }
+
+        if (!checkEnvironment()) {
+            com.opencodebuddy.bridge.BridgeDirectoryResolver sharedResolver =
+                    BridgePreloader.getSharedResolver();
+            if (sharedResolver.isExtractionInProgress()) {
+                return PreparedInitialization.of(PreparationOutcome.WAIT_FOR_EXTRACTION);
+            }
+            if (sharedResolver.isExtractionComplete()) {
+                return PreparedInitialization.of(PreparationOutcome.RETRY_ENVIRONMENT);
+            }
+            return PreparedInitialization.of(PreparationOutcome.ENVIRONMENT_UNAVAILABLE);
+        }
+
+        // Reads and transforms the ~9.7 MB bundled page. Keep it off the EDT even
+        // when the Node path was already cached.
+        String html = loadChatHtmlWithInitialTabState();
+        return PreparedInitialization.ready(nodeResult, html);
+    }
+
+    private void applyPreparedInitialization(int generation, PreparedInitialization prepared) {
+        preparationInProgress.set(false);
+        if (this.host.isDisposed()) {
+            return;
+        }
+        if (preparationGeneration.get() != generation) {
+            LOG.debug("Discarding stale webview preparation (generation " + generation + " superseded)");
+            return;
+        }
+
+        switch (prepared.outcome) {
+            case READY:
+                preparedHtml = prepared.html;
+                continueCreateUIComponentsAfterNodeSetup(prepared.nodeResult);
+                return;
+            case INVALID_NODE_PATH:
+                showInvalidNodePathPanel(prepared.invalidNodePath, prepared.message);
+                return;
+            case VERSION_UNSUPPORTED:
+                showVersionErrorPanel(prepared.nodeResult != null
+                        ? prepared.nodeResult.getNodeVersion() : null);
+                return;
+            case WAIT_FOR_EXTRACTION:
+                LOG.info("[OpencodeBuddyToolWindow] checkEnvironment failed but extraction in progress, showing loading panel...");
+                showLoadingPanel();
+                BridgePreloader.getSharedResolver().getExtractionFuture().thenAcceptAsync(ready -> {
+                    if (ready) {
+                        reinitializeAfterExtraction();
+                    } else {
+                        invokeLaterForToolWindow(this::showErrorPanel);
+                    }
+                });
+                return;
+            case RETRY_ENVIRONMENT:
+                LOG.info("[OpencodeBuddyToolWindow] Environment check failed but extraction just completed, retrying with exponential backoff...");
+                showLoadingPanel();
+                retryCheckEnvironmentWithBackoff(0);
+                return;
+            case ENVIRONMENT_UNAVAILABLE:
+            case FAILED:
+            default:
+                if (prepared.message != null) {
+                    LOG.warn("Webview preparation failed: " + prepared.message);
                 }
-                continueCreateUIComponentsAfterNodeSetup(nodeResult);
-            });
-        });
+                showErrorPanel();
+        }
+    }
+
+    /**
+     * Page built off the EDT by {@link #prepareInitializationOffEdt()}.
+     *
+     * Cleared as it is taken so a stale copy can never be loaded into a browser
+     * created by a later generation.
+     */
+    private String takePreparedHtml() {
+        String html = preparedHtml;
+        preparedHtml = null;
+        if (html == null) {
+            // Defensive: the background phase always produces HTML on READY.
+            LOG.warn("Prepared HTML missing; rebuilding on the calling thread");
+            return loadChatHtmlWithInitialTabState();
+        }
+        return html;
     }
 
     /**
@@ -222,42 +405,9 @@ public class WebviewInitializer {
         // keeps only CENTER in its map, it does not remove stale children).
         mainPanel.removeAll();
 
-        // Use the shared resolver from BridgePreloader for consistent state
-        com.opencodebuddy.bridge.BridgeDirectoryResolver sharedResolver = BridgePreloader.getSharedResolver();
-
-        if (!checkEnvironment()) {
-            if (sharedResolver.isExtractionInProgress()) {
-                LOG.info("[OpencodeBuddyToolWindow] checkEnvironment failed but extraction in progress, showing loading panel...");
-                showLoadingPanel();
-                sharedResolver.getExtractionFuture().thenAcceptAsync(ready -> {
-                    if (ready) {
-                        reinitializeAfterExtraction();
-                    } else {
-                        invokeLaterForToolWindow(this::showErrorPanel);
-                    }
-                });
-                return;
-            }
-
-            if (sharedResolver.isExtractionComplete()) {
-                LOG.info("[OpencodeBuddyToolWindow] checkEnvironment failed but extraction just completed, retrying initialization with exponential backoff...");
-                retryCheckEnvironmentWithBackoff(0);
-                showLoadingPanel();
-                return;
-            }
-
-            showErrorPanel();
-            return;
-        }
-
-        // nodeResult is always the resolved verify/detection result here; a failure
-        // result (or null) simply skips the version gate, matching prior behavior.
-        if (nodeResult != null && nodeResult.isFound() && nodeResult.getNodeVersion() != null) {
-            if (!NodeDetector.isVersionSupported(nodeResult.getNodeVersion())) {
-                showVersionErrorPanel(nodeResult.getNodeVersion());
-                return;
-            }
-        }
+        // Environment check, Node version gate and page build already ran on the
+        // background thread (prepareInitializationOffEdt). Only browser creation
+        // and Swing mounting belong here.
 
         // Prewarm the opencode daemon in background so the first user message
         // starts faster (serve + SSE subscription + session resolve).
@@ -368,7 +518,7 @@ public class WebviewInitializer {
             int initialPageGeneration = beginPageLoad(currentBridges, initialPageLoadKind);
             host.activatePageGeneration(initialPageGeneration);
             host.setFrontendReady(false);
-            String htmlContent = loadChatHtmlWithInitialTabState();
+            String htmlContent = takePreparedHtml();
 
             // LoadHandler must be registered before loadHTML, otherwise the
             // first frame's onLoadEnd is missed and the JS bridge injection

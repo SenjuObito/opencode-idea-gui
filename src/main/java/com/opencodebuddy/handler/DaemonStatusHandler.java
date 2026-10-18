@@ -68,6 +68,18 @@ public class DaemonStatusHandler extends BaseMessageHandler {
         boolean isDaemonAlive();
 
         CompletableFuture<Boolean> preconnect(String sessionId, String cwd);
+
+        /**
+         * Latest engine-resolution snapshot from the daemon, or null when the daemon
+         * has not reported one yet.
+         *
+         * <p>Defaulted to null so existing test doubles stay source-compatible: an
+         * absent engine status is a normal state (nothing has been probed yet), not
+         * an error.</p>
+         */
+        default JsonObject engineStatus() {
+            return null;
+        }
     }
 
     /** Production probe delegating to the shared OpenCodeSDKBridge. */
@@ -87,6 +99,13 @@ public class DaemonStatusHandler extends BaseMessageHandler {
         @Override
         public CompletableFuture<Boolean> preconnect(String sessionId, String cwd) {
             return context.getOpenCodeSDKBridge().preconnect(sessionId, cwd);
+        }
+
+        @Override
+        public JsonObject engineStatus() {
+            return context.getOpenCodeSDKBridge() != null
+                    ? context.getOpenCodeSDKBridge().getEngineStatus()
+                    : null;
         }
     }
 
@@ -202,6 +221,14 @@ public class DaemonStatusHandler extends BaseMessageHandler {
         JsonObject payload = new JsonObject();
         payload.addProperty("alive", alive);
         payload.addProperty("serveReady", serveReady);
+        // Engine resolution travels with the daemon status so the webview can
+        // explain *why* the service is not usable. Before this, an engine that
+        // resolved to the wrong version (or never resolved) surfaced only as
+        // "serve not ready", which is indistinguishable from "still starting".
+        JsonObject engine = probe.engineStatus();
+        if (engine != null) {
+            payload.add("engine", engine.deepCopy());
+        }
         String json = gson.toJson(payload);
         PluginFileLogger.info("DAEMON", "pushStatus " + json);
         callJavaScript("window.updateDaemonStatus", escapeJs(json));

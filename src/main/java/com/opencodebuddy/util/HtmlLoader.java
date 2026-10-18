@@ -14,6 +14,26 @@ import java.util.List;
 public class HtmlLoader {
 
     private static final Logger LOG = Logger.getInstance(HtmlLoader.class);
+
+    /**
+     * Only the document prologue can legally contain the real {@code <html>} /
+     * {@code <body>} start tags. Everything past this offset is bundle JS, where
+     * the same substrings appear inside string literals and must never be
+     * rewritten.
+     */
+    private static final int ROOT_TAG_SEARCH_LIMIT = 64 * 1024;
+
+    /**
+     * Theme-injected page shared by every tab in the IDE.
+     *
+     * The bundled page is ~9.7 MB. Re-reading and re-injecting it per tab means
+     * N copies of a ~19 MB UTF-16 string plus N regex scans over the whole
+     * document, all of it competing for the EDT. Only the theme-dependent part
+     * is cached here; per-tab bootstrap values are injected afterwards.
+     */
+    private static volatile String cachedThemedHtml;
+    private static volatile String cachedThemedKey;
+
     private final Class<?> resourceClass;
 
     public HtmlLoader(Class<?> resourceClass) {
@@ -25,6 +45,13 @@ public class HtmlLoader {
      * @return the HTML content, or fallback HTML if loading fails
      */
     public String loadChatHtml() {
+        String themeKey = currentThemeKey();
+        String cached = cachedThemedHtml;
+        if (cached != null && themeKey.equals(cachedThemedKey)) {
+            LOG.debug("Reusing themed chat HTML from cache (" + themeKey + ")");
+            return cached;
+        }
+
         try {
             InputStream is = resourceClass.getResourceAsStream("/html/opencode-chat.html");
             if (is != null) {
@@ -40,6 +67,8 @@ public class HtmlLoader {
                 // Inject the IDE theme into the HTML to prevent flash of unstyled content on initial load
                 html = injectIdeTheme(html);
 
+                cachedThemedHtml = html;
+                cachedThemedKey = themeKey;
                 return html;
             }
         } catch (Exception e) {
@@ -49,17 +78,32 @@ public class HtmlLoader {
         return generateFallbackHtml();
     }
 
+    /** Drop the shared themed page (theme change invalidates it anyway). */
+    public static void invalidateCache() {
+        cachedThemedHtml = null;
+        cachedThemedKey = null;
+    }
+
+    private static String currentThemeKey() {
+        try {
+            boolean isDark = ThemeConfigService.getIdeThemeConfig().get("isDark").getAsBoolean();
+            return (isDark ? "dark" : "light") + "|" + ThemeConfigService.getBackgroundColorHex();
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
     /**
      * Inject the IDE theme into the HTML.
      *
-     * Strategy: add inline style attributes directly on HTML tags to ensure the background
-     * color is applied on the very first render frame.
-     * 1. Modify the &lt;html&gt; tag to add style="background-color:..."
-     * 2. Modify the &lt;body&gt; tag to add style="background-color:..."
-     * 3. Inject a theme variable script into &lt;head&gt;
+     * Strategy: add inline style attributes directly on the root tags so the
+     * background colour is right on the very first CEF frame, plus a theme
+     * variable script in &lt;head&gt;.
      *
-     * Inline styles are parsed faster than CSS rules, ensuring the correct color appears
-     * on the first CEF render frame.
+     * Deliberately does NOT use {@code String.replaceFirst} with a tag pattern:
+     * the bundle is a single ~9.7 MB line, so the regex scans the entire
+     * document and can match a {@code <body>} fragment embedded in JS source.
+     * Instead the real root tags are located with a bounded linear scan.
      */
     private String injectIdeTheme(String html) {
         try {
@@ -67,20 +111,12 @@ public class HtmlLoader {
             String theme = isDark ? "dark" : "light";
             // Use the unified color values to ensure consistency with Swing component backgrounds
             String bgColor = ThemeConfigService.getBackgroundColorHex();
+            String styleAttr = " style=\"background-color:" + bgColor + ";\"";
 
-            // 1. Modify the <html> tag to add inline styles
-            html = html.replaceFirst(
-                "<html([^>]*)>",
-                "<html$1 style=\"background-color:" + bgColor + ";\">"
-            );
+            html = addStyleToRootTag(html, "html", styleAttr);
+            html = addStyleToRootTag(html, "body", styleAttr);
 
-            // 2. Modify the <body> tag to add inline styles
-            html = html.replaceFirst(
-                "<body([^>]*)>",
-                "<body$1 style=\"background-color:" + bgColor + ";\">"
-            );
-
-            // 3. Inject a theme variable script after the <head> tag
+            // Inject a theme variable script after the <head> tag
             String scriptInjection = "\n    <script>window.__INITIAL_IDE_THEME__ = '" + theme + "';</script>";
             int headIndex = html.indexOf("<head>");
             if (headIndex != -1) {
@@ -94,6 +130,45 @@ public class HtmlLoader {
         }
 
         return html;
+    }
+
+    /**
+     * Insert an attribute into the first real {@code <tag ...>} occurrence.
+     * Bounded by {@link #ROOT_TAG_SEARCH_LIMIT} so JS string literals deeper in
+     * the bundle can never be rewritten by mistake.
+     */
+    static String addStyleToRootTag(String html, String tag, String styleAttr) {
+        int limit = Math.min(html.length(), ROOT_TAG_SEARCH_LIMIT);
+        int tagStart = -1;
+        int from = 0;
+        while (from < limit) {
+            int idx = html.indexOf("<" + tag, from);
+            if (idx < 0 || idx >= limit) {
+                break;
+            }
+            int afterName = idx + 1 + tag.length();
+            if (afterName < html.length()) {
+                char c = html.charAt(afterName);
+                // `<html>` / `<html lang=...>` / `<body class=...>` — but not `<htmlx`
+                if (c == '>' || c == '/' || Character.isWhitespace(c)) {
+                    tagStart = idx;
+                    break;
+                }
+            }
+            from = idx + 1;
+        }
+        if (tagStart < 0) {
+            return html;
+        }
+        int tagEnd = html.indexOf('>', tagStart);
+        if (tagEnd < 0) {
+            return html;
+        }
+        // Skip a self-closing form, which cannot carry a background style anyway.
+        if (tagEnd > tagStart && html.charAt(tagEnd - 1) == '/') {
+            return html;
+        }
+        return html.substring(0, tagEnd) + styleAttr + html.substring(tagEnd);
     }
 
     /**

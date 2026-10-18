@@ -59,7 +59,10 @@ export interface QuestionCardData {
 }
 
 export type OpencodeContentBlock =
-  | { type: 'text'; text?: string }
+  // `aborted` marks a user-initiated stop: the server records it as an error
+  // ("Step interrupted"), so the host rewrites it into a neutral notice. The
+  // marker is what lets the UI style it as a state instead of an error bubble.
+  | { type: 'text'; text?: string; aborted?: boolean; isError?: boolean }
   | { type: 'thinking'; thinking?: string; text?: string }
   | { type: 'tool_use'; id?: string; name?: string; input?: ToolInput; questionCard?: QuestionCardData }
   | { type: 'image'; src?: string; mediaType?: string; alt?: string }

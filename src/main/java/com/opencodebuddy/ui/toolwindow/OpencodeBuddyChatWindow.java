@@ -7,6 +7,7 @@ import com.opencodebuddy.handler.PermissionHandler;
 import com.opencodebuddy.permission.PermissionService;
 import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
+import com.opencodebuddy.session.OpencodePermissionRegistry;
 import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.session.SessionCallbackAdapter;
 import com.opencodebuddy.session.SessionLifecycleManager;
@@ -213,7 +214,6 @@ public class OpencodeBuddyChatWindow {
     public OpencodeBuddyChatWindow(Project project) {
         this(project, false);
     }
-
     public OpencodeBuddyChatWindow(Project project, boolean skipRegister) {
         this.project = project;
         this.webviewEventQueue = new WebviewEventQueue<JBCefBrowser>(
@@ -221,10 +221,17 @@ public class OpencodeBuddyChatWindow {
                 () -> this.disposed,
                 this::executeQueuedWebviewScript
         );
+        String projectPath = project != null ? project.getBasePath() : null;
         this.daemonBridge = new DaemonBridge(
                 com.opencodebuddy.bridge.NodeDetector.getInstance(),
                 new com.opencodebuddy.bridge.BridgeDirectoryResolver(),
-                new com.opencodebuddy.bridge.EnvironmentConfigurator());
+                new com.opencodebuddy.bridge.EnvironmentConfigurator(),
+                env -> {
+                    if (projectPath != null && !projectPath.isBlank()) {
+                        env.put("IDEA_PROJECT_PATH", projectPath);
+                        env.put("PROJECT_PATH", projectPath);
+                    }
+                });
         this.openCodeSDKBridge = new OpenCodeSDKBridge(daemonBridge, new com.google.gson.Gson());
         this.settingsService = new OpenCodeBuddySettingsService();
         this.htmlLoader = new HtmlLoader(getClass());
@@ -285,11 +292,20 @@ public class OpencodeBuddyChatWindow {
                 () -> webviewInitializer.reloadWebview("watchdog_reload"),
                 () -> webviewInitializer.recreateWebview("watchdog_recreate"),
                 () -> disposed,
-                () -> streamCoalescer.isStreamActive(),
+                // The watchdog asks "is this webview busy", not "is the visible
+                // session busy": IPC saturation comes from every session's deltas
+                // because they all funnel through one WebviewEventQueue into one
+                // renderer. Querying only the active session meant a background
+                // turn could stall the renderer into a false 45s timeout and get
+                // the whole webview reloaded, discarding every session's state.
+                this::anySessionStreamActive,
                 () -> frontendReady
         );
 
         this.session = new OpencodeSession(project, openCodeSDKBridge);
+        if (projectPath != null && !projectPath.isBlank()) {
+            this.session.setCwd(projectPath);
+        }
 
         this.chatWindowDelegate = new ChatWindowDelegate(createDelegateHost());
         chatWindowDelegate.loadPermissionModeFromSettings();
@@ -611,6 +627,25 @@ public class OpencodeBuddyChatWindow {
 
     public JPanel getContent() {
         return mainPanel;
+    }
+
+    /**
+     * Whether any session hosted by this window is currently streaming.
+     *
+     * <p>The active session is only one of them: switching tabs never interrupts
+     * a background turn, so deltas keep flowing for it. Every delta is pushed
+     * through the same {@code WebviewEventQueue} into the same renderer, which
+     * means renderer stalls are a property of the window, not of the visible
+     * session.</p>
+     */
+    boolean anySessionStreamActive() {
+        for (StreamMessageCoalescer coalescer : sessionCoalescers.values()) {
+            if (coalescer != null && coalescer.isStreamActive()) {
+                return true;
+            }
+        }
+        StreamMessageCoalescer active = streamCoalescer;
+        return active != null && active.isStreamActive();
     }
 
     /**
@@ -1483,6 +1518,12 @@ public class OpencodeBuddyChatWindow {
         String previousModel = (oldSession != null) ? oldSession.getModel() : "claude-sonnet-4-6";
 
         OpencodeSession newSession = new OpencodeSession(project, openCodeSDKBridge);
+        String initialCwd = (oldSession != null && oldSession.getCwd() != null)
+                ? oldSession.getCwd()
+                : (project != null ? project.getBasePath() : null);
+        if (initialCwd != null) {
+            newSession.setCwd(initialCwd);
+        }
         newSession.setPermissionMode(previousPermissionMode);
         newSession.setProvider(previousProvider);
         newSession.setModel(previousModel);
@@ -1577,6 +1618,14 @@ public class OpencodeBuddyChatWindow {
                     if (existingAdapter != null) {
                         sessionAdapters.put(newSessionId, existingAdapter);
                     }
+                    // Re-key the data-plane sink: from here on the daemon stamps
+                    // the NEW id, and the old key must not keep receiving lines.
+                    if (OpencodeBuddyChatWindow.this.daemonBridge != null) {
+                        OpencodeBuddyChatWindow.this.daemonBridge.unregisterSessionSink(targetSessionId);
+                    }
+                    if (existingSession != null) {
+                        bindSessionSink(newSessionId, existingSession);
+                    }
                     StreamMessageCoalescer existingCoalescer = sessionCoalescers.remove(targetSessionId);
                     if (existingCoalescer != null) {
                         sessionCoalescers.put(newSessionId, existingCoalescer);
@@ -1608,13 +1657,39 @@ public class OpencodeBuddyChatWindow {
             if (handlerContext != null) {
                 handlerContext.registerSession(targetSessionId, s);
             }
+            bindSessionSink(targetSessionId, s);
         }
         if (adapter != null) {
+            // Backfill the adapter's identity. It is constructed before the
+            // daemon reports the canonical opencode id, and until it is filled
+            // every session-scoped callback is dropped (by design) rather than
+            // mis-routed to the active tab.
+            if (adapter.getSessionId() == null || adapter.getSessionId().isBlank()
+                    || !targetSessionId.equals(adapter.getSessionId())) {
+                adapter.setSessionId(targetSessionId);
+            }
             sessionAdapters.put(targetSessionId, adapter);
         }
         if (coalescer != null) {
             sessionCoalescers.put(targetSessionId, coalescer);
         }
+    }
+
+    /**
+     * Bind a session's data-plane sink so the daemon's output for that session
+     * reaches that session's parser — including lines that arrive while no send
+     * is in flight (title / todo / prompt-close / message-removed / late error),
+     * which previously had no route and were dropped.
+     *
+     * <p>Called both when a session is registered and whenever its canonical
+     * opencode session id is (re)discovered, so the key always matches the id
+     * the daemon stamps on the wire.</p>
+     */
+    private void bindSessionSink(String sessionId, OpencodeSession s) {
+        if (daemonBridge == null || sessionId == null || sessionId.isBlank() || s == null) {
+            return;
+        }
+        daemonBridge.registerSessionSink(sessionId, s.getStreamRouter());
     }
 
     public void switchSession(String targetSessionId) {
@@ -1624,6 +1699,15 @@ public class OpencodeBuddyChatWindow {
         if (targetSession != null) {
             this.session = targetSession;
             this.sessionId = resolveExposedSessionId(targetSession.getSessionId(), this.permissionServiceKey);
+            // Keep the handler context pointed at the same object. Handlers resolve
+            // "the current session" through it (`ModelProviderHandler.handleSetModel`
+            // calls `context.getSession()`), so a stale entry silently writes the new
+            // model / reasoning effort onto the *previously* active session — the
+            // user changes the model, the host logs the change, and the next turn
+            // still runs on the old one.
+            if (handlerContext != null) {
+                handlerContext.setSession(targetSession);
+            }
             SessionCallbackAdapter adapter = sessionAdapters.get(targetSessionId);
             if (adapter != null) {
                 this.sessionCallbackAdapter = adapter;
@@ -1639,6 +1723,11 @@ public class OpencodeBuddyChatWindow {
     public void closeSession(String targetSessionId) {
         if (targetSessionId == null || targetSessionId.isBlank()) return;
         sessions.remove(targetSessionId);
+        if (daemonBridge != null) {
+            // Symmetric teardown: the sink holds this session's parser + handler,
+            // so a missing unregister is a leak per closed tab.
+            daemonBridge.unregisterSessionSink(targetSessionId);
+        }
         SessionCallbackAdapter adapter = sessionAdapters.remove(targetSessionId);
         if (adapter != null) {
             adapter.dispose();
@@ -1647,6 +1736,9 @@ public class OpencodeBuddyChatWindow {
         if (coalescer != null) {
             coalescer.dispose();
         }
+        // Pending permission prompts of a closed tab must not linger: they keep a
+        // sessionId + directory alive and would otherwise only disappear on cap.
+        OpencodePermissionRegistry.clearSession(targetSessionId);
         if (handlerContext != null) {
             handlerContext.removeSession(targetSessionId);
         }
@@ -2521,6 +2613,7 @@ public class OpencodeBuddyChatWindow {
             this.sessionCallbackAdapter.deactivate();
         }
         this.sessionCallbackAdapter = new SessionCallbackAdapter(
+                session.getSessionId(),
                 streamCoalescer,
                 new SessionCallbackAdapter.JsTarget() {
                     @Override
@@ -2897,10 +2990,14 @@ public class OpencodeBuddyChatWindow {
     }
 
     private void interruptDueToPermissionDenial() {
+        // Identity travels with the signal: a bare onStreamEnd/showLoading would
+        // be un-attributable and the frontend now drops those — which would leave
+        // this session's tab spinning after its own permission denial.
+        final String sid = session != null && session.getSessionId() != null ? session.getSessionId() : "";
         this.session.interrupt().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
             callJavaScript("onPermissionDenied");
-            callJavaScript("onStreamEnd");
-            callJavaScript("showLoading", "false");
+            callJavaScript("onStreamEnd", sid, "-1");
+            callJavaScript("showLoading", sid, "false");
             com.opencodebuddy.notifications.OpencodeNotifier.clearStatus(project);
         }));
     }
@@ -3477,6 +3574,11 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void persistTabSessionState() {
                 OpencodeBuddyChatWindow.this.persistTabSessionState();
+            }
+
+            @Override
+            public java.util.List<String> getHostedSessionIds() {
+                return new java.util.ArrayList<>(sessionCoalescers.keySet());
             }
 
             @Override

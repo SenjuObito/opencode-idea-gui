@@ -101,7 +101,7 @@ export function ttDetectCli(): Promise<TtCliStatus> {
 }
 
 export function ttInstallCli(): Promise<{ installed: boolean }> {
-  // npm install can take a while; the Java side caps it at 180s.
+  // npm install can take a while; the Java side has its own server-side cap.
   return invokeTokenTracker<{ installed: boolean }>('tt_install_cli', {}, 200_000);
 }
 

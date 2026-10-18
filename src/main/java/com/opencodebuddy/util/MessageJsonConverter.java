@@ -196,6 +196,7 @@ public class MessageJsonConverter {
         // Compact-related fields for filtering compact summary messages
         copyFieldIfPresent(raw, transport, "isCompactSummary");
         copyFieldIfPresent(raw, transport, "isVisibleInTranscriptOnly");
+        copyFieldIfPresent(raw, transport, "compactMetadata");
         copyFieldIfPresent(raw, transport, "summarizeMetadata");
         // Origin field for distinguishing human input from synthetic messages
         copyFieldIfPresent(raw, transport, "origin");
@@ -359,7 +360,13 @@ public class MessageJsonConverter {
             usageUpdate.addProperty("maxTokens", maxTokens);
 
             String usageJson = new Gson().toJson(usageUpdate);
-            handlerContext.callJavaScript("window.onUsageUpdate", JsUtils.escapeJs(usageJson));
+            OpencodeSession session = handlerContext.getSession();
+            String sessionId = (session != null) ? session.getSessionId() : null;
+            if (sessionId != null && !sessionId.isEmpty()) {
+                handlerContext.callJavaScript("window.onUsageUpdate", sessionId, JsUtils.escapeJs(usageJson));
+            } else {
+                handlerContext.callJavaScript("window.onUsageUpdate", JsUtils.escapeJs(usageJson));
+            }
         } catch (Exception e) {
             LOG.warn("Failed to push usage update: " + e.getMessage(), e);
         }

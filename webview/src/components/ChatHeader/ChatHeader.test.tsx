@@ -112,10 +112,10 @@ describe('ChatHeader', () => {
     expect(onExportTab).toHaveBeenCalledWith(expect.objectContaining({ id: 'tab-1' }));
   });
 
-  it('triggers onReorderTabs after long-press and drag', () => {
-    vi.useFakeTimers();
+  it('triggers onReorderTabs on drag (no long-press wait)', () => {
     const onReorderTabs = vi.fn();
-    render(<ChatHeader {...defaultProps} onReorderTabs={onReorderTabs} />);
+    const onSelectTab = vi.fn();
+    render(<ChatHeader {...defaultProps} onReorderTabs={onReorderTabs} onSelectTab={onSelectTab} />);
 
     const tab1 = screen.getByText('Tab 1');
     const tab2 = screen.getByText('Tab 2');
@@ -127,17 +127,29 @@ describe('ChatHeader', () => {
       left: 110, right: 200, width: 90, top: 0, bottom: 30, height: 30, x: 110, y: 0, toJSON: () => {},
     });
 
+    // Press on Tab 1, drag past Tab 2's center, then release -> reorder 0 -> 1
     fireEvent.mouseDown(tab1.parentElement!, { clientX: 20, clientY: 10, button: 0 });
-    act(() => {
-      vi.advanceTimersByTime(260);
-    });
-
-    act(() => {
-      fireEvent.mouseMove(document, { clientX: 180, clientY: 10 });
-      fireEvent.mouseUp(document);
-    });
+    fireEvent.mouseMove(document, { clientX: 180, clientY: 10 });
+    fireEvent.mouseUp(document, { clientX: 180, clientY: 10 });
 
     expect(onReorderTabs).toHaveBeenCalledWith(0, 1);
-    vi.useRealTimers();
+    // A real drag suppresses the subsequent click selection
+    expect(onSelectTab).not.toHaveBeenCalled();
+  });
+
+  it('selects the tab on short press without reordering', () => {
+    const onReorderTabs = vi.fn();
+    const onSelectTab = vi.fn();
+    render(<ChatHeader {...defaultProps} onReorderTabs={onReorderTabs} onSelectTab={onSelectTab} />);
+
+    const tab2 = screen.getByText('Tab 2');
+
+    // Press and release at the same position (no drag beyond threshold) -> select tab, no reorder
+    fireEvent.mouseDown(tab2.parentElement!, { clientX: 150, clientY: 10, button: 0 });
+    fireEvent.mouseUp(tab2.parentElement!, { clientX: 150, clientY: 10, button: 0 });
+    fireEvent.click(tab2.parentElement!);
+
+    expect(onReorderTabs).not.toHaveBeenCalled();
+    expect(onSelectTab).toHaveBeenCalledWith('tab-2');
   });
 });

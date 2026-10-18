@@ -112,6 +112,8 @@ const getToolDisplayName = (t: any, name?: string, input?: ToolInput) => {
   const toolKeyMap: Record<string, string> = {
     'augmentcontextengine': 'tools.contextEngine',
     'task': 'tools.task',
+    // opencode v2 renamed the v1 `task` tool to `subagent`.
+    'subagent': 'tools.subagent',
     'read': 'tools.readFile',
     'read_file': 'tools.readFile',
     'edit': 'tools.editFile',

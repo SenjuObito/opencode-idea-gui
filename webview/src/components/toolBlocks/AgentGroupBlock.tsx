@@ -9,6 +9,7 @@ import {
   isAsyncAgentInput,
   parseAgentToolMeta,
   parseSpawnAgentMeta,
+  readAgentType,
   readToolUseStatus,
 } from '../../utils/subagentResult';
 import {
@@ -46,9 +47,9 @@ function getAgentSummary(block: ClaudeContentBlock): string {
 function getAgentType(block: ClaudeContentBlock): string {
   if (block.type !== 'tool_use') return '';
   const input = block.input as Record<string, unknown> | undefined;
-  if (!input) return '';
-  const t = input.subagent_type ?? input.subagentType;
-  return typeof t === 'string' ? t : '';
+  // v1 reads subagent_type / agent_type; opencode v2 renamed the argument to
+  // `agent`. Shared with useSubagents and TaskExecutionBlock.
+  return readAgentType(input);
 }
 
 const AgentGroupBlock = memo(function AgentGroupBlock({

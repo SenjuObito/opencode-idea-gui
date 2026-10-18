@@ -74,4 +74,77 @@ describe('useUsageTracking', () => {
     // 兜底：解析失败也视为状态已知，避免永久卡在 loading。
     expect(result.current.daemonStatusLoaded).toBe(true);
   });
+
+  it('exposes the engine snapshot instead of discarding it', () => {
+    const { result } = renderHook(() => useUsageTracking());
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: JSON.stringify({
+            alive: true,
+            serveReady: true,
+            engine: {
+              state: 'v2',
+              locked: true,
+              cliPath: 'C:\\tools\\opencode.cmd',
+              cliSource: 'settings',
+              cliVersion: 'opencode v2.0.27',
+              probePath: '/api/info',
+              httpStatus: 200,
+              apiVersion: 2,
+            },
+          }),
+        })
+      );
+    });
+
+    expect(result.current.daemonEngine?.state).toBe('v2');
+    expect(result.current.daemonEngine?.locked).toBe(true);
+    // 版本号必须原样透传：它是排查「装了 v2 却按 v1 走」时的唯一现场证据。
+    expect(result.current.daemonEngine?.cliVersion).toBe('opencode v2.0.27');
+  });
+
+  it('keeps unknown as a distinct state and warns about it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { result } = renderHook(() => useUsageTracking());
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: JSON.stringify({
+            alive: true,
+            serveReady: false,
+            engine: {
+              state: 'unknown',
+              locked: false,
+              blocking: true,
+              reasonKind: 'cli-not-found',
+              reasonMessage: 'no opencode binary on any candidate path',
+            },
+          }),
+        })
+      );
+    });
+
+    // unknown 是一等状态：不能被折叠成 v1，也不能只在日志里静默。
+    expect(result.current.daemonEngine?.state).toBe('unknown');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('tolerates a payload without an engine field', () => {
+    const { result } = renderHook(() => useUsageTracking());
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: JSON.stringify({ alive: true, serveReady: true }),
+        })
+      );
+    });
+
+    // 旧版宿主不推 engine；此时保持 null，而不是抛出或伪造一个状态。
+    expect(result.current.daemonEngine).toBeNull();
+  });
 });

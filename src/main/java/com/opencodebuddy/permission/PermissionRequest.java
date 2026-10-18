@@ -10,6 +10,16 @@ import java.util.concurrent.CompletableFuture;
  */
 public class PermissionRequest {
     private final String channelId;
+    /**
+     * The opencode session this prompt belongs to.
+     *
+     * <p>Carried explicitly rather than borrowed from "the currently active
+     * session" at display time: with several sessions running, that lookup is
+     * how a permission prompt ended up in the wrong tab — and, when it matched
+     * nothing, how it silently never appeared at all while the server settled it
+     * as rejected (the "已取消" card with no dialog).</p>
+     */
+    private final String sessionId;
     private final String toolName;
     private final Map<String, Object> inputs;
     private final JsonObject suggestions;
@@ -17,13 +27,25 @@ public class PermissionRequest {
     private final Project project;
     private boolean resolved = false;
 
-    public PermissionRequest(String channelId, String toolName, Map<String, Object> inputs, JsonObject suggestions, Project project) {
+    public PermissionRequest(
+            String channelId,
+            String sessionId,
+            String toolName,
+            Map<String, Object> inputs,
+            JsonObject suggestions,
+            Project project
+    ) {
         this.channelId = channelId;
+        this.sessionId = sessionId;
         this.toolName = toolName;
         this.inputs = inputs;
         this.suggestions = suggestions;
         this.project = project;
         this.resultFuture = new CompletableFuture<>();
+    }
+
+    public PermissionRequest(String channelId, String toolName, Map<String, Object> inputs, JsonObject suggestions, Project project) {
+        this(channelId, null, toolName, inputs, suggestions, project);
     }
 
     /**
@@ -33,7 +55,7 @@ public class PermissionRequest {
      */
     @Deprecated
     public PermissionRequest(String channelId, String toolName, Map<String, Object> inputs, JsonObject suggestions) {
-        this(channelId, toolName, inputs, suggestions, null);
+        this(channelId, null, toolName, inputs, suggestions, null);
     }
 
     /**
@@ -90,6 +112,11 @@ public class PermissionRequest {
 
     public String getChannelId() {
         return channelId;
+    }
+
+    /** The opencode session this prompt belongs to; may be null for legacy callers. */
+    public String getSessionId() {
+        return sessionId;
     }
 
     public String getToolName() {

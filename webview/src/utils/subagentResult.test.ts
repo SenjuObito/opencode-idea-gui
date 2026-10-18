@@ -5,6 +5,7 @@ import {
   extractResultText,
   parseAgentToolMeta,
   parseSpawnAgentMeta,
+  readAgentType,
   readToolUseStatus,
 } from './subagentResult';
 
@@ -19,6 +20,18 @@ describe('isAsyncAgentInput', () => {
 
   it('returns false for run_in_background: false', () => {
     expect(isAsyncAgentInput({ run_in_background: false })).toBe(false);
+  });
+
+  it('returns true for background: true (opencode v2 subagent)', () => {
+    // v2 renamed the `task` tool to `subagent` and its async switch to
+    // `background` - same semantics as v1 `run_in_background`.
+    expect(isAsyncAgentInput({ background: true })).toBe(true);
+  });
+
+  it('returns false for background: false and truthy non-boolean (strict === true)', () => {
+    expect(isAsyncAgentInput({ background: false })).toBe(false);
+    expect(isAsyncAgentInput({ background: 'true' })).toBe(false);
+    expect(isAsyncAgentInput({ background: 1 })).toBe(false);
   });
 
   it('returns false for truthy non-boolean values (strict === true)', () => {
@@ -141,6 +154,33 @@ describe('extractResultText', () => {
 
   it('returns undefined when content has no text blocks', () => {
     expect(extractResultText({ type: 'tool_result', content: [{ type: 'image' }] })).toBeUndefined();
+  });
+});
+
+describe('readAgentType', () => {
+  it('reads the v1 snake_case / camelCase aliases', () => {
+    expect(readAgentType({ subagent_type: 'research' })).toBe('research');
+    expect(readAgentType({ subagentType: 'research' })).toBe('research');
+    expect(readAgentType({ agent_type: 'research' })).toBe('research');
+    expect(readAgentType({ agentType: 'research' })).toBe('research');
+  });
+
+  it('reads the opencode v2 `agent` argument', () => {
+    // v2 renamed the `task` tool to `subagent` and `subagent_type` to `agent`.
+    expect(readAgentType({ agent: 'explore' })).toBe('explore');
+  });
+
+  it('prefers the v1 aliases over the v2 `agent` field', () => {
+    // The v2 alias is read last so v1 inputs resolve exactly as before.
+    expect(readAgentType({ subagent_type: 'research', agent: 'explore' })).toBe('research');
+  });
+
+  it('returns an empty string for missing / non-string / blank values', () => {
+    expect(readAgentType({})).toBe('');
+    expect(readAgentType(undefined)).toBe('');
+    expect(readAgentType(null)).toBe('');
+    expect(readAgentType({ agent: 42 })).toBe('');
+    expect(readAgentType({ agent: '   ' })).toBe('');
   });
 });
 

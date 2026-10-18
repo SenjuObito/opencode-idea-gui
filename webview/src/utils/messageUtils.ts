@@ -738,7 +738,12 @@ export function getContentBlocks(
         return [{ type: 'text' as const, text: localizeMessage(displayContent) }];
       }
     }
-    return [{ type: 'text', text: localizeMessage(message.content) }];
+    const isAborted = Boolean(
+      (message.raw && typeof message.raw === 'object' && (message.raw as Record<string, unknown>).aborted) ||
+      message.content.trim() === '已停止生成' ||
+      message.content.trim() === 'Generation stopped'
+    );
+    return [{ type: 'text', text: localizeMessage(message.content), ...(isAborted ? { aborted: true } : {}) }];
   }
   // If no content at all, return empty array instead of showing "(empty message)"
   // shouldShowMessage will filter out these messages

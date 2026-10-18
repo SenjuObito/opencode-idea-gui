@@ -44,17 +44,19 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     private final Object lifecycleLock = new Object();
     /** Guards against duplicate onStreamEnd delivery from dual-path dispatch. */
     private volatile boolean streamEndSignalSent = false;
+    /** One-shot warn when a call has to be dropped for lack of a session id. */
+    private volatile boolean unattributedSessionWarned = false;
 
-    public SessionCallbackAdapter(
-            StreamMessageCoalescer streamCoalescer,
-            JsTarget jsTarget,
-            PermissionHandler permissionHandler,
-            BooleanSupplier slashCommandsFetchedSupplier,
-            Runnable streamEndCallback
-    ) {
-        this(null, streamCoalescer, jsTarget, permissionHandler, slashCommandsFetchedSupplier, streamEndCallback);
-    }
-
+    /**
+     * @param sessionId the opencode session this callback speaks for. It may be
+     *     {@code null} only during the brief window before the daemon has
+     *     reported the id of a brand-new session — and in that window every
+     *     outgoing call is tagged with {@code null}, which the webview treats as
+     *     "unattributable" and drops (with a counter). There is deliberately no
+     *     default: an implicit {@code null} used to be indistinguishable from
+     *     "we know the session is X", which is how output leaked into whatever
+     *     tab happened to be active.
+     */
     public SessionCallbackAdapter(
             String sessionId,
             StreamMessageCoalescer streamCoalescer,
@@ -65,6 +67,12 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     ) {
         this.sessionId = sessionId;
         this.streamCoalescer = streamCoalescer;
+        // Propagate immediately: the coalescer stamps its own session id onto
+        // every updateMessages it pushes, and an un-stamped snapshot is now
+        // dropped by the frontend rather than adopted by the active tab.
+        if (this.streamCoalescer != null && sessionId != null && !sessionId.isBlank()) {
+            this.streamCoalescer.setSessionId(sessionId);
+        }
         this.jsTarget = jsTarget;
         this.permissionHandler = permissionHandler;
         this.slashCommandsFetchedSupplier = slashCommandsFetchedSupplier;
@@ -73,6 +81,10 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 DELTA_THROTTLE_MS,
                 delta -> {
                     if (!isInactive()) {
+                        if (!hasIdentity()) {
+                            warnUnattributedOnce("content delta");
+                            return;
+                        }
                         jsTarget.callJavaScript("onContentDelta", getTargetSessionId(), JsUtils.escapeJs(delta));
                     }
                 }
@@ -81,6 +93,10 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 DELTA_THROTTLE_MS,
                 delta -> {
                     if (!isInactive()) {
+                        if (!hasIdentity()) {
+                            warnUnattributedOnce("thinking delta");
+                            return;
+                        }
                         jsTarget.callJavaScript("onThinkingDelta", getTargetSessionId(), JsUtils.escapeJs(delta));
                     }
                 }
@@ -99,8 +115,44 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         }
     }
 
+    /**
+     * This adapter's session identity — the tag on every outgoing call.
+     *
+     * <p>Never coerced to an empty string. The receiver distinguishes "unknown"
+     * from "empty" and refuses to attribute output it cannot place; coercing to
+     * {@code ""} here is precisely what made an un-attributable write land
+     * silently in the active session.</p>
+     *
+     * @return the session id, or {@code null} before it has been resolved
+     */
+    /**
+     * Whether this adapter can attribute its output to a session.
+     *
+     * <p>Un-attributable writes are <b>dropped</b> rather than delivered with a
+     * blank id. A blank id used to be read by the frontend as "the session that
+     * is currently on screen", so any output arriving before the id was known —
+     * or after the owning session had been closed — landed in whichever tab
+     * happened to be active. Dropping is the only behaviour that cannot
+     * mis-route; the single warning makes the drop visible instead of silent.</p>
+     */
+    private boolean hasIdentity() {
+        return sessionId != null && !sessionId.isBlank();
+    }
+
+    private void warnUnattributedOnce(String what) {
+        if (!unattributedSessionWarned) {
+            unattributedSessionWarned = true;
+            LOG.warn("Dropping " + what + ": SessionCallbackAdapter has no session id yet, "
+                    + "and guessing the active session is what caused cross-session leakage");
+        }
+    }
+
     private String getTargetSessionId() {
-        return sessionId != null ? sessionId : "";
+        if (!hasIdentity()) {
+            warnUnattributedOnce("session-scoped callback");
+            return null;
+        }
+        return sessionId;
     }
 
     public void deactivate() {
@@ -137,19 +189,20 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            // Do not send loading=false during streaming to avoid unexpected loading state resets.
-            // State cleanup is handled uniformly by onStreamEnd.
-            if (!loading && streamCoalescer.isStreamActive()) {
-                LOG.debug("Suppressing showLoading(false) during active streaming");
+            // No "suppress loading=false while streaming" guard here any more.
+            // It existed because the turn's terminal signal was unreliable, so a
+            // premature clearing had to be blocked. The daemon now emits an
+            // explicit, per-session, idempotent [TURN_END], and this session's
+            // callback is the only writer of its own loading state — so a
+            // loading=false that arrives here is authoritative and must be
+            // delivered, not deferred to a stream end that may never come.
+            if (!hasIdentity()) {
+                warnUnattributedOnce("loading state");
                 return;
             }
-
             jsTarget.callJavaScript("showLoading", getTargetSessionId(), String.valueOf(loading));
-            // Show error in status bar only (not as toast) to avoid duplicate notifications.
-            // The primary error display is the ERROR message in chat list (from onError path).
-            if (error != null && !error.isEmpty()) {
-                jsTarget.callJavaScript("updateStatus", getTargetSessionId(), JsUtils.escapeJs("Error: " + error));
-            }
+            // The primary error display is the ERROR message in chat list and StatusNoticeBar banner.
+            // Do not call updateStatus here to avoid redundant notifications/toasts.
             if (!busy && !loading) {
                 VirtualFileManager.getInstance().asyncRefresh(null);
             }
@@ -162,7 +215,8 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             return;
         }
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
+            if (isInactive() || !hasIdentity()) {
+                if (!isInactive()) warnUnattributedOnce("status message");
                 return;
             }
             jsTarget.callJavaScript("updateStatus", getTargetSessionId(), JsUtils.escapeJs(message));
@@ -223,11 +277,19 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         if (isInactive()) {
             return;
         }
+        // Prefer the session carried by the request itself: it came off the wire
+        // with the prompt, so it is correct even if this adapter's identity has
+        // not caught up. Only fall back to our own id — never to "the active
+        // session" — when the payload genuinely omits it.
+        String requestSessionId = request != null ? request.getSessionId() : null;
+        final String targetSessionId = (requestSessionId != null && !requestSessionId.isBlank())
+                ? requestSessionId
+                : getTargetSessionId();
         ApplicationManager.getApplication().invokeLater(() -> {
             if (isInactive()) {
                 return;
             }
-            permissionHandler.showPermissionDialog(request, getTargetSessionId());
+            permissionHandler.showPermissionDialog(request, targetSessionId);
         });
     }
 
@@ -237,7 +299,8 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             return;
         }
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
+            if (isInactive() || !hasIdentity()) {
+                if (!isInactive()) warnUnattributedOnce("thinking status");
                 return;
             }
             jsTarget.callJavaScript("showThinkingStatus", getTargetSessionId(), String.valueOf(isThinking));
@@ -267,7 +330,8 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             return;
         }
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
+            if (isInactive() || !hasIdentity()) {
+                if (!isInactive()) warnUnattributedOnce("summary");
                 return;
             }
             jsTarget.callJavaScript("showSummary", getTargetSessionId(), JsUtils.escapeJs(summary));
@@ -293,7 +357,8 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         thinkingDeltaThrottler.reset();
         streamCoalescer.onStreamStart();
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
+            if (isInactive() || !hasIdentity()) {
+                if (!isInactive()) warnUnattributedOnce("stream start");
                 return;
             }
             jsTarget.callJavaScript("showLoading", getTargetSessionId(), "true");
@@ -368,6 +433,13 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             LOG.debug("Skipping sendStreamEndToFrontend — adapter deactivated (sequence=" + sequence + ")");
             return;
         }
+        if (!hasIdentity()) {
+            // Never emit a blank-id terminal: the frontend reads that as "the
+            // active tab", which is how stopping one session cleared another's
+            // spinner — or left this one spinning forever.
+            warnUnattributedOnce("onStreamEnd");
+            return;
+        }
         safeRun("callJavaScript(onStreamEnd)", () ->
                 jsTarget.callJavaScript("onStreamEnd", getTargetSessionId(), String.valueOf(sequence)));
         safeRun("callJavaScript(showLoading, false)", () ->
@@ -384,6 +456,33 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         } catch (Exception e) {
             LOG.warn(label + " failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Forward the daemon's session-scoped turn terminal to the webview.
+     *
+     * <p>Sent to the session named by the payload — not to the active tab — so a
+     * background session's spinner clears when its turn actually ends. The
+     * webview keys this on {@code (sessionId, turnId)} and ignores repeats, which
+     * is what makes it safe for this signal to arrive alongside (or instead of)
+     * {@code onStreamEnd} and {@code showLoading(false)}.</p>
+     */
+    @Override
+    public void onTurnEnd(String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        if (!hasIdentity()) {
+            warnUnattributedOnce("turn terminal");
+            return;
+        }
+        final String targetSessionId = getTargetSessionId();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            jsTarget.callJavaScript("onTurnEnd", targetSessionId, JsUtils.escapeJs(jsonContent));
+        });
     }
 
     @Override

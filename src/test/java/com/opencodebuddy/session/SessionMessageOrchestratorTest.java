@@ -161,14 +161,14 @@ public class SessionMessageOrchestratorTest {
     }
 
     /**
-     * Verifies providers without session-specific capacity retain the existing static
-     * model-limit fallback when a real usage numerator is present.
+     * Verifies providers without session-specific capacity retain the bracketed suffix
+     * or model-limit fallback when a real usage numerator is present.
      */
     @Test
-    public void loadFromServerFallsBackToStaticModelContextWindow() {
+    public void loadFromServerFallsBackToModelContextWindow() {
         SessionState state = new SessionState();
         state.setProvider("claude");
-        state.setModel("claude-sonnet-4-6");
+        state.setModel("claude-sonnet-4-6[200k]");
         state.setSessionId("session-claude-usage");
         state.setCwd("/workspace");
 

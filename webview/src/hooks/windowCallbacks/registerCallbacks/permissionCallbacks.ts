@@ -8,7 +8,7 @@
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { cardDebugLog } from '../../../utils/bridge';
-import { setQuestionAnswer } from '../../../store/questionAnswerStore';
+import { setQuestionAnswer, removeQuestionAnswerByRequestId } from '../../../store/questionAnswerStore';
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -42,6 +42,9 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   // record back to an honest skipped state.
   window.invalidateQuestionCard = (requestId) => {
     cardDebugLog(`[PCard][webview] invalidateQuestionCard called: requestId=${requestId}`);
+    if (requestId) {
+      removeQuestionAnswerByRequestId(requestId);
+    }
     invalidateQuestionCard?.(requestId ?? '');
   };
 
@@ -55,12 +58,12 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showPermissionDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      console.log(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId}`);
+      cardDebugLog(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId}`);
       const targetSessionId = request.sessionId;
       const tabsStore = window.__sessionTabsStore;
 
       if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
-        tabsStore.updateBackgroundTab(
+        const stored = tabsStore.updateBackgroundTab(
           (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
           (t) => {
             const list = t.pendingPermissions || [];
@@ -69,7 +72,21 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
             }
           }
         );
-        return;
+        // `stored === false` means no tab claims this session yet. Previously the
+        // prompt was dropped here and the server later settled it as rejected —
+        // the user saw a "已取消" card without ever seeing a dialog.
+        //
+        // Showing it in the active window is the lesser evil: the *reply* is
+        // routed by permission id through OpencodePermissionRegistry (which
+        // carries the request's own sessionId + directory), so answering here
+        // still reaches the right session. Only the visual placement can be off,
+        // and a misplaced dialog beats a lost prompt.
+        if (stored) {
+          return;
+        }
+        cardDebugLog(
+          `[PCard][webview] no tab for sessionId=${targetSessionId}; showing permission prompt in the active window instead of dropping it`
+        );
       }
 
       openPermissionDialog(request);
@@ -135,7 +152,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       const tabsStore = window.__sessionTabsStore;
 
       if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
-        tabsStore.updateBackgroundTab(
+        const stored = tabsStore.updateBackgroundTab(
           (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
           (t) => {
             const list = t.pendingQuestions || [];
@@ -144,7 +161,14 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
             }
           }
         );
-        return;
+        // Same reasoning as permissions: never lose a prompt just because no tab
+        // claims the session yet.
+        if (stored) {
+          return;
+        }
+        cardDebugLog(
+          `[QCard][webview] no tab for sessionId=${targetSessionId}; showing question prompt in the active window instead of dropping it`
+        );
       }
 
       openAskUserQuestionDialog(request);
@@ -157,7 +181,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.onQuestionAnswered = (json) => {
     try {
       const data = JSON.parse(json);
-      console.log(`[PCard][webview] onQuestionAnswered callId="${data.callId}" requestId="${data.requestId}" questions=${data.questions?.length ?? 0} answers=`, data.answers);
+      cardDebugLog(`[PCard][webview] onQuestionAnswered callId="${data.callId}" requestId="${data.requestId}" questions=${data.questions?.length ?? 0} answers=`, data.answers);
       cardDebugLog(`[QCard][webview] onQuestionAnswered callId=${data.callId} requestId=${data.requestId}`);
       setQuestionAnswer(data);
     } catch (error) {

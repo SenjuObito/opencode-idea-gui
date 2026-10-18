@@ -75,10 +75,17 @@ public class WebviewWatchdog {
         boolean isFrontendReady();
     }
 
-    // Extended timeout during active streaming — IPC saturation is expected
-    // when pushing large message payloads.  Reloading would destroy React state
-    // and the backend would continue pushing to a blank page.
-    private static final long STREAMING_HEARTBEAT_TIMEOUT_MS = 180_000L; // 3 minutes
+    // Extended timeout during active streaming — IPC saturation is expected when
+    // pushing large message payloads, and reloading would destroy React state
+    // while the backend keeps pushing into a blank page.
+    //
+    // Strictly bounded on purpose. The heartbeat is a plain 5s timer in the
+    // frontend (main.tsx), independent of how many deltas are in flight, so a
+    // 3-minute silence means the renderer is genuinely wedged — not merely busy.
+    // The previous value (Long.MAX_VALUE) turned "don't reload while streaming"
+    // into "never reload", which left a truly frozen renderer with no recovery
+    // path at all. 180s matches the upstream cc-gui threshold.
+    private static final long STREAMING_HEARTBEAT_TIMEOUT_MS = 180_000L;
 
     private final StreamActiveCheck streamActiveCheck;
     private final ReadyCheck readyCheck;

@@ -1,6 +1,7 @@
 package com.opencodebuddy.provider.common;
 
 import com.opencodebuddy.bridge.BridgeDirectoryResolver;
+import com.opencodebuddy.bridge.CliSpecResolver;
 import com.opencodebuddy.bridge.EnvironmentConfigurator;
 import com.opencodebuddy.bridge.NodeDetector;
 import com.opencodebuddy.utils.PluginFileLogger;
@@ -75,6 +76,18 @@ public class DaemonBridge {
 
     // Lifecycle listener
     private volatile DaemonLifecycleListener lifecycleListener;
+
+    /**
+     * Latest engine-resolution status reported by the daemon
+     * ({@code engine_status} event, plus the {@code engineMode}/{@code cliVersion}
+     * header carried by {@code ready}).
+     *
+     * <p>This is the host's only window into "which OpenCode engine am I actually
+     * talking to, and if not, why". It is deliberately a cache and nothing else:
+     * the daemon owns the state machine, the host must not infer or second-guess
+     * it. Exposed to the webview through {@link DaemonStatusHandler}.</p>
+     */
+    private volatile JsonObject engineStatus;
 
     // Event listeners for custom daemon events. CopyOnWriteArrayList allows safe
     // iteration during dispatch while listeners may be added/removed concurrently.
@@ -362,11 +375,15 @@ public class DaemonBridge {
         }
 
         Map<String, String> environment = processBuilder.environment();
-        String openCodeCliPath = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getOpencodeCliPath();
-        if (openCodeCliPath != null && !openCodeCliPath.trim().isEmpty()) {
-            environment.put("OPENCODE_BIN", openCodeCliPath.trim());
-            LOG.info("[DaemonBridge] Using custom opencode CLI: " + openCodeCliPath.trim());
-        }
+        // The user's configured CLI/Node paths are injected by
+        // EnvironmentConfigurator.updateProcessEnvironment (above) as the
+        // OPENCODEBUDDY_* contract. They used to be injected here as
+        // OPENCODE_BIN, which the Node resolver treats as a best-effort L1
+        // override — so an invalid setting silently fell through to a scan and
+        // the user's explicit choice became an unattributable mystery version.
+        LOG.info("[DaemonBridge] Daemon env: "
+                + CliSpecResolver.ENV_CLI_PATH + "="
+                + environment.getOrDefault(CliSpecResolver.ENV_CLI_PATH, "(unset → resolver will scan)"));
 
         processBuilder.redirectErrorStream(false);
         Process process = processBuilder.start();
@@ -783,21 +800,30 @@ public class DaemonBridge {
                 }
             }
 
-            // --- Request-tagged output ---
-            if (!obj.has("id")) { return; }
-            String id = obj.get("id").getAsString();
-
+            // --- Identity envelope ---
+            //
+            // Every data line carries {id, session, turn, seq}. The two identity
+            // fields answer two different questions and must never be conflated
+            // (see docs/multi-session-identity-refactoring.md §2.2):
+            //   id      — which request must be unblocked (control plane)
+            //   session — which conversation the content belongs to (data plane)
+            String id = obj.has("id") && !obj.get("id").isJsonNull()
+                    ? obj.get("id").getAsString() : null;
             // Skip heartbeat responses
-            if (id.startsWith("hb-")) { return; }
+            if (id != null && id.startsWith("hb-")) { return; }
+            String session = optString(obj, "session", null);
+            if (session != null && session.isBlank()) { session = null; }
 
-            RequestHandler handler = context.getRequestHandler(id);
-            if (handler == null) {
-                LOG.debug("[DaemonBridge] No handler for request " + id);
-                return;
-            }
-
-            // Command completion
+            // --- Control plane: request completion is answered by `id` ---
+            // Session routing cannot unblock the caller's future, so this stays
+            // keyed by the request id.
             if (obj.has("done")) {
+                if (id == null) { return; }
+                RequestHandler handler = context.getRequestHandler(id);
+                if (handler == null) {
+                    LOG.debug("[DaemonBridge] No handler for completed request " + id);
+                    return;
+                }
                 boolean success = obj.has("success") && obj.get("success").getAsBoolean();
                 if (!success && obj.has("error")) {
                     handler.onError(obj.get("error").getAsString());
@@ -807,17 +833,30 @@ public class DaemonBridge {
                 return;
             }
 
-            // Output line from the command
-            if (obj.has("line")) {
-                handler.callback.onLine(obj.get("line").getAsString());
+            // --- Data plane: the session owns the content ---
+            if (obj.has("line") && !obj.get("line").isJsonNull()) {
+                deliverDataLine(session, id, obj.get("line").getAsString(), context);
                 return;
             }
 
-            // Stderr output
+            // Stderr diagnostics keep both tags (neither is authoritative here).
             if (obj.has("stderr")) {
                 String errText = obj.get("stderr").getAsString();
-                PluginFileLogger.info("DAEMON", "[stderr id=" + id + "] " + errText);
-                handler.callback.onStderr(errText);
+                PluginFileLogger.info("DAEMON", "[stderr id=" + (id != null ? id : "-")
+                        + (session != null ? " session=" + session : "") + "] " + errText);
+                if (session != null) {
+                    SessionLineSink sink = sessionSinks.get(session);
+                    if (sink != null) {
+                        sink.onStderr(errText);
+                        return;
+                    }
+                }
+                if (id != null) {
+                    RequestHandler handler = context.getRequestHandler(id);
+                    if (handler != null) {
+                        handler.callback.onStderr(errText);
+                    }
+                }
             }
 
         } catch (Exception e) {
@@ -825,18 +864,231 @@ public class DaemonBridge {
         }
     }
 
-    private void handleDaemonEvent(JsonObject obj, DaemonGenerationContext context) {
-        String event = obj.has("event") ? obj.get("event").getAsString() : "unknown";
+    /**
+     * Route one data-plane line to the session it names.
+     *
+     * <p>Order of resolution, most authoritative first:</p>
+     * <ol>
+     *   <li>the session's registered sink — a line that names a session is
+     *       delivered to that session and to nothing else;</li>
+     *   <li>the request handler that created the session — this is the only
+     *       path that works for a brand-new session, whose id the host cannot
+     *       know before the daemon reports it;</li>
+     *   <li>otherwise buffer it under its session (bounded + TTL) and count it.</li>
+     * </ol>
+     *
+     * <p>An {@code id} match alone is never sufficient to claim a line: with two
+     * sessions streaming concurrently that is precisely how their output got
+     * crossed.</p>
+     */
+    private void deliverDataLine(
+            String session, String id, String line, DaemonGenerationContext context) {
+        if (session != null) {
+            SessionLineSink sink = sessionSinks.get(session);
+            if (sink != null) {
+                deliver(sink, line);
+                return;
+            }
+        }
+        if (id != null) {
+            RequestHandler handler = context.getRequestHandler(id);
+            if (handler != null) {
+                handler.callback.onLine(line);
+                return;
+            }
+        }
+        bufferOrphanLine(session, line);
+    }
+
+    private void deliver(SessionLineSink sink, String line) {
+        try {
+            sink.onLine(line);
+        } catch (Exception e) {
+            LOG.warn("[DaemonBridge] Session sink failed on line: " + e.getMessage(), e);
+        }
+    }
+
+    // =========================================================================
+    // Session routing (data plane)
+    // =========================================================================
+
+    /**
+     * Sink for one session's data-plane output.
+     *
+     * <p>Owns the per-session parser pipeline, so a line is parsed exactly once
+     * and dispatched to exactly one session's callback. Implementations must be
+     * thread-safe: the daemon reader thread calls this directly.</p>
+     */
+    public interface SessionLineSink {
+        void onLine(String line);
+
+        default void onStderr(String text) {
+        }
+    }
+
+    /** sessionId (opencode `ses_…`) → its data-plane sink. */
+    private final ConcurrentHashMap<String, SessionLineSink> sessionSinks = new ConcurrentHashMap<>();
+    /** Lines that arrived before their session's sink existed. */
+    private final ConcurrentHashMap<String, OrphanSessionLines> sessionOrphans = new ConcurrentHashMap<>();
+    /** Running count of unroutable/buffered lines — the "silent failure" metric. */
+    private final AtomicInteger orphanLineCount = new AtomicInteger(0);
+
+    private static final int MAX_ORPHAN_LINES_PER_SESSION = 64;
+    private static final int MAX_ORPHAN_SESSIONS = 64;
+    private static final long ORPHAN_LINE_TTL_MS = 10 * 60 * 1000;
+    private static final int ORPHAN_LOG_EVERY = 50;
+
+    /**
+     * Bind a session's data-plane sink and flush anything already buffered for
+     * it. Called when a session object is registered and again whenever the
+     * canonical session id is (re)discovered.
+     */
+    public void registerSessionSink(String sessionId, SessionLineSink sink) {
+        if (sessionId == null || sessionId.isBlank() || sink == null) { return; }
+        sessionSinks.put(sessionId, sink);
+        OrphanSessionLines pending = sessionOrphans.remove(sessionId);
+        if (pending == null) { return; }
+        List<String> lines = pending.drain();
+        if (lines.isEmpty()) { return; }
+        LOG.info("[DaemonBridge] Delivering " + lines.size()
+                + " buffered line(s) to session " + sessionId);
+        for (String line : lines) {
+            deliver(sink, line);
+        }
+    }
+
+    /** Drop a session's sink (and any buffered lines) on tab close. */
+    public void unregisterSessionSink(String sessionId) {
+        if (sessionId == null) { return; }
+        sessionSinks.remove(sessionId);
+        sessionOrphans.remove(sessionId);
+    }
+
+    /**
+     * Lines dropped or buffered because they could not be routed. Non-zero is
+     * never expected in a healthy run, so this is the metric to watch when
+     * "a message silently went nowhere" is the report.
+     */
+    public int getOrphanLineCount() {
+        return orphanLineCount.get();
+    }
+
+    private void bufferOrphanLine(String session, String line) {
+        int total = orphanLineCount.incrementAndGet();
+        boolean logIt = total == 1 || total % ORPHAN_LOG_EVERY == 0;
+        if (session == null) {
+            // INV-A violation: a session-level line that names no session can
+            // never be attributed, and pretending otherwise is the defect this
+            // refactor removes. Make it visible instead of silently swallowing it.
+            if (logIt) {
+                LOG.warn("[DaemonBridge] Dropped session-level output carrying NO session identity"
+                        + " (total=" + total + "): " + abbreviate(line, 160));
+            }
+            return;
+        }
+        // Normal for a brand-new session: its id is not known on the host until
+        // the daemon reports it, so early lines are held briefly and flushed by
+        // registerSessionSink().
+        sessionOrphans.computeIfAbsent(session, k -> new OrphanSessionLines()).add(line);
+        if (sessionOrphans.size() > MAX_ORPHAN_SESSIONS) {
+            long now = timeSource.currentTimeMillis();
+            sessionOrphans.entrySet().removeIf(e -> e.getValue().isExpired(now));
+        }
+        if (logIt) {
+            LOG.debug("[DaemonBridge] Buffered output for a session with no sink yet (total=" + total
+                    + ", session=" + session + ")");
+        }
+    }
+
+    private static String abbreviate(String text, int max) {
+        if (text == null) { return ""; }
+        return text.length() <= max ? text : text.substring(0, max) + "…";
+    }
+
+    /**
+     * Bounded buffer for lines that arrived before their session existed on the
+     * host. Bounded in both count and age so a session that never materialises
+     * cannot leak.
+     */
+    private static final class OrphanSessionLines {
+        private final Deque<String> lines = new ArrayDeque<>();
+        private long lastAt = System.currentTimeMillis();
+
+        synchronized void add(String line) {
+            lines.addLast(line);
+            lastAt = System.currentTimeMillis();
+            while (lines.size() > MAX_ORPHAN_LINES_PER_SESSION) {
+                lines.removeFirst();
+            }
+        }
+
+        synchronized List<String> drain() {
+            List<String> out = new ArrayList<>(lines);
+            lines.clear();
+            return out;
+        }
+
+        synchronized boolean isExpired(long now) {
+            return now - lastAt > ORPHAN_LINE_TTL_MS;
+        }
+    }
+
+    private void handleDaemonEvent(JsonObject obj, DaemonGenerationContext context) {        String event = obj.has("event") ? obj.get("event").getAsString() : "unknown";
         LOG.info("[DaemonBridge] Daemon event: " + event);
 
         switch (event) {
             case "ready":
                 boolean preloaded = obj.has("sdkPreloaded")
                         && obj.get("sdkPreloaded").getAsBoolean();
+                logEngineHeader(obj);
                 if (context.signalReady(preloaded) && lifecycleListener != null) {
                     lifecycleListener.onDaemonReady();
                 }
                 break;
+
+            case "engine_status": {
+                // The daemon's engine state machine reporting a transition
+                // (pending → v1/v2/unknown, or a blocking failure). Previously
+                // this event did not exist at all, so the host had no way to tell
+                // "locked as v1 because the CLI genuinely is v1" apart from
+                // "never determined, defaulted to v1" — which is exactly how the
+                // v1-routes-against-a-v2-server incident stayed invisible.
+                JsonObject snapshot = obj.deepCopy();
+                engineStatus = snapshot;
+                String state = optString(obj, "state", "unknown");
+                String reasonKind = optString(obj, "reasonKind", "none");
+                String reasonMessage = optString(obj, "reasonMessage", "");
+                String line = "[DaemonBridge] Engine status: state=" + state
+                        + ", locked=" + (obj.has("locked") && obj.get("locked").getAsBoolean())
+                        + ", cli=" + optString(obj, "cliPath", "(none)")
+                        + " (source=" + optString(obj, "cliSource", "n/a")
+                        + ", version=" + optString(obj, "cliVersion", "unknown") + ")"
+                        + ", evidence=" + optString(obj, "probePath", "none")
+                        + (obj.has("httpStatus") && !obj.get("httpStatus").isJsonNull()
+                                ? " HTTP=" + obj.get("httpStatus").getAsString() : "")
+                        + (obj.has("apiVersion") && !obj.get("apiVersion").isJsonNull()
+                                ? " apiVersion=" + obj.get("apiVersion").getAsString() : "");
+                boolean blocking = obj.has("blocking") && obj.get("blocking").getAsBoolean();
+                if (blocking || "unknown".equals(state)) {
+                    LOG.warn(line + ", reason=" + reasonKind
+                            + (reasonMessage.isEmpty() ? "" : " (" + reasonMessage + ")"));
+                } else {
+                    LOG.info(line);
+                }
+                if (blocking) {
+                    LOG.warn("[DaemonBridge] Engine resolution is BLOCKED ("
+                            + reasonKind + "): requests will not be routed until it is fixed. "
+                            + reasonMessage);
+                }
+                for (DaemonEventListener listener : eventListeners) {
+                    try {
+                        listener.onDaemonEvent(event, obj);
+                    } catch (Exception ex) {
+                        LOG.warn("[DaemonBridge] Listener threw while handling " + event, ex);
+                    }
+                }
+                break;
+            }
 
             case "startup_failed": {
                 String startupError = obj.has("error") ? obj.get("error").getAsString() : "unknown";
@@ -940,6 +1192,47 @@ public class DaemonBridge {
         }
     }
 
+    /**
+     * Fold the {@code engineMode}/{@code cliVersion} header carried by {@code ready}
+     * into the engine status cache.
+     *
+     * <p>The daemon reports {@code "pending"} here on purpose: it no longer claims a
+     * mode it has not probed yet (it used to always claim {@code v1} or {@code v2},
+     * which is how "undetermined" silently became "v1"). This is kept as a fallback
+     * so the host still has something to show when a {@code engine_status} event
+     * never arrives (e.g. an older bridge build).</p>
+     */
+    private void logEngineHeader(JsonObject obj) {
+        String engineMode = optString(obj, "engineMode", null);
+        String cliVersion = optString(obj, "cliVersion", null);
+        if (engineMode == null && cliVersion == null) {
+            return;
+        }
+        LOG.info("[DaemonBridge] Daemon ready header: engineMode=" + engineMode
+                + ", cliVersion=" + cliVersion);
+        if (engineStatus == null) {
+            JsonObject seed = new JsonObject();
+            seed.addProperty("state", engineMode != null ? engineMode : "unknown");
+            seed.addProperty("locked", false);
+            seed.addProperty("blocking", false);
+            if (cliVersion != null) {
+                seed.addProperty("cliVersion", cliVersion);
+            }
+            engineStatus = seed;
+        }
+    }
+
+    private static String optString(JsonObject obj, String key, String fallback) {
+        if (obj == null || !obj.has(key)) {
+            return fallback;
+        }
+        JsonElement element = obj.get(key);
+        if (element == null || element.isJsonNull() || !element.isJsonPrimitive()) {
+            return fallback;
+        }
+        return element.getAsString();
+    }
+
     // =========================================================================
     // Daemon Death & Auto-Restart
     // =========================================================================
@@ -972,6 +1265,10 @@ public class DaemonBridge {
         }
 
         LOG.warn("[DaemonBridge] Daemon process died, generation=" + context.generation);
+
+        // A fresh generation re-resolves from scratch, so a stale "locked v2"
+        // must not outlive the process that produced it.
+        engineStatus = null;
 
         // Kill only the process whose generation was atomically claimed.
         if (context.process.isAlive()) {
@@ -1096,6 +1393,20 @@ public class DaemonBridge {
     public boolean isSdkPreloaded() {
         DaemonGenerationContext context = daemonContext;
         return context != null && context.sdkPreloaded.get();
+    }
+
+    /**
+     * Latest engine-resolution snapshot reported by the daemon, or null when none
+     * has been received yet. The returned object must be treated as read-only.
+     *
+     * <p>Fields (see {@code daemon.js} → {@code engine_status}): {@code state}
+     * ({@code pending|v1|v2|unknown}), {@code locked}, {@code cliPath},
+     * {@code cliVersion}, {@code cliSource}, {@code cliVerified}, {@code probePath},
+     * {@code httpStatus}, {@code apiVersion}, {@code reasonKind},
+     * {@code reasonMessage}, {@code blocking}, {@code ts}.</p>
+     */
+    public JsonObject getEngineStatus() {
+        return engineStatus;
     }
 
     private void logDaemonStartupFailure(

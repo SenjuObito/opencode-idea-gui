@@ -1,5 +1,6 @@
 import type { ToolInput } from '../types';
 import { normalizeToolName } from './toolConstants';
+import { readAgentType } from './subagentResult';
 import { normalizeTodoStatus } from './todoShared';
 import type { RawTodoItem } from './todoShared';
 
@@ -65,12 +66,10 @@ function normalizeSpawnAgentInput(input: ToolInputRecord): ToolInput {
     (typeof input.message === 'string' && input.message.trim()) ? input.message :
     extractPromptFromItems(input.items);
 
-  const subagentType =
-    (typeof input.subagent_type === 'string' && input.subagent_type.trim()) ? input.subagent_type :
-    (typeof input.subagentType === 'string' && input.subagentType.trim()) ? input.subagentType :
-    (typeof input.agent_type === 'string' && input.agent_type.trim()) ? input.agent_type :
-    (typeof input.agentType === 'string' && input.agentType.trim()) ? input.agentType :
-    'default';
+  // Same alias chain as everywhere else (v1 subagent_type / agent_type, v2
+  // renamed the argument to `agent`); spawn_agent keeps its own 'default'
+  // fallback so its existing rendering is unchanged.
+  const subagentType = readAgentType(input) || 'default';
 
   return {
     ...input,

@@ -15,10 +15,10 @@ public class TimeoutConfig {
     public static final TimeUnit QUICK_OPERATION_UNIT = TimeUnit.SECONDS;
 
     /**
-     * Message sending timeout: 3 minutes.
+     * Message sending timeout: disabled by default (no local 180s cap).
      * Used for: sending messages, AI responses, etc.
      */
-    public static final long MESSAGE_TIMEOUT = 180;
+    public static final long MESSAGE_TIMEOUT = 0;
     public static final TimeUnit MESSAGE_UNIT = TimeUnit.SECONDS;
 
     /**

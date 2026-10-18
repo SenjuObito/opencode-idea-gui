@@ -1,6 +1,7 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
+import com.opencodebuddy.session.OpencodeSession;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -58,24 +59,42 @@ public class PermissionModeHandler {
 
     /**
      * Handle set mode request.
+     * <p>
+     * Accepts either a bare mode string (legacy, window-scoped fallback) or a
+     * JSON object {@code {"sessionId":"…","mode":"…"}} so the change can be
+     * scoped to the calling tab's session instead of always hitting the window's
+     * current session.
      */
     public void handleSetMode(String content) {
         try {
             String mode = content;
+            String targetSessionId = null;
             if (content != null && !content.isEmpty()) {
                 try {
                     JsonObject json = this.gson.fromJson(content, JsonObject.class);
                     if (json.has("mode")) {
                         mode = json.get("mode").getAsString();
                     }
+                    if (json.has("sessionId") && !json.get("sessionId").isJsonNull()) {
+                        targetSessionId = json.get("sessionId").getAsString();
+                    }
                 } catch (Exception e) {
                     // content itself is the mode
                 }
             }
 
-            // Check if session exists
-            if (this.context.getSession() != null) {
-                this.context.getSession().setPermissionMode(mode);
+            OpencodeSession targetSession = null;
+            if (targetSessionId != null && !targetSessionId.trim().isEmpty()) {
+                targetSession = context.getSession(targetSessionId);
+            }
+            // Fall back to the window's current session when no sessionId is
+            // provided (legacy callers) or the targeted session is not found.
+            if (targetSession == null) {
+                targetSession = context.getSession();
+            }
+
+            if (targetSession != null) {
+                targetSession.setPermissionMode(mode);
 
                 // Save permission mode to persistent storage
                 PropertiesComponent props = PropertiesComponent.getInstance();

@@ -81,10 +81,22 @@ public class OpenCodeBuddyBundleI18nTest {
 
     @Test
     public void testTabDefaultNameInAllBundles() throws IOException {
+        Map<String, String> expected = Map.of(
+            "", "New Session",
+            "_en", "New Session",
+            "_zh", "新会话",
+            "_zh_TW", "新會話",
+            "_es", "Nueva sesión",
+            "_fr", "Nouvelle session",
+            "_ja", "新規セッション",
+            "_ru", "Новый сеанс",
+            "_hi", "नया सत्र"
+        );
         for (String suffix : LOCALE_SUFFIXES) {
             Properties props = loadBundleProperties(suffix);
             String val = props.getProperty("tab.defaultName");
-            assertEquals("Bundle " + suffix + " tab.defaultName should be 'Chat'", "Chat", val);
+            assertNotNull("Bundle " + suffix + " missing key: tab.defaultName", val);
+            assertEquals("Bundle " + suffix + " tab.defaultName mismatch", expected.get(suffix), val);
         }
     }
 }

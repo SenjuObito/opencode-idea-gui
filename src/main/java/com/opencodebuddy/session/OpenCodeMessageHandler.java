@@ -35,6 +35,15 @@ public class OpenCodeMessageHandler implements MessageCallback {
     /** Current assistant message object being processed. */
     private Message currentAssistantMessage = null;
 
+    /**
+     * Streaming segment activity tracking (session-scoped).
+     * Tool calls act as segment boundaries: subsequent text or thinking deltas
+     * will open a new block at the tail instead of merging backward into
+     * blocks that preceded the tools.
+     */
+    private volatile boolean textSegmentActive = false;
+    private volatile boolean thinkingSegmentActive = false;
+
     private boolean isStreaming = false;
     private boolean streamEndedThisTurn = false;
 
@@ -80,6 +89,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
             case "session_title" -> handleSessionTitle(content);
             case "revert_state" -> handleRevertState(content);
             case "message_removed" -> handleMessagesRemoved(content);
+            case "turn_end" -> handleTurnEnd(content);
             case "session_compact_result" -> handleSessionCompactResult(content);
             default -> LOG.debug("OpenCodeMessageHandler: Unhandled message type: " + type);
         }
@@ -142,16 +152,30 @@ public class OpenCodeMessageHandler implements MessageCallback {
             if (currentAssistantMessage != null) {
                 com.google.gson.JsonObject mergedRaw = messageMerger.mergeAssistantMessage(
                         currentAssistantMessage.raw, parsed.raw);
-                currentAssistantMessage.content = parsed.content;
                 currentAssistantMessage.raw = mergedRaw;
-                assistantContent.setLength(0);
-                assistantContent.append(parsed.content != null ? parsed.content : "");
+                String fullText = extractMessageContent(mergedRaw);
+                if (fullText != null && !fullText.isEmpty()) {
+                    currentAssistantMessage.content = fullText;
+                    assistantContent.setLength(0);
+                    assistantContent.append(fullText);
+                } else if (parsed.content != null && !parsed.content.isEmpty()) {
+                    currentAssistantMessage.content = parsed.content;
+                    assistantContent.setLength(0);
+                    assistantContent.append(parsed.content);
+                }
             } else {
                 currentAssistantMessage = parsed;
+                String fullText = extractMessageContent(parsed.raw);
+                currentAssistantMessage.content = (fullText != null && !fullText.isEmpty())
+                        ? fullText
+                        : (parsed.content != null ? parsed.content : "");
                 assistantContent.setLength(0);
-                assistantContent.append(parsed.content != null ? parsed.content : "");
+                assistantContent.append(currentAssistantMessage.content);
                 state.addMessage(parsed);
             }
+
+            syncSegmentActivity(currentAssistantMessage.raw);
+
             callbackHandler.notifyMessageUpdate(state.getMessages());
         } catch (Exception e) {
             LOG.warn("Failed to parse assistant message: " + e.getMessage());
@@ -171,6 +195,10 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
             if (!"[tool_result]".equals(parsed.content)) {
                 resetStreamingAccumulator();
+            } else {
+                // tool_result closes any active text/thinking segment
+                textSegmentActive = false;
+                thinkingSegmentActive = false;
             }
 
             state.addMessage(parsed);
@@ -328,22 +356,31 @@ public class OpenCodeMessageHandler implements MessageCallback {
                 dialogInputs.put("command", description);
             }
 
+            // The session the prompt belongs to. Required: the dialog must be
+            // shown for THIS session, never for whatever tab happens to be
+            // active. Falls back to this handler's own session only because the
+            // daemon may omit it in older payload shapes — and this handler is
+            // already session-scoped, so that fallback cannot cross sessions.
+            String payloadSessionId = stringOrNull(payload, "sessionId");
+            String requestSessionId = (payloadSessionId != null && !payloadSessionId.isBlank())
+                    ? payloadSessionId
+                    : state.getSessionId();
+
             // Route through the shared permission pipeline: the callback adapter
             // forwards to PermissionHandler.showPermissionDialog, and the reply
             // is bridged back to opencode.replyPermission by the window.
             PermissionRequest request = new PermissionRequest(
-                    channelId, dialogToolName, dialogInputs, null);
+                    channelId, requestSessionId, dialogToolName, dialogInputs, null, null);
             LOG.info("[OpenCode] permission requested: tool=" + toolName
-                    + " permissionId=" + permissionId);
+                    + " permissionId=" + permissionId
+                    + " session=" + (requestSessionId != null ? requestSessionId : "(none)"));
 
             // Capture the session/directory context for the reply — opencode's
             // reply endpoint is workspace-scoped, so the decision must be routed
             // with the directory that was active when the server asked.
             OpencodePermissionRegistry.register(
                     channelId,
-                    stringOrNull(payload, "sessionId") != null
-                            ? stringOrNull(payload, "sessionId")
-                            : state.getSessionId(),
+                    requestSessionId,
                     state.getCwd());
 
             callbackHandler.notifyPermissionRequested(request);
@@ -378,6 +415,54 @@ public class OpenCodeMessageHandler implements MessageCallback {
     private void handleQuestionClosed(String jsonContent) {
         LOG.info("[OpenCode] question closed: " + jsonContent);
         callbackHandler.notifyPromptClosed("question", jsonContent);
+    }
+
+    /**
+     * The daemon's authoritative, session-scoped turn terminal ({@code [TURN_END]}).
+     *
+     * <p>Payload: {@code {"sessionId":"ses_…","turnId":1042,"reason":"…"}}.</p>
+     *
+     * <p>This is the signal that clears a session's running state, and it is
+     * deliberately independent of "which session is on screen" and of whether a
+     * {@code [STREAM_END]} ever arrived. Before it existed, the only guaranteed
+     * terminal was the request's {@code done} ack — so an interrupted turn whose
+     * server never replied left the spinner running for the full 180 s local
+     * timeout, and a turn that ended while its tab was in the background could
+     * not be cleared at all.</p>
+     */
+    private void handleTurnEnd(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        try {
+            JsonObject payload = com.google.gson.JsonParser.parseString(jsonContent.trim()).getAsJsonObject();
+            String sessionId = stringOrNull(payload, "sessionId");
+            String reason = stringOrNull(payload, "reason");
+            String ownSessionId = state.getSessionId();
+            // This handler already belongs to one session (it is fed by that
+            // session's stream router), but the directory-scoped daemon stream
+            // can carry a sibling session's terminal — never clear this one for it.
+            if (sessionId != null && ownSessionId != null && !sessionId.equals(ownSessionId)) {
+                LOG.debug("[OpenCode] Ignoring turn_end for another session: " + sessionId);
+                return;
+            }
+            LOG.info("[OpenCode] turn ended: session=" + (sessionId != null ? sessionId : "(own)")
+                    + " reason=" + (reason != null ? reason : "unknown")
+                    + " turnId=" + (payload.has("turnId") && !payload.get("turnId").isJsonNull()
+                            ? payload.get("turnId").getAsString() : "-"));
+
+            isStreaming = false;
+            streamEndedThisTurn = true;
+            state.setBusy(false);
+            state.setLoading(false);
+            state.updateLastModifiedTime();
+            resetStreamingAccumulator();
+
+            callbackHandler.notifyTurnEnd(jsonContent);
+            callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
+        } catch (Exception e) {
+            LOG.warn("[OpenCode] Failed to parse turn_end payload: " + jsonContent, e);
+        }
     }
 
     private void handleTodoUpdated(String jsonContent) {
@@ -513,7 +598,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
      * minutes: opencode is backing off because the free tier / account quota is
      * exhausted, and its {@code action} carries the human-readable reason plus a
      * subscribe/settings link. It used to be emitted by the daemon but never
-     * parsed host-side, so the user only ever saw the generic 180s local
+     * parsed host-side, so the user only ever saw the generic local
      * timeout afterwards.</p>
      */
     private void handleRetryStatus(String jsonContent) {
@@ -525,9 +610,9 @@ public class OpenCodeMessageHandler implements MessageCallback {
     }
 
     /**
-     * A turn failure that arrived after the local timeout already reported one.
+     * A turn failure that arrived after a local timeout already reported one.
      *
-     * <p>The daemon's 180s fallback deletes the active turn, so the server's
+     * <p>The daemon's fallback deletes the active turn, so the server's
      * late {@code session.error} has nothing left to settle it. It carries the
      * real reason, so it is surfaced as a correction of the generic timeout
      * message instead of being dropped (which is what routing it through the
@@ -565,6 +650,9 @@ public class OpenCodeMessageHandler implements MessageCallback {
             return;
         }
 
+        // Content output means thinking segment has ended
+        thinkingSegmentActive = false;
+
         assistantContent.append(content);
 
         ensureCurrentAssistantMessageExists();
@@ -580,9 +668,13 @@ public class OpenCodeMessageHandler implements MessageCallback {
             return;
         }
 
+        // Thinking delta means text segment has ended
+        textSegmentActive = false;
+
         ensureCurrentAssistantMessageExists();
         applyThinkingDeltaToRaw(content);
         callbackHandler.notifyThinkingDelta(content);
+        callbackHandler.notifyMessageUpdate(state.getMessages());
     }
 
     private void ensureCurrentAssistantMessageExists() {
@@ -615,12 +707,15 @@ public class OpenCodeMessageHandler implements MessageCallback {
                 : new com.google.gson.JsonArray();
 
         com.google.gson.JsonObject target = null;
-        if (content.size() > 0) {
-            com.google.gson.JsonElement last = content.get(content.size() - 1);
-            if (last.isJsonObject()) {
-                com.google.gson.JsonObject block = last.getAsJsonObject();
-                if (block.has("type") && "thinking".equals(block.get("type").getAsString())) {
-                    target = block;
+        if (thinkingSegmentActive) {
+            for (int i = content.size() - 1; i >= 0; i--) {
+                com.google.gson.JsonElement el = content.get(i);
+                if (el.isJsonObject()) {
+                    com.google.gson.JsonObject block = el.getAsJsonObject();
+                    if (block.has("type") && "thinking".equals(block.get("type").getAsString())) {
+                        target = block;
+                        break;
+                    }
                 }
             }
         }
@@ -631,6 +726,8 @@ public class OpenCodeMessageHandler implements MessageCallback {
             target.addProperty("thinking", "");
             target.addProperty("text", "");
             content.add(target);
+            thinkingSegmentActive = true;
+            textSegmentActive = false;
         }
 
         String existing = target.has("thinking") && !target.get("thinking").isJsonNull()
@@ -658,13 +755,15 @@ public class OpenCodeMessageHandler implements MessageCallback {
                 : new com.google.gson.JsonArray();
 
         com.google.gson.JsonObject target = null;
-        for (int i = content.size() - 1; i >= 0; i--) {
-            com.google.gson.JsonElement el = content.get(i);
-            if (el.isJsonObject()) {
-                com.google.gson.JsonObject block = el.getAsJsonObject();
-                if (block.has("type") && "text".equals(block.get("type").getAsString())) {
-                    target = block;
-                    break;
+        if (textSegmentActive) {
+            for (int i = content.size() - 1; i >= 0; i--) {
+                com.google.gson.JsonElement el = content.get(i);
+                if (el.isJsonObject()) {
+                    com.google.gson.JsonObject block = el.getAsJsonObject();
+                    if (block.has("type") && "text".equals(block.get("type").getAsString())) {
+                        target = block;
+                        break;
+                    }
                 }
             }
         }
@@ -674,6 +773,8 @@ public class OpenCodeMessageHandler implements MessageCallback {
             target.addProperty("type", "text");
             target.addProperty("text", "");
             content.add(target);
+            textSegmentActive = true;
+            thinkingSegmentActive = false;
         }
 
         String existing = target.has("text") && !target.get("text").isJsonNull()
@@ -684,6 +785,33 @@ public class OpenCodeMessageHandler implements MessageCallback {
         message.add("content", content);
         raw.add("message", message);
         currentAssistantMessage.raw = raw;
+    }
+
+    private void syncSegmentActivity(com.google.gson.JsonObject raw) {
+        com.google.gson.JsonObject message = raw != null && raw.has("message") && raw.get("message").isJsonObject()
+                ? raw.getAsJsonObject("message") : raw;
+        if (message == null || !message.has("content") || !message.get("content").isJsonArray()) {
+            textSegmentActive = false;
+            thinkingSegmentActive = false;
+            return;
+        }
+
+        com.google.gson.JsonArray contentArray = message.getAsJsonArray("content");
+        for (int i = contentArray.size() - 1; i >= 0; i--) {
+            if (!contentArray.get(i).isJsonObject()) {
+                continue;
+            }
+            com.google.gson.JsonObject block = contentArray.get(i).getAsJsonObject();
+            if (!block.has("type") || block.get("type").isJsonNull()) {
+                continue;
+            }
+            String type = block.get("type").getAsString();
+            textSegmentActive = "text".equals(type);
+            thinkingSegmentActive = "thinking".equals(type);
+            return;
+        }
+        textSegmentActive = false;
+        thinkingSegmentActive = false;
     }
 
     private void handleStreamStart() {
@@ -712,6 +840,8 @@ public class OpenCodeMessageHandler implements MessageCallback {
     private void resetStreamingAccumulator() {
         assistantContent.setLength(0);
         currentAssistantMessage = null;
+        textSegmentActive = false;
+        thinkingSegmentActive = false;
     }
 
     // ===== Parsing helpers =====

@@ -347,7 +347,7 @@
       "permissionDialogTimeout": {
         "label": "Délai d'expiration des dialogues de permission et de question",
         "unit": "secondes",
-        "hint": "Définissez le délai d'expiration pour les dialogues de questions de OpenCode et les dialogues de demande de permission (30~3600 secondes). Après expiration, le dialogue se fermera automatiquement et OpenCode continuera."
+        "hint": "Définissez le délai d'expiration pour les dialogues de questions de OpenCode et les dialogues de demande de permission (30~3600 secondes). Après expiration sans réponse, le dialogue se fermera automatiquement et la session sera arrêtée."
       },
       "chatBgColor": {
         "label": "Couleur de fond du chat",
@@ -1538,6 +1538,10 @@
     "parseError": "Échec de l'analyse du résultat"
   },
   "reasoning": {
+    "default": {
+      "label": "Par défaut",
+      "description": "Utiliser la valeur par défaut du modèle"
+    },
     "cycleHint": "Changer le niveau de raisonnement",
     "title": "Sélectionner la profondeur de raisonnement",
     "low": {
@@ -1648,6 +1652,11 @@
           "step0": "Exécutez la commande ci-dessous dans un terminal pour voir votre version. Node 22 ou la LTS actuelle est recommandée — les utilisateurs ont signalé de nombreux problèmes sur Node 24, préférez donc Node 20 ou 22 :"
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "Quota de modèle épuisé",
+      "notice": "Le quota gratuit ou du forfait pour ce modèle est épuisé. Veuillez changer de modèle ou mettre à niveau votre abonnement.",
+      "upgrade": "Mettre à niveau l'abonnement"
     }
   },
   "openCodeModes": {

@@ -10,11 +10,6 @@ import type {
   ToolResultBlock,
 } from '../types';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
-import {
-  containsAnyTag,
-  hasTaskNotificationTag,
-  INTERNAL_METADATA_TAGS,
-} from '../utils/messageUtils';
 import { extractTodosFromToolUse, extractAccumulatedTasks } from '../utils/todoToolNormalization';
 import {
   computeStatusScopeMessages,
@@ -37,7 +32,7 @@ interface UseChatComputationsParams {
   currentProvider: string;
   currentSessionId: string | null;
   currentSessionIdRef: RefObject<string | null>;
-  getMessageText: ReturnType<typeof useMessageProcessing>['getMessageText'];
+  getMessageText?: ReturnType<typeof useMessageProcessing>['getMessageText'];
   getContentBlocks: ReturnType<typeof useMessageProcessing>['getContentBlocks'];
   /** Authoritative todo list from opencode's `todo.updated` SSE event. */
   sseTodos: TodoItem[] | null;
@@ -106,7 +101,7 @@ export function useChatComputations({
   streamingActive,
   currentSessionId,
   currentSessionIdRef,
-  getMessageText,
+  getMessageText: _getMessageText,
   getContentBlocks,
   sseTodos,
 }: UseChatComputationsParams) {
@@ -258,25 +253,8 @@ export function useChatComputations({
 
   const sessionTitle = useMemo(() => {
     if (customSessionTitle) return customSessionTitle;
-    if (messages.length === 0) return t('common.newSession');
-    // Pick the first REAL prompt: skip meta/caveat messages and anything whose
-    // text is raw internal XML (e.g. <local-command-caveat>) so the tag is
-    // never leaked as the session title.
-    let text = '';
-    for (const message of messages) {
-      if (message.type !== 'user') continue;
-      const raw = message.raw;
-      if (raw && typeof raw === 'object' && raw.isMeta === true) continue;
-      const candidate = getMessageText(message).trim();
-      if (!candidate) continue;
-      if (candidate.startsWith('<')) continue;
-      if (containsAnyTag(candidate, INTERNAL_METADATA_TAGS) || hasTaskNotificationTag(candidate)) continue;
-      text = candidate;
-      break;
-    }
-    if (!text) return t('common.newSession');
-    return text.length > 15 ? `${text.substring(0, 15)}...` : text;
-  }, [customSessionTitle, messages, t, getMessageText]);
+    return t('common.newSession');
+  }, [customSessionTitle, t]);
 
   return {
     findToolResult,

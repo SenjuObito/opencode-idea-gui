@@ -696,7 +696,11 @@ export const MessageItem = memo(function MessageItem({
       return (
         <>
           <MarkdownBlock content={getMessageText(message)} />
-          {errorDiagnosticPattern && (
+          {/* `bar` patterns are surfaced by StatusNoticeBar above the composer
+              instead of an inline card: they carry no solution steps, and a
+              persistent actionable notice belongs next to the input. The raw
+              error text above is kept so the transcript stays self-contained. */}
+          {errorDiagnosticPattern && errorDiagnosticPattern.presentation !== 'bar' && (
             <ErrorDiagnosticCard
               t={t}
               pattern={errorDiagnosticPattern}
@@ -882,9 +886,11 @@ export const MessageItem = memo(function MessageItem({
     return <></>;
   }
 
+  const isTurnStopped = blocks.some((b) => b.type === 'text' && b.aborted);
+
   return (
     <div
-      className={`message ${message.type}${isLast ? ' is-last-message' : ''}${isProviderNotConfigured ? ' provider-not-configured' : ''}`}
+      className={`message ${message.type}${isLast ? ' is-last-message' : ''}${isProviderNotConfigured ? ' provider-not-configured' : ''}${isTurnStopped ? ' is-turn-stopped' : ''}`}
       ref={anchorRefCallback}
       data-message-anchor-id={message.type === 'user' ? messageKey : undefined}
     >

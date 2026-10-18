@@ -5,7 +5,7 @@ import './vscodeBridge';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
-import { onRetryStatusFromHost } from './components/RetryStatusBar';
+import { onRetryStatusFromHost } from './components/StatusNoticeBar';
 import { MessagesProvider } from './contexts/MessagesContext';
 import { SessionProvider } from './contexts/SessionContext';
 import { UIStateProvider } from './contexts/UIStateContext';
@@ -25,6 +25,14 @@ import { debugLog } from './utils/debug';
 import { waitForBridge } from './utils/bridgeStartup';
 import type { UiFontConfig, CodeFontConfig } from './types/uiFontConfig';
 import { playNotificationSound } from './utils/notificationSound';
+import {
+  beginSurfaceDamagePulse,
+  advanceSurfaceDamagePulse,
+  replaceSurfaceDamagePulse,
+  finishSurfaceDamagePulse,
+  cancelSurfaceDamagePulse,
+} from './utils/surfaceDamagePulse';
+import { forceWebviewRepaint } from './utils/forceWebviewRepaint';
 
 // Silence noisy console output in production (including third-party libs).
 // console.error is preserved so ErrorBoundary and unhandled exceptions still
@@ -486,7 +494,7 @@ if (typeof window !== 'undefined' && !window.showLoading) {
 
 // Register the retry/quota notice sink once, at module scope. It must exist even
 // when no chat view is mounted (the host emits it during a running turn), and it
-// feeds a module-level buffer that RetryStatusBar hydrates from on mount.
+// feeds a module-level buffer that StatusNoticeBar hydrates from on mount.
 if (typeof window !== 'undefined') {
   window.updateRetryStatus = onRetryStatusFromHost;
 }
@@ -650,6 +658,27 @@ if (typeof window !== 'undefined' && !window.setHistoryData) {
 if (typeof window !== 'undefined') {
   window.updateLinkifyCapabilities = (json: string) => {
     applyLinkifyCapabilitiesPayload(json);
+  };
+}
+
+// OSR surface publication fence. Java's SurfaceFrameFence drives a tokenized
+// A/B raster pulse and refuses to advance its paint gate on the strength of
+// executeJavaScript() alone — it waits for the applied-ack these functions send
+// back via `surface_damage_applied`. Without this registration the fence cannot
+// leave its first phase, so every history render and tab activation burns the
+// full OSR_FRAME_FENCE_TIMEOUT_MS (1s) before falling back.
+if (typeof window !== 'undefined') {
+  window.__ccguiSurfaceDamagePhaseA = beginSurfaceDamagePulse;
+  window.__ccguiSurfaceDamagePhaseB = advanceSurfaceDamagePulse;
+  window.__ccguiSurfaceDamageReplace = replaceSurfaceDamagePulse;
+  window.__ccguiSurfaceDamageFinish = finishSurfaceDamagePulse;
+  window.__ccguiSurfaceDamageCancel = cancelSurfaceDamagePulse;
+
+  // Windowed (non-OSR) JCEF keeps its legacy activation repaint path: Java
+  // re-applies native bounds and then asks the frontend to nudge its own
+  // compositing, which clears the ghosting left behind by the previous tab.
+  window.onTabActivated = () => {
+    forceWebviewRepaint('tab-activated');
   };
 }
 

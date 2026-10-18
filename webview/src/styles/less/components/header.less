@@ -392,6 +392,19 @@
         border-color: var(--accent-primary, #007acc);
     }
 
+    /* 正随鼠标跟随移动的 tab：固定定位并悬浮在最上层，位置由 JS 实时更新 */
+    &.session-tab-item-following {
+        position: fixed;
+        z-index: 9999;
+        pointer-events: none;
+        opacity: 1 !important;
+        transform: none !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        border-color: var(--accent-primary, #007acc);
+        background: var(--bg-tertiary);
+        cursor: grabbing;
+    }
+
     .session-tab-icon {
         font-size: 13px;
         flex-shrink: 0;

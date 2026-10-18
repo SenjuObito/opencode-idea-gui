@@ -224,3 +224,23 @@ Basic auth（`-u opencode:<pwd>`）+ `x-opencode-directory` → 拉 `/openapi.js
 对 Claude Code 后台 agent **不触发**（ack 文本被 `isAsyncLaunchText` 排除）；
 对形态 B 正确完成 ✓；**仅形态 A 且 ack 文本不是 "Async agent launched" 时会误判提前完成** ✗。
 → 必须先确认形态再合并。
+
+### 9.2 真机验证（2026-10-18，用户实跑）
+
+- 环境：opencode **v2.0.x**，webview 走 IDE/gradle 运行（`compileJava` dependsOn `buildWebview`，
+  即本次改动已构建进插件实际加载的 HTML）。
+- 场景：**前台**子代理（主会话等它跑完）。
+- 结果：**子代理运行正常** —— 列表出现、卡片渲染、状态流转都对。
+
+这条实证确认了三件事：
+
+1. **D1–D6 的改名修复在真实 v2 环境生效**（v2 下工具名确实是 `subagent`，前端此前不认）。
+2. **v2 的子代理链路是通的**：core `session.tool.*` → Java → webview 的 tool_use/tool_result
+   推断路径在 v2 下工作正常。
+3. **可用 agent 不是问题**：9.1 里 `/api/agent` 返回 `[]` 只是**本机默认目录**没有自定义 agent；
+   用户实际环境有可调度的 subagent-mode agent（否则模型无从调用）。该推测已作废。
+
+**P1 未被证伪也未被证实**：前台子代理走同步路径（`isAsync=false` → `hasTerminalResult` 即完成），
+不经过 async 完成判定。后台子代理（`background: true`）仍是唯一未验证场景。
+在此之前**不改** async 完成判定 —— 现状下后台子代理最坏表现是一直 running，
+比误判成"瞬间完成"更容易被识别和不误导。

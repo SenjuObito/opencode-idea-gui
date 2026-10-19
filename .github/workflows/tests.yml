@@ -1,12 +1,15 @@
 name: Tests
 
 # CI test coverage for every component of the plugin:
-#   - webview unit tests (vitest + tsc typecheck)
+#   - webview unit tests (vitest run; typecheck is NOT run here — see the
+#     webview job note below)
 #   - Java unit tests (Linux)
 #   - WSL integration tests (Windows + WSL)
 # Triggered by version tags only (plus manual runs), the same policy as
-# build.yml: pushing a branch starts no CI at all. Use the Actions tab →
-# "Run workflow" to run the suite on demand while developing.
+# build.yml: pushing a branch does not run this suite. Branch pushes to main
+# and pull requests are covered by the lightweight Quality Gate (checkstyle
+# only), not by the tests below. Use the Actions tab → "Run workflow" to run
+# the full suite on demand while developing.
 # The jobs stay independent of build.yml, so a test failure does not block the
 # release build — re-run the release after fixing the tests.
 on:
@@ -16,8 +19,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  # webview unit tests: vitest run plus a typecheck of the test sources.
-  # No build step is needed — the vitest suite operates against source, not dist.
+  # webview unit tests: vitest run only. No build step is needed — the vitest
+  # suite operates against source, not dist. Type checking is deliberately not
+  # done here: `npm run build` is `tsc && vite build`, and build.yml already
+  # exercises it through the plugin build (compileJava → buildWebview).
   webview:
     name: webview unit tests
     runs-on: ubuntu-latest

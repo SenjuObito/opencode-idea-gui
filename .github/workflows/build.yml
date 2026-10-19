@@ -2,8 +2,9 @@ name: Build Plugin
 
 # Releases are cut from version tags only, e.g. v0.0.1. The tag is the version:
 # it is handed to Gradle as -PreleaseVersion, so no build.gradle edit is needed.
-# Branch pushes do NOT build here — use the Tests workflow / a local
-# `./gradlew buildPlugin` for that. Re-running a failed release is done from the
+# Branch pushes do NOT build here — they only get the Quality Gate (checkstyle)
+# from quality.yml. Use the Tests workflow / a local `./gradlew buildPlugin` for
+# a real build. Re-running a failed release is done from the
 # Actions UI ("Re-run jobs"), not by pushing another commit.
 on:
   push:

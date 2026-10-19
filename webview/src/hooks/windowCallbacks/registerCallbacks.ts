@@ -16,6 +16,8 @@ import { cardDebugLog } from '../../utils/bridge';
 import { parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
 import type { SubagentHistoryResponse } from '../../types/subagent';
+import type { TodoItem } from '../../types';
+import { normalizeTodoStatus } from '../../utils/todoShared';
 import {
   setupSlashCommandsCallback,
   resetSlashCommandsState,
@@ -224,28 +226,58 @@ export function registerWindowCallbacks(
   // opencode todo.updated SSE event — stores authoritative todo list
   window.onTodoUpdated = (arg0: string, arg1?: string) => {
     const [targetSessionId, payload] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+    if (!payload) return;
     try {
-      cardDebugLog('[onTodoUpdated] received payload length:', payload?.length);
-      const { sessionID, todos } = JSON.parse(payload);
+      cardDebugLog('[onTodoUpdated] received payload length:', payload.length);
+      let parsed = JSON.parse(payload);
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+      const sessionID = parsed?.sessionID ?? parsed?.sessionId;
+      const rawTodos = parsed?.todos;
       const effectiveSessionId = targetSessionId || sessionID;
 
+      if (!Array.isArray(rawTodos)) {
+        cardDebugLog('[onTodoUpdated] SKIPPED: todos is not an array', rawTodos);
+        return;
+      }
+
+      const normalizedTodos: TodoItem[] = rawTodos
+        .filter((item): item is NonNullable<typeof item> => item != null && typeof item === 'object')
+        .map((item: any, index: number) => {
+          const content = item.content || item.step || item.title || item.text || item.subject || item.description || '';
+          return {
+            id: item.id != null ? String(item.id) : String(index),
+            content: typeof content === 'string' ? content.trim() : String(content),
+            status: normalizeTodoStatus(item.status),
+            ...(Array.isArray(item.blockedBy)
+              ? {
+                  blockedBy: item.blockedBy
+                    .map((id: unknown) => (id != null ? String(id) : null))
+                    .filter((id: unknown): id is string => id !== null),
+                }
+              : {}),
+          };
+        });
+
       if (effectiveSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(effectiveSessionId)) {
+        cardDebugLog('[onTodoUpdated] updating background tab:', effectiveSessionId, 'with', normalizedTodos.length, 'todos');
         window.__sessionTabsStore.updateBackgroundTab(
           (t) => t.sessionId === effectiveSessionId,
           (t) => {
-            t.sseTodos = todos;
+            t.sseTodos = normalizedTodos;
           }
         );
         return;
       }
 
       if (effectiveSessionId && options.currentSessionIdRef.current && effectiveSessionId !== options.currentSessionIdRef.current) {
-        cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch');
+        cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch, effective:', effectiveSessionId, 'current:', options.currentSessionIdRef.current);
         return;
       }
       if (options.setSseTodos) {
-        cardDebugLog('[onTodoUpdated] calling setSseTodos with', todos?.length, 'todos');
-        options.setSseTodos(todos);
+        cardDebugLog('[onTodoUpdated] calling setSseTodos with', normalizedTodos.length, 'todos');
+        options.setSseTodos(normalizedTodos);
       } else {
         cardDebugLog('[onTodoUpdated] SKIPPED: setSseTodos is undefined');
       }

@@ -540,6 +540,11 @@ interface Window {
   restoreSessionTabs?: (json: string) => void;
 
   /**
+   * Authoritative session hydration callback when switching tabs or synchronizing session state.
+   */
+  onSessionHydrated?: (packetJson: string) => void;
+
+  /**
    * File path resolved callback - receives the resolved absolute path for a file link tooltip.
    */
   onFilePathResolved?: (json: string) => void;

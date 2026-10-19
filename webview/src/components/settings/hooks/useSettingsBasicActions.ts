@@ -435,58 +435,14 @@ export function useSettingsBasicActions({
     sendToJava(`set_custom_sound_path:${JSON.stringify(payload)}`);
   }, [customSoundPath]);
 
-  // Test sound — synthesize via Web Audio API (host-side playback is not
-  // available in VS Code; built-in sounds are generated tones).
+  // Test sound — delegate to host-side Java SoundNotificationService with boosted volume
   const handleTestSound = useCallback(() => {
-    type AudioContextCtor = typeof AudioContext;
-    const w = window as unknown as { AudioContext?: AudioContextCtor; webkitAudioContext?: AudioContextCtor };
-    const Ctor = w.AudioContext ?? w.webkitAudioContext;
-    if (!Ctor) return;
-    try {
-      const ctx = new Ctor();
-      const now = ctx.currentTime;
-      const tone = (freq: number, start: number, duration: number, gainValue = 0.18, type: OscillatorType = 'sine') => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = type;
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, now + start);
-        gain.gain.linearRampToValueAtTime(gainValue, now + start + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + duration);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now + start);
-        osc.stop(now + start + duration);
-      };
-      switch (selectedSound) {
-        case 'chime':
-          tone(523.25, 0, 0.25);
-          tone(659.25, 0.12, 0.25);
-          tone(783.99, 0.24, 0.35);
-          break;
-        case 'bell':
-          tone(880, 0, 0.3, 0.14);
-          tone(1320, 0, 0.3, 0.08);
-          break;
-        case 'ding':
-          tone(1200, 0, 0.15, 0.2);
-          break;
-        case 'success':
-          tone(523.25, 0, 0.12);
-          tone(659.25, 0.1, 0.12);
-          tone(783.99, 0.2, 0.12);
-          tone(1046.5, 0.3, 0.3);
-          break;
-        case 'default':
-        default:
-          tone(800, 0, 0.2);
-          break;
-      }
-      window.setTimeout(() => void ctx.close().catch(() => {}), 1200);
-    } catch {
-      // Audio unavailable — ignore
-    }
-  }, [selectedSound]);
+    const payload = {
+      soundId: selectedSound,
+      path: customSoundPath,
+    };
+    sendToJava(`test_sound:${JSON.stringify(payload)}`);
+  }, [selectedSound, customSoundPath]);
 
   // Browse sound file
   const handleBrowseSound = useCallback(() => {

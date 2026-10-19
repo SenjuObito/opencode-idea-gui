@@ -714,13 +714,27 @@ export function getContentBlocks(
       (block) => block.type === 'text' && typeof block.text === 'string' && String(block.text).trim().length > 0,
     );
     if (
-      !hasTextBlock &&
       message.content &&
       message.content.trim() &&
       !isSyntheticToolMessageContent(message.content, rawBlocks) &&
       !isPlaceholderMessageContent(message.content)
     ) {
-      return [...rawBlocks, { type: 'text', text: localizeMessage(message.content) }];
+      if (!hasTextBlock) {
+        return [...rawBlocks, { type: 'text', text: localizeMessage(message.content) }];
+      }
+
+      // Check if message.content has trailing text that is missing from rawBlocks
+      const allRawText = rawBlocks
+        .filter((b) => b.type === 'text' && typeof (b as any).text === 'string')
+        .map((b) => String((b as any).text || '').trim())
+        .join('');
+      const trimmedContent = message.content.trim();
+      if (allRawText && trimmedContent.length > allRawText.length && trimmedContent.startsWith(allRawText)) {
+        const trailing = trimmedContent.slice(allRawText.length).trim();
+        if (trailing.length > 0) {
+          return [...rawBlocks, { type: 'text', text: localizeMessage(trailing) }];
+        }
+      }
     }
     return rawBlocks;
   }

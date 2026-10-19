@@ -65,6 +65,7 @@ export function registerMessageCallbacks(
     updateContextUsageData,
     closeContextUsageDialog,
     currentSessionIdRef,
+    setStreamingActive,
   } = options;
 
   const ensureStreamingAssistantPreserved = (prevList: ClaudeMessage[], resultList: ClaudeMessage[]): ClaudeMessage[] => {
@@ -1353,6 +1354,82 @@ export function registerMessageCallbacks(
         messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
       }
     });
+  };
+
+  window.onSessionHydrated = (packetJson: string) => {
+    try {
+      const packet = JSON.parse(packetJson);
+      const {
+        sessionId: targetSessionId,
+        messages: authoritativeMessages,
+        isStreaming,
+        status,
+        loading,
+        revertBoundaryId,
+      } = packet;
+
+      if (!targetSessionId || !Array.isArray(authoritativeMessages)) {
+        return;
+      }
+
+      cardDebugLog('[onSessionHydrated] received for session:', targetSessionId, 'count:', authoritativeMessages.length);
+
+      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || currentSessionIdRef?.current;
+      const isForeground = !activeSessionId || targetSessionId === activeSessionId;
+
+      if (isForeground) {
+        setMessages(authoritativeMessages);
+        window.__messageBaseIndex = 0;
+        window.__opencodeListStart = 0;
+
+        if (typeof isStreaming === 'boolean') {
+          isStreamingRef.current = isStreaming;
+          setStreamingActive?.(isStreaming);
+          if (isStreaming) {
+            const lastAssistantIdx = findLastAssistantIndex(authoritativeMessages);
+            if (lastAssistantIdx >= 0) {
+              streamingMessageIndexRef.current = lastAssistantIdx;
+              const lastAssistant = authoritativeMessages[lastAssistantIdx];
+              streamingContentRef.current = lastAssistant?.content || '';
+            }
+          } else {
+            streamingContentRef.current = '';
+          }
+        }
+
+        if (typeof loading === 'boolean') {
+          setLoading(loading);
+        }
+
+        if (typeof status === 'string') {
+          setStatus(status);
+        }
+
+        if (typeof revertBoundaryId !== 'undefined' && window.onRevertStateUpdate) {
+          window.onRevertStateUpdate(
+            targetSessionId,
+            revertBoundaryId ? { hasRevert: true, messageId: revertBoundaryId } : { hasRevert: false },
+          );
+        }
+      }
+
+      // Also ensure background tab store has the authoritative snapshot
+      if (window.__sessionTabsStore) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          (t) => {
+            t.messages = authoritativeMessages;
+            t.messageBaseIndex = 0;
+            if (typeof isStreaming === 'boolean') t.streamingActive = isStreaming;
+            if (typeof loading === 'boolean') t.loading = loading;
+            if (typeof status === 'string') t.status = status;
+            if (typeof revertBoundaryId !== 'undefined') t.revertBoundaryId = revertBoundaryId;
+          }
+        );
+      }
+    } catch (e) {
+      console.error('[MultiSession] Failed to parse onSessionHydrated', e);
+    }
   };
 
 }

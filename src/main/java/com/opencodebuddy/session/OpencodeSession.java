@@ -811,6 +811,13 @@ public class OpencodeSession {
     }
 
     /**
+     * Non-destructive authoritative reconciliation with the server transcript.
+     */
+    public CompletableFuture<Boolean> reconcileWithServer() {
+        return messageOrchestrator.reconcileWithServer();
+    }
+
+    /**
      * Represents a file attachment (e.g., image).
      */
     public static class Attachment {

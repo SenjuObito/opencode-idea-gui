@@ -8,7 +8,9 @@ import javazoom.jl.player.Player;
 
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.BooleanControl;
 import javax.sound.sampled.Clip;
+import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineEvent;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.BufferedInputStream;
@@ -271,6 +273,26 @@ public class SoundNotificationService {
             }
         });
         clip.open(audioIn);
+
+        try {
+            if (clip.isControlSupported(BooleanControl.Type.MUTE)) {
+                BooleanControl muteControl = (BooleanControl) clip.getControl(BooleanControl.Type.MUTE);
+                if (muteControl.getValue()) {
+                    muteControl.setValue(false);
+                }
+            }
+            if (clip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+                FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+                gainControl.setValue(gainControl.getMaximum());
+            }
+            if (clip.isControlSupported(FloatControl.Type.VOLUME)) {
+                FloatControl volumeControl = (FloatControl) clip.getControl(FloatControl.Type.VOLUME);
+                volumeControl.setValue(volumeControl.getMaximum());
+            }
+        } catch (Exception e) {
+            LOG.debug("[SoundNotification] Could not adjust audio controls: " + e.getMessage());
+        }
+
         clip.start();
 
         // Wait for playback to complete (max 10 seconds)

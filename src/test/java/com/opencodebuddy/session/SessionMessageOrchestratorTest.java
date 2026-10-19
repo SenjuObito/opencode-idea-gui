@@ -453,6 +453,144 @@ public class SessionMessageOrchestratorTest {
         assertNull(orchestrator.extractMessageContentForMatching(msgWithEmptyMessage));
     }
 
+    @Test
+    public void reconcileWithServerAppendsNewMessagesWhenServerHasMore() {
+        SessionState state = new SessionState();
+        state.setSessionId("session-reconcile-more");
+        state.setProvider("opencode");
+        OpencodeSession.Message localMsg = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.USER, "First user prompt");
+        state.addMessage(localMsg);
+
+        RecordingCallback callback = new RecordingCallback();
+        SessionCallbackFacade callbackFacade = new SessionCallbackFacade(null);
+        callbackFacade.setCallback(callback);
+
+        RecordingHistoryAccess historyAccess = new RecordingHistoryAccess();
+        historyAccess.providerHistory = List.of(
+                createProviderMessage("user", "First user prompt"),
+                createProviderMessage("assistant", "Final summary after background completion")
+        );
+
+        SessionMessageOrchestrator orchestrator = new SessionMessageOrchestrator(
+                state,
+                new MessageParser(),
+                callbackFacade,
+                historyAccess,
+                (used, max) -> {},
+                0,
+                0
+        );
+
+        Boolean updated = orchestrator.reconcileWithServer().join();
+
+        assertTrue(updated);
+        assertEquals(2, state.getMessages().size());
+        assertEquals("Final summary after background completion", state.getMessages().get(1).content);
+        assertEquals(1, callback.messageUpdates.size());
+    }
+
+    @Test
+    public void reconcileWithServerSkipsUpdateWhenAlreadyConsistent() {
+        SessionState state = new SessionState();
+        state.setSessionId("session-reconcile-same");
+        state.setProvider("opencode");
+        state.addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "Prompt 1"));
+        state.addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ASSISTANT, "Answer 1"));
+
+        RecordingCallback callback = new RecordingCallback();
+        SessionCallbackFacade callbackFacade = new SessionCallbackFacade(null);
+        callbackFacade.setCallback(callback);
+
+        RecordingHistoryAccess historyAccess = new RecordingHistoryAccess();
+        historyAccess.providerHistory = List.of(
+                createProviderMessage("user", "Prompt 1"),
+                createProviderMessage("assistant", "Answer 1")
+        );
+
+        SessionMessageOrchestrator orchestrator = new SessionMessageOrchestrator(
+                state,
+                new MessageParser(),
+                callbackFacade,
+                historyAccess,
+                (used, max) -> {},
+                0,
+                0
+        );
+
+        Boolean updated = orchestrator.reconcileWithServer().join();
+
+        assertFalse(updated);
+        assertEquals(2, state.getMessages().size());
+        assertEquals(0, callback.messageUpdates.size());
+    }
+
+    @Test
+    public void reconcileWithServerDoesNothingWhenBusyOrStreaming() {
+        SessionState state = new SessionState();
+        state.setSessionId("session-reconcile-busy");
+        state.setProvider("opencode");
+        state.setBusy(true);
+        state.addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "Streaming..."));
+
+        RecordingCallback callback = new RecordingCallback();
+        SessionCallbackFacade callbackFacade = new SessionCallbackFacade(null);
+        callbackFacade.setCallback(callback);
+
+        RecordingHistoryAccess historyAccess = new RecordingHistoryAccess();
+        historyAccess.providerHistory = List.of(
+                createProviderMessage("user", "Streaming..."),
+                createProviderMessage("assistant", "Server full message")
+        );
+
+        SessionMessageOrchestrator orchestrator = new SessionMessageOrchestrator(
+                state,
+                new MessageParser(),
+                callbackFacade,
+                historyAccess,
+                (used, max) -> {},
+                0,
+                0
+        );
+
+        Boolean updated = orchestrator.reconcileWithServer().join();
+
+        assertFalse(updated);
+        assertEquals(1, state.getMessages().size());
+        assertEquals(0, historyAccess.providerHistoryRequests.get());
+    }
+
+    @Test
+    public void reconcileWithServerPreservesLocalStateWhenServerReturnsEmpty() {
+        SessionState state = new SessionState();
+        state.setSessionId("session-reconcile-empty");
+        state.setProvider("opencode");
+        state.addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "Existing message"));
+
+        RecordingCallback callback = new RecordingCallback();
+        SessionCallbackFacade callbackFacade = new SessionCallbackFacade(null);
+        callbackFacade.setCallback(callback);
+
+        RecordingHistoryAccess historyAccess = new RecordingHistoryAccess();
+        historyAccess.providerHistory = List.of();
+
+        SessionMessageOrchestrator orchestrator = new SessionMessageOrchestrator(
+                state,
+                new MessageParser(),
+                callbackFacade,
+                historyAccess,
+                (used, max) -> {},
+                0,
+                0
+        );
+
+        Boolean updated = orchestrator.reconcileWithServer().join();
+
+        assertFalse(updated);
+        assertEquals(1, state.getMessages().size());
+        assertEquals("Existing message", state.getMessages().get(0).content);
+    }
+
     private JsonObject createHistoryUserMessage(String uuid, String text) {
         JsonObject contentBlock = new JsonObject();
         contentBlock.addProperty("type", "text");

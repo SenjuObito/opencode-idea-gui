@@ -9,6 +9,7 @@ import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -190,6 +191,90 @@ public class SessionMessageOrchestrator {
             } finally {
                 state.setLoading(false);
                 callbackFacade.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
+            }
+        });
+    }
+
+    /**
+     * Non-destructive authoritative reconciliation with the server transcript.
+     * <p>
+     * Reconciles in-memory messages with the authoritative server transcript when the session
+     * is idle. If the server transcript has more messages or a newer final turn, the in-memory
+     * snapshot is atomically updated and pushed through the callback facade.
+     * If the session is currently streaming or the server returns empty data while local messages
+     * exist, reconciliation safely yields without mutating state.
+     * </p>
+     * @return CompletableFuture completing with true if local state was updated with new messages, false otherwise
+     */
+    public CompletableFuture<Boolean> reconcileWithServer() {
+        if (state.getSessionId() == null || state.isBusy()) {
+            return CompletableFuture.completedFuture(false);
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (state.isBusy()) {
+                    return false;
+                }
+
+                String currentSessionId = state.getSessionId();
+                String currentCwd = state.getCwd();
+                String currentProvider = state.getProvider();
+
+                LOG.info("Reconciling session from server: sessionId=" + currentSessionId + ", cwd=" + currentCwd);
+                List<JsonObject> serverMessages =
+                        historyAccess.getProviderSessionMessages(currentProvider, currentSessionId, currentCwd);
+                if (serverMessages == null || serverMessages.isEmpty()) {
+                    LOG.debug("Reconcile returned no messages for " + currentSessionId + ", keeping local state");
+                    return false;
+                }
+
+                List<OpencodeSession.Message> parsedMessages = new ArrayList<>();
+                for (JsonObject msg : serverMessages) {
+                    OpencodeSession.Message message = messageParser.parseServerMessage(msg);
+                    if (message != null) {
+                        parsedMessages.add(message);
+                    }
+                }
+
+                if (parsedMessages.isEmpty()) {
+                    return false;
+                }
+
+                List<OpencodeSession.Message> localMessages = state.getMessages();
+                boolean needsUpdate = false;
+                if (parsedMessages.size() > localMessages.size()) {
+                    needsUpdate = true;
+                } else if (parsedMessages.size() == localMessages.size() && !localMessages.isEmpty()) {
+                    OpencodeSession.Message latestParsed = parsedMessages.get(parsedMessages.size() - 1);
+                    OpencodeSession.Message latestLocal = localMessages.get(localMessages.size() - 1);
+                    String parsedContent = latestParsed.content != null ? latestParsed.content : "";
+                    String localContent = latestLocal.content != null ? latestLocal.content : "";
+                    if (!parsedContent.equals(localContent)) {
+                        needsUpdate = true;
+                    }
+                }
+
+                if (!needsUpdate) {
+                    LOG.debug("Reconcile matched local state for session " + currentSessionId + " (" + localMessages.size() + " msgs)");
+                    return false;
+                }
+
+                if (state.isBusy()) {
+                    LOG.info("Session became busy during reconcile, discarding server snapshot: " + currentSessionId);
+                    return false;
+                }
+
+                LOG.info("Reconcile updating session " + currentSessionId + ": local=" + localMessages.size()
+                        + " msgs, server=" + parsedMessages.size() + " msgs");
+                state.setError(null);
+                state.replaceMessages(parsedMessages);
+                restoreTokenUsage();
+                callbackFacade.notifyMessageUpdate(state.getMessages());
+                return true;
+            } catch (Exception e) {
+                LOG.warn("Reconcile failed for session " + state.getSessionId() + ": " + e.getMessage());
+                return false;
             }
         });
     }

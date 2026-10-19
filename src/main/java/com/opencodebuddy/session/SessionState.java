@@ -401,6 +401,18 @@ public class SessionState {
     }
 
     /**
+     * Atomically replace the entire message list with a new snapshot.
+     */
+    public void replaceMessages(List<OpencodeSession.Message> newMessages) {
+        synchronized (messages) {
+            messages.clear();
+            if (newMessages != null && !newMessages.isEmpty()) {
+                messages.addAll(newMessages);
+            }
+        }
+    }
+
+    /**
      * Remove every message whose provider id matches one of {@code messageIds}.
      *
      * <p>This is the counterpart to the server's authoritative deletion: opencode

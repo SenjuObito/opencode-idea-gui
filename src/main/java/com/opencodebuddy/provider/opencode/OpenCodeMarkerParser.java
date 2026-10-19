@@ -210,7 +210,7 @@ public final class OpenCodeMarkerParser {
             // yields the raw object string when doubly encoded).
             String payload = stripSeparator(line, "[TODO_UPDATED]").trim();
             String decoded = decodeJsonStringPayload(payload);
-            callback.onMessage("todo_updated", decoded.equals(payload) ? payload : gson.toJson(decoded));
+            callback.onMessage("todo_updated", decoded);
             return;
         }
 

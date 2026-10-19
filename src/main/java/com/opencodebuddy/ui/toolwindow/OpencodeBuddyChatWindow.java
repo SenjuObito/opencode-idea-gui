@@ -1604,7 +1604,7 @@ public class OpencodeBuddyChatWindow {
                 },
                 permissionHandler,
                 () -> slashCommandsFetched,
-                this::onStreamEnded
+                () -> onStreamEnded(targetSessionId)
         ) {
             @Override
             public void onSessionIdReceived(String newSessionId) {
@@ -1717,6 +1717,44 @@ public class OpencodeBuddyChatWindow {
                 this.streamCoalescer = coalescer;
             }
             persistTabSessionState();
+            hydrateSessionToWebview(targetSession);
+
+            if (!targetSession.isBusy()) {
+                targetSession.reconcileWithServer().thenAccept(updated -> {
+                    if (Boolean.TRUE.equals(updated)) {
+                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
+                            if (!disposed && targetSessionId.equals(activeSessionId)) {
+                                hydrateSessionToWebview(targetSession);
+                            }
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    public void hydrateSessionToWebview(OpencodeSession targetSession) {
+        if (targetSession == null) return;
+        String sId = targetSession.getSessionId();
+        if (sId == null || sId.isBlank()) return;
+
+        try {
+            List<OpencodeSession.Message> messages = targetSession.getState().getMessages();
+            String messagesJson = com.opencodebuddy.util.MessageJsonConverter.convertMessagesToJson(messages);
+
+            com.google.gson.JsonObject packet = new com.google.gson.JsonObject();
+            packet.addProperty("sessionId", sId);
+            packet.addProperty("isStreaming", targetSession.isBusy());
+            packet.addProperty("loading", targetSession.isLoading());
+            if (targetSession.getState().getRevertState() != null) {
+                packet.addProperty("revertBoundaryId", targetSession.getState().getRevertState().messageId);
+            }
+            packet.add("messages", com.google.gson.JsonParser.parseString(messagesJson));
+
+            callJavaScript("onSessionHydrated", packet.toString());
+            LOG.info("[hydrateSession] Sent onSessionHydrated for session " + sId + " with " + messages.size() + " messages");
+        } catch (Exception e) {
+            LOG.warn("Failed to hydrate session to webview: " + sId, e);
         }
     }
 
@@ -2780,7 +2818,7 @@ public class OpencodeBuddyChatWindow {
     }
 
     static boolean shouldReconcileTranscriptAtStreamEnd(String provider, String sessionId) {
-        return "grok".equals(provider) && sessionId != null && !sessionId.isBlank();
+        return ("grok".equals(provider) || "opencode".equals(provider)) && sessionId != null && !sessionId.isBlank();
     }
 
     /** (Re)arm the safety backstop; overlapping arms collapse to one pending tick. */
@@ -2961,20 +2999,28 @@ public class OpencodeBuddyChatWindow {
     }
 
     private void onStreamEnded() {
-        if (session == null) {
+        onStreamEnded(this.activeSessionId);
+    }
+
+    private void onStreamEnded(String targetSessionId) {
+        OpencodeSession target = targetSessionId != null ? getSession(targetSessionId) : this.session;
+        if (target == null) {
+            target = this.session;
+        }
+        if (target == null) {
             return;
         }
         // Suppress the task-completion notification (sound + toast) when the user
         // manually stopped the turn. Only natural completions should produce a sound.
-        if (session.isManuallyInterrupted()) {
+        if (target.isManuallyInterrupted()) {
             LOG.debug("Stream ended after manual interrupt - suppressing completion sound");
             return;
         }
-        if ("claude".equals(session.getProvider()) && session.getError() == null) {
+        if (target.getError() == null) {
             com.opencodebuddy.notifications.OpencodeNotifier.showSuccess(
                 project,
-                com.opencodebuddy.notifications.OpencodeNotifier.buildTitleFromSession(session),
-                com.opencodebuddy.notifications.OpencodeNotifier.buildPreviewFromSession(session, "Task completed"));
+                com.opencodebuddy.notifications.OpencodeNotifier.buildTitleFromSession(target),
+                com.opencodebuddy.notifications.OpencodeNotifier.buildPreviewFromSession(target, "Task completed"));
         }
     }
 

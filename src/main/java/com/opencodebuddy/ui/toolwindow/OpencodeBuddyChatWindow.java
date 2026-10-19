@@ -1651,7 +1651,9 @@ public class OpencodeBuddyChatWindow {
     }
 
     public void registerSession(String targetSessionId, OpencodeSession s, SessionCallbackAdapter adapter, StreamMessageCoalescer coalescer) {
-        if (targetSessionId == null || targetSessionId.isBlank()) return;
+        if (targetSessionId == null || targetSessionId.isBlank()) {
+            return;
+        }
         if (s != null) {
             sessions.put(targetSessionId, s);
             if (handlerContext != null) {
@@ -1693,7 +1695,9 @@ public class OpencodeBuddyChatWindow {
     }
 
     public void switchSession(String targetSessionId) {
-        if (targetSessionId == null || targetSessionId.isBlank()) return;
+        if (targetSessionId == null || targetSessionId.isBlank()) {
+            return;
+        }
         activeSessionId = targetSessionId;
         OpencodeSession targetSession = getSession(targetSessionId);
         if (targetSession != null) {
@@ -1734,9 +1738,13 @@ public class OpencodeBuddyChatWindow {
     }
 
     public void hydrateSessionToWebview(OpencodeSession targetSession) {
-        if (targetSession == null) return;
+        if (targetSession == null) {
+            return;
+        }
         String sId = targetSession.getSessionId();
-        if (sId == null || sId.isBlank()) return;
+        if (sId == null || sId.isBlank()) {
+            return;
+        }
 
         try {
             List<OpencodeSession.Message> messages = targetSession.getState().getMessages();
@@ -1759,7 +1767,9 @@ public class OpencodeBuddyChatWindow {
     }
 
     public void closeSession(String targetSessionId) {
-        if (targetSessionId == null || targetSessionId.isBlank()) return;
+        if (targetSessionId == null || targetSessionId.isBlank()) {
+            return;
+        }
         sessions.remove(targetSessionId);
         if (daemonBridge != null) {
             // Symmetric teardown: the sink holds this session's parser + handler,

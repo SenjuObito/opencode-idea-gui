@@ -1,0 +1,51 @@
+name: Quality Gate
+
+# 提前拦截 checkstyle 违规。
+#
+# build.yml 和 tests.yml 都只在 tag push 时运行，意味着一个违反规则的提交可以
+# 一直潜伏到发版当天才炸（v0.2.1 就是这样：22 处违规攒了十几个提交，最后
+# buildPlugin 的依赖 checkstyleMain 失败，release 也没产出）。
+#
+# 这个 job 只跑 checkstyleMain：不打包、不做多平台矩阵、不发布，两分钟内出结果。
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支连续 push 时取消上一次，避免排队。
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checkstyle:
+    name: Checkstyle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # checkstyleMain 依赖 compileJava → buildWebview → processResources，
+      # 所以 webview 的依赖必须装好。
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22.12.0'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Install webview dependencies
+        working-directory: webview
+        run: npm ci
+
+      - name: Run checkstyle
+        run: ./gradlew checkstyleMain

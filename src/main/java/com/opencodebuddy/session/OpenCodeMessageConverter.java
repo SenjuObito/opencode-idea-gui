@@ -605,7 +605,9 @@ public final class OpenCodeMessageConverter {
                         item.addProperty("custom", !qObj.has("custom") || qObj.get("custom").getAsBoolean());
                         item.add("options", qObj.has("options") && qObj.get("options").isJsonArray()
                                 ? qObj.getAsJsonArray("options") : new JsonArray());
-                        if (qObj.has("key")) item.add("key", qObj.get("key"));
+                        if (qObj.has("key")) {
+                            item.add("key", qObj.get("key"));
+                        }
                         normalizedQuestions.add(item);
                     } else if (qElem.isJsonPrimitive()) {
                         JsonObject item = new JsonObject();
@@ -657,7 +659,9 @@ public final class OpenCodeMessageConverter {
                     if (aElem.isJsonArray()) {
                         List<String> list = new ArrayList<>();
                         for (JsonElement item : aElem.getAsJsonArray()) {
-                            if (item.isJsonPrimitive()) list.add(item.getAsString());
+                            if (item.isJsonPrimitive()) {
+                                list.add(item.getAsString());
+                            }
                         }
                         ansStr = String.join(", ", list);
                     } else if (aElem.isJsonPrimitive()) {

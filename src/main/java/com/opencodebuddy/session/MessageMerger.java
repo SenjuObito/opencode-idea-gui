@@ -174,12 +174,18 @@ public class MessageMerger {
 
         for (int i = 0; i < baseContent.size(); i++) {
             JsonElement el = baseContent.get(i);
-            if (!el.isJsonObject()) continue;
+            if (!el.isJsonObject()) {
+                continue;
+            }
             JsonObject existing = el.getAsJsonObject();
-            if (!"tool_use".equals(getContentBlockType(existing))) continue;
+            if (!"tool_use".equals(getContentBlockType(existing))) {
+                continue;
+            }
             String existingName = normalizeToolName(existing.has("name") && existing.get("name").isJsonPrimitive()
                     ? existing.get("name").getAsString() : "");
-            if (!incomingName.equals(existingName)) continue;
+            if (!incomingName.equals(existingName)) {
+                continue;
+            }
 
             JsonObject existingInput = existing.has("input") && existing.get("input").isJsonObject()
                     ? existing.getAsJsonObject("input") : new JsonObject();
@@ -209,7 +215,9 @@ public class MessageMerger {
     }
 
     private static String normalizeToolName(String name) {
-        if (name == null) return "";
+        if (name == null) {
+            return "";
+        }
         String trimmed = name.trim();
         if ("shell".equalsIgnoreCase(trimmed)) {
             return "bash";
@@ -218,7 +226,9 @@ public class MessageMerger {
     }
 
     private static String extractToolCommand(JsonObject input) {
-        if (input == null) return null;
+        if (input == null) {
+            return null;
+        }
         if (input.has("command") && input.get("command").isJsonPrimitive()) {
             return input.get("command").getAsString();
         }

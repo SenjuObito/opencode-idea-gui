@@ -216,7 +216,9 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         }
         ApplicationManager.getApplication().invokeLater(() -> {
             if (isInactive() || !hasIdentity()) {
-                if (!isInactive()) warnUnattributedOnce("status message");
+                if (!isInactive()) {
+                    warnUnattributedOnce("status message");
+                }
                 return;
             }
             jsTarget.callJavaScript("updateStatus", getTargetSessionId(), JsUtils.escapeJs(message));
@@ -300,7 +302,9 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         }
         ApplicationManager.getApplication().invokeLater(() -> {
             if (isInactive() || !hasIdentity()) {
-                if (!isInactive()) warnUnattributedOnce("thinking status");
+                if (!isInactive()) {
+                    warnUnattributedOnce("thinking status");
+                }
                 return;
             }
             jsTarget.callJavaScript("showThinkingStatus", getTargetSessionId(), String.valueOf(isThinking));
@@ -331,7 +335,9 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         }
         ApplicationManager.getApplication().invokeLater(() -> {
             if (isInactive() || !hasIdentity()) {
-                if (!isInactive()) warnUnattributedOnce("summary");
+                if (!isInactive()) {
+                    warnUnattributedOnce("summary");
+                }
                 return;
             }
             jsTarget.callJavaScript("showSummary", getTargetSessionId(), JsUtils.escapeJs(summary));
@@ -358,7 +364,9 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         streamCoalescer.onStreamStart();
         ApplicationManager.getApplication().invokeLater(() -> {
             if (isInactive() || !hasIdentity()) {
-                if (!isInactive()) warnUnattributedOnce("stream start");
+                if (!isInactive()) {
+                    warnUnattributedOnce("stream start");
+                }
                 return;
             }
             jsTarget.callJavaScript("showLoading", getTargetSessionId(), "true");

@@ -210,12 +210,16 @@ public class EditorContextTracker {
     }
 
     public void refreshCurrentEditorContext() {
-        if (disposed) return;
+        if (disposed) {
+            return;
+        }
         ApplicationManager.getApplication().invokeLater(this::updateContextInfo);
     }
 
     public void clearSelectionInfo() {
-        if (disposed) return;
+        if (disposed) {
+            return;
+        }
         ApplicationManager.getApplication().invokeLater(callback::clearSelectionInfo);
     }
 

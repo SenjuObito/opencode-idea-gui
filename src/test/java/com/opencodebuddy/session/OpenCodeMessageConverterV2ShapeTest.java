@@ -21,8 +21,10 @@ import static org.junit.Assert.assertTrue;
  *       一路冒到 {@code SessionProviderRouter}，用户看到的就是
  *       「Failed to load messages for session X: JsonObject」+ 空白标签页。
  *       只有带出错工具的会话会中招，所以症状是「个别会话加载失败」。</li>
- *   <li>中断/错误语义标记（{@code aborted} / {@code isError}）必须透传到前端，
- *       否则前端只能把「已停止生成」当成普通文本渲染。</li>
+ *   <li>中断/错误语义标记（{@code aborted} / {@code isError}）必须转成前端认识的
+ *       消息类型：{@code aborted} → {@code notification}（subtype=stopped），
+ *       {@code isError} → {@code error} 消息。丢掉标记的话，前端只能把它们当成
+ *       普通文本渲染。</li>
  *   <li>任何字段类型不符都只该丢掉那一个字段/那一条消息，不该抛出。</li>
  * </ol>
  */
@@ -124,9 +126,16 @@ public class OpenCodeMessageConverterV2ShapeTest {
 
         List<JsonObject> messages = OpenCodeMessageConverter.convert(arrayOf(entry));
 
-        JsonObject block = firstContentBlock(messages.get(0));
-        assertTrue(block.has("isError") && block.get("isError").getAsBoolean());
-        assertFalse("aborted 与 isError 互斥", block.has("aborted"));
+        // isError 的 part 走的是独立的 error 消息，而不是带 isError 标记的普通
+        // text block：前端的 MessageItem 只按 type === 'error' 渲染错误气泡，
+        // 从来没有人读 block.isError。把它留在 assistant 气泡里反而会显示成
+        // 普通回复。
+        assertEquals("错误 part 应产出独立的 error 消息", 1, messages.size());
+        JsonObject msg = messages.get(0);
+        assertEquals("error", msg.get("type").getAsString());
+        assertEquals("文本必须保留，只剥掉 [Error: ] 外壳",
+                "upstream connect error", msg.get("content").getAsString());
+        assertFalse("aborted 与 isError 互斥", msg.getAsJsonObject("raw").has("aborted"));
     }
 
     @Test

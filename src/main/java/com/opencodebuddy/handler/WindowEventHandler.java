@@ -7,6 +7,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * Handles window-level events from the frontend:
  * heartbeat, tab status changes, session lifecycle signals, and DOM commit acknowledgments.
@@ -552,12 +554,14 @@ public class WindowEventHandler extends BaseMessageHandler {
             } catch (Exception ignored) {}
         }
         final String finalTargetSessionId = targetSessionId;
-        final boolean[] errorReported = {false};
+        final AtomicBoolean errorReported = new AtomicBoolean(false);
         requestDaemonJson("summarize", () -> singleSessionParams(finalTargetSessionId, resolvedModel), new ResponseHandler() {
             @Override
             public void onError(String error) {
-                if (errorReported[0]) return;
-                errorReported[0] = true;
+                if (errorReported.get()) {
+                    return;
+                }
+                errorReported.set(true);
                 LOG.warn("[WindowEventHandler] Compact session failed: " + error);
                 callJavaScript("onCompactError", finalTargetSessionId, error != null ? error : "");
             }
@@ -568,8 +572,8 @@ public class WindowEventHandler extends BaseMessageHandler {
                     LOG.info("[WindowEventHandler] Compact session succeeded");
                     new com.opencodebuddy.handler.UsagePushService(context).refreshContextBar();
                     callJavaScript("onCompactSuccess", finalTargetSessionId);
-                } else if (!errorReported[0]) {
-                    errorReported[0] = true;
+                } else if (!errorReported.get()) {
+                    errorReported.set(true);
                     LOG.warn("[WindowEventHandler] Compact session failed (success=false)");
                     callJavaScript("onCompactError", finalTargetSessionId, "");
                 }
@@ -648,7 +652,9 @@ public class WindowEventHandler extends BaseMessageHandler {
     }
 
     private String parseSessionId(String content) {
-        if (content == null || content.isBlank()) return null;
+        if (content == null || content.isBlank()) {
+            return null;
+        }
         try {
             if (content.trim().startsWith("{")) {
                 com.google.gson.JsonObject json = new com.google.gson.Gson().fromJson(content, com.google.gson.JsonObject.class);

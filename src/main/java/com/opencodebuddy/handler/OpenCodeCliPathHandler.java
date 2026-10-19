@@ -102,6 +102,9 @@ public class OpenCodeCliPathHandler {
                 context.broadcastToAll("window.updateOpencodeCliPath", context.escapeJs(gson.toJson(response)));
                 context.callJavaScript("window.showSuccess", context.escapeJs("opencode CLI path saved"));
             });
+
+            // Make the running daemon re-resolve without an IDE restart.
+            notifyEngineSettingsChanged();
         } catch (Exception e) {
             LOG.error("[OpenCodeCliPathHandler] Failed to save opencode CLI path: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() ->
@@ -155,5 +158,41 @@ public class OpenCodeCliPathHandler {
         }
 
         return null;
+    }
+
+    /**
+     * Ask the running daemon to drop its cached CLI/engine resolution and respawn
+     * {@code opencode serve} with the newly-saved settings — no IDE restart needed.
+     *
+     * <p>The daemon's process environment is frozen at spawn, so the freshly
+     * resolved values are shipped in the request payload; the daemon applies them
+     * before re-resolving. A no-op when the daemon is not running (the next launch
+     * reads the updated config.json anyway).</p>
+     */
+    private void notifyEngineSettingsChanged() {
+        CompletableFuture.runAsync(() -> {
+            try {
+                com.opencodebuddy.provider.opencode.OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+                if (bridge == null || !bridge.isDaemonAlive()) {
+                    return;
+                }
+                String nodeExec = com.opencodebuddy.bridge.NodeDetector.getInstance().findNodeExecutable();
+                com.opencodebuddy.bridge.CliSpecResolver.CliSpec spec =
+                        new com.opencodebuddy.bridge.CliSpecResolver(settingsService).resolve(nodeExec);
+                boolean isWsl = com.opencodebuddy.bridge.NodeDetector.isWslPath(nodeExec);
+                JsonObject env = new JsonObject();
+                for (java.util.Map.Entry<String, String> entry : spec.toEnvironment().entrySet()) {
+                    String value = entry.getValue();
+                    env.addProperty(entry.getKey(),
+                            isWsl ? com.opencodebuddy.bridge.NodeDetector.convertToWslPath(value) : value);
+                }
+                JsonObject params = new JsonObject();
+                params.add("env", env);
+                bridge.requestJson("opencode.invalidate", params);
+                LOG.info("[OpenCodeCliPathHandler] Requested daemon engine re-resolve after CLI path change");
+            } catch (Exception e) {
+                LOG.warn("[OpenCodeCliPathHandler] Failed to notify daemon of CLI path change: " + e.getMessage());
+            }
+        }, AppExecutorUtil.getAppExecutorService());
     }
 }

@@ -71,7 +71,7 @@ public final class CliSpecResolver {
         this(new OpenCodeBuddySettingsService());
     }
 
-    CliSpecResolver(OpenCodeBuddySettingsService settingsService) {
+    public CliSpecResolver(OpenCodeBuddySettingsService settingsService) {
         this(settingsService::getOpencodeCliPath, settingsService::getConfigPath);
     }
 

@@ -144,6 +144,16 @@ public final class CliStatusDetector {
                 ? new String[]{".cmd", ".exe", ""}
                 : new String[]{""};
 
+        // 0. User-configured path — authoritative, mirrors the daemon's L0 tier.
+        //    Without this the settings page (and AI-feature availability checks)
+        //    could report "not installed" for a perfectly valid custom path.
+        if (tool == CliToolId.OPENCODE) {
+            String configured = configuredOpencodeCliPath();
+            if (configured != null) {
+                addConfiguredCandidate(candidates, configured);
+            }
+        }
+
         // 1. Explicit env overrides
         for (String envKey : envKeysFor(tool)) {
             String value = firstNonBlank(System.getenv(envKey));
@@ -175,9 +185,47 @@ public final class CliStatusDetector {
     private static String[] envKeysFor(CliToolId tool) {
         switch (tool) {
             case OPENCODE:
-                return new String[]{"OPENCODE_BIN", "OPENCODE_PATH", "OPENCODE_CLI_PATH"};
+                return new String[]{
+                        "OPENCODEBUDDY_CLI_PATH",
+                        "OPENCODE_BIN",
+                        "OPENCODE_PATH",
+                        "OPENCODE_CLI_PATH"
+                };
             default:
                 return new String[0];
+        }
+    }
+
+    /** The user's configured opencode path from config.json, or null when unset. */
+    private static String configuredOpencodeCliPath() {
+        try {
+            String path = new com.opencodebuddy.settings.OpenCodeBuddySettingsService().getOpencodeCliPath();
+            return (path != null && !path.trim().isEmpty()) ? path.trim() : null;
+        } catch (Exception e) {
+            LOG.debug("[CliStatusDetector] Could not read configured opencode path: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Add the configured path, plus its Windows PATHEXT siblings when the literal
+     * path has no extension (a user may type {@code C:\tools\opencode} for
+     * {@code opencode.cmd}).
+     */
+    private static void addConfiguredCandidate(Set<String> candidates, String configured) {
+        candidates.add(configured);
+        if (!PlatformUtils.isWindows()) {
+            return;
+        }
+        File configuredFile = new File(configured);
+        if (configuredFile.isFile()) {
+            return;
+        }
+        for (String ext : new String[]{".exe", ".cmd", ".bat"}) {
+            File withExt = new File(configured + ext);
+            if (withExt.isFile()) {
+                candidates.add(withExt.getAbsolutePath());
+            }
         }
     }
 

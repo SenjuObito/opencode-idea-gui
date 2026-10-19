@@ -189,6 +189,10 @@ public class NodePathHandler {
                         context.broadcastToAll("window.updateNodePath", context.escapeJs(gson.toJson(response)));
                         context.callJavaScript("window.showSwitchSuccess", context.escapeJs("Node.js 路径已保存并生效,无需重启IDE"));
                         context.callJavaScript("window.checkNodeEnvironment");
+                        // The daemon runs on a fixed Node runtime chosen at spawn, so a
+                        // Node path change can only take effect by restarting the daemon
+                        // (which re-launches it via NodeDetector#findNodeExecutable()).
+                        restartDaemonForNodeChange();
                     } else {
                         context.callJavaScript("window.updateNodePath", context.escapeJs(gson.toJson(response)));
                         String msg = failureMsgFinal != null ? failureMsgFinal : "无法验证指定的 Node.js 路径";
@@ -207,5 +211,26 @@ public class NodePathHandler {
         });
 
         LOG.debug("[NodePathHandler] ========== handleSetNodePath END (async dispatched) ==========");
+    }
+
+    /**
+     * Restart the daemon so it is relaunched with the newly-configured Node.js
+     * runtime. Runs off the EDT: {@code stop()} blocks until the old process and
+     * its threads are torn down.
+     */
+    private void restartDaemonForNodeChange() {
+        CompletableFuture.runAsync(() -> {
+            try {
+                com.opencodebuddy.provider.opencode.OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+                if (bridge == null) {
+                    return;
+                }
+                bridge.stopDaemon();
+                boolean started = bridge.ensureDaemonRunning();
+                LOG.info("[NodePathHandler] Daemon restarted after Node.js path change: " + started);
+            } catch (Exception e) {
+                LOG.warn("[NodePathHandler] Failed to restart daemon after Node.js path change: " + e.getMessage());
+            }
+        }, AppExecutorUtil.getAppExecutorService());
     }
 }

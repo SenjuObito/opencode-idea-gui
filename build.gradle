@@ -478,15 +478,74 @@ tasks.named('processResources') {
     mustRunAfter('buildWebview')
 }
 
-def coreVersion = '0.1.0'
-def coreZipReleaseUrl = "https://github.com/SenjuObito/opencode-buddy-core/releases/download/v${coreVersion}/ai-bridge.zip"
-def coreHashReleaseUrl = "https://github.com/SenjuObito/opencode-buddy-core/releases/download/v${coreVersion}/ai-bridge.hash"
+// opencode-buddy-core bridge version strategy:
+//   - development: use the sibling checkout (../opencode-buddy-core) when present;
+//   - CI / clean checkouts: resolve the *latest* GitHub release via the API on each
+//     build, TTL-cached so rapid rebuilds and offline builds stay cheap.
+// The previous hand-pinned constant silently shipped a stale bridge whose
+// cli-path.js did not understand OPENCODEBUDDY_CLI_PATH, so the user's configured
+// opencode path was ignored and the engine was auto-scanned instead.
+def coreVersionDefault = '0.1.0'
+def coreRepoSlug = 'SenjuObito/opencode-buddy-core'
 def coreCacheDir = layout.buildDirectory.dir('core-cache').get().asFile
-def cachedCoreZip = new File(coreCacheDir, "ai-bridge-${coreVersion}.zip")
-def cachedCoreHash = new File(coreCacheDir, "ai-bridge-${coreVersion}.hash")
+def coreVersionFile = new File(coreCacheDir, 'resolved-core-version.txt')
+def coreVersionTtlMs = 60L * 60L * 1000L
 
-// Sibling repository detection for opencode-buddy-core
+// Sibling repository detection for opencode-buddy-core (development override)
 def siblingCoreDir = new File(projectDir.parentFile, 'opencode-buddy-core')
+
+def coreVersionOf = { -> coreVersionFile.exists() ? coreVersionFile.text.trim() : coreVersionDefault }
+def cachedCoreZipOf = { String v -> new File(coreCacheDir, "ai-bridge-${v}.zip") }
+def cachedCoreHashOf = { String v -> new File(coreCacheDir, "ai-bridge-${v}.hash") }
+
+// Query the latest release tag (without the leading "v"), or null on any failure.
+def resolveLatestCoreVersion = {
+    String token = System.getenv('GITHUB_TOKEN') ?: System.getenv('GH_TOKEN')
+    try {
+        def conn = (java.net.HttpURLConnection) new URI(
+                "https://api.github.com/repos/${coreRepoSlug}/releases/latest").toURL().openConnection()
+        conn.setRequestProperty('Accept', 'application/vnd.github+json')
+        conn.setRequestProperty('User-Agent', 'opencode-buddy-jetbrains-build')
+        if (token) {
+            conn.setRequestProperty('Authorization', "Bearer ${token}")
+        }
+        conn.setConnectTimeout(15000)
+        conn.setReadTimeout(20000)
+        int status = conn.getResponseCode()
+        if (status != 200) {
+            println "WARN: GitHub releases API returned HTTP ${status}; falling back to cached/default version"
+            conn.disconnect()
+            return null
+        }
+        String body = conn.inputStream.getText('UTF-8')
+        conn.disconnect()
+        def matcher = body =~ /"tag_name"\s*:\s*"v?([^"]+)"/
+        return matcher.find() ? matcher.group(1) : null
+    } catch (Exception e) {
+        println "WARN: Could not resolve latest opencode-buddy-core version: ${e.message}"
+        return null
+    }
+}
+
+// Read the cached core version, refreshing it from GitHub when the TTL has lapsed
+// (or when -PrefreshCoreVersion=true is passed).
+def resolveCoreVersion = { boolean force ->
+    coreCacheDir.mkdirs()
+    boolean fresh = coreVersionFile.exists()
+            && (System.currentTimeMillis() - coreVersionFile.lastModified()) < coreVersionTtlMs
+    if (!force && fresh) {
+        return coreVersionFile.text.trim()
+    }
+    String resolved = resolveLatestCoreVersion()
+    if (!resolved) {
+        resolved = coreVersionFile.exists() ? coreVersionFile.text.trim() : coreVersionDefault
+        println "WARN: Using fallback opencode-buddy-core version v${resolved}"
+    } else {
+        println "Resolved latest opencode-buddy-core release: v${resolved}"
+    }
+    coreVersionFile.text = resolved
+    return resolved
+}
 
 // Download or package opencode-buddy-core distribution zip automatically
 tasks.register('downloadAiBridgeCore') {
@@ -497,9 +556,15 @@ tasks.register('downloadAiBridgeCore') {
             exclude '**/node_modules/**', '**/dist/**', '**/.git/**'
         })
     }
-    outputs.files(cachedCoreZip, cachedCoreHash)
 
     doLast {
+        boolean forceVersion = (project.findProperty('refreshCoreVersion') ?: 'false').toString().toBoolean()
+        String coreVersion = resolveCoreVersion(forceVersion)
+        File cachedCoreZip = cachedCoreZipOf(coreVersion)
+        File cachedCoreHash = cachedCoreHashOf(coreVersion)
+        String coreZipReleaseUrl = "https://github.com/${coreRepoSlug}/releases/download/v${coreVersion}/ai-bridge.zip"
+        String coreHashReleaseUrl = "https://github.com/${coreRepoSlug}/releases/download/v${coreVersion}/ai-bridge.hash"
+
         // Priority 1: User explicitly specified bridge zip via env var or system property
         String customZipPath = System.getenv("OPENCODE_DEV_BRIDGE_ZIP") ?: System.getProperty("opencode.bridge.zip")
         if (customZipPath) {
@@ -602,9 +667,16 @@ tasks.register('downloadAiBridgeCore') {
 // Package ai-bridge into zip using the downloaded opencode-buddy-core release
 tasks.register('packageAiBridge') {
     dependsOn('downloadAiBridgeCore')
+    // Declare the core cache as an input so a refreshed/changed bridge actually
+    // re-packages. Without this the task was considered UP-TO-DATE whenever its
+    // outputs existed, silently shipping a stale ai-bridge.zip.
+    inputs.dir(coreCacheDir)
     outputs.files(aiBridgeArchive, aiBridgeHashFile)
 
     doLast {
+        String coreVersion = coreVersionOf()
+        File cachedCoreZip = cachedCoreZipOf(coreVersion)
+        File cachedCoreHash = cachedCoreHashOf(coreVersion)
         aiBridgePackDir.mkdirs()
         if (cachedCoreZip.exists() && cachedCoreZip.length() > 0) {
             java.nio.file.Files.copy(cachedCoreZip.toPath(), aiBridgeArchive.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)

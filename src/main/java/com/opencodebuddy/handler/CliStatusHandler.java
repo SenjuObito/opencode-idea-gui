@@ -55,7 +55,7 @@ public class CliStatusHandler extends BaseMessageHandler {
     private void handleGetStatus() {
         CompletableFuture.runAsync(() -> {
             try {
-                Map<String, CliToolStatus> statuses = CliStatusDetector.detectAll();
+                Map<String, CliToolStatus> statuses = overlayEngineStatus(CliStatusDetector.detectAll());
                 JsonObject payload = new JsonObject();
                 for (Map.Entry<String, CliToolStatus> entry : statuses.entrySet()) {
                     payload.add(entry.getKey(), toJson(entry.getValue()));
@@ -77,6 +77,43 @@ public class CliStatusHandler extends BaseMessageHandler {
             LOG.error("[CliStatusHandler] Unexpected error: " + ex.getMessage(), ex);
             return null;
         });
+    }
+
+    /**
+     * Show the path/version the daemon actually resolved for opencode, so the
+     * settings page agrees with what is really being run (the local detector uses
+     * a separate candidate list and does not read the user's configured path).
+     * A no-op when the daemon has no resolution yet.
+     */
+    private Map<String, CliToolStatus> overlayEngineStatus(Map<String, CliToolStatus> statuses) {
+        try {
+            com.opencodebuddy.provider.opencode.OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+            if (bridge == null || statuses == null) {
+                return statuses;
+            }
+            JsonObject engine = bridge.getEngineStatus();
+            if (engine == null || !engine.has("cli") || !engine.get("cli").isJsonObject()) {
+                return statuses;
+            }
+            JsonObject cli = engine.getAsJsonObject("cli");
+            if (!cli.has("path") || cli.get("path").isJsonNull()) {
+                return statuses;
+            }
+            String path = cli.get("path").getAsString();
+            if (path == null || path.trim().isEmpty()) {
+                return statuses;
+            }
+            String version = (cli.has("version") && !cli.get("version").isJsonNull())
+                    ? cli.get("version").getAsString() : null;
+            Map<String, CliToolStatus> merged = new java.util.LinkedHashMap<>(statuses);
+            merged.put(
+                    com.opencodebuddy.cli.CliToolId.OPENCODE.getId(),
+                    CliToolStatus.installed(com.opencodebuddy.cli.CliToolId.OPENCODE, version, path));
+            return merged;
+        } catch (Exception e) {
+            LOG.debug("[CliStatusHandler] Could not overlay daemon engine status: " + e.getMessage());
+            return statuses;
+        }
     }
 
     private JsonObject toJson(CliToolStatus status) {

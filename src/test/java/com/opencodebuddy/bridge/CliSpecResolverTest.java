@@ -287,4 +287,56 @@ public class CliSpecResolverTest {
         assertNull(spec.getOpencodePath());
         assertFalse(spec.toEnvironment().containsKey(CliSpecResolver.ENV_CLI_PATH));
     }
+
+    // =========================================================================
+    // Auto-detected values (opaquely filled in by CliPathAutoFill)
+    // =========================================================================
+
+    private static CliSpecResolver resolverWithAuto(String cliPath, boolean autoDetected) {
+        return new CliSpecResolver(() -> cliPath, () -> autoDetected, () -> null);
+    }
+
+    private static String missingPath() {
+        return Paths.get(System.getProperty("java.io.tmpdir"), "opencode-missing-for-test").toString();
+    }
+
+    @Test
+    public void staleAutoDetectedPathIsDroppedSoTheResolverCanScan() {
+        // The plugin filled this value in itself; the binary is gone. Blocking the
+        // engine over a value the user never typed would be a failure they cannot
+        // even explain, so L0 is dropped and the daemon re-scans instead.
+        CliSpecResolver.CliSpec spec = resolverWithAuto(missingPath(), true).resolve(null, HOME);
+        assertNull(spec.getOpencodePath());
+        assertFalse(spec.toEnvironment().containsKey(CliSpecResolver.ENV_CLI_PATH));
+        assertFalse("a note must explain why L0 was dropped", spec.getNotes().isEmpty());
+    }
+
+    @Test
+    public void staleUserConfiguredPathKeepsItsBlockingSemantics() {
+        // ADR-6: an explicit choice must surface as settings-invalid, never as a
+        // silent fallthrough to some mystery binary.
+        String missing = missingPath();
+        CliSpecResolver.CliSpec spec = resolverWithAuto(missing, false).resolve(null, HOME);
+        assertEquals(missing, spec.getOpencodePath());
+    }
+
+    @Test
+    public void autoDetectedPathThatStillExistsIsInjected() throws Exception {
+        java.nio.file.Path binary = java.nio.file.Files.createTempFile("opencode-auto-", ".exe");
+        binary.toFile().deleteOnExit();
+        String resolved = binary.toAbsolutePath().toString();
+        CliSpecResolver.CliSpec spec = resolverWithAuto(resolved, true).resolve(null, HOME);
+        assertEquals(resolved, spec.getOpencodePath());
+    }
+
+    @Test
+    public void autoDetectedFlagReadFailureFallsBackToInjectingThePath() {
+        CliSpecResolver resolver = new CliSpecResolver(
+                () -> "C:\\tools\\opencode.exe",
+                () -> {
+                    throw new IllegalStateException("config unreadable");
+                },
+                () -> null);
+        assertEquals("C:\\tools\\opencode.exe", resolver.resolve(null, HOME).getOpencodePath());
+    }
 }

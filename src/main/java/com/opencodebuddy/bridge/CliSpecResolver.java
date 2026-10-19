@@ -3,6 +3,7 @@ package com.opencodebuddy.bridge;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.intellij.openapi.diagnostic.Logger;
 
+import java.io.File;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,7 +38,9 @@ import java.util.regex.Pattern;
  *       so a host-side {@code Files.exists} would reject perfectly valid paths
  *       and &mdash; because {@code L0} failures block &mdash; take the whole engine
  *       down. The Node resolver, which runs where the path will actually be used,
- *       is the single authority (ADR-6).</li>
+ *       is the single authority (ADR-6). The one exception is a path this plugin
+ *       filled in itself from a daemon resolution: that value is not a user
+ *       choice, so a stale one is dropped instead of blocking startup.</li>
  *   <li><b>No {@code --version} probe.</b> Same reason, plus it would duplicate
  *       the Windows {@code .cmd}-needs-a-shell handling in a second language.
  *       The version string is display-only anyway (ADR-2).</li>
@@ -65,6 +68,7 @@ public final class CliSpecResolver {
     private static final Pattern WINDOWS_ABSOLUTE = Pattern.compile("^[A-Za-z]:[\\\\/].*");
 
     private final java.util.function.Supplier<String> opencodeCliPathSupplier;
+    private final java.util.function.Supplier<Boolean> opencodeCliPathAutoDetectedSupplier;
     private final java.util.function.Supplier<String> configPathSupplier;
 
     public CliSpecResolver() {
@@ -72,7 +76,9 @@ public final class CliSpecResolver {
     }
 
     public CliSpecResolver(OpenCodeBuddySettingsService settingsService) {
-        this(settingsService::getOpencodeCliPath, settingsService::getConfigPath);
+        this(settingsService::getOpencodeCliPath,
+                settingsService::isOpencodeCliPathAutoDetected,
+                settingsService::getConfigPath);
     }
 
     /**
@@ -82,7 +88,15 @@ public final class CliSpecResolver {
      */
     CliSpecResolver(java.util.function.Supplier<String> opencodeCliPathSupplier,
                     java.util.function.Supplier<String> configPathSupplier) {
+        // No auto-detection marker: every value behaves like an explicit choice.
+        this(opencodeCliPathSupplier, () -> Boolean.FALSE, configPathSupplier);
+    }
+
+    CliSpecResolver(java.util.function.Supplier<String> opencodeCliPathSupplier,
+                    java.util.function.Supplier<Boolean> opencodeCliPathAutoDetectedSupplier,
+                    java.util.function.Supplier<String> configPathSupplier) {
         this.opencodeCliPathSupplier = opencodeCliPathSupplier;
+        this.opencodeCliPathAutoDetectedSupplier = opencodeCliPathAutoDetectedSupplier;
         this.configPathSupplier = configPathSupplier;
     }
 
@@ -115,6 +129,9 @@ public final class CliSpecResolver {
                     + configuredCli);
             configuredCli = null;
         }
+        if (configuredCli != null && isStaleAutoDetection(configuredCli, notes)) {
+            configuredCli = null;
+        }
         if (nodePath != null && isBareCommandName(nodePath)) {
             // "node" is NodeDetector's not-found fallback, not a user choice.
             // Injecting a bare name as L0 would make the resolver evaluate it as a
@@ -141,6 +158,37 @@ public final class CliSpecResolver {
             LOG.warn("[CliSpec] Could not read opencodeCliPath: " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * True when the configured path was filled in by the plugin itself and has
+     * since disappeared.
+     *
+     * <p>Such a value must not become a blocking {@code settings-invalid}
+     * failure: the user never chose it, so the right response is to drop L0 and
+     * let the daemon scan again (which in turn re-fills the setting). An
+     * explicitly configured path keeps the opposite behaviour &mdash; silent
+     * fallthrough on a typo is exactly the confusion ADR-6 removed.</p>
+     *
+     * <p>A WSL path is never judged here: it cannot be checked from the host
+     * {@code File} API, so the daemon's own resolution stays authoritative.</p>
+     */
+    private boolean isStaleAutoDetection(String path, List<String> notes) {
+        if (NodeDetector.isWslPath(path)) {
+            return false;
+        }
+        boolean autoDetected;
+        try {
+            autoDetected = Boolean.TRUE.equals(opencodeCliPathAutoDetectedSupplier.get());
+        } catch (Exception e) {
+            LOG.warn("[CliSpec] Could not read opencodeCliPathAutoDetected: " + e.getMessage());
+            return false;
+        }
+        if (!autoDetected || new File(path).exists()) {
+            return false;
+        }
+        notes.add("Auto-detected opencodeCliPath no longer exists; L0 dropped so the resolver re-scans: " + path);
+        return true;
     }
 
     /**

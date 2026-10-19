@@ -76,6 +76,13 @@ public class OpenCodeBuddySettingsService {
     private static final String UI_PREFERENCES_KEY = "uiPreferences";
     private static final String PINNED_MODELS_KEY = "pinnedModels";
     private static final String OPENCODE_CLI_PATH_KEY = "opencodeCliPath";
+    /**
+     * True when {@link #OPENCODE_CLI_PATH_KEY} was written by the plugin from the
+     * daemon's own resolution rather than by the user. Kept separate so the value
+     * can be ignored when it goes stale instead of blocking the engine, which is
+     * what an explicit user setting must do.
+     */
+    private static final String OPENCODE_CLI_PATH_AUTO_KEY = "opencodeCliPathAutoDetected";
     private static final String NODE_PATH_KEY = "nodePath";
     private static final String SEND_SHORTCUT_KEY = "sendShortcut";
 
@@ -343,6 +350,11 @@ public class OpenCodeBuddySettingsService {
     /**
      * Persist the Opencode CLI executable path to config.json.
      *
+     * <p>This is the <em>manual</em> entry point: it takes ownership of the value,
+     * so the auto-detected marker is dropped and an unreadable path keeps its
+     * blocking {@code settings-invalid} semantics. Use
+     * {@link #setOpencodeCliPathAutoDetected(String)} for a daemon-discovered path.</p>
+     *
      * @param path custom CLI binary path, or null/empty to clear
      */
     public void setOpencodeCliPath(String path) throws IOException {
@@ -352,8 +364,51 @@ public class OpenCodeBuddySettingsService {
         } else {
             config.addProperty(OPENCODE_CLI_PATH_KEY, path.trim());
         }
+        config.remove(OPENCODE_CLI_PATH_AUTO_KEY);
         writeConfig(config);
         LOG.info("[OpenCodeBuddySettings] Saved opencodeCliPath: " + (path == null ? "(cleared)" : path.trim()));
+    }
+
+    /**
+     * Persist a path the daemon resolved itself (the user never configured one).
+     *
+     * <p>Marked auto-detected so the host can stop advertising it as L0 once the
+     * binary disappears: an auto-filled value that silently blocks startup would
+     * be a failure the user never asked for.</p>
+     *
+     * @param path resolved binary path, or null/empty to clear both keys
+     */
+    public void setOpencodeCliPathAutoDetected(String path) throws IOException {
+        JsonObject config = readConfig();
+        if (path == null || path.trim().isEmpty()) {
+            config.remove(OPENCODE_CLI_PATH_KEY);
+            config.remove(OPENCODE_CLI_PATH_AUTO_KEY);
+        } else {
+            config.addProperty(OPENCODE_CLI_PATH_KEY, path.trim());
+            config.addProperty(OPENCODE_CLI_PATH_AUTO_KEY, true);
+        }
+        writeConfig(config);
+        LOG.info("[OpenCodeBuddySettings] Saved auto-detected opencodeCliPath: "
+                + (path == null ? "(cleared)" : path.trim()));
+    }
+
+    /**
+     * Whether the stored opencode CLI path was filled in by the plugin rather
+     * than chosen by the user.
+     *
+     * @return true when {@code opencodeCliPath} is an auto-detected value
+     */
+    public boolean isOpencodeCliPathAutoDetected() {
+        try {
+            JsonObject config = readConfig();
+            if (!config.has(OPENCODE_CLI_PATH_AUTO_KEY) || config.get(OPENCODE_CLI_PATH_AUTO_KEY).isJsonNull()) {
+                return false;
+            }
+            return config.get(OPENCODE_CLI_PATH_AUTO_KEY).getAsBoolean();
+        } catch (Exception e) {
+            LOG.warn("[OpenCodeBuddySettings] Failed to read opencodeCliPathAutoDetected: " + e.getMessage());
+            return false;
+        }
     }
 
     // ==================== Node.js Path Management ====================

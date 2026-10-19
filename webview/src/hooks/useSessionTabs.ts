@@ -423,30 +423,18 @@ export function useSessionTabs({
     (sessionId: string, newTitle: string) => {
       const trimmed = newTitle?.trim();
       if (!trimmed || !sessionId) return;
-      setTabs((prev) => {
-        const hasMatch = prev.some((tab) => tab.sessionId === sessionId || tab.id === sessionId);
-        return prev.map((tab) => {
-          if (hasMatch) {
-            if (tab.sessionId === sessionId || tab.id === sessionId) {
-              return { ...tab, title: trimmed };
-            }
-            return tab;
-          }
-          // 兜底：如果未找到对应 sessionId 的 tab，更新那个唯一的 sessionId 为 null 的新对话 tab
-          if (!tab.sessionId) {
-            return { ...tab, title: trimmed };
-          }
-          return tab;
-        });
-      });
-      const tabs = tabsRef.current;
-      const target = tabs.find((t) => t.sessionId === sessionId || t.id === sessionId)
-        || tabs.find((t) => !t.sessionId);
-      if (target) {
-        target.title = trimmed;
-        if (target.id === activeTabIdRef.current) {
-          setCustomSessionTitle(trimmed);
-        }
+      // Strict match: a title belongs only to the tab bound to that session.
+      // In particular, never route a background session's title to an unbound
+      // draft tab — that made a newly created session inherit the previous
+      // session's AI-generated title.
+      const target = tabsRef.current.find((t) => t.sessionId === sessionId);
+      if (!target) return;
+      setTabs((prev) =>
+        prev.map((tab) => (tab.sessionId === sessionId ? { ...tab, title: trimmed } : tab))
+      );
+      target.title = trimmed;
+      if (target.id === activeTabIdRef.current) {
+        setCustomSessionTitle(trimmed);
       }
     },
     [setCustomSessionTitle]

@@ -1,6 +1,7 @@
 package com.opencodebuddy.provider.common;
 
 import com.opencodebuddy.bridge.BridgeDirectoryResolver;
+import com.opencodebuddy.bridge.CliPathAutoFill;
 import com.opencodebuddy.bridge.CliSpecResolver;
 import com.opencodebuddy.bridge.EnvironmentConfigurator;
 import com.opencodebuddy.bridge.NodeDetector;
@@ -1087,6 +1088,11 @@ public class DaemonBridge {
                         LOG.warn("[DaemonBridge] Listener threw while handling " + event, ex);
                     }
                 }
+                // The daemon just reported which binary it resolved. When the user
+                // never configured one, persist it so the setting stops lying about
+                // what the plugin actually launches. Off-thread: it writes config.json.
+                CliPathAutoFill.applyAsync(optString(obj, "cliPath", null),
+                        optString(obj, "cliSource", null));
                 break;
             }
 

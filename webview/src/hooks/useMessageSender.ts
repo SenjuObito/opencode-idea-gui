@@ -261,9 +261,16 @@ export function useMessageSender({
     });
 
     const reasoningEffortPayload = { reasoningEffort };
+    // The tab's model is part of the message, not a separate `set_model`: a tab
+    // that has not bound a session yet has no host target, and the host creates
+    // the session while handling this send. Without it the new session inherits
+    // whatever model the previously active session used.
+    const modelPayload = selectedModel ? { model: selectedModel } : {};
 
     const activeTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
-    const targetSessionId = currentSessionIdRef?.current ?? currentSessionId ?? undefined;
+    const targetSessionId = currentSessionIdRef
+      ? (currentSessionIdRef.current ?? undefined)
+      : (currentSessionId ?? undefined);
     const effectiveAutoOpenFileEnabled = typeof autoOpenFileEnabled === 'boolean'
       ? autoOpenFileEnabled
       : (window.__sessionTabsStore?.getActiveTabAutoOpenFileEnabled?.() ?? false);
@@ -282,6 +289,7 @@ export function useMessageSender({
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
           autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
+          ...modelPayload,
           ...reasoningEffortPayload,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
@@ -294,6 +302,7 @@ export function useMessageSender({
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
           autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
+          ...modelPayload,
           ...reasoningEffortPayload,
         });
         sendBridgeEvent('send_message', fallbackPayload);
@@ -306,6 +315,7 @@ export function useMessageSender({
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
         autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
+        ...modelPayload,
         ...reasoningEffortPayload,
       });
       sendBridgeEvent('send_message', payload);
@@ -472,7 +482,9 @@ export function useMessageSender({
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
 
-    const targetSessionId = currentSessionIdRef?.current ?? currentSessionId ?? undefined;
+    const targetSessionId = currentSessionIdRef
+      ? (currentSessionIdRef.current ?? undefined)
+      : (currentSessionId ?? undefined);
     sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId: targetSessionId }));
   }, [
     isStreamingRef,

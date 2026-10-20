@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -149,6 +150,57 @@ public class MultiSessionStreamIsolationTest {
         } finally {
             coalescerA.dispose();
             coalescerB.dispose();
+        }
+    }
+
+    @Test
+    public void usageUpdateIsStampedWithTheStreamingSessionNotTheActiveOne() throws Exception {
+        RecordingTarget target = new RecordingTarget();
+        OpencodeSession owner = new OpencodeSession(null, null);
+        owner.setProvider("opencode");
+        owner.setModel("model-a[200k]");
+        target.setOwner(owner);
+
+        // HandlerContext follows whichever tab is on screen. Point it at a
+        // different session with a different context window; the usage push must
+        // still be attributed to (and sized by) the coalescer's own session.
+        OpencodeSession active = new OpencodeSession(null, null);
+        active.getState().setSessionId("ses_b");
+        active.setProvider("opencode");
+        active.setModel("model-b[100k]");
+        target.getHandlerContext().setSession(active);
+        target.getHandlerContext().setCurrentModel("model-b[100k]");
+
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer("ses_a", target);
+        try {
+            com.google.gson.JsonObject tokens = new com.google.gson.JsonObject();
+            tokens.addProperty("input", 2_000);
+            com.google.gson.JsonObject raw = new com.google.gson.JsonObject();
+            raw.addProperty("type", "assistant");
+            raw.add("tokens", tokens);
+            OpencodeSession.Message assistant = new OpencodeSession.Message(
+                    OpencodeSession.Message.Type.ASSISTANT, "A's reply", raw);
+
+            coalescer.enqueue(List.of(assistant));
+            CountDownLatch flushed = new CountDownLatch(1);
+            coalescer.flush(seq -> flushed.countDown());
+            assertTrue("flush callback never ran", flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
+
+            String usageCall = null;
+            for (String call : target.calls) {
+                if (call.startsWith("window.onUsageUpdate:")) {
+                    usageCall = call;
+                }
+            }
+            assertNotNull("no usage update was pushed", usageCall);
+            assertTrue("usage was attributed to the wrong session: " + usageCall,
+                    usageCall.startsWith("window.onUsageUpdate:ses_a:"));
+            assertFalse("usage leaked to the active session: " + usageCall,
+                    usageCall.contains("ses_b"));
+            assertTrue("usage used the active session's context window: " + usageCall,
+                    usageCall.contains("\\\"maxTokens\\\":200000"));
+        } finally {
+            coalescer.dispose();
         }
     }
 
@@ -349,9 +401,24 @@ public class MultiSessionStreamIsolationTest {
     private static final class RecordingTarget implements StreamMessageCoalescer.JsCallbackTarget {
         private final List<String> calls = Collections.synchronizedList(new ArrayList<>());
         private final List<String> updateCalls = Collections.synchronizedList(new ArrayList<>());
+        private final HandlerContext handlerContext;
+        private volatile OpencodeSession owner;
 
-        @Override
-        public void callJavaScript(String functionName, String... args) {
+        private RecordingTarget() {
+            this.handlerContext = new HandlerContext(null, null, null, new HandlerContext.JsCallback() {
+                @Override
+                public void callJavaScript(String functionName, String... args) {
+                    record(functionName, args);
+                }
+
+                @Override
+                public String escapeJs(String str) {
+                    return str != null ? str : "";
+                }
+            });
+        }
+
+        private void record(String functionName, String... args) {
             StringBuilder sb = new StringBuilder(functionName);
             for (String arg : args) {
                 sb.append(':').append(arg);
@@ -361,6 +428,15 @@ public class MultiSessionStreamIsolationTest {
             if (call.startsWith("updateMessages") || call.startsWith("updateMessageTail")) {
                 updateCalls.add(call);
             }
+        }
+
+        private void setOwner(OpencodeSession owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public void callJavaScript(String functionName, String... args) {
+            record(functionName, args);
         }
 
         @Override
@@ -375,18 +451,12 @@ public class MultiSessionStreamIsolationTest {
 
         @Override
         public HandlerContext getHandlerContext() {
-            // 真实 HandlerContext（provider 有默认值）：让 pushUsageUpdateFromMessages
-            // 走「没有 usage 字段 → 直接返回」的无副作用分支。
-            return new HandlerContext(null, null, null, new HandlerContext.JsCallback() {
-                @Override
-                public void callJavaScript(String functionName, String... args) {
-                }
+            return handlerContext;
+        }
 
-                @Override
-                public String escapeJs(String str) {
-                    return str != null ? str : "";
-                }
-            });
+        @Override
+        public OpencodeSession getSession() {
+            return owner;
         }
     }
 

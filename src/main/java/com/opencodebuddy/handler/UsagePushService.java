@@ -139,11 +139,15 @@ public class UsagePushService {
         String usageJson = gson.toJson(usageUpdate);
         OpencodeSession session = context.getSession();
         String sessionId = (session != null) ? session.getSessionId() : null;
-        if (sessionId != null && !sessionId.isEmpty()) {
-            context.callJavaScript("window.onUsageUpdate", sessionId, context.escapeJs(usageJson));
-        } else {
-            context.callJavaScript("window.onUsageUpdate", context.escapeJs(usageJson));
+        if (sessionId == null || sessionId.isEmpty()) {
+            // Never send an un-attributable usage update: the webview used to read
+            // a missing id as "the active tab", so a brand-new session (which has
+            // no daemon id yet) was overwritten with whatever tokens the previous
+            // session had just produced.
+            LOG.debug("[UsagePushService] Dropping usage payload without a session id");
+            return;
         }
+        context.callJavaScript("window.onUsageUpdate", sessionId, context.escapeJs(usageJson));
     }
 
     /**

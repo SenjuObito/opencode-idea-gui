@@ -28,8 +28,11 @@ export interface UseModelProviderStateOptions {
  * With a bound session the host receives `{ model, sessionId }` so it writes the
  * selection onto *that* OpencodeSession instead of "the window's current one" —
  * those drift apart as soon as the user switches tabs, and the change lands on
- * the wrong conversation while the UI reports success. Tabs that have not bound
- * a session yet keep the legacy bare-string form.
+ * the wrong conversation while the UI reports success.
+ *
+ * An unbound tab still has a legacy bare-string form for backwards compatibility,
+ * but callers must not use it: a tab without a session has no host target, so its
+ * model travels with `send_message` instead.
  */
 export function buildModelSelectionPayload(
   modelId: string,
@@ -49,6 +52,22 @@ export function buildReasoningEffortPayload(
 ): string {
   if (!sessionId) return effort;
   return JSON.stringify({ reasoningEffort: effort, sessionId });
+}
+
+/**
+ * Resolve the active tab's bound session.
+ *
+ * When the host passes a ref it is authoritative: a tab that has just been
+ * unbound / created deliberately has `null` there, and `null ?? currentSessionId`
+ * would fall back to the *previous* tab's id while React state catches up. That
+ * fallback is how a brand-new tab used to rewrite the outgoing session.
+ */
+function resolveBoundSessionId(
+  currentSessionId: string | null | undefined,
+  currentSessionIdRef: MutableRefObject<string | null> | undefined,
+): string | null {
+  if (currentSessionIdRef) return currentSessionIdRef.current;
+  return currentSessionId ?? null;
 }
 
 /**
@@ -96,14 +115,13 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
   const handleModeSelect = useCallback((mode: PermissionMode) => {
     setPermissionMode(mode);
     setOpenCodePermissionMode(mode);
-    const sessionId = currentSessionIdRef?.current ?? currentSessionId ?? null;
-    if (sessionId) {
-      // Scope the mode change to the current tab's session so multi-tab isolation holds.
-      sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode }));
-    } else {
-      sendBridgeEvent('set_mode', mode);
-    }
     localStorage.setItem('opencode.permissionMode', mode);
+    const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
+    // Unbound tab: the mode has no host target yet. It travels with the first
+    // send_message payload, so writing it to "the window's current session"
+    // would rewrite the previously active tab instead.
+    if (!sessionId) return;
+    sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode }));
   }, [setOpenCodePermissionMode, currentSessionId, currentSessionIdRef]);
 
   /**
@@ -116,7 +134,9 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
    */
   const handleModelSelect = useCallback((modelId: string, options?: { silent?: boolean }) => {
     setSelectedOpenCodeModel(modelId);
-    const sessionId = currentSessionIdRef?.current ?? currentSessionId ?? null;
+    const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
+    // No session yet: keep it local; the model is sent with the first message.
+    if (!sessionId) return;
     sendBridgeEvent('set_model', buildModelSelectionPayload(modelId, sessionId, options));
   }, [setSelectedOpenCodeModel, currentSessionId, currentSessionIdRef]);
 
@@ -124,18 +144,16 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
     setCurrentProvider(providerId);
     sendBridgeEvent('set_provider', providerId);
     setPermissionMode(openCodePermissionMode);
-    const sessionId = currentSessionIdRef?.current ?? currentSessionId ?? null;
-    if (sessionId) {
-      sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode: openCodePermissionMode }));
-    } else {
-      sendBridgeEvent('set_mode', openCodePermissionMode);
-    }
-    sendBridgeEvent('set_model', selectedOpenCodeModel);
+    const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
+    if (!sessionId) return;
+    sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode: openCodePermissionMode }));
+    sendBridgeEvent('set_model', buildModelSelectionPayload(selectedOpenCodeModel, sessionId));
   }, [openCodePermissionMode, selectedOpenCodeModel, currentSessionId, currentSessionIdRef]);
 
   const handleReasoningChange = useCallback((effort: ReasoningEffort) => {
     setReasoningEffort(effort);
-    const sessionId = currentSessionIdRef?.current ?? currentSessionId ?? null;
+    const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
+    if (!sessionId) return;
     sendBridgeEvent('set_reasoning_effort', buildReasoningEffortPayload(effort, sessionId));
   }, [setReasoningEffort, currentSessionId, currentSessionIdRef]);
 

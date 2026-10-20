@@ -182,6 +182,33 @@ describe('useSessionTabs - multi-session attribution', () => {
     expect(result.current.tabs).toHaveLength(1);
     expect(result.current.tabs.map((t) => t.id)).toEqual([newTabId]);
   });
+
+  it('saves and restores the reader position per tab', () => {
+    const savedState = { scrollTop: 420, isUserAtBottom: false, userPaused: true };
+    const captureScrollState = vi.fn(() => savedState);
+    const restoreScrollState = vi.fn();
+    const { result } = renderTabs({
+      currentSessionId: 'ses_a',
+      captureScrollState,
+      restoreScrollState,
+    });
+    act(() => {
+      store().updateTabSessionId('tab-1', 'ses_a');
+    });
+
+    // Creating a sibling tab snapshots the outgoing tab's position.
+    act(() => {
+      result.current.createTab();
+    });
+    expect(result.current.tabs[0].scrollState).toEqual(savedState);
+
+    // Switching back restores that tab's state instead of inheriting the
+    // sibling's flags (which would snap the reader to the bottom).
+    act(() => {
+      result.current.selectTab('tab-1');
+    });
+    expect(restoreScrollState).toHaveBeenCalledWith(savedState);
+  });
 });
 
 describe('useSessionTabs - history session loading', () => {
@@ -522,6 +549,44 @@ describe('useSessionTabs - history session loading', () => {
 
     // And the mode payload is scoped to the tab's own session.
     expect(calls[modeCall][1]).toContain('"sessionId":"ses_a"');
+  });
+
+  it('does not rewrite the host session when creating an unbound tab', () => {
+    // A new tab has no session id, so `set_model` / `set_mode` /
+    // `set_reasoning_effort` have no target. The first send_message carries the
+    // values instead; sending them here used to rewrite the outgoing session.
+    const { result } = renderHook(() =>
+      useSessionTabs({
+        currentSessionId: 'ses_a',
+        sessionTitle: '',
+        setCustomSessionTitle: dummyFn,
+        updateHistoryTitle: dummyFn,
+        messages: emptyMessages,
+        setMessages: dummyFn,
+        loading: false,
+        streamingActive: false,
+        isShared: false,
+        forceCreateNewSession: dummyFn,
+        loadHistorySession: dummyFn,
+        setSelectedModel: dummyFn,
+        setReasoningEffort: dummyFn,
+        t: mockT,
+      } as any),
+    );
+
+    act(() => {
+      store().updateTabSessionId('tab-1', 'ses_a');
+    });
+
+    vi.mocked(sendBridgeEvent).mockClear();
+    act(() => {
+      result.current.createTab();
+    });
+
+    const configCalls = vi.mocked(sendBridgeEvent).mock.calls.filter(
+      (c) => c[0] === 'set_model' || c[0] === 'set_mode' || c[0] === 'set_reasoning_effort',
+    );
+    expect(configCalls).toEqual([]);
   });
 
   it('moves the host session when closing the active tab', () => {

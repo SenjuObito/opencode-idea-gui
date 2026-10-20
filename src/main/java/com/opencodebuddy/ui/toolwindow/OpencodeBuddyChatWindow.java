@@ -273,6 +273,11 @@ public class OpencodeBuddyChatWindow {
             }
 
             @Override
+            public OpencodeSession getSession() {
+                return OpencodeBuddyChatWindow.this.session;
+            }
+
+            @Override
             public void onStreamEnded() {
                 OpencodeSession current = OpencodeBuddyChatWindow.this.session;
                 if (current != null && shouldReconcileTranscriptAtStreamEnd(
@@ -1576,8 +1581,13 @@ public class OpencodeBuddyChatWindow {
             }
 
             @Override
+            public OpencodeSession getSession() {
+                return OpencodeBuddyChatWindow.this.getSession(targetSessionId);
+            }
+
+            @Override
             public void onStreamEnded() {
-                OpencodeSession current = getSession(targetSessionId);
+                OpencodeSession current = OpencodeBuddyChatWindow.this.getSession(targetSessionId);
                 if (current != null && shouldReconcileTranscriptAtStreamEnd(
                         current.getProvider(), current.getSessionId())) {
                     OpencodeBuddyChatWindow.this.deferredReload.defer(current.getSessionId());

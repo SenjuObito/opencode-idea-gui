@@ -397,7 +397,9 @@ final class WebviewEventQueue<T> {
                 // A newer retry notice supersedes the previous one; keeping the
                 // stale attempt/countdown would misreport the backoff sequence.
                 || "updateRetryStatus".equals(call.functionName)
-                || "setSessionId".equals(call.functionName)
+                // Identity notifications are per-session control-plane events:
+                // collapsing them keeps only the last tab's binding and leaves
+                // the others pinned to a stale/placeholder id.
                 || "onUsageUpdate".equals(call.functionName)
                 || "updateUsage".equals(call.functionName)
                 || "updateContextLimit".equals(call.functionName)

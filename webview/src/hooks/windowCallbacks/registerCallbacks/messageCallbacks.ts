@@ -200,6 +200,17 @@ export function registerMessageCallbacks(
       }
       cardDebugLog('[processUpdateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
     }
+    // A frame deferred 16ms during streaming can outlive a tab switch. If the
+    // session is no longer the one on screen, applying it here would write one
+    // conversation into another tab's transcript (and retrigger auto-scroll).
+    if (
+      targetSessionId
+      && window.__sessionTabsStore
+      && !window.__sessionTabsStore.isActiveSession(targetSessionId)
+    ) {
+      cardDebugLog('[processUpdateMessages] DROPPED: target is not the active session', targetSessionId);
+      return;
+    }
     const effectiveSessionId = targetSessionId ?? null;
     const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) {
@@ -459,6 +470,16 @@ export function registerMessageCallbacks(
       const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
       if (!isTargetActiveSession) return;
     }
+    // Same deferred-frame guard as processUpdateMessages: a tail pushed for a
+    // background session must never be applied after the user switched away.
+    if (
+      targetSessionId
+      && window.__sessionTabsStore
+      && !window.__sessionTabsStore.isActiveSession(targetSessionId)
+    ) {
+      cardDebugLog('[processMessageTail] DROPPED: target is not the active session', targetSessionId);
+      return;
+    }
     const effectiveSessionId = targetSessionId ?? null;
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
@@ -563,7 +584,7 @@ export function registerMessageCallbacks(
       || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
 
     if (!isForegroundSession && targetSessionId && window.__sessionTabsStore) {
-      const stored = window.__sessionTabsStore.updateBackgroundTab(
+      window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
           try {
@@ -576,13 +597,11 @@ export function registerMessageCallbacks(
           }
         }
       );
-      // `stored === false` means no tab claims this session (it may be a session
-      // the tab bar has not bound yet). Fall through to the active path instead
-      // of dropping the snapshot: a lost snapshot shows up as a conversation
-      // that simply never renders.
-      if (stored) {
-        return;
-      }
+      // No tab claims this session: the user closed it (or the host pushed an
+      // id the webview never bound). Drop the snapshot — falling through to the
+      // active path would render another conversation's messages in the tab the
+      // user is currently looking at.
+      return;
     }
 
     // During session transition, ignore message updates from stale session
@@ -684,7 +703,7 @@ export function registerMessageCallbacks(
     }
 
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      const stored = window.__sessionTabsStore.updateBackgroundTab(
+      window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
         (t) => {
           try {
@@ -706,10 +725,9 @@ export function registerMessageCallbacks(
           }
         }
       );
-      // No tab claims this session — apply to the active path rather than drop.
-      if (stored) {
-        return;
-      }
+      // No tab claims this session: closed by the user (or never bound). Drop,
+      // do not append to the active conversation.
+      return;
     }
 
     processMessageTail(json, baseIndexArg, sequenceArg, targetSessionId);

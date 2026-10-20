@@ -304,7 +304,7 @@ interface Window {
    * already shrunk by the time the (also shorter) snapshot lands — otherwise the
    * shrink-protection path would restore the just-deleted messages.
    */
-  onMessagesRemoved?: (json: string) => void;
+  onMessagesRemoved?: (sessionIdOrJson: string, json?: string) => void;
 
   /**
    * Show PlanApproval dialog

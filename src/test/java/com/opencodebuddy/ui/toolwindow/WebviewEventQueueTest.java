@@ -93,6 +93,27 @@ public class WebviewEventQueueTest {
     }
 
     @Test
+    public void keepsSetSessionIdForEverySessionInTheSameBatch() {
+        AtomicReference<Object> browser = new AtomicReference<>(new Object());
+        AtomicBoolean disposed = new AtomicBoolean();
+        List<Runnable> scheduled = new ArrayList<>();
+        List<String> scripts = new ArrayList<>();
+        WebviewEventQueue<Object> queue = newQueue(browser, disposed, scheduled, scripts);
+
+        queue.enqueue("setSessionId", "ses_new_a", "tab-1");
+        queue.enqueue("setSessionId", "ses_new_b", "tab-2");
+
+        assertEquals(1, scheduled.size());
+        scheduled.remove(0).run();
+
+        assertEquals(1, scripts.size());
+        String script = scripts.get(0);
+        assertTrue(script.contains("window.setSessionId('ses_new_a', 'tab-1')"));
+        assertTrue(script.contains("window.setSessionId('ses_new_b', 'tab-2')"));
+        queue.dispose();
+    }
+
+    @Test
     public void preservesLifecycleOrderInsteadOfCollapsingStateAcrossBoundaries() {
         AtomicReference<Object> browser = new AtomicReference<>(new Object());
         AtomicBoolean disposed = new AtomicBoolean();

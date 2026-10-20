@@ -146,7 +146,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
     expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
-  it('treats a backend-supplied legacy provider as "no backend preference" but still applies initial tab model', () => {
+  it('treats a backend-supplied legacy provider as "no backend preference" but still applies initial tab model locally', () => {
     const setCurrentProvider = vi.fn();
     const setSelectedOpenCodeModel = vi.fn();
     (window as unknown as { __INITIAL_TAB_PROVIDER__?: unknown }).__INITIAL_TAB_PROVIDER__ = 'claude';
@@ -163,8 +163,10 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
     vi.advanceTimersByTime(200);
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
+    expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('claude-sonnet-4-6');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'claude-sonnet-4-6']]);
+    // No bound session at boot: the model travels with the first send instead.
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
   it('keeps a saved opencode model untouched when the snapshot also carries legacy fields', () => {
@@ -180,7 +182,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
     vi.advanceTimersByTime(200);
 
     expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('anthropic/claude-sonnet-5');
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'anthropic/claude-sonnet-5']]);
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 });
 
@@ -206,32 +208,37 @@ describe('useModelStatePersistence — OpenCode persistence', () => {
     delete (window as unknown as { __INITIAL_TAB_MODEL__?: unknown }).__INITIAL_TAB_MODEL__;
   });
 
-  it('restores a saved opencode provider and model', () => {
+  it('restores a saved opencode provider and model locally', () => {
     const setCurrentProvider = vi.fn();
+    const setSelectedOpenCodeModel = vi.fn();
     localStorage.setItem('model-selection-state', JSON.stringify({
       provider: 'opencode',
       openCodeModel: 'openai/gpt-5',
     }));
 
-    renderHook(() => useModelStatePersistence(makeOptions({ setCurrentProvider })));
+    renderHook(() => useModelStatePersistence(makeOptions({ setCurrentProvider, setSelectedOpenCodeModel })));
     vi.advanceTimersByTime(200);
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
+    expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('openai/gpt-5');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'openai/gpt-5']]);
+    // The model is restored into frontend state only; the first send carries it.
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
   it('honors a backend-supplied opencode provider via __INITIAL_TAB_PROVIDER__', () => {
     const setCurrentProvider = vi.fn();
+    const setSelectedOpenCodeModel = vi.fn();
     (window as unknown as { __INITIAL_TAB_PROVIDER__?: unknown }).__INITIAL_TAB_PROVIDER__ = 'opencode';
     (window as unknown as { __INITIAL_TAB_MODEL__?: unknown }).__INITIAL_TAB_MODEL__ = 'openai/gpt-5';
 
-    renderHook(() => useModelStatePersistence(makeOptions({ setCurrentProvider })));
+    renderHook(() => useModelStatePersistence(makeOptions({ setCurrentProvider, setSelectedOpenCodeModel })));
     vi.advanceTimersByTime(200);
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
+    expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('openai/gpt-5');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'openai/gpt-5']]);
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
   it('persists opencode model and permission selections in the snapshot', () => {

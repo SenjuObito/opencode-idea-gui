@@ -28,23 +28,32 @@ export function registerSessionCallbacks(
     setCustomSessionTitle,
   } = options;
 
-  window.setSessionId = (sessionId: string, tabId?: string) => {
+  window.setSessionId = (sessionId: string, previousSessionId?: string) => {
+    if (!sessionId) return;
     const oldId = currentSessionIdRef.current;
-    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
-    releaseSessionTransition();
+    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
 
     const tabsStore = window.__sessionTabsStore;
     const tabs = tabsStore?.getTabs?.() || [];
     const activeTabId = tabsStore?.getActiveTabId?.();
+    const activeTab = tabs.find((t) => t.id === activeTabId);
 
-    let targetTab = tabId ? tabs.find((t) => t.id === tabId || t.sessionId === tabId) : null;
+    // `previousSessionId` is the adapter's prior identity, which is a tab id
+    // only for a session that was created from a tab (`createSessionForTab`).
+    // For history loads and repeated [SESSION_ID] markers it is the same real
+    // session id, and for the startup adapter it is empty. Never treat it as
+    // "the tab to switch to".
+    let targetTab = previousSessionId
+      ? tabs.find((t) => t.id === previousSessionId || t.sessionId === previousSessionId)
+      : null;
     if (!targetTab) {
-      const active = tabs.find((t) => t.id === activeTabId);
-      if (active && (!active.sessionId || active.sessionId === sessionId)) {
-        targetTab = active;
-      } else {
-        targetTab = tabs.find((t) => !t.sessionId);
-      }
+      targetTab = tabs.find((t) => t.sessionId === sessionId);
+    }
+    if (!targetTab && previousSessionId === '' && activeTab && !activeTab.sessionId) {
+      // Brand-new session resolving for the first time while nothing claimed
+      // the draft tab yet. This is the only case where the active tab may be
+      // adopted; every other unmatched notification is dropped.
+      targetTab = activeTab;
     }
 
     const syncTitle = () => {
@@ -58,19 +67,32 @@ export function registerSessionCallbacks(
       }
     };
 
-    if (targetTab) {
-      const resolvedTabId = targetTab.id;
-      tabsStore?.updateTabSessionId?.(resolvedTabId, sessionId);
+    if (!targetTab) {
+      cardDebugLog(
+        '[setSessionId] no tab claims this identity; dropping binding',
+        'sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'activeTabId:', activeTabId,
+      );
+      return;
+    }
 
-      if (resolvedTabId === activeTabId) {
-        currentSessionIdRef.current = sessionId;
-        setCurrentSessionId(sessionId);
-        syncTitle();
-      }
-    } else {
-      currentSessionIdRef.current = sessionId;
-      setCurrentSessionId(sessionId);
-      syncTitle();
+    const resolvedTabId = targetTab.id;
+    tabsStore?.updateTabSessionId?.(resolvedTabId, sessionId);
+
+    if (resolvedTabId !== activeTabId) {
+      // Background session: rebind its tab only. Changing currentSessionIdRef
+      // here would make its deltas look foreground and corrupt the visible tab.
+      return;
+    }
+
+    currentSessionIdRef.current = sessionId;
+    setCurrentSessionId(sessionId);
+    syncTitle();
+    // Release a pending session transition only when this is NOT a history
+    // load (those carry a transition target and must wait for
+    // historyLoadComplete). The new-session flow has no target and relies on
+    // this release so the first deltas are accepted.
+    if (!window.__sessionTransitionTargetSessionId) {
+      releaseSessionTransition();
     }
   };
 

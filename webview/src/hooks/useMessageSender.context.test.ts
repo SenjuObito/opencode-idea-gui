@@ -50,6 +50,10 @@ describe('useMessageSender - /context command', () => {
     window.sendToJava = vi.fn();
   });
 
+  afterEach(() => {
+    delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
+  });
+
   it('sends get_context_usage with base model when longContext is disabled', () => {
     const opts = createOptions({
       selectedModel: 'claude-opus-4-8',
@@ -241,5 +245,68 @@ describe('useMessageSender - /context command', () => {
 
     const payload = getBridgePayload('send_message_with_attachments');
     expect(payload.reasoningEffort).toBe('low');
+  });
+
+  // A tab without a bound session has no target for `set_model`; its model has
+  // to travel with the message so the host can apply it when creating the
+  // session. Otherwise the new session inherits the previous tab's model.
+  it('carries the selected model in the plain message payload', () => {
+    const opts = createOptions({ selectedModel: 'opencode/new-model' });
+
+    const { result } = renderHook(() => useMessageSender(opts));
+
+    act(() => {
+      result.current.handleSubmit('hello');
+    });
+
+    const payload = getBridgePayload('send_message');
+    expect(payload.model).toBe('opencode/new-model');
+  });
+
+  it('carries the selected model in the attachment message payload', () => {
+    const opts = createOptions({ selectedModel: 'opencode/new-model' });
+
+    const { result } = renderHook(() => useMessageSender(opts));
+
+    act(() => {
+      result.current.handleSubmit('hello', [{
+        id: 'att-1',
+        fileName: 'note.txt',
+        mediaType: 'text/plain',
+        data: 'aGVsbG8=',
+      }]);
+    });
+
+    const payload = getBridgePayload('send_message_with_attachments');
+    expect(payload.model).toBe('opencode/new-model');
+  });
+
+  // The first send of a new tab is the only point where its model can reach the
+  // host: the tab has no session yet, and a stale `currentSessionId` prop must
+  // not make the payload target the previous conversation.
+  it('sends a new tab\'s model with tabId and no stale sessionId', () => {
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => 'tab-new',
+    };
+    const opts = createOptions({
+      selectedModel: 'opencode/new-model',
+      permissionMode: 'plan',
+      reasoningEffort: 'high',
+      currentSessionId: 'ses_previous',
+      currentSessionIdRef: { current: null },
+    });
+
+    const { result } = renderHook(() => useMessageSender(opts));
+
+    act(() => {
+      result.current.handleSubmit('hello');
+    });
+
+    const payload = getBridgePayload('send_message');
+    expect(payload.tabId).toBe('tab-new');
+    expect(payload.sessionId).toBeUndefined();
+    expect(payload.model).toBe('opencode/new-model');
+    expect(payload.permissionMode).toBe('plan');
+    expect(payload.reasoningEffort).toBe('high');
   });
 });

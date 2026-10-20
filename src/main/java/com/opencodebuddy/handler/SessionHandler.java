@@ -115,6 +115,28 @@ public class SessionHandler extends BaseMessageHandler {
     }
 
     /**
+     * Apply the model carried by a send payload to the session that will run it.
+     *
+     * <p>A tab that has not bound a session yet cannot target {@code set_model}
+     * at anything, so the selection has to travel with the message that creates
+     * the session. Writing the state directly deliberately skips the
+     * "user changed model" side effects (usage reset, notification): those belong
+     * to an explicit model change, not to every send.</p>
+     */
+    static void applyRequestedModel(OpencodeSession session, String model) {
+        if (session == null || model == null) {
+            return;
+        }
+        String trimmed = model.trim();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+        session.setModel(trimmed);
+        LOG.info("[SessionHandler] Applied message-scoped model: " + trimmed
+                + " (session=" + session.getSessionId() + ")");
+    }
+
+    /**
      * Send message to Claude
      * [FIX] Now parses JSON format to extract text, agent info and file tags
      */
@@ -125,6 +147,7 @@ public class SessionHandler extends BaseMessageHandler {
         java.util.List<String> fileTagPaths = null;
         String requestedPermissionMode = null;
         String requestedReasoningEffort = null;
+        String requestedModel = null;
         String requestedCodexFastMode = null;
         String requestedDshPreset = null;
         Boolean requestedAutoOpenFile = null;
@@ -181,6 +204,10 @@ public class SessionHandler extends BaseMessageHandler {
 
             requestedReasoningEffort = extractReasoningEffort(payload);
 
+            if (payload != null && payload.has("model") && !payload.get("model").isJsonNull()) {
+                requestedModel = payload.get("model").getAsString();
+            }
+
             if (payload != null && payload.has("codexFastMode") && !payload.get("codexFastMode").isJsonNull()) {
                 requestedCodexFastMode = payload.get("codexFastMode").getAsString();
             }
@@ -210,6 +237,7 @@ public class SessionHandler extends BaseMessageHandler {
         final OpencodeSession targetSession = sessionObj;
         final String resolvedSessionId = targetSessionId != null ? targetSessionId
                 : (tabId != null ? tabId : (targetSession != null ? targetSession.getSessionId() : ""));
+        applyRequestedModel(targetSession, requestedModel);
 
         String nodeVersion = this.resolveNodeVersion();
         if (nodeVersion == null) {
@@ -351,6 +379,7 @@ public class SessionHandler extends BaseMessageHandler {
             String agentPrompt = null;
             String requestedPermissionMode = null;
             String requestedReasoningEffort = null;
+            String requestedModel = null;
             String requestedCodexFastMode = null;
             String requestedDshPreset = null;
             if (payload != null && payload.has("agent") && !payload.get("agent").isJsonNull()) {
@@ -389,6 +418,10 @@ public class SessionHandler extends BaseMessageHandler {
 
             requestedReasoningEffort = extractReasoningEffort(payload);
 
+            if (payload != null && payload.has("model") && !payload.get("model").isJsonNull()) {
+                requestedModel = payload.get("model").getAsString();
+            }
+
             if (payload != null && payload.has("codexFastMode") && !payload.get("codexFastMode").isJsonNull()) {
                 requestedCodexFastMode = payload.get("codexFastMode").getAsString();
             }
@@ -408,7 +441,7 @@ public class SessionHandler extends BaseMessageHandler {
             }
 
             sendMessageWithAttachments(targetSessionId, tabId, text, atts, agentPrompt, fileTagPaths, requestedPermissionMode,
-                    requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset, requestedAutoOpenFile);
+                    requestedReasoningEffort, requestedModel, requestedCodexFastMode, requestedDshPreset, requestedAutoOpenFile);
         } catch (Exception e) {
             LOG.error("[SessionHandler] 解析附件负载失败: " + e.getMessage(), e);
             handleSendMessage(content);
@@ -428,6 +461,7 @@ public class SessionHandler extends BaseMessageHandler {
         java.util.List<String> fileTagPaths,
         String requestedPermissionMode,
         String requestedReasoningEffort,
+        String requestedModel,
         String requestedCodexFastMode,
         String requestedDshPreset,
         Boolean requestedAutoOpenFile
@@ -448,6 +482,7 @@ public class SessionHandler extends BaseMessageHandler {
         final OpencodeSession targetSession = sessionObj;
         final String resolvedSessionId = targetSessionId != null ? targetSessionId
                 : (tabId != null ? tabId : (targetSession != null ? targetSession.getSessionId() : ""));
+        applyRequestedModel(targetSession, requestedModel);
 
         // Version check (consistent with handleSendMessage)
         String nodeVersion = this.resolveNodeVersion();

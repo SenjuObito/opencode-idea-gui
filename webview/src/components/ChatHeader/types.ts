@@ -1,5 +1,6 @@
 import type { ClaudeMessage } from '../../types';
 import type { ContextInfo } from '../../hooks';
+import type { TabScrollState } from '../../hooks/useScrollBehavior';
 import type { PermissionMode, ReasoningEffort } from '../ChatInputBox/types';
 
 export interface SessionTabData {
@@ -36,6 +37,8 @@ export interface SessionTabData {
   messageBaseIndex?: number;
   opencodeListStart?: number;
   prependedHistoryMessageCount?: number;
+  /** Per-tab reader position, restored when this tab is selected again. */
+  scrollState?: TabScrollState;
   draft?: {
     text: string;
     attachments: any[];

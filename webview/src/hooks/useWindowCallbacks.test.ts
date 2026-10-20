@@ -118,6 +118,7 @@ describe('useWindowCallbacks integration', () => {
     delete window.__pendingUsageUpdate;
     delete window.__CCGUI_RECOVERY_STATE_APPLIED__;
     delete window.__lastAcceptedMessageCount;
+    delete window.__sessionTabsStore;
     delete window.__pendingHistoryRefreshMessageCount;
     delete window.__pendingHistoryLoadComplete;
     delete (window as unknown as Record<string, unknown>).__pendingHistoryData;
@@ -178,11 +179,14 @@ describe('useWindowCallbacks integration', () => {
   });
 
   it('drains the latest usage update buffered before React callback registration', () => {
-    window.__pendingUsageUpdate = JSON.stringify({
-      percentage: 19,
-      usedTokens: 49300,
-      maxTokens: 258400,
-    });
+    window.__pendingUsageUpdate = {
+      arg0: 'session-active',
+      arg1: JSON.stringify({
+        percentage: 19,
+        usedTokens: 49300,
+        maxTokens: 258400,
+      }),
+    };
     const opts = createOptions();
 
     renderHook(() => useWindowCallbacks(opts));
@@ -193,6 +197,57 @@ describe('useWindowCallbacks integration', () => {
     expect(window.__pendingUsageUpdate).toBeUndefined();
   });
 
+  it('routes a background session usage update to its own tab only', () => {
+    const updateBackgroundTab = vi.fn((pred: (tab: any) => boolean, updater: (tab: any) => void) => {
+      const tab = { id: 'tab-bg', sessionId: 'session-bg' };
+      if (pred(tab)) { updater(tab); return true; }
+      return false;
+    });
+    window.__sessionTabsStore = {
+      getActiveTabId: () => 'tab-active',
+      getActiveSessionId: () => 'session-active',
+      getTabs: () => [],
+      isActiveSession: (sid) => sid === 'session-active',
+      updateBackgroundTab,
+      updateTabSessionId: vi.fn(),
+      updateTabTitle: vi.fn(),
+    };
+    const opts = createOptions();
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      window.onUsageUpdate!('session-bg', JSON.stringify({
+        percentage: 1,
+        usedTokens: 2000,
+        maxTokens: 200000,
+      }));
+    });
+
+    expect(updateBackgroundTab).toHaveBeenCalledTimes(1);
+    expect(opts.setUsagePercentage).not.toHaveBeenCalled();
+    expect(opts.setUsageUsedTokens).not.toHaveBeenCalled();
+    expect(opts.setUsageMaxTokens).not.toHaveBeenCalled();
+
+    delete window.__sessionTabsStore;
+  });
+
+  it('drops usage updates that carry no session id', () => {
+    const opts = createOptions();
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      window.onUsageUpdate!(JSON.stringify({
+        percentage: 1,
+        usedTokens: 2000,
+        maxTokens: 200000,
+      }));
+    });
+
+    expect(opts.setUsagePercentage).not.toHaveBeenCalled();
+    expect(opts.setUsageUsedTokens).not.toHaveBeenCalled();
+    expect(opts.setUsageMaxTokens).not.toHaveBeenCalled();
+  });
+
 
 
 
@@ -200,6 +255,7 @@ describe('useWindowCallbacks integration', () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     delete window.__codexHistoryPageInfo;
+    delete window.__sessionTabsStore;
   });
 
   /**
@@ -318,6 +374,11 @@ describe('useWindowCallbacks integration', () => {
   // ===== setSessionId releases transition guard =====
 
   it('setSessionId releases __sessionTransitioning guard', () => {
+    window.__sessionTabsStore = {
+      getActiveTabId: () => 'tab-new',
+      getTabs: () => [{ id: 'tab-new', sessionId: null }],
+      updateTabSessionId: vi.fn(),
+    } as any;
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
@@ -325,12 +386,58 @@ describe('useWindowCallbacks integration', () => {
     window.__sessionTransitionToken = 'transition-2';
 
     act(() => {
-      window.setSessionId!('new-session-123');
+      window.setSessionId!('new-session-123', 'tab-new');
     });
 
     expect(window.__sessionTransitioning).toBe(false);
     expect(window.__sessionTransitionToken).toBeNull();
     expect(opts.setCurrentSessionId).toHaveBeenCalledWith('new-session-123');
+  });
+
+  it('setSessionId for a background tab rebinds that tab without hijacking the active view', () => {
+    const updateTabSessionId = vi.fn();
+    const activeRef = { current: 'sess-active' };
+    window.__sessionTabsStore = {
+      getActiveTabId: () => 'tab-active',
+      getTabs: () => [
+        { id: 'tab-active', sessionId: 'sess-active' },
+        { id: 'tab-bg', sessionId: null },
+      ],
+      updateTabSessionId,
+    } as any;
+    const opts = createOptions({ currentSessionIdRef: activeRef });
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      window.setSessionId!('sess-bg', 'tab-bg');
+    });
+
+    expect(updateTabSessionId).toHaveBeenCalledWith('tab-bg', 'sess-bg');
+    expect(activeRef.current).toBe('sess-active');
+    expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
+  });
+
+  it('setSessionId drops an identity no tab claims instead of switching the active session', () => {
+    const updateTabSessionId = vi.fn();
+    const activeRef = { current: 'sess-active' };
+    window.__sessionTabsStore = {
+      getActiveTabId: () => 'tab-active',
+      getTabs: () => [{ id: 'tab-active', sessionId: 'sess-active' }],
+      updateTabSessionId,
+    } as any;
+    const opts = createOptions({ currentSessionIdRef: activeRef });
+    renderHook(() => useWindowCallbacks(opts));
+
+    window.__sessionTransitioning = true;
+    act(() => {
+      window.setSessionId!('sess-unknown', 'sess-other');
+    });
+
+    expect(updateTabSessionId).not.toHaveBeenCalled();
+    expect(activeRef.current).toBe('sess-active');
+    expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
+    // An unattributable identity notification must not release the guard.
+    expect(window.__sessionTransitioning).toBe(true);
   });
 
   // ===== AI title path uses applyHistoryTitleLocal (no backend round-trip) =====
@@ -403,6 +510,11 @@ describe('useWindowCallbacks integration', () => {
 
   it('setSessionId with title > 50 chars uses applyHistoryTitleLocal to avoid backend 50-char limit', () => {
     const longTitle = 'A very long AI-generated session title that exceeds fifty characters easily';
+    window.__sessionTabsStore = {
+      getActiveTabId: () => 'tab-new',
+      getTabs: () => [{ id: 'tab-new', sessionId: null }],
+      updateTabSessionId: vi.fn(),
+    } as any;
     const opts = createOptions({
       customSessionTitleRef: { current: longTitle },
       currentSessionIdRef: { current: 'sess-old' },
@@ -410,7 +522,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!('sess-new');
+      window.setSessionId!('sess-new', 'tab-new');
     });
 
     expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-new', longTitle);
@@ -419,6 +531,11 @@ describe('useWindowCallbacks integration', () => {
 
   it('setSessionId with title <= 50 chars uses updateHistoryTitle for backend persistence', () => {
     const shortTitle = 'Short user-set title';
+    window.__sessionTabsStore = {
+      getActiveTabId: () => 'tab-new',
+      getTabs: () => [{ id: 'tab-new', sessionId: null }],
+      updateTabSessionId: vi.fn(),
+    } as any;
     const opts = createOptions({
       customSessionTitleRef: { current: shortTitle },
       currentSessionIdRef: { current: 'sess-old' },
@@ -426,7 +543,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!('sess-new');
+      window.setSessionId!('sess-new', 'tab-new');
     });
 
     expect(opts.updateHistoryTitle).toHaveBeenCalledWith('sess-new', shortTitle);

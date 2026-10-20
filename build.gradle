@@ -485,7 +485,7 @@ tasks.named('processResources') {
 // The previous hand-pinned constant silently shipped a stale bridge whose
 // cli-path.js did not understand OPENCODEBUDDY_CLI_PATH, so the user's configured
 // opencode path was ignored and the engine was auto-scanned instead.
-def coreVersionDefault = '0.1.0'
+def coreVersionDefault = '0.2.0'
 def coreRepoSlug = 'SenjuObito/opencode-buddy-core'
 def coreCacheDir = layout.buildDirectory.dir('core-cache').get().asFile
 def coreVersionFile = new File(coreCacheDir, 'resolved-core-version.txt')

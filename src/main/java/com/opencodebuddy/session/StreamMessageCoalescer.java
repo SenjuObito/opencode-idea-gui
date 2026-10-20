@@ -89,6 +89,19 @@ public class StreamMessageCoalescer {
         HandlerContext getHandlerContext();
 
         /**
+         * The session this coalescer belongs to.
+         *
+         * <p>Usage pushed after a snapshot must be read from — and attributed to —
+         * the owning session, never {@link HandlerContext#getSession()}, which
+         * follows whichever tab is on screen. Defaults to {@code null} for test
+         * targets; callers then fall back to the context only for provider/model
+         * and skip the update entirely when no session id is available.</p>
+         */
+        default OpencodeSession getSession() {
+            return null;
+        }
+
+        /**
          * Fired when the stream transitions to inactive (end of a turn's
          * streaming segment). Lets the host run work that was deferred while the
          * stream was active — e.g. a session_updated reload held back so it does
@@ -483,11 +496,17 @@ public class StreamMessageCoalescer {
                         // paying full-payload serialization cost.
                         lastDeliveredSnapshot = messages;
                     }
+                    OpencodeSession owner = callbackTarget.getSession();
+                    String usageSessionId = getTargetSessionId();
+                    if (usageSessionId == null && owner != null) {
+                        usageSessionId = owner.getSessionId();
+                    }
                     MessageJsonConverter.pushUsageUpdateFromMessages(
                             messages,
-                            callbackTarget.getHandlerContext(),
-                            callbackTarget.getBrowser(),
-                            callbackTarget.isDisposed()
+                            usageSessionId,
+                            owner != null ? owner.getProvider() : null,
+                            owner != null ? owner.getModel() : null,
+                            callbackTarget.getHandlerContext()
                     );
                 } catch (Exception e) {
                     LOG.warn("Failed to push updateMessages to webview (payload chars="

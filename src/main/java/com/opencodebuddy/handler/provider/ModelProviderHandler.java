@@ -38,17 +38,23 @@ public class ModelProviderHandler {
      * <p>Payloads may carry a {@code sessionId}: the webview hosts several sessions
      * and each tab owns its own selection, so "the window's current session" is not
      * a safe default — writing there changes the wrong conversation while the UI
-     * reports success. Older payloads (bare strings) fall back to the current
-     * session, which keeps the legacy single-tab behaviour intact.</p>
+     * reports success. An explicit target that cannot be resolved is a no-op (the
+     * tab was closed or has not bound a session yet); it must never fall back.
+     * Only the legacy bare-string format keeps the window-scoped behaviour.</p>
      */
-    private OpencodeSession resolveTargetSession(String sessionId) {
+    private OpencodeSession resolveTargetSession(String sessionId, boolean hasExplicitScope, String channel) {
         if (sessionId != null && !sessionId.trim().isEmpty()) {
             OpencodeSession scoped = context.getSession(sessionId.trim());
-            if (scoped != null) {
-                return scoped;
+            if (scoped == null) {
+                LOG.warn("[ModelProviderHandler] " + channel + ": unknown sessionId " + sessionId
+                        + " — ignoring instead of falling back to the window's current session");
             }
-            LOG.warn("[ModelProviderHandler] Unknown sessionId " + sessionId
-                    + " — falling back to the window's current session");
+            return scoped;
+        }
+        if (hasExplicitScope) {
+            LOG.warn("[ModelProviderHandler] " + channel
+                    + ": payload has no sessionId — ignoring (an unbound tab sends its selection with the message)");
+            return null;
         }
         return context.getSession();
     }
@@ -61,10 +67,12 @@ public class ModelProviderHandler {
             // push an empty usage row, otherwise alternating between two tabs
             // with different models zeroes the usage ring every time.
             boolean silent = false;
+            boolean scopedPayload = false;
             String targetSessionId = null;
             if (content != null && !content.isEmpty()) {
                 try {
                     JsonObject json = gson.fromJson(content, JsonObject.class);
+                    scopedPayload = true;
                     if (json.has("model")) {
                         model = json.get("model").getAsString();
                     }
@@ -79,6 +87,13 @@ public class ModelProviderHandler {
                 }
             }
 
+            OpencodeSession targetSession = resolveTargetSession(targetSessionId, scopedPayload, "set_model");
+            // An explicitly scoped payload with no resolvable target is a no-op.
+            // This covers both an unbound tab (no sessionId yet) and a closed tab.
+            if (targetSession == null && scopedPayload) {
+                return;
+            }
+
             String previousModel = context.getCurrentModel();
             boolean modelChanged = previousModel == null || !previousModel.equals(model);
             LOG.info("[ModelProviderHandler] Setting model to: " + model
@@ -87,7 +102,6 @@ public class ModelProviderHandler {
                     + (targetSessionId != null ? " [session=" + targetSessionId + "]" : ""));
             context.setCurrentModel(model);
 
-            OpencodeSession targetSession = resolveTargetSession(targetSessionId);
             if (targetSession != null) {
                 targetSession.setModel(model);
                 if (modelChanged && !silent) {
@@ -125,10 +139,12 @@ public class ModelProviderHandler {
     public void handleSetReasoningEffort(String content) {
         try {
             String effort = content;
+            boolean scopedPayload = false;
             String targetSessionId = null;
             if (content != null && !content.isEmpty()) {
                 try {
                     JsonObject json = gson.fromJson(content, JsonObject.class);
+                    scopedPayload = true;
                     if (json.has("reasoningEffort")) {
                         effort = json.get("reasoningEffort").getAsString();
                     }
@@ -139,7 +155,10 @@ public class ModelProviderHandler {
                     // content itself is the effort
                 }
             }
-            OpencodeSession targetSession = resolveTargetSession(targetSessionId);
+            OpencodeSession targetSession = resolveTargetSession(targetSessionId, scopedPayload, "set_reasoning_effort");
+            if (targetSession == null && scopedPayload) {
+                return;
+            }
             if (targetSession != null) {
                 targetSession.setReasoningEffort(effort);
             }

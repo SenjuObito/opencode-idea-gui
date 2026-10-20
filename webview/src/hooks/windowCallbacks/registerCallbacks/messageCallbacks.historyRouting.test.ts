@@ -177,17 +177,19 @@ describe('history load routing — background session', () => {
     expect(h.setSessionLoading).not.toHaveBeenCalledWith(true);
   });
 
-  it('falls through to the active view when NO tab claims the session', () => {
-    // 回归：会话还没有对应 tab 时，旧代码把快照丢掉 → 「打开了却是空的」。
+  it('drops the snapshot when NO tab claims the session', () => {
+    // A session id nobody owns means the tab was closed (or the host pushed an
+    // id the webview never bound). Rendering it in the foreground tab would mix
+    // two conversations, so the write is dropped.
     const tabs: FakeTab[] = [{ id: 'tab-fg', sessionId: 'ses_fg', messages: [] }];
     const h = createHarness('ses_fg');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
 
     window.updateMessages!('ses_unbound', JSON.stringify(historySnapshot()), '31');
 
-    expect(h.setMessages).toHaveBeenCalled();
-    expect(h.getMessages()).toHaveLength(2);
-    expect(h.getMessages()[1].content).toBe('history answer');
+    expect(h.setMessages).not.toHaveBeenCalled();
+    expect(h.getMessages()).toHaveLength(0);
+    expect(tabs[0].messages).toEqual([]);
   });
 });
 

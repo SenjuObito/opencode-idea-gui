@@ -536,8 +536,12 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         if (isInactive()) {
             return;
         }
+        if (!hasIdentity()) {
+            warnUnattributedOnce("usage update");
+            return;
+        }
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
+            if (isInactive() || !hasIdentity()) {
                 return;
             }
             int safeUsedTokens = normalizeUsageValue(usedTokens);

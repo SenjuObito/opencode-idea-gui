@@ -211,4 +211,81 @@ describe('useScrollBehavior', () => {
     expect(getScrollTop()).toBe(1100);
     expect(result.current.isUserAtBottomRef.current).toBe(true);
   });
+
+  it('captures the reader position and follow flags for the active tab', () => {
+    const { container, setScrollTop } = createScrollableContainer();
+    const { result, rerender } = renderHook((props: HookProps) => useScrollBehavior(props), {
+      initialProps: INITIAL_PROPS,
+    });
+
+    act(() => {
+      result.current.messagesContainerRef.current = container;
+    });
+    rerender({ ...INITIAL_PROPS, currentView: 'chat' });
+    act(() => {
+      vi.runAllTimers();
+      container.dispatchEvent(new WheelEvent('wheel', { deltaY: -40 }));
+      setScrollTop(250);
+    });
+
+    const captured = result.current.captureScrollState();
+    expect(captured).toEqual({ scrollTop: 250, isUserAtBottom: false, userPaused: true });
+  });
+
+  it('restores a tab position instead of following the bottom on the next messages commit', () => {
+    const { container, getScrollTop, setScrollTop, setScrollHeight } = createScrollableContainer();
+    const { result, rerender } = renderHook((props: HookProps) => useScrollBehavior(props), {
+      initialProps: INITIAL_PROPS,
+    });
+
+    act(() => {
+      result.current.messagesContainerRef.current = container;
+    });
+    rerender({ ...INITIAL_PROPS, currentView: 'chat' });
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    setScrollHeight(1800);
+    act(() => {
+      result.current.restoreScrollState({ scrollTop: 300, isUserAtBottom: false, userPaused: true });
+    });
+
+    rerender({
+      ...INITIAL_PROPS,
+      currentView: 'chat',
+      messages: [{ type: 'assistant', content: 'background tab grew', timestamp: '2026-04-27T00:00:00.000Z' }],
+    });
+
+    expect(getScrollTop()).toBe(300);
+    expect(result.current.isUserAtBottomRef.current).toBe(false);
+    expect(result.current.userPausedRef.current).toBe(true);
+  });
+
+  it('does not force the bottom when returning to chat while the reader was paused', () => {
+    const { container, getScrollTop, setScrollTop } = createScrollableContainer();
+    const { result, rerender } = renderHook((props: HookProps) => useScrollBehavior(props), {
+      initialProps: INITIAL_PROPS,
+    });
+
+    act(() => {
+      result.current.messagesContainerRef.current = container;
+    });
+    // Enter the chat view so the wheel/scroll listeners bind to the container.
+    rerender({ ...INITIAL_PROPS, currentView: 'chat' });
+    act(() => {
+      vi.runAllTimers();
+      container.dispatchEvent(new WheelEvent('wheel', { deltaY: -40 }));
+      setScrollTop(200);
+    });
+
+    rerender({ ...INITIAL_PROPS, currentView: 'history', messages: [] });
+    rerender({ ...INITIAL_PROPS, currentView: 'chat', messages: [] });
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(getScrollTop()).toBe(200);
+  });
 });

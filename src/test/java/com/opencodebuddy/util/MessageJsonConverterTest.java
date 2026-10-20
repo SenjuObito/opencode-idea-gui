@@ -1,11 +1,13 @@
 package com.opencodebuddy.util;
 
+import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.session.OpencodeSession;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -107,6 +109,78 @@ public class MessageJsonConverterTest {
 
         assertEquals("tool-1", transportToolResult.get("tool_use_id").getAsString());
         assertTrue(transportToolResult.get("content").getAsString().contains("truncated"));
+    }
+
+    @Test
+    public void usageUpdateIsTaggedWithTheOwningSessionInsteadOfTheActiveOne() {
+        List<String[]> calls = new ArrayList<>();
+        HandlerContext context = new HandlerContext(null, null, null, new HandlerContext.JsCallback() {
+            @Override
+            public void callJavaScript(String functionName, String... args) {
+                List<String> call = new ArrayList<>();
+                call.add(functionName);
+                java.util.Collections.addAll(call, args);
+                calls.add(call.toArray(new String[0]));
+            }
+
+            @Override
+            public String escapeJs(String str) {
+                return str;
+            }
+        });
+
+        JsonObject tokens = new JsonObject();
+        tokens.addProperty("input", 2_000);
+        tokens.addProperty("output", 100);
+        JsonObject raw = new JsonObject();
+        raw.addProperty("type", "assistant");
+        raw.add("tokens", tokens);
+        OpencodeSession.Message assistant = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ASSISTANT, "reply", raw);
+
+        MessageJsonConverter.pushUsageUpdateFromMessages(
+                List.of(assistant), "session-a", "opencode", "model-a[200k]", context);
+
+        assertEquals(1, calls.size());
+        assertEquals("window.onUsageUpdate", calls.get(0)[0]);
+        assertEquals("session-a", calls.get(0)[1]);
+        // HandlerContext callers receive the JsUtils-escaped payload.
+        JsonObject payload = JsonParser.parseString(
+                calls.get(0)[2].replace("\\\"", "\"")).getAsJsonObject();
+        assertEquals(2_000, payload.get("usedTokens").getAsInt());
+        assertEquals(200_000, payload.get("maxTokens").getAsInt());
+        assertEquals(1, payload.get("percentage").getAsInt());
+    }
+
+    @Test
+    public void usageUpdateWithoutSessionIdIsDropped() {
+        List<String> calls = new ArrayList<>();
+        HandlerContext context = new HandlerContext(null, null, null, new HandlerContext.JsCallback() {
+            @Override
+            public void callJavaScript(String functionName, String... args) {
+                calls.add(functionName);
+            }
+
+            @Override
+            public String escapeJs(String str) {
+                return str;
+            }
+        });
+
+        JsonObject tokens = new JsonObject();
+        tokens.addProperty("input", 2_000);
+        JsonObject raw = new JsonObject();
+        raw.addProperty("type", "assistant");
+        raw.add("tokens", tokens);
+        OpencodeSession.Message assistant = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ASSISTANT, "reply", raw);
+
+        MessageJsonConverter.pushUsageUpdateFromMessages(
+                List.of(assistant), null, "opencode", "model-a", context);
+        MessageJsonConverter.pushUsageUpdateFromMessages(
+                List.of(assistant), "", "opencode", "model-a", context);
+
+        assertTrue(calls.isEmpty());
     }
 
     @Test

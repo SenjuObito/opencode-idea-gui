@@ -63,15 +63,18 @@ public class PermissionModeHandler {
      * Accepts either a bare mode string (legacy, window-scoped fallback) or a
      * JSON object {@code {"sessionId":"…","mode":"…"}} so the change can be
      * scoped to the calling tab's session instead of always hitting the window's
-     * current session.
+     * current session. An explicitly scoped payload that cannot be resolved is a
+     * no-op: falling back would rewrite the previously active tab.
      */
     public void handleSetMode(String content) {
         try {
             String mode = content;
+            boolean scopedPayload = false;
             String targetSessionId = null;
             if (content != null && !content.isEmpty()) {
                 try {
                     JsonObject json = this.gson.fromJson(content, JsonObject.class);
+                    scopedPayload = true;
                     if (json.has("mode")) {
                         mode = json.get("mode").getAsString();
                     }
@@ -86,10 +89,17 @@ public class PermissionModeHandler {
             OpencodeSession targetSession = null;
             if (targetSessionId != null && !targetSessionId.trim().isEmpty()) {
                 targetSession = context.getSession(targetSessionId);
-            }
-            // Fall back to the window's current session when no sessionId is
-            // provided (legacy callers) or the targeted session is not found.
-            if (targetSession == null) {
+                if (targetSession == null) {
+                    LOG.warn("[PermissionModeHandler] Unknown sessionId " + targetSessionId
+                            + " — ignoring instead of falling back to the window's current session");
+                    return;
+                }
+            } else if (scopedPayload) {
+                LOG.warn("[PermissionModeHandler] Payload has no sessionId — ignoring "
+                        + "(an unbound tab sends its mode with the message)");
+                return;
+            } else {
+                // Legacy bare-string callers keep the window-scoped behaviour.
                 targetSession = context.getSession();
             }
 

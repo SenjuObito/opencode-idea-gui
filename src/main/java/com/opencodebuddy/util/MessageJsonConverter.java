@@ -9,7 +9,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.ui.jcef.JBCefBrowser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -326,31 +325,48 @@ public class MessageJsonConverter {
     }
 
     /**
-     * Extract usage info from messages and push update to the webview.
+     * Extract usage info from a session's messages and push it tagged with that
+     * session's identity.
+     *
+     * <p>The provider/model come from the session that produced {@code messages},
+     * never from {@link HandlerContext#getSession()} — during concurrent turns the
+     * context points at whichever session is currently on screen, so reading it
+     * here tagged one session's tokens with another's id (and computed the
+     * percentage against the wrong context window). An empty {@code sessionId}
+     * means the update is un-attributable and is dropped instead of being sent
+     * without an id, which the frontend used to interpret as "the active tab".</p>
      */
     public static void pushUsageUpdateFromMessages(
             List<OpencodeSession.Message> messages,
-            HandlerContext handlerContext,
-            JBCefBrowser browser,
-            boolean disposed
+            String sessionId,
+            String provider,
+            String model,
+            HandlerContext handlerContext
     ) {
+        if (handlerContext == null || sessionId == null || sessionId.isEmpty()) {
+            LOG.debug("Skipping usage update without an attributable session id");
+            return;
+        }
         try {
             LOG.debug("pushUsageUpdateFromMessages called with " + messages.size() + " messages");
 
-            String currentProvider = handlerContext.getCurrentProvider();
-            JsonObject lastUsage = TokenUsageUtils.findLastUsageFromSessionMessages(messages, currentProvider);
+            String effectiveProvider = (provider != null && !provider.isBlank())
+                    ? provider : handlerContext.getCurrentProvider();
+            JsonObject lastUsage = TokenUsageUtils.findLastUsageFromSessionMessages(messages, effectiveProvider);
             if (lastUsage == null) {
                 LOG.debug("No usage info found in messages");
                 return;
             }
 
-            int usedTokens = TokenUsageUtils.extractContextTokens(lastUsage, currentProvider);
-            int fallbackMaxTokens = SettingsHandler.getModelContextLimit(
-                    currentProvider, handlerContext.getCurrentModel());
+            int usedTokens = TokenUsageUtils.extractContextTokens(lastUsage, effectiveProvider);
+            String effectiveModel = (model != null && !model.isBlank())
+                    ? model : handlerContext.getCurrentModel();
+            int fallbackMaxTokens = SettingsHandler.getModelContextLimit(effectiveProvider, effectiveModel);
             int maxTokens = TokenUsageUtils.extractMaxTokens(lastUsage, fallbackMaxTokens);
             int percentage = Math.min(100, maxTokens > 0 ? (int) ((usedTokens * 100.0) / maxTokens) : 0);
 
-            LOG.debug("Pushing usage update: provider=" + currentProvider + ", usedTokens=" + usedTokens + ", max=" + maxTokens + ", percentage=" + percentage + "%");
+            LOG.debug("Pushing usage update: session=" + sessionId + ", provider=" + effectiveProvider
+                    + ", usedTokens=" + usedTokens + ", max=" + maxTokens + ", percentage=" + percentage + "%");
 
             JsonObject usageUpdate = new JsonObject();
             usageUpdate.addProperty("percentage", percentage);
@@ -360,13 +376,7 @@ public class MessageJsonConverter {
             usageUpdate.addProperty("maxTokens", maxTokens);
 
             String usageJson = new Gson().toJson(usageUpdate);
-            OpencodeSession session = handlerContext.getSession();
-            String sessionId = (session != null) ? session.getSessionId() : null;
-            if (sessionId != null && !sessionId.isEmpty()) {
-                handlerContext.callJavaScript("window.onUsageUpdate", sessionId, JsUtils.escapeJs(usageJson));
-            } else {
-                handlerContext.callJavaScript("window.onUsageUpdate", JsUtils.escapeJs(usageJson));
-            }
+            handlerContext.callJavaScript("window.onUsageUpdate", sessionId, JsUtils.escapeJs(usageJson));
         } catch (Exception e) {
             LOG.warn("Failed to push usage update: " + e.getMessage(), e);
         }

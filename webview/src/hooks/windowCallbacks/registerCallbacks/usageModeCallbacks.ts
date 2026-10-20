@@ -12,6 +12,7 @@ import type { PermissionMode, ReasoningEffort } from '../../../components/ChatIn
 import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBootstrap';
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
 import { cardDebugLog } from '../../../utils/bridge';
+import { resolveSessionIdWithLegacyFallback } from '../../../utils/sessionIdentity';
 
 export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -30,16 +31,20 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   } = options;
 
   window.onUsageUpdate = (arg0: string, arg1?: string) => {
-    let targetSessionId: string | null = null;
-    let jsonStr: string = '';
-
-    if (typeof arg1 !== 'undefined') {
-      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
-      jsonStr = typeof arg1 === 'string' ? arg1 : JSON.stringify(arg1);
-    } else {
-      targetSessionId = null;
-      jsonStr = typeof arg0 === 'string' ? arg0 : JSON.stringify(arg0);
+    // Usage is per-session state. An update without a session id is
+    // unattributable: guessing "the active tab" is exactly what copied the
+    // previous session's tokens onto a freshly created one. resolveSessionId
+    // counts and drops it instead.
+    const { sessionId: targetSessionId, payload } = resolveSessionIdWithLegacyFallback(
+      arg0,
+      arg1,
+      'usage',
+    );
+    if (!targetSessionId) {
+      return;
     }
+
+    const jsonStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
 
     try {
       const data = JSON.parse(jsonStr);
@@ -65,13 +70,9 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
 
         const safePercentage = Math.max(0, Math.min(100, data.percentage));
 
-        // 兜底：Java 端未传 sessionId 时，沿用当前前端 active session，避免跨 tab 污染
-        if (!targetSessionId && window.__sessionTabsStore) {
-          targetSessionId = window.__sessionTabsStore.getActiveSessionId();
-        }
-
-        // If targetSessionId belongs to a background tab, update the background tab's data directly
-        if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+        // If targetSessionId belongs to a background tab, update that tab's
+        // data directly. Never touch the active view from a background update.
+        if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
           window.__sessionTabsStore.updateBackgroundTab(
             (t) => t.sessionId === targetSessionId,
             (tab) => {
@@ -83,27 +84,22 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
           return;
         }
 
-        // Active tab (or no sessionId): update global UI state AND persist into the
-        // current active tab so tab-switching restores the correct per-tab
-        // model / maxTokens / usedTokens.
+        // Active session (or the tab store has not mounted yet): update global
+        // UI state AND persist into that session's tab so switching back
+        // restores its own usage.
         setUsagePercentage(safePercentage);
         setUsageUsedTokens(used);
         setUsageMaxTokens(max);
 
         if (window.__sessionTabsStore) {
-          const activeTabId = window.__sessionTabsStore.getActiveTabId();
-          const activeSessionId = window.__sessionTabsStore.getActiveSessionId();
-          const effectiveSessionId = targetSessionId || activeSessionId;
-          if (effectiveSessionId) {
-            window.__sessionTabsStore.updateBackgroundTab(
-              (t) => t.sessionId === effectiveSessionId || t.id === activeTabId,
-              (tab) => {
-                tab.usagePercentage = safePercentage;
-                tab.usageUsedTokens = used;
-                tab.usageMaxTokens = max;
-              }
-            );
-          }
+          window.__sessionTabsStore.updateBackgroundTab(
+            (t) => t.sessionId === targetSessionId,
+            (tab) => {
+              tab.usagePercentage = safePercentage;
+              tab.usageUsedTokens = used;
+              tab.usageMaxTokens = max;
+            }
+          );
         }
       }
     } catch (error) {

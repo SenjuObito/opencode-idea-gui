@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage } from '../types';
 import type { ContextInfo } from './useWindowCallbacks';
+import type { TabScrollState } from './useScrollBehavior';
 import type { SessionTabData } from '../components/ChatHeader/types';
 import type { ModelInfo, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { getFirstPreferredModelId, resolveSessionModel } from '../components/ChatInputBox/modelSelectUtils';
@@ -85,6 +86,13 @@ interface UseSessionTabsOptions {
    * would leak its text into whichever session is activated next.
    */
   streamingRuntimeRefs?: StreamingRuntimeRefs;
+  /**
+   * Scroll isolation hooks. `captureScrollState` snapshots the outgoing tab's
+   * reader position before the transcript swap; `restoreScrollState` queues the
+   * target tab's saved position (or the bottom for a brand-new tab).
+   */
+  captureScrollState?: () => TabScrollState | null;
+  restoreScrollState?: (state?: TabScrollState | null) => void;
   t: TFunction;
 }
 
@@ -146,6 +154,8 @@ export function useSessionTabs({
   forceCreateNewSession: _forceCreateNewSession,
   loadHistorySession,
   streamingRuntimeRefs,
+  captureScrollState,
+  restoreScrollState,
   t,
 }: UseSessionTabsOptions) {
   const [tabs, setTabs] = useState<SessionTabData[]>([
@@ -559,12 +569,10 @@ export function useSessionTabs({
    * Point the host at a tab's session. Must run BEFORE any per-session bridge
    * call that follows it.
    *
-   * `set_mode` / `set_model` / `set_reasoning_effort` carry no session identity
-   * on the legacy wire format, so the host applies them to "the window's current
-   * session" (`PermissionModeHandler.handleSetMode` falls back to
-   * `context.getSession()`; `ModelProviderHandler` never parses a sessionId at
-   * all). Sending them before the switch rewrites the **outgoing** tab's
-   * build/plan mode and model, and two tabs then silently swap configurations.
+   * `set_mode` / `set_model` / `set_reasoning_effort` now carry a session id, but
+   * the host's "window's current session" pointer still feeds legacy paths and
+   * window-level notifications. Keeping it aligned avoids those observing the
+   * outgoing tab. Tabs without a session are skipped: they have no host target.
    */
   const syncHostSessionTo = useCallback((sessionId: string | null | undefined) => {
     if (!sessionId) return;
@@ -574,18 +582,14 @@ export function useSessionTabs({
   /**
    * Apply a build/plan mode to one specific session.
    *
-   * The host accepts `{"sessionId","mode"}` and routes it to that session, so
-   * this stays correct even if message ordering ever changes. Falls back to the
-   * bare format for tabs that have not bound a session yet (the host then uses
-   * whichever session is current, which for a fresh tab is the intended one).
+   * The host accepts `{"sessionId","mode"}` and routes it to that session. A tab
+   * without a bound session has no host target — its mode travels with
+   * `send_message` — so there is deliberately no bare-string fallback here.
    */
   const syncPermissionModeTo = useCallback(
     (sessionId: string | null | undefined, mode: string) => {
-      if (sessionId) {
-        sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode }));
-      } else {
-        sendBridgeEvent('set_mode', mode);
-      }
+      if (!sessionId) return;
+      sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode }));
     },
     [],
   );
@@ -678,6 +682,10 @@ export function useSessionTabs({
       currentActive.messageBaseIndex = typeof window.__messageBaseIndex === 'number' ? window.__messageBaseIndex : currentActive.messageBaseIndex;
       currentActive.opencodeListStart = typeof window.__opencodeListStart === 'number' ? window.__opencodeListStart : currentActive.opencodeListStart;
       currentActive.prependedHistoryMessageCount = typeof window.__prependedHistoryMessageCount === 'number' ? window.__prependedHistoryMessageCount : currentActive.prependedHistoryMessageCount;
+      const capturedScroll = captureScrollState?.();
+      if (capturedScroll) {
+        currentActive.scrollState = capturedScroll;
+      }
 
       const currentDraftText = chatInputRef?.current?.getValue?.() ?? '';
       currentActive.draft = {
@@ -699,7 +707,7 @@ export function useSessionTabs({
       // background turn keeps accumulating into this tab, not into the next one.
       archiveStreamingRuntime(currentActive.id);
     }
-  }, [chatInputRef, archiveStreamingRuntime]);
+  }, [chatInputRef, archiveStreamingRuntime, captureScrollState]);
 
   // Select tab (pure view switch: preserves background generation, never interrupts)
   const selectTab = useCallback(
@@ -746,6 +754,10 @@ export function useSessionTabs({
       // 同步 Tab 标题到 IDE ToolWindow，切换 Tab 时跟随标签页标题
       sendBridgeEvent('update_tab_title', targetTab.title || '');
       setMessages(targetTab.messages || []);
+      // Queue the target tab's own reader position. The layout effect in
+      // useScrollBehavior applies it after this commit and skips auto-follow,
+      // so the outgoing tab's "at bottom" state cannot drag this reader down.
+      restoreScrollState?.(targetTab.scrollState ?? null);
       // Exchange the streaming runtime immediately after the transcript swap:
       // the next delta must see this tab's accumulator, and the message index is
       // intentionally reset so the live assistant is re-located in the new array.
@@ -833,6 +845,7 @@ export function useSessionTabs({
     [
       saveCurrentTabSnapshot,
       restoreStreamingRuntimeFor,
+      restoreScrollState,
       syncHostSessionTo,
       syncPermissionModeTo,
       setCurrentSessionId,
@@ -916,6 +929,7 @@ export function useSessionTabs({
                 filteredFileChanges: [],
                 contextInfo: null,
                 autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
+                scrollState: undefined,
               }
             : t
         );
@@ -968,6 +982,9 @@ export function useSessionTabs({
       sendBridgeEvent('update_tab_title', resolvedTitle);
 
       setMessages([]);
+      // A freshly opened tab starts at the newest message and must not inherit
+      // the outgoing tab's paused/at-bottom flags.
+      restoreScrollState?.(null);
       setLoading?.(false);
       setStreamingActive?.(false);
       setIsThinking?.(false);
@@ -1024,6 +1041,7 @@ export function useSessionTabs({
     [
       selectTab,
       saveCurrentTabSnapshot,
+      restoreScrollState,
       messages,
       defaultAutoOpenFileEnabled,
       loadHistorySession,
@@ -1107,6 +1125,7 @@ export function useSessionTabs({
     setCurrentSessionId?.(null);
     setCustomSessionTitle(null);
     setMessages([]);
+    restoreScrollState?.(null);
     window.__messageBaseIndex = 0;
     window.__opencodeListStart = 0;
     window.__prependedHistoryMessageCount = 0;
@@ -1122,15 +1141,15 @@ export function useSessionTabs({
     setSubagentHistories?.({});
     setFilteredFileChanges?.([]);
 
-    // Set model, mode, effort for brand new tab
+    // A brand-new tab has no host session yet, so model/mode/effort are local
+    // UI state only. Sending set_model / set_mode / set_reasoning_effort here
+    // would land on "the window's current session" — the previous tab — and the
+    // first send_message carries the same values to the new session.
     if (defaultModel) {
       setSelectedModel?.(defaultModel);
-      sendBridgeEvent('set_model', defaultModel);
     }
     setPermissionMode?.('default');
-    sendBridgeEvent('set_mode', 'default');
     setReasoningEffort?.('default');
-    sendBridgeEvent('set_reasoning_effort', 'default');
 
     // Reset turn timer & usage metrics for new tab
     setLoadingStartTime?.(null);
@@ -1150,6 +1169,7 @@ export function useSessionTabs({
     sendBridgeEvent('update_tab_title', newTab.title);
   }, [
     saveCurrentTabSnapshot,
+    restoreScrollState,
     t,
     defaultAutoOpenFileEnabled,
     currentProvider,
@@ -1220,6 +1240,7 @@ export function useSessionTabs({
           setCurrentSessionId?.(null);
           setCustomSessionTitle(null);
           setMessages([]);
+          restoreScrollState?.(null);
           setLoading?.(false);
           setStreamingActive?.(false);
           setIsThinking?.(false);
@@ -1231,14 +1252,13 @@ export function useSessionTabs({
           setSseTodos?.(null);
           setSubagentHistories?.({});
           setFilteredFileChanges?.([]);
+          // Fresh unbound tab: keep model/mode/effort local; the first send
+          // carries them to the new session. Never write the outgoing session.
           if (defaultModel) {
             setSelectedModel?.(defaultModel);
-            sendBridgeEvent('set_model', defaultModel);
           }
           setPermissionMode?.('default');
-          sendBridgeEvent('set_mode', 'default');
           setReasoningEffort?.('default');
-          sendBridgeEvent('set_reasoning_effort', 'default');
           setLoadingStartTime?.(null);
           window.__turnStartedAt = undefined;
           setUsagePercentage?.(0);
@@ -1269,6 +1289,7 @@ export function useSessionTabs({
             setCurrentSessionId?.(nextActive.sessionId);
             setCustomSessionTitle(nextActive.title || null);
             setMessages(nextActive.messages || []);
+            restoreScrollState?.(nextActive.scrollState ?? null);
             restoreStreamingRuntimeFor(nextActive.id, nextActive.streamingActive);
             setLoading?.(nextActive.loading || false);
             setStreamingActive?.(nextActive.streamingActive || false);
@@ -1329,6 +1350,7 @@ export function useSessionTabs({
       defaultAutoOpenFileEnabled,
       currentProvider,
       availableModels,
+      restoreScrollState,
       setCurrentSessionId,
       setCustomSessionTitle,
       setMessages,

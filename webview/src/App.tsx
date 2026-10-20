@@ -157,6 +157,7 @@ const App = () => {
   const {
     messagesContainerRef, messagesEndRef, inputAreaRef,
     isUserAtBottomRef, isAutoScrollingRef, userPausedRef, scrollToBottom,
+    captureScrollState, restoreScrollState,
   } = useScrollBehavior({ currentView, messages, loading, isCompacting, streamingActive });
 
   // ── Streaming messages ──
@@ -675,12 +676,28 @@ const App = () => {
         console.debug('[App] onRevertStateUpdate', { targetSessionId, payload });
         const next = !!payload.hasRevert;
         const nextId = payload.messageId ?? null;
+        const wireSessionId = targetSessionId || payload.sessionId || null;
+        const tabsStore = window.__sessionTabsStore;
+
+        // A revert pointer belongs to one session. Applying it to whichever tab
+        // is on screen used to reset the scroll flags and jump the reader to the
+        // bottom whenever a background session reverted a message.
+        if (wireSessionId && tabsStore && !tabsStore.isActiveSession(wireSessionId)) {
+          tabsStore.updateBackgroundTab(
+            (t) => t.sessionId === wireSessionId,
+            (t) => {
+              t.revertBoundaryId = next ? nextId : null;
+            }
+          );
+          return;
+        }
+
         const prevHasRevert = hasRevertStateRef.current;
         const prevId = revertBoundaryIdRef.current;
         const changed = next !== prevHasRevert || nextId !== prevId;
         applyRevertState(next, nextId);
 
-        const sessionId = targetSessionId || payload.sessionId || currentSessionIdRef.current;
+        const sessionId = wireSessionId || currentSessionIdRef.current;
         const currentKey = `${sessionId}:${next}:${nextId}`;
         if (changed || (next && lastLoadedRevertStateRef.current !== currentKey)) {
           lastLoadedRevertStateRef.current = currentKey;
@@ -696,13 +713,31 @@ const App = () => {
     // 并逐条广播 message.removed；宿主镜像删除后转发到这里。先把自己列表里的这些
     // 消息剔除，使随后到达的 updateMessages 快照与 prev 等长 —— 否则
     // preserveLatestMessagesOnShrink 会把它当成「暂时收缩」，把刚删的消息抢救回来。
-    window.onMessagesRemoved = (json: string) => {
+    window.onMessagesRemoved = (arg0: unknown, arg1?: unknown) => {
       try {
-        const parsed = JSON.parse(json) as unknown;
+        // Host sends (sessionId, json); accept the legacy single-argument form
+        // for older builds.
+        const hasSessionArg = typeof arg1 !== 'undefined';
+        const targetSessionId = hasSessionArg && typeof arg0 === 'string' ? arg0 : null;
+        const json = hasSessionArg ? arg1 : arg0;
+        const parsed = typeof json === 'string' ? JSON.parse(json) as unknown : json;
         if (!Array.isArray(parsed) || parsed.length === 0) return;
         const ids = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
         if (ids.length === 0) return;
-        console.debug('[App] onMessagesRemoved', ids);
+        console.debug('[App] onMessagesRemoved', targetSessionId, ids);
+
+        if (targetSessionId && window.__sessionTabsStore) {
+          if (!window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+            window.__sessionTabsStore.updateBackgroundTab(
+              (t) => t.sessionId === targetSessionId,
+              (t) => {
+                t.messages = applyMessagesRemoved(t.messages ?? [], ids);
+              }
+            );
+            return;
+          }
+        }
+
         setMessages((prev) => applyMessagesRemoved(prev, ids));
       } catch {
         // ignore malformed payloads
@@ -1141,6 +1176,8 @@ const App = () => {
     forceCreateNewSession,
     loadHistorySession,
     streamingRuntimeRefs,
+    captureScrollState,
+    restoreScrollState,
     t,
   });
 

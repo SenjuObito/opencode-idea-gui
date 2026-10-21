@@ -15,9 +15,9 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -142,7 +142,7 @@ public class OpenCodeListMessagesRoutingTest {
 
     /** 记录被路由到会话 sink 的行 —— 查询响应一行都不该出现在这里。 */
     private static final class RecordingSink implements DaemonBridge.SessionLineSink {
-        private final List<String> lines = new ArrayList<>();
+        private final List<String> lines = new CopyOnWriteArrayList<>();
 
         @Override
         public void onLine(String line) {
@@ -270,6 +270,59 @@ public class OpenCodeListMessagesRoutingTest {
         }
     }
 
+    @Test
+    public void newSessionIdReachesItsStartingRequestBeforeASinkExists() throws Exception {
+        // 2026-10-21 故障：新会话首轮消息永远“正在响应”。daemon 的 [SESSION_ID]
+        // 行被盖上了刚创建会话的 session 戳，而宿主此时还没有该会话的 sink；
+        // 重构后的 deliverDataLine 把它当会话数据缓冲起来，宿主永远学不到 id，
+        // 也就永远不注册 sink —— 后续 delta 全部滞留在孤儿缓冲区。
+        ScriptedProcess process = new ScriptedProcess();
+        process.emitReady();
+        DaemonBridge bridge = new DaemonBridge(
+                null, null, null, DaemonBridge.TimeSource.system(),
+                () -> process, DaemonBridge.DaemonLifecycleHooks.NO_OP);
+        assertTrue(bridge.start());
+        try {
+            RecordingSink requestLines = new RecordingSink();
+            bridge.sendCommand("opencode.send", new JsonObject(), new DaemonBridge.DaemonOutputCallback() {
+                @Override
+                public void onLine(String line) {
+                    requestLines.lines.add(line);
+                }
+
+                @Override
+                public void onStderr(String text) {
+                }
+
+                @Override
+                public void onError(String error) {
+                }
+
+                @Override
+                public void onComplete(boolean success) {
+                }
+            });
+            String requestId = awaitRequestId(process);
+            assertNotNull("host never sent the send request", requestId);
+
+            process.emit(envelope(requestId, "[SESSION_ID] ses_new", "ses_new"));
+            awaitLine(requestLines.lines, "[SESSION_ID] ses_new",
+                    "identity marker must reach the request that created the session");
+
+            // 内容行仍归会话所有：宿主办完 id、注册 sink 后必须补发，且不进请求收集器。
+            RecordingSink sessionSink = new RecordingSink();
+            process.emit(envelope(requestId, "[CONTENT_DELTA] \"hi\"", "ses_new"));
+            bridge.registerSessionSink("ses_new", sessionSink);
+            awaitLine(sessionSink.lines, "[CONTENT_DELTA] \"hi\"",
+                    "content awaited a sink that the bound session never got");
+            assertFalse("content must not be handed to the request collector",
+                    requestLines.lines.contains("[CONTENT_DELTA] \"hi\""));
+        } finally {
+            closeQuietly(process);
+            bridge.stop();
+        }
+    }
+
     // ===== helpers =====
 
     private static void closeQuietly(ScriptedProcess process) {
@@ -287,6 +340,18 @@ public class OpenCodeListMessagesRoutingTest {
     private static String envelope(String requestId, String innerJson) {
         String escaped = innerJson.replace("\\", "\\\\").replace("\"", "\\\"");
         return "{\"id\":\"" + requestId + "\",\"line\":\"" + escaped + "\"}";
+    }
+
+    /**
+     * Envelope for a data line stamped with a session — the shape the daemon
+     * produces once the session id is known.
+     */
+    private static String envelope(String requestId, String line, String session) {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("id", requestId);
+        obj.addProperty("session", session);
+        obj.addProperty("line", line);
+        return obj.toString();
     }
 
     private static String done(String requestId) {
@@ -312,6 +377,18 @@ public class OpenCodeListMessagesRoutingTest {
         entry.add("info", info);
         entry.add("parts", parts);
         return new Gson().toJson(entry);
+    }
+
+    private static void awaitLine(List<String> lines, String expected, String message)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (lines.contains(expected)) {
+                return;
+            }
+            Thread.sleep(20);
+        }
+        fail(message + " — expected: " + expected + ", saw: " + lines);
     }
 
     private static String awaitRequestId(ScriptedProcess process) throws InterruptedException {

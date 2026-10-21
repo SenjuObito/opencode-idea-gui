@@ -894,7 +894,11 @@ public class DaemonBridge {
         // A named session that has no sink yet must be buffered for that
         // session. Falling back to an id-matched request handler here would
         // hand its line to whichever request happened to use the same id.
-        if (session == null && id != null) {
+        // The identity marker is the exception: the daemon stamps it with the
+        // brand-new session id, and it is the only way the host learns which
+        // sink to register. Buffering it strands the session (no id, no sink,
+        // every later line buffered forever).
+        if (id != null && (session == null || line.startsWith("[SESSION_ID]"))) {
             RequestHandler handler = context.getRequestHandler(id);
             if (handler != null) {
                 handler.callback.onLine(line);

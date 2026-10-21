@@ -3749,7 +3749,7 @@ public class OpencodeBuddyChatWindow {
 
             @Override
             public OpencodeSession getSession() {
-                return getSession();
+                return OpencodeBuddyChatWindow.this.getSession();
             }
 
             @Override

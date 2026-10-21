@@ -2,8 +2,10 @@ package com.opencodebuddy.ui.toolwindow;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.opencodebuddy.util.JsUtils;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -408,11 +410,34 @@ class BridgeScheduler<T> {
         JsonObject payload = new JsonObject();
         JsonArray args = new JsonArray();
         for (String arg : call.args) {
-            args.add(arg == null ? "" : arg);
+            args.add(envelopeArg(arg));
         }
         payload.add("args", args);
         envelope.add("payload", payload);
         return envelope;
+    }
+
+    /** Callers pass escapeJs(JSON); the envelope sends it verbatim, so decode it once for JSON payloads. */
+    static String envelopeArg(String arg) {
+        if (arg == null || arg.isEmpty()) {
+            return "";
+        }
+        boolean jsonLike = arg.charAt(0) == '{' || arg.charAt(0) == '['
+                || arg.charAt(0) == '"' || arg.startsWith("\\\"");
+        if (!jsonLike || isJson(arg)) {
+            return arg;
+        }
+        String decoded = JsUtils.unescapeJs(arg);
+        return isJson(decoded) ? decoded : arg;
+    }
+
+    private static boolean isJson(String text) {
+        try {
+            JsonParser.parseString(text);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private static StringBuilder legacyCalls(List<? extends JsCall<?>> calls) {

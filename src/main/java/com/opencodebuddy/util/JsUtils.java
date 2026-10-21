@@ -36,6 +36,47 @@ public class JsUtils {
     }
 
     /**
+     * Reverse {@link #escapeJs}: recover the string a JS literal would produce.
+     * Only used when a value escaped for a JS literal is sent as plain data instead.
+     */
+    public static String unescapeJs(String str) {
+        if (str == null) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(str.length());
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            if (c != '\\' || i + 1 >= str.length()) {
+                out.append(c);
+                continue;
+            }
+            char next = str.charAt(++i);
+            switch (next) {
+                case 'n': out.append('\n'); break;
+                case 'r': out.append('\r'); break;
+                case 't': out.append('\t'); break;
+                case 'b': out.append('\b'); break;
+                case 'f': out.append('\f'); break;
+                case '0': out.append('\0'); break;
+                case 'u':
+                    if (i + 4 < str.length()) {
+                        try {
+                            out.append((char) Integer.parseInt(str.substring(i + 1, i + 5), 16));
+                            i += 4;
+                            break;
+                        } catch (NumberFormatException ignored) {
+                            // Not a unicode escape; keep it verbatim.
+                        }
+                    }
+                    out.append('\\').append(next);
+                    break;
+                default: out.append(next);
+            }
+        }
+        return out.toString();
+    }
+
+    /**
      * Build a JavaScript function call with an existence check.
      * @param functionName the function name
      * @param args pre-escaped string arguments

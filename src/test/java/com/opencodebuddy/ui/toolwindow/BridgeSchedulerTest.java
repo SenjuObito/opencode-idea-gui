@@ -78,6 +78,31 @@ public class BridgeSchedulerTest {
     }
 
     @Test
+    public void escapedJsonArgIsDecodedOnceForTheEnvelope() {
+        String json = "{\"alive\":true,\"serveReady\":true}";
+        BridgeScheduler.JsCall<Object> call = new BridgeScheduler.JsCall<>(
+                new Object(), "updateDaemonStatus", new String[]{
+                        com.opencodebuddy.util.JsUtils.escapeJs(json)}, null, null, null);
+
+        String script = BridgeScheduler.buildBatchScript(List.of(call));
+
+        assertTrue(script.contains("\"args\":[\"{\\\"alive\\\":true,\\\"serveReady\\\":true}\"]"));
+        assertTrue("legacy fallback still relies on JS literal decoding",
+                script.contains("window.updateDaemonStatus('{\\\"alive\\\":true,\\\"serveReady\\\":true}')"));
+    }
+
+    @Test
+    public void rawJsonArgIsNotDecodedAgain() {
+        String json = "{\"path\":\"C:\\\\tmp\",\"text\":\"a\\nb\"}";
+        BridgeScheduler.JsCall<Object> call = new BridgeScheduler.JsCall<>(
+                new Object(), "onCommandsList", new String[]{json}, null, null, null);
+
+        String script = BridgeScheduler.buildBatchScript(List.of(call));
+
+        assertTrue(script.contains("\"args\":[\"{\\\"path\\\":\\\"C:\\\\\\\\tmp\\\",\\\"text\\\":\\\"a\\\\nb\\\"}\"]"));
+    }
+
+    @Test
     public void separatesASnapshotFromAStreamStartInTheSameLane() {
         AtomicReference<Object> browser = new AtomicReference<>(new Object());
         AtomicBoolean disposed = new AtomicBoolean();

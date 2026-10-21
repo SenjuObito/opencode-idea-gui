@@ -1,7 +1,14 @@
-import type { ClaudeMessage } from '../../types';
+import type {
+  ClaudeMessage,
+  FileChangeSummary,
+  SubagentHistoryResponse,
+  TaskEventMap,
+  TodoItem,
+} from '../../types';
 import type { ContextInfo } from '../../hooks';
 import type { TabScrollState } from '../../hooks/useScrollBehavior';
 import type { PermissionMode, ReasoningEffort } from '../ChatInputBox/types';
+import type { TabType } from '../StatusPanel/types';
 
 export interface SessionTabData {
   id: string;
@@ -17,10 +24,17 @@ export interface SessionTabData {
   revertBoundaryId?: string | null;
   isCompacting?: boolean;
   compactingStartTime?: number | null;
-  taskEvents?: Record<string, any>;
-  sseTodos?: any[] | null;
-  subagentHistories?: Record<string, any>;
-  filteredFileChanges?: any[];
+  /** Background Agent task_* events owned by this tab. */
+  taskEvents?: TaskEventMap;
+  /** Authoritative todo snapshot owned by this tab. */
+  sseTodos?: TodoItem[] | null;
+  /** On-demand subagent transcripts owned by this tab. */
+  subagentHistories?: Record<string, SubagentHistoryResponse>;
+  /** Edits shown by this tab's StatusPanel. */
+  filteredFileChanges?: FileChangeSummary[];
+  /** Expanded state and selected page of this tab's StatusPanel. */
+  statusPanelExpanded?: boolean;
+  statusPanelTab?: TabType | null;
   permissionMode?: PermissionMode;
   selectedModel?: string;
   reasoningEffort?: ReasoningEffort;
@@ -39,10 +53,4 @@ export interface SessionTabData {
   prependedHistoryMessageCount?: number;
   /** Per-tab reader position, restored when this tab is selected again. */
   scrollState?: TabScrollState;
-  draft?: {
-    text: string;
-    attachments: any[];
-    fileTags: any[];
-    quotes?: Record<string, { text: string }>;
-  };
 }

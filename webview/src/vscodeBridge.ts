@@ -17,6 +17,8 @@
  *   `waitForBridge` 能立即感知到桥已就绪。
  */
 
+import { dispatchHostEvent } from './utils/hostDispatcher';
+
 interface VSCodeWebviewApi {
   postMessage(message: unknown): void;
   getState?(): unknown;
@@ -62,21 +64,7 @@ function dispatchHostMessage(message: unknown): void {
   if (typeof type !== 'string' || !type) {
     return;
   }
-  if (type === 'onTodoUpdated') {
-    console.error('[vscodeBridge] dispatchHostMessage: onTodoUpdated received, args length:', args?.length);
-  }
-  const fn = (window as unknown as Record<string, unknown>)[type];
-  if (typeof fn === 'function') {
-    try {
-      (fn as (...rest: unknown[]) => void).apply(window, Array.isArray(args) ? args : []);
-    } catch (err) {
-      console.error(`[vscode-bridge] ${type} handler error:`, err);
-    }
-  } else {
-    if (type === 'onTodoUpdated') {
-      console.error('[vscodeBridge] dispatchHostMessage: onTodoUpdated handler NOT found on window');
-    }
-  }
+  dispatchHostEvent(type, Array.isArray(args) ? args : []);
 }
 
 // ── 安装桥 ───────────────────────────────────────────────────────────────

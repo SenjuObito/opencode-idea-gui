@@ -185,7 +185,7 @@ interface Window {
   /**
    * Set current session ID (for rewind feature)
    */
-  setSessionId?: (sessionId: string, tabId?: string) => void;
+  setSessionId?: (sessionId: string, previousSessionId?: string, tabId?: string) => void;
 
   /**
    * Add toast notification (called from backend)
@@ -512,6 +512,7 @@ interface Window {
    * fence below instead.
    */
   onTabActivated?: () => void;
+  __openNewSessionTab?: () => void;
 
   /**
    * Strict two-frame OSR damage pulse, owned by a Java SurfaceFrameFence attempt
@@ -1201,7 +1202,16 @@ interface Window {
     getActiveSessionId: () => string | null;
     getActiveTabAutoOpenFileEnabled?: () => boolean;
     getTabs: () => any[];
+    getDrafts?: () => Array<{ text: string; attachments: any[]; fileTags: any[]; quotes?: Record<string, { text: string }> }>;
     isActiveSession: (sessionId: string | null | undefined) => boolean;
+    isActiveTab?: (tabId: string | null | undefined) => boolean;
+    getTabIdForSession?: (sessionId: string | null | undefined) => string | null;
+    /**
+     * Update exactly one tab by its stable id.
+     * @returns true when the tab exists.
+     */
+    updateTab?: (tabId: string, updater: (tab: any) => void) => boolean;
+    updateAllTabs?: (updater: (tab: any) => void) => void;
     /**
      * @returns true when a tab matched `predicate`. Callers must check this: a
      *     false return means the write had nowhere to go.
@@ -1213,7 +1223,6 @@ interface Window {
     updateTabSessionId: (tabId: string, sessionId: string) => void;
     updateTabTitle: (sessionId: string, newTitle: string) => void;
     closeTabBySessionId?: (sessionId: string) => void;
-    claimUnboundTab?: (targetSessionId: string) => boolean;
     /**
      * Archive the active tab's live streaming runtime before a session
      * transition wipes it. The outgoing turn may still be running in the

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type MutableRefObject } from 'react';
 import type { ClaudeMessage } from '../types';
 
 /** A single block inside `raw.message.content`. */
@@ -51,32 +51,119 @@ interface UseStreamingMessagesReturn {
   resetStreamingState: () => void;
 }
 
+interface StreamingRuntime {
+  content: string;
+  thinking: string;
+  streaming: boolean;
+  backendRender: boolean;
+  messageIndex: number;
+  lastContentUpdate: number;
+  lastThinkingUpdate: number;
+  autoExpandedThinkingKeys: Set<string>;
+  trailingStructuralTextBoundary: { signature: string; textLength: number } | null;
+  turnId: number;
+}
+
+const FALLBACK_TAB_KEY = '__default__';
+
+function activeTabKey(): string {
+  return window.__sessionTabsStore?.getActiveTabId?.() || FALLBACK_TAB_KEY;
+}
+
+function createRuntime(): StreamingRuntime {
+  return {
+    content: '',
+    thinking: '',
+    streaming: false,
+    backendRender: false,
+    messageIndex: -1,
+    lastContentUpdate: 0,
+    lastThinkingUpdate: 0,
+    autoExpandedThinkingKeys: new Set(),
+    trailingStructuralTextBoundary: null,
+    turnId: -1,
+  };
+}
+
+function createProxyRef<T>(
+  read: () => T,
+  write: (value: T) => void,
+): MutableRefObject<T> {
+  return {
+    get current() { return read(); },
+    set current(value: T) { write(value); },
+  };
+}
+
 /**
- * Hook for managing streaming message state and helper functions
+ * Hook for managing streaming message state and helper functions.
+ *
+ * Streaming refs are stored per tab, not in one window-wide bag. Background
+ * deltas update their own tab's messages, while whoever is active gets its own
+ * accumulator, turn id and message index. Switching tabs never copies one
+ * session's buffer into another.
  */
 export function useStreamingMessages(): UseStreamingMessagesReturn {
-  // Content refs
-  const streamingContentRef = useRef('');
-  const streamingThinkingRef = useRef('');
-  const isStreamingRef = useRef(false);
-  const useBackendStreamingRenderRef = useRef(false);
-  const streamingMessageIndexRef = useRef<number>(-1);
+  const runtimes = useRef(new Map<string, StreamingRuntime>());
 
-  // Throttle control refs
+  const runtimeFor = (key: string): StreamingRuntime => {
+    let runtime = runtimes.current.get(key);
+    if (!runtime) {
+      runtime = createRuntime();
+      runtimes.current.set(key, runtime);
+    }
+    return runtime;
+  };
+  const activeRuntime = (): StreamingRuntime => runtimeFor(activeTabKey());
+
+  const streamingContentRef = createProxyRef(
+    () => activeRuntime().content,
+    (value) => { activeRuntime().content = value; },
+  );
+  const streamingThinkingRef = createProxyRef(
+    () => activeRuntime().thinking,
+    (value) => { activeRuntime().thinking = value; },
+  );
+  const isStreamingRef = createProxyRef(
+    () => activeRuntime().streaming,
+    (value) => { activeRuntime().streaming = value; },
+  );
+  const useBackendStreamingRenderRef = createProxyRef(
+    () => activeRuntime().backendRender,
+    (value) => { activeRuntime().backendRender = value; },
+  );
+  const streamingMessageIndexRef = createProxyRef(
+    () => activeRuntime().messageIndex,
+    (value) => { activeRuntime().messageIndex = value; },
+  );
+
+  // Throttle control refs stay global (only the active tab schedules frames).
   const contentUpdateTimeoutRef = useRef<number | null>(null);
   const thinkingUpdateTimeoutRef = useRef<number | null>(null);
-  const lastContentUpdateRef = useRef(0);
-  const lastThinkingUpdateRef = useRef(0);
+  const lastContentUpdateRef = createProxyRef(
+    () => activeRuntime().lastContentUpdate,
+    (value) => { activeRuntime().lastContentUpdate = value; },
+  );
+  const lastThinkingUpdateRef = createProxyRef(
+    () => activeRuntime().lastThinkingUpdate,
+    (value) => { activeRuntime().lastThinkingUpdate = value; },
+  );
 
-  // Auto-expanded thinking keys
-  const autoExpandedThinkingKeysRef = useRef<Set<string>>(new Set());
+  const autoExpandedThinkingKeysRef = createProxyRef(
+    () => activeRuntime().autoExpandedThinkingKeys,
+    (value) => { activeRuntime().autoExpandedThinkingKeys = value; },
+  );
 
-  // Text length at the moment trailing structural blocks (tool_use/tool_result)
-  // first appeared. Later text deltas belong after those blocks.
-  const trailingStructuralTextBoundaryRef = useRef<{ signature: string; textLength: number } | null>(null);
+  const trailingStructuralTextBoundaryRef = createProxyRef(
+    () => activeRuntime().trailingStructuralTextBoundary,
+    (value) => { activeRuntime().trailingStructuralTextBoundary = value; },
+  );
 
-  // Turn tracking
-  const streamingTurnIdRef = useRef(-1);
+  // The counter is deliberately global: turn ids must stay monotonic across tabs.
+  const streamingTurnIdRef = createProxyRef(
+    () => activeRuntime().turnId,
+    (value) => { activeRuntime().turnId = value; },
+  );
   const turnIdCounterRef = useRef(0);
 
   // Helper: Find last assistant message index

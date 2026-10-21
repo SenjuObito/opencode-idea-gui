@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import StatusPanel from './StatusPanel';
 
@@ -20,5 +20,26 @@ describe('StatusPanel', () => {
     );
 
     expect(screen.getByText(expectedLabel)).toBeTruthy();
+  });
+
+  it('lets the active tab own the open StatusPanel page', () => {
+    const onActiveTabChange = vi.fn();
+    render(
+      <StatusPanel
+        todos={[]}
+        fileChanges={[]}
+        subagents={[]}
+        currentProvider="opencode"
+        activeTab="todo"
+        onActiveTabChange={onActiveTabChange}
+      />,
+    );
+
+    expect(screen.getByText('statusPanel.noTodos')).toBeTruthy();
+    fireEvent.click(screen.getByText('statusPanel.subagentTab'));
+
+    expect(onActiveTabChange).toHaveBeenCalledWith('subagent');
+    // Controlled by the tab: the panel does not switch itself.
+    expect(screen.queryByText('statusPanel.noSubagents')).toBeNull();
   });
 });

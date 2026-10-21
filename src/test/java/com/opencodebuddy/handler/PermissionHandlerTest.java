@@ -1,7 +1,6 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.permission.PermissionService;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.JsonObject;
 import org.junit.Before;
@@ -26,8 +25,8 @@ import static org.junit.Assert.assertTrue;
 /**
  * Unit tests for {@link PermissionHandler}.
  *
- * <p>The dialog-show entry points ({@code showFrontendPermissionDialog},
- * {@code showAskUserQuestionDialog}, {@code showPlanApprovalDialog}) post to the IntelliJ EDT via
+ * <p>The dialog-show entry points ({@code showAskUserQuestionDialog},
+ * {@code showPlanApprovalDialog}) post to the IntelliJ EDT via
  * {@code ApplicationManager.getApplication().invokeLater(...)}, so they require the full plugin
  * test fixture and a backend safety-net wait to exercise the real safety net — not feasible in a plain JUnit
  * unit test. Instead we cover the testable surface:</p>
@@ -94,7 +93,7 @@ public class PermissionHandlerTest {
         assertTrue(handler.handle("permission_decision", content));
 
         Integer result = future.get(2, TimeUnit.SECONDS);
-        assertEquals(PermissionService.PermissionResponse.ALLOW.getValue(), result.intValue());
+        assertEquals(PermissionHandler.PermissionResponse.ALLOW.getValue(), result.intValue());
         assertTrue("future should be removed from map after dispatch", getPermissionMap().isEmpty());
     }
 
@@ -107,7 +106,7 @@ public class PermissionHandlerTest {
         assertTrue(handler.handle("permission_decision", content));
 
         Integer result = future.get(2, TimeUnit.SECONDS);
-        assertEquals(PermissionService.PermissionResponse.ALLOW_ALWAYS.getValue(), result.intValue());
+        assertEquals(PermissionHandler.PermissionResponse.ALLOW_ALWAYS.getValue(), result.intValue());
     }
 
     @Test
@@ -151,9 +150,9 @@ public class PermissionHandlerTest {
 
         handler.clearPendingRequests();
 
-        assertEquals(PermissionService.PermissionResponse.DENY.getValue(),
+        assertEquals(PermissionHandler.PermissionResponse.DENY.getValue(),
                 f1.get(1, TimeUnit.SECONDS).intValue());
-        assertEquals(PermissionService.PermissionResponse.DENY.getValue(),
+        assertEquals(PermissionHandler.PermissionResponse.DENY.getValue(),
                 f2.get(1, TimeUnit.SECONDS).intValue());
         assertTrue("permission map must be drained after clear", getPermissionMap().isEmpty());
     }
@@ -168,7 +167,7 @@ public class PermissionHandlerTest {
         handler.clearPendingRequests();
 
         // AskUser path completes with null — the caller distinguishes "no answer" from an empty
-        // answers object by reading null here. See PermissionService.handleAskUserQuestion.
+        // answers object by reading null here.
         assertNull(f1.get(1, TimeUnit.SECONDS));
         assertNull(f2.get(1, TimeUnit.SECONDS));
         assertTrue("askUser map must be drained after clear", getAskUserMap().isEmpty());
@@ -186,6 +185,25 @@ public class PermissionHandlerTest {
         assertFalse("plan-approval default on session change must be reject", result.get("approved").getAsBoolean());
         assertEquals("Session changed", result.get("message").getAsString());
         assertTrue("planApproval map must be drained after clear", getPlanApprovalMap().isEmpty());
+    }
+
+    @Test
+    public void clearPendingRequestsForOneSessionLeavesOtherTabsAlone() throws Exception {
+        CompletableFuture<Integer> a = new CompletableFuture<>();
+        CompletableFuture<Integer> b = new CompletableFuture<>();
+        injectPermissionFuture("ch-a", a);
+        injectPermissionFuture("ch-b", b);
+        injectSession("permissionRequestSessions", "ch-a", "ses_a");
+        injectSession("permissionRequestSessions", "ch-b", "ses_b");
+
+        handler.clearPendingRequests("ses_a");
+
+        assertEquals(PermissionHandler.PermissionResponse.DENY.getValue(),
+                a.get(1, TimeUnit.SECONDS).intValue());
+        assertFalse("the other tab's prompt must remain pending", b.isDone());
+        assertTrue(getPermissionMap().containsKey("ch-b"));
+
+        handler.clearPendingRequests();
     }
 
     @Test
@@ -322,6 +340,15 @@ public class PermissionHandlerTest {
         getPermissionMap().put(key, future);
     }
 
+    private void injectSession(String fieldName, String key, String sessionId)
+            throws NoSuchFieldException, IllegalAccessException {
+        Field f = PermissionHandler.class.getDeclaredField(fieldName);
+        f.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, String> map = (Map<String, String>) f.get(handler);
+        map.put(key, sessionId);
+    }
+
     private void injectAskUserFuture(String key, CompletableFuture<JsonObject> future)
             throws NoSuchFieldException, IllegalAccessException {
         getAskUserMap().put(key, future);
@@ -446,5 +473,44 @@ public class PermissionHandlerTest {
 
         customHandler.onPromptClosed("question", "{\"requestId\":\"q-closed-1\"}");
         assertFalse(map.containsKey("q-closed-1"));
+    }
+
+    @Test
+    public void onPromptClosedDeniesAnInFlightPermissionFuture() throws Exception {
+        CompletableFuture<Integer> future = new CompletableFuture<>();
+        injectPermissionFuture("ch-closed", future);
+        injectSession("permissionRequestSessions", "ch-closed", "ses-close");
+
+        handler.onPromptClosed("permission", "{\"permissionId\":\"ch-closed\"}");
+
+        assertEquals(PermissionHandler.PermissionResponse.DENY.getValue(),
+                future.get(1, TimeUnit.SECONDS).intValue());
+        assertFalse(getPermissionMap().containsKey("ch-closed"));
+    }
+
+    @Test
+    public void onPromptClosedCompletesAnInFlightQuestionFuture() throws Exception {
+        CompletableFuture<JsonObject> future = new CompletableFuture<>();
+        injectAskUserFuture("q-closed-future", future);
+        injectSession("askRequestSessions", "q-closed-future", "ses-close");
+
+        handler.onPromptClosed("question", "{\"requestId\":\"q-closed-future\"}");
+
+        assertNull(future.get(1, TimeUnit.SECONDS));
+        assertFalse(getAskUserMap().containsKey("q-closed-future"));
+    }
+
+    @Test
+    public void onPromptClosedRejectsAnInFlightPlanFuture() throws Exception {
+        CompletableFuture<JsonObject> future = new CompletableFuture<>();
+        injectPlanApprovalFuture("plan-closed", future);
+        injectSession("planRequestSessions", "plan-closed", "ses-close");
+
+        handler.onPromptClosed("plan", "{\"requestId\":\"plan-closed\"}");
+
+        JsonObject result = future.get(1, TimeUnit.SECONDS);
+        assertFalse(result.get("approved").getAsBoolean());
+        assertEquals("Prompt closed", result.get("message").getAsString());
+        assertFalse(getPlanApprovalMap().containsKey("plan-closed"));
     }
 }

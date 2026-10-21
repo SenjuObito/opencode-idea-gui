@@ -300,6 +300,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     }
     sendBridgeEvent('permission_decision', JSON.stringify({
       channelId,
+      sessionId: currentPermissionRequestRef.current?.sessionId,
       allow: true,
       remember: false,
       rejectMessage: null,
@@ -314,6 +315,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     }
     sendBridgeEvent('permission_decision', JSON.stringify({
       channelId,
+      sessionId: currentPermissionRequestRef.current?.sessionId,
       allow: true,
       remember: true,
       rejectMessage: null,
@@ -328,6 +330,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     }
     sendBridgeEvent('permission_decision', JSON.stringify({
       channelId,
+      sessionId: currentPermissionRequestRef.current?.sessionId,
       allow: false,
       remember: false,
       rejectMessage: t('permission.userDenied'),
@@ -345,6 +348,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     const sessionId = activeReq.sessionId;
     sendBridgeEvent('permission_decision', JSON.stringify({
       channelId,
+      sessionId,
       allow: false,
       remember: false,
       rejectMessage: t('permission.timedOut', { defaultValue: '请求超时，已停止会话' }),

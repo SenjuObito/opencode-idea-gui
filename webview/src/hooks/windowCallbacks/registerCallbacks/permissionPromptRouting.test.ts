@@ -52,6 +52,13 @@ function createTabsStore(tabs: FakeTab[], activeTabId: string) {
       tabs[idx] = clone;
       return true;
     },
+    updateAllTabs: (updater: (tab: FakeTab) => void): void => {
+      for (let i = 0; i < tabs.length; i++) {
+        const clone = { ...tabs[i] };
+        updater(clone);
+        tabs[i] = clone;
+      }
+    },
   };
 }
 

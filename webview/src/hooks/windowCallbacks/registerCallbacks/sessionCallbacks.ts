@@ -28,32 +28,40 @@ export function registerSessionCallbacks(
     setCustomSessionTitle,
   } = options;
 
-  window.setSessionId = (sessionId: string, previousSessionId?: string) => {
+  window.setSessionId = (sessionId: string, previousSessionId?: string, tabId?: string) => {
     if (!sessionId) return;
     const oldId = currentSessionIdRef.current;
-    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
+    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
 
     const tabsStore = window.__sessionTabsStore;
     const tabs = tabsStore?.getTabs?.() || [];
     const activeTabId = tabsStore?.getActiveTabId?.();
     const activeTab = tabs.find((t) => t.id === activeTabId);
 
-    // `previousSessionId` is the adapter's prior identity, which is a tab id
-    // only for a session that was created from a tab (`createSessionForTab`).
-    // For history loads and repeated [SESSION_ID] markers it is the same real
-    // session id, and for the startup adapter it is empty. Never treat it as
-    // "the tab to switch to".
-    let targetTab = previousSessionId
-      ? tabs.find((t) => t.id === previousSessionId || t.sessionId === previousSessionId)
-      : null;
-    if (!targetTab) {
-      targetTab = tabs.find((t) => t.sessionId === sessionId);
-    }
-    if (!targetTab && previousSessionId === '' && activeTab && !activeTab.sessionId) {
-      // Brand-new session resolving for the first time while nothing claimed
-      // the draft tab yet. This is the only case where the active tab may be
-      // adopted; every other unmatched notification is dropped.
-      targetTab = activeTab;
+    // The host now sends the owning tab id explicitly. When it is present the
+    // binding is unambiguous: an unknown tab is dropped instead of adopting the
+    // active draft tab, which is how background sessions used to hijack A's
+    // view. The legacy `previousSessionId` fallback remains only for older
+    // host builds and history loads.
+    let targetTab = tabId ? tabs.find((t) => t.id === tabId) : null;
+    if (!targetTab && !tabId) {
+      // `previousSessionId` is the adapter's prior identity, which is a tab id
+      // only for a session that was created from a tab (`createSessionForTab`).
+      // For history loads and repeated [SESSION_ID] markers it is the same real
+      // session id, and for the startup adapter it is empty. Never treat it as
+      // "the tab to switch to".
+      targetTab = previousSessionId
+        ? tabs.find((t) => t.id === previousSessionId || t.sessionId === previousSessionId)
+        : null;
+      if (!targetTab) {
+        targetTab = tabs.find((t) => t.sessionId === sessionId);
+      }
+      if (!targetTab && previousSessionId === '' && activeTab && !activeTab.sessionId) {
+        // Brand-new session resolving for the first time while nothing claimed
+        // the draft tab yet. This is the only case where the active tab may be
+        // adopted; every other unmatched notification is dropped.
+        targetTab = activeTab;
+      }
     }
 
     const syncTitle = () => {

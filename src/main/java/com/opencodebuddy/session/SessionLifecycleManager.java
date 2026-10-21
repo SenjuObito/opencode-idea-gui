@@ -51,9 +51,25 @@ public class SessionLifecycleManager {
             setSession(session);
         }
 
-        default void switchSession(String sessionId) {}
+        /**
+         * Bind a history session to the tab that requested it. Implementations
+         * should update the tab registry and the active host pointer without
+         * hydrating the transcript (the loader owns that handshake).
+         */
+        default void bindHistorySession(
+                String tabId,
+                String sessionId,
+                OpencodeSession session,
+                SessionCallbackAdapter adapter,
+                StreamMessageCoalescer coalescer
+        ) {
+            registerSession(sessionId, session, adapter, coalescer);
+        }
 
         default void closeSession(String sessionId) {}
+
+        /** Mark the tab owning this session as fully loaded/idle. */
+        default void markHistoryLoaded(String sessionId) {}
 
         default StreamMessageCoalescer getStreamCoalescer(String sessionId) {
             return getStreamCoalescer();
@@ -72,8 +88,6 @@ public class SessionLifecycleManager {
         StreamMessageCoalescer getStreamCoalescer();
 
         void clearPendingPermissionRequests();
-
-        void clearPermissionDecisionMemory();
 
         void callJavaScript(String functionName, String... args);
 
@@ -169,7 +183,19 @@ public class SessionLifecycleManager {
      * @param model when non-blank, restores that model instead of keeping the previous UI selection
      */
     public void loadHistorySession(String sessionId, String projectPath, String provider, String model) {
-        LOG.info("Loading history session: " + sessionId + " from project: " + projectPath);
+        loadHistorySession(sessionId, projectPath, provider, model, null);
+    }
+
+    /**
+     * Load a history session into a specific tab.
+     *
+     * <p>The webview owns the stable tab id; the host must bind the loaded
+     * session to that tab before hydrating so late deltas route to the right
+     * transcript even when another tab is visible.</p>
+     */
+    public void loadHistorySession(String sessionId, String projectPath, String provider, String model, String tabId) {
+        LOG.info("Loading history session: " + sessionId + " from project: " + projectPath
+                + (tabId != null ? ", tab: " + tabId : ""));
 
         OpencodeSession existingSession = host.getSession(sessionId);
         if (existingSession != null && sessionId.equals(existingSession.getSessionId())) {
@@ -177,7 +203,7 @@ public class SessionLifecycleManager {
             if (model != null && !model.trim().isEmpty()) {
                 existingSession.setModel(model.trim());
             }
-            host.switchSession(sessionId);
+            host.bindHistorySession(tabId, sessionId, existingSession, null, null);
 
             StreamMessageCoalescer coalescer = host.getStreamCoalescer(sessionId);
             if (coalescer == null) {
@@ -246,8 +272,7 @@ public class SessionLifecycleManager {
                                 : (NodeDetector.isWslPath(nodePath) ? NodeDetector.convertToWslPath(effectiveDir) : effectiveDir);
         newSession.setSessionInfo(sessionId, workingDir);
 
-        host.registerSession(sessionId, newSession, newAdapter, newCoalescer);
-        host.switchSession(sessionId);
+        host.bindHistorySession(tabId, sessionId, newSession, newAdapter, newCoalescer);
         if (host.getHandlerContext() != null) {
             host.getHandlerContext().registerSession(sessionId, newSession);
         }
@@ -285,12 +310,14 @@ public class SessionLifecycleManager {
         if (coalescer == null) {
             host.callJavaScript("historyLoadComplete", sessionId, String.valueOf(messageCount));
             syncRevertState(sessionId, loadedSession);
+            host.markHistoryLoaded(sessionId);
             return;
         }
         coalescer.flush(seq -> {
             if (!host.isDisposed()) {
                 host.callJavaScript("historyLoadComplete", sessionId, String.valueOf(messageCount));
                 syncRevertState(sessionId, loadedSession);
+                host.markHistoryLoaded(sessionId);
             }
         });
     }
@@ -487,7 +514,6 @@ public class SessionLifecycleManager {
 
     private void completeNewSessionBootstrap(OpencodeSession newSession, String workingDirectory, String successLogPrefix) {
         host.clearPendingPermissionRequests();
-        host.clearPermissionDecisionMemory();
         host.setSession(newSession);
         host.getHandlerContext().setSession(newSession);
         host.setupSessionCallbacks();

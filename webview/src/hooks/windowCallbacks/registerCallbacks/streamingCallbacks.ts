@@ -265,10 +265,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       targetSessionId = arg0;
     }
 
-    if (targetSessionId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
-    }
-
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       const now = Date.now();
       sessionTurnStartTimes.set(targetSessionId, now);
@@ -398,8 +394,15 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   ) => {
     const scheduleRaf = (): void => {
       if (timeoutRef.current != null) return;
+      const scheduledTabId = window.__sessionTabsStore?.getActiveTabId?.() || null;
       timeoutRef.current = requestAnimationFrame(() => {
         timeoutRef.current = null;
+        // A tab switch between scheduling and this frame must not paint the
+        // outgoing tab's buffer into the new active tab.
+        const currentTabId = window.__sessionTabsStore?.getActiveTabId?.() || null;
+        if (scheduledTabId && currentTabId && scheduledTabId !== currentTabId) {
+          return;
+        }
         // Guard: the turn may have ended (or been interrupted by the user)
         // while this frame was queued. patchAssistantForStreaming reads the
         // delta buffers unconditionally and force-sets isStreaming: true, so a
@@ -470,10 +473,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       'onContentDelta',
     );
     if (targetSessionId === null) return;
-
-    if (window.__sessionTabsStore) {
-      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
-    }
 
     if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
@@ -556,10 +555,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       'onThinkingDelta',
     );
     if (targetSessionId === null) return;
-
-    if (window.__sessionTabsStore) {
-      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
-    }
 
     if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
@@ -644,10 +639,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // spinner while leaving B's own tab spinning.
     targetSessionId = resolveSessionId(targetSessionId, 'onStreamEnd');
     if (targetSessionId === null) return;
-
-    if (window.__sessionTabsStore) {
-      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
-    }
 
     if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       const turnStartedAt = sessionTurnStartTimes.get(targetSessionId);
@@ -1102,9 +1093,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // This prevents cross-turn content merging where new thinking/text deltas
   // would append to previous turn's buffered content.
   window.onBlockReset = (targetSessionId?: string) => {
-    if (targetSessionId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
-    }
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       return;
     }

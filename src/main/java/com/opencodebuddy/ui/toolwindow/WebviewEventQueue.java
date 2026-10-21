@@ -104,20 +104,26 @@ final class WebviewEventQueue<T> {
 
             String callee = call.functionName.contains(".")
                     ? call.functionName : "window." + call.functionName;
-            script.append("try { if (typeof ")
-                    .append(callee)
-                    .append(" === 'function') { ")
-                    .append(callee)
-                    .append('(');
+            StringBuilder argList = new StringBuilder();
             for (int i = 0; i < call.args.length; i++) {
                 if (i > 0) {
-                    script.append(", ");
+                    argList.append(", ");
                 }
-                script.append('\'')
+                argList.append('\'')
                         .append(sanitizeArgForJsLiteral(call.args[i]))
                         .append('\'');
             }
-            script.append("); } } catch (e) { console.error('[Backend->Frontend] Failed to call ")
+            script.append("try { if (typeof window.__opencodeDispatch === 'function') { window.__opencodeDispatch('")
+                    .append(sanitizeArgForJsLiteral(call.functionName))
+                    .append("', [")
+                    .append(argList)
+                    .append("]); } else if (typeof ")
+                    .append(callee)
+                    .append(" === 'function') { ")
+                    .append(callee)
+                    .append('(')
+                    .append(argList)
+                    .append("); } } catch (e) { console.error('[Backend->Frontend] Failed to call ")
                     .append(call.functionName)
                     .append("', e); }\n");
         }

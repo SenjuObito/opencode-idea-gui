@@ -32,7 +32,6 @@ import com.opencodebuddy.handler.file.FileExportHandler;
 import com.opencodebuddy.handler.file.FileHandler;
 import com.opencodebuddy.handler.file.OpenClassHandler;
 import com.opencodebuddy.handler.file.UndoFileHandler;
-import com.opencodebuddy.permission.PermissionService;
 import com.opencodebuddy.session.SessionLifecycleManager;
 import com.opencodebuddy.session.StreamMessageCoalescer;
 import com.opencodebuddy.util.JsUtils;
@@ -129,8 +128,8 @@ public class ChatWindowDelegate {
         default void executeJavaScriptCode(String jsCode) {
         }
 
-        default void switchSession(String sessionId) {}
-        default void closeSession(String sessionId) {}
+        default void activateTab(String tabId) {}
+        default void closeSession(String targetId) {}
         default void onRefreshEditorContext(boolean enabled) {}
     }
 
@@ -203,24 +202,6 @@ public class ChatWindowDelegate {
      * writes provider settings on the user's behalf.
      */
     public void syncActiveProvider() {
-    }
-
-    public String setupPermissionService() {
-        Project project = host.getProject();
-        String sessionId = java.util.UUID.randomUUID().toString();
-
-        LOG.info("PermissionService routing key: " + sessionId);
-
-        PermissionService permissionService = PermissionService.getInstance(project, sessionId);
-        permissionService.start();
-        permissionService.registerDialogShower(project, (toolName, inputs) ->
-            host.getPermissionHandler().showFrontendPermissionDialog(toolName, inputs));
-        permissionService.registerAskUserQuestionDialogShower(project, (requestId, questionsData) ->
-            host.getPermissionHandler().showAskUserQuestionDialog(requestId, questionsData));
-        permissionService.registerPlanApprovalDialogShower(project, (requestId, planData) ->
-            host.getPermissionHandler().showPlanApprovalDialog(requestId, planData));
-        LOG.info("Started permission service with frontend dialog, AskUserQuestion dialog, and PlanApproval dialog for project: " + project.getName());
-        return sessionId;
     }
 
     public void initializeHandlers() {
@@ -318,17 +299,11 @@ public class ChatWindowDelegate {
                 }
                 updateTabStatus(status);
             }
-            @Override public void onCreateNewSession() {
-                host.getSessionLifecycleManager().createNewSession();
+            @Override public void onActivateTab(String tabId) {
+                host.activateTab(tabId);
             }
-            @Override public void onCreateNewSession(String sessionId) {
-                host.getSessionLifecycleManager().createNewSession(sessionId);
-            }
-            @Override public void onSwitchSession(String sessionId) {
-                host.switchSession(sessionId);
-            }
-            @Override public void onCloseSession(String sessionId) {
-                host.closeSession(sessionId);
+            @Override public void onCloseSession(String targetId) {
+                host.closeSession(targetId);
             }
             @Override public void onFrontendReady() { handleFrontendReady(); }
             @Override public void onHistoryRenderComplete(long commitEpoch) {
@@ -355,7 +330,7 @@ public class ChatWindowDelegate {
         messageDispatcher.registerHandler(permissionHandler);
 
         HistoryHandler historyHandler = new HistoryHandler(handlerContext);
-        historyHandler.setSessionLoadCallback((sessionId, projectPath, provider, model) -> {
+        historyHandler.setSessionLoadCallback((sessionId, projectPath, provider, model, tabId) -> {
             OpencodeSession current = host.getSession();
             boolean sameSession = current != null
                     && sessionId != null
@@ -371,7 +346,8 @@ public class ChatWindowDelegate {
                 }
                 host.reloadActiveSessionMessages();
             } else {
-                host.getSessionLifecycleManager().loadHistorySession(sessionId, projectPath, provider, model);
+                host.getSessionLifecycleManager().loadHistorySession(
+                        sessionId, projectPath, provider, model, tabId);
             }
         });
         host.setHistoryHandler(historyHandler);

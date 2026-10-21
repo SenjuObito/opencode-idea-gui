@@ -575,10 +575,6 @@ export function registerMessageCallbacks(
       baseIndexArg = arg2;
     }
 
-    if (targetSessionId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
-    }
-
     const isForegroundSession = !targetSessionId
       || (targetSessionId === (window.__sessionTransitionTargetSessionId || options.currentSessionIdRef?.current))
       || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
@@ -645,6 +641,10 @@ export function registerMessageCallbacks(
       window.__pendingUpdateSequence = sequence;
       if (pendingUpdateRaf === null) {
         const timerId = setTimeout(() => {
+          // The test environment can tear down the jsdom window before this
+          // 16 ms coalescing tick fires. Never let a stale frame touch a
+          // missing window.
+          if (typeof window === 'undefined') return;
           pendingUpdateRaf = null;
           window.__pendingUpdateRaf = null;
           const latestJson = pendingUpdateJson;
@@ -696,10 +696,6 @@ export function registerMessageCallbacks(
       json = arg0;
       baseIndexArg = arg1 as any;
       sequenceArg = arg2;
-    }
-
-    if (targetSessionId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
     }
 
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {

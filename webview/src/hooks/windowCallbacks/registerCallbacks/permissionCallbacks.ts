@@ -104,28 +104,22 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.forceClosePermissionDialog = (channelId) => {
     forceClosePermissionDialog(channelId ?? null);
     if (channelId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        () => true,
-        (t) => {
-          if (t.pendingPermissions) {
-            t.pendingPermissions = t.pendingPermissions.filter((r: any) => r.channelId !== channelId);
-          }
+      window.__sessionTabsStore.updateAllTabs?.((t) => {
+        if (t.pendingPermissions) {
+          t.pendingPermissions = t.pendingPermissions.filter((r: any) => r.channelId !== channelId);
         }
-      );
+      });
     }
   };
 
   window.forceCloseAskUserQuestionDialog = (requestId) => {
     forceCloseAskUserQuestionDialog(requestId ?? null);
     if (requestId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        () => true,
-        (t) => {
-          if (t.pendingQuestions) {
-            t.pendingQuestions = t.pendingQuestions.filter((r: any) => r.requestId !== requestId);
-          }
+      window.__sessionTabsStore.updateAllTabs?.((t) => {
+        if (t.pendingQuestions) {
+          t.pendingQuestions = t.pendingQuestions.filter((r: any) => r.requestId !== requestId);
         }
-      );
+      });
     }
   };
 

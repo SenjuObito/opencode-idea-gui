@@ -41,6 +41,44 @@ function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, 
 
 const pendingSubagentHistoryChunks = new Map<string, string[]>();
 const MAX_PENDING_SUBAGENT_HISTORY_TRANSFERS = 16;
+const MAX_SUBAGENT_HISTORIES = 50;
+
+/**
+ * Merge one subagent transcript into a tab-owned map.
+ *
+ * The map is capped by insertion order so a long-lived tab cannot accumulate an
+ * unbounded number of full transcripts. Returning the previous object when the
+ * payload is identical keeps polling from re-rendering the whole status panel.
+ */
+function mergeSubagentHistory(
+  prev: Record<string, SubagentHistoryResponse>,
+  key: string,
+  result: SubagentHistoryResponse,
+): Record<string, SubagentHistoryResponse> {
+  const existing = prev[key];
+  if (existing && existing.success === result.success
+    && existing.completed === result.completed
+    && existing.status === result.status
+    && existing.error === result.error
+    && existing.sessionId === result.sessionId
+    && existing.provider === result.provider
+    && existing.toolUseId === result.toolUseId
+    && existing.agentId === result.agentId
+    && existing.agentPath === result.agentPath
+    && areSubagentMessagesEquivalent(existing.messages, result.messages)) {
+    return prev;
+  }
+  const next: Record<string, SubagentHistoryResponse> = { ...prev, [key]: result };
+  if (Object.keys(next).length <= MAX_SUBAGENT_HISTORIES) {
+    return next;
+  }
+  const oldestFirst = Object.keys(next).filter((k) => k !== key);
+  const keep = new Set([...oldestFirst.slice(oldestFirst.length - (MAX_SUBAGENT_HISTORIES - 1)), key]);
+  for (const k of Object.keys(next)) {
+    if (!keep.has(k)) delete next[k];
+  }
+  return next;
+}
 
 function appendSubagentHistoryChunk(transferId: string, chunk: string, isFinal: string | boolean): void {
   if (!transferId) return;
@@ -128,44 +166,48 @@ export function registerWindowCallbacks(
   window.onSubagentHistoryChunk = appendSubagentHistoryChunk;
 
   window.onSubagentHistoryLoaded = (json: string) => {
-    // 子代理 transcript 上限：Record 按插入序保留最近 MAX_SUBAGENT_HISTORIES
-    // 条。每条持有完整子代理消息数组，agent 重度会话里无界累积会把渲染进程
-    // 内存拖高；被裁掉的条目可由用户重新展开该 Agent 行（触发重新拉取）。
-    const MAX_SUBAGENT_HISTORIES = 50;
+    // 子代理 transcript 属于发起它的 tab，而不是当前窗口。后台 Agent 的
+    // 2 秒轮询结果如果直接写进 active state，会把 A tab 的子代理 transcript
+    // 显示到 B tab。先按 payload.sessionId 解析目标 tab；解析不到就丢弃，
+    // 绝不回落到 active tab。
     try {
       if (!options.setSubagentHistories) return;
-      const result = JSON.parse(json);
+      const result = JSON.parse(json) as SubagentHistoryResponse;
       const key = result.toolUseId || result.agentId;
       if (!key) return;
-      options.setSubagentHistories((prev) => {
-        const existing = prev[key];
-        // Skip state update when the payload is structurally identical.
-        // This prevents cascading re-renders and scroll jumps caused by
-        // periodic subagent polling (every 2 s) returning unchanged data.
-        if (existing && existing.success === result.success
-          && existing.completed === result.completed
-          && existing.status === result.status
-          && existing.error === result.error
-          && existing.sessionId === result.sessionId
-          && existing.provider === result.provider
-          && existing.toolUseId === result.toolUseId
-          && existing.agentId === result.agentId
-          && existing.agentPath === result.agentPath
-          && areSubagentMessagesEquivalent(existing.messages, result.messages)) {
-          return prev;
+
+      const tabsStore = window.__sessionTabsStore;
+      const targetTabId = result.sessionId
+        ? tabsStore?.getTabIdForSession?.(result.sessionId) ?? null
+        : null;
+      if (result.sessionId && tabsStore) {
+        if (!targetTabId) return;
+        if (!tabsStore.isActiveTab?.(targetTabId)) {
+          const updated = tabsStore.updateTab
+            ? tabsStore.updateTab(targetTabId, (tab) => {
+                tab.subagentHistories = mergeSubagentHistory(
+                  tab.subagentHistories || {},
+                  key,
+                  result,
+                );
+              })
+            : tabsStore.updateBackgroundTab(
+                (tab) => tab.id === targetTabId,
+                (tab) => {
+                  tab.subagentHistories = mergeSubagentHistory(
+                    tab.subagentHistories || {},
+                    key,
+                    result,
+                  );
+                },
+              );
+          if (updated) return;
+          // A known session whose tab is gone must not leak into the active tab.
+          return;
         }
-        const next: Record<string, SubagentHistoryResponse> = { ...prev, [key]: result as SubagentHistoryResponse };
-        if (Object.keys(next).length <= MAX_SUBAGENT_HISTORIES) {
-          return next;
-        }
-        // 超限：丢掉最旧的条目（先重建为删除序，再保留最近 N 条）。
-        const oldestFirst = Object.keys(next).filter((k) => k !== key);
-        const keep = new Set([...oldestFirst.slice(oldestFirst.length - (MAX_SUBAGENT_HISTORIES - 1)), key]);
-        for (const k of Object.keys(next)) {
-          if (!keep.has(k)) delete next[k];
-        }
-        return next;
-      });
+      }
+
+      options.setSubagentHistories((prev) => mergeSubagentHistory(prev, key, result));
     } catch {
       // Ignore malformed callback payloads; the request can be retried by reopening the Agent row.
     }
@@ -301,4 +343,8 @@ export function registerWindowCallbacks(
   // =========================================================================
 
   startModeRequest();
+
+  // Host events may have arrived while React was mounting. Replay them now
+  // that every callback group has been registered.
+  window.__flushOpencodeDispatch?.();
 }

@@ -11,11 +11,20 @@ import DiscardAllDialog from './DiscardAllDialog';
 import type { TabType, StatusPanelProps } from './types';
 import './StatusPanel.less';
 
-const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, sessionLoading = false, expanded = true, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll }: StatusPanelProps) => {
+const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, sessionLoading = false, expanded = true, activeTab, onActiveTabChange, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll }: StatusPanelProps) => {
   cardDebugLog('[StatusPanel] render, sessionLoading:', sessionLoading, 'expanded:', expanded);
   const { t } = useTranslation();
-  const [openPopover, setOpenPopover] = useState<TabType | null>(null);
+  const [localOpenPopover, setLocalOpenPopover] = useState<TabType | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const openPopover = activeTab !== undefined ? activeTab : localOpenPopover;
+
+  const setOpenPopover = useCallback((next: TabType | null) => {
+    if (activeTab !== undefined) {
+      onActiveTabChange?.(next);
+    } else {
+      setLocalOpenPopover(next);
+    }
+  }, [activeTab, onActiveTabChange]);
 
   // Undo related state
   const [undoingFile, setUndoingFile] = useState<string | null>(null);
@@ -76,8 +85,8 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
   }, [openPopover]);
 
   const handleTabClick = useCallback((tab: TabType) => {
-    setOpenPopover((prev) => (prev === tab ? null : tab));
-  }, []);
+    setOpenPopover(openPopover === tab ? null : tab);
+  }, [openPopover, setOpenPopover]);
 
   // Undo handlers
   const handleUndoClick = useCallback((fileChange: FileChangeSummary) => {

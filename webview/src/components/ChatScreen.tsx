@@ -10,6 +10,7 @@ import { MessageList } from './MessageList';
 import { MessagesErrorBoundary } from './MessagesErrorBoundary';
 import { ScrollControl } from './ScrollControl';
 import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
+import type { TabType } from './StatusPanel/types';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ConversationSearch } from './ConversationSearch';
 import type { MessageListRevealHandle } from './ConversationSearch/types';
@@ -57,7 +58,6 @@ export interface ChatScreenProps {
   messagesEndRef: RefObject<HTMLDivElement | null>;
   inputAreaRef: RefObject<HTMLDivElement | null>;
   messageNodeMapRef: RefObject<Map<string, HTMLDivElement>>;
-  userCollapsedRef: RefObject<boolean>;
   /** Imperative handle exposing `revealAll()` to the in-page search panel. */
   messageListRef: RefObject<MessageListRevealHandle | null>;
   /** Cooperate with useScrollBehavior to avoid pausing auto-follow during search scrolls. */
@@ -70,7 +70,9 @@ export interface ChatScreenProps {
 
   // Status panel
   statusPanelExpanded: boolean;
-  forceStatusUpdate: React.Dispatch<React.SetStateAction<number>>;
+  statusPanelTab: TabType | null;
+  onStatusPanelTabChange: (tab: TabType | null) => void;
+  onToggleStatusPanel: () => void;
   onUndoFile: FileChangeMgmt['handleUndoFile'];
   onDiscardAll: () => void;
   onKeepAll: FileChangeMgmt['handleKeepAll'];
@@ -127,9 +129,9 @@ export const ChatScreen = ({
   subagents, globalTodos, filteredFileChanges,
   subagentHistoryCtxValue, sessionIdCtxValue,
   chatInputRef, messagesContainerRef, messagesEndRef, inputAreaRef,
-  messageNodeMapRef, userCollapsedRef, messageListRef, isAutoScrollingRef,
+  messageNodeMapRef, messageListRef, isAutoScrollingRef,
   anchorCollapsedCount, setAnchorCollapsedCount, onMessageNodeRef,
-  statusPanelExpanded, forceStatusUpdate,
+  statusPanelExpanded, statusPanelTab, onStatusPanelTabChange, onToggleStatusPanel,
   onUndoFile, onDiscardAll, onKeepAll,
   onSubmit, onInterrupt,
   onNavigateToProviderSettings,
@@ -300,6 +302,8 @@ export const ChatScreen = ({
           currentProvider={currentProvider}
           sessionLoading={sessionLoading}
           expanded={statusPanelExpanded}
+          activeTab={statusPanelTab}
+          onActiveTabChange={onStatusPanelTabChange}
           isStreaming={streamingActive}
           onUndoFile={onUndoFile}
           onDiscardAll={onDiscardAll}
@@ -347,10 +351,7 @@ export const ChatScreen = ({
             setAddModelDialogOpen(true);
           }}
           statusPanelExpanded={statusPanelExpanded}
-          onToggleStatusPanel={() => {
-            userCollapsedRef.current = !userCollapsedRef.current;
-            forceStatusUpdate((c) => c + 1);
-          }}
+          onToggleStatusPanel={onToggleStatusPanel}
           addToast={addToast}
           messageQueue={messageQueue}
           onRemoveFromQueue={onRemoveFromQueue}

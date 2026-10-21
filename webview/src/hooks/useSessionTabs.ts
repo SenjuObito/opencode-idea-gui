@@ -8,9 +8,12 @@ import type { TabType } from '../components/StatusPanel/types';
 import { TabStore, createTabId } from '../store/tabStore';
 import { TabRuntimeStore } from '../store/tabRuntimeStore';
 import { TabDraftStore } from '../store/tabDraftStore';
+import { TabStatusStore, statusSnapshotOf } from '../store/tabStatusStore';
+import { TabPromptStore } from '../store/tabPromptStore';
 import type { ModelInfo, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { getFirstPreferredModelId, resolveSessionModel } from '../components/ChatInputBox/modelSelectUtils';
-import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
+import { sendBridgeEvent, sendTabCommand, cardDebugLog } from '../utils/bridge';
+import { observeHostEpoch, resetHostDispatcherEpochs } from '../utils/hostDispatcher';
 import { clearSessionSequenceBarrier } from './windowCallbacks/sequenceBarrier';
 import { releaseSessionTransition } from './windowCallbacks/sessionTransition';
 import {
@@ -220,6 +223,8 @@ export function useSessionTabs({
    */
   const [runtimeStore] = useState(() => new TabRuntimeStore());
   const [draftStore] = useState(() => new TabDraftStore());
+  const [statusStore] = useState(() => new TabStatusStore());
+  const [promptStore] = useState(() => new TabPromptStore());
 
   // Real-time runtime state ref to completely eliminate stale closures when saving snapshots
   const runtimeStateRef = useRef({
@@ -612,7 +617,7 @@ export function useSessionTabs({
    */
   const syncHostActiveTabTo = useCallback((tabId: string | null | undefined) => {
     if (!tabId) return;
-    sendBridgeEvent('tab_activate', JSON.stringify({ tabId }));
+    sendTabCommand(tabId, 'tab.activate');
   }, []);
 
   /**
@@ -633,60 +638,116 @@ export function useSessionTabs({
   /**
    * Rebuild the tab strip after a webview reload.
    *
-   * The reload destroys the React context, so every tab except the active one
-   * disappears while Java keeps hosting all of them. Java pushes the session ids
-   * it still holds; we recreate them as shells. Transcripts load on demand —
-   * either when the user sends a message (which re-opens the session) or when
-   * they re-open it from the history list (a same-session soft reload).
+   * The reload destroys the React context, so every tab except the one React
+   * just created disappears while Java keeps hosting all of them. Java pushes
+   * the stable tab ids it still holds, in order, plus the active tab. We rebuild
+   * by tab id (never by inventing ids from session ids) and adopt the active
+   * tab so a reload cannot silently switch the user to another session.
+   *
+   * Transcripts load on demand — either when the user sends a message (which
+   * re-opens the session) or from the history list (a same-session soft reload).
    */
   useEffect(() => {
-    const restore = (json: string) => {
-      let payload: { sessions?: Array<{ sessionId?: string }> };
+    const resync = (json: string) => {
+      let payload: {
+        type?: string;
+        activeTabId?: string;
+        tabs?: Array<{
+          tabId?: string;
+          sessionId?: string | null;
+          title?: string;
+          streaming?: boolean;
+          loading?: boolean;
+          epoch?: number;
+        }>;
+      };
       try {
-        payload = JSON.parse(json) as { sessions?: Array<{ sessionId?: string }> };
+        payload = JSON.parse(json) as typeof payload;
       } catch (error) {
-        cardDebugLog('[SessionTabs] restoreSessionTabs: invalid payload', error);
+        cardDebugLog('[SessionTabs] onTabResync: invalid payload', error);
         return;
       }
-      const incoming = (payload.sessions ?? [])
-        .map((entry) => entry?.sessionId)
-        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      const incoming = (payload?.tabs ?? []).filter(
+        (entry): entry is NonNullable<typeof entry> =>
+          !!entry && typeof entry.tabId === 'string' && entry.tabId.length > 0,
+      );
       if (incoming.length === 0) return;
 
-      setTabs((prev) => {
-        const known = new Set<string>();
-        for (const tab of prev) {
-          if (tab.sessionId) known.add(tab.sessionId);
+      // The host is authoritative about which binding is current. Seed the
+      // dispatcher so an event produced before this reload is not replayed
+      // over the resynced tab.
+      resetHostDispatcherEpochs();
+      for (const entry of incoming) {
+        if (typeof entry.epoch === 'number') {
+          observeHostEpoch(entry.tabId!, entry.epoch);
         }
-        const additions: SessionTabData[] = [];
-        for (const sessionId of incoming) {
-          if (known.has(sessionId)) continue;
-          known.add(sessionId);
-          additions.push({
-            id: createTabId(),
-            sessionId,
-            // The real title arrives with the transcript; a short id prefix keeps
-            // the tab identifiable in the meantime.
-            title: sessionId.length > 8 ? sessionId.slice(0, 8) : sessionId,
-            messages: [],
-            isShared: false,
-            loading: false,
-            streamingActive: false,
-            permissionMode: 'default',
-            reasoningEffort: 'default',
-            filteredFileChanges: [],
-            contextInfo: null,
-          });
+      }
+
+      const previousById = new Map(tabsRef.current.map((tab) => [tab.id, tab]));
+      const nextTabs: SessionTabData[] = incoming.map((entry) => {
+        const previous = previousById.get(entry.tabId!);
+        const sessionId = typeof entry.sessionId === 'string' && entry.sessionId
+          ? entry.sessionId
+          : (previous?.sessionId ?? null);
+        const title = entry.title || previous?.title
+          || t('common.newSession', { defaultValue: '新会话' });
+        const streamingActive = typeof entry.streaming === 'boolean'
+          ? entry.streaming
+          : (previous?.streamingActive ?? false);
+        const loading = typeof entry.loading === 'boolean'
+          ? entry.loading
+          : (previous?.loading ?? false);
+        if (previous) {
+          return { ...previous, sessionId, title, streamingActive, loading };
         }
-        return additions.length > 0 ? [...prev, ...additions] : prev;
+        return {
+          id: entry.tabId!,
+          sessionId,
+          title,
+          messages: [],
+          isShared: false,
+          loading,
+          streamingActive,
+          permissionMode: 'default',
+          reasoningEffort: 'default',
+          filteredFileChanges: [],
+          contextInfo: null,
+          pendingPermissions: [],
+          pendingQuestions: [],
+        };
       });
+
+      tabsRef.current = nextTabs;
+      setTabs(nextTabs);
+
+      const liveIds = new Set(nextTabs.map((tab) => tab.id));
+      for (const previousId of previousById.keys()) {
+        if (liveIds.has(previousId)) continue;
+        runtimeStore.delete(previousId);
+        draftStore.delete(previousId);
+        statusStore.delete(previousId);
+        promptStore.delete(previousId);
+      }
+
+      const targetId = typeof payload.activeTabId === 'string'
+        ? payload.activeTabId
+        : nextTabs[0].id;
+      const target = nextTabs.find((tab) => tab.id === targetId) ?? nextTabs[0];
+      if (!target) return;
+      activeTabIdRef.current = target.id;
+      setActiveTabId(target.id);
+      if (currentSessionIdRef) {
+        currentSessionIdRef.current = target.sessionId;
+      }
+      setCurrentSessionId?.(target.sessionId);
+      setCustomSessionTitle(target.title || null);
     };
 
-    window.restoreSessionTabs = restore;
+    window.onTabResync = resync;
     return () => {
-      delete window.restoreSessionTabs;
+      delete window.onTabResync;
     };
-  }, []);
+  }, [setCurrentSessionId, setCustomSessionTitle, t, runtimeStore, draftStore, statusStore, promptStore]);
 
   const saveCurrentTabSnapshot = useCallback(() => {
     const currentActive = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
@@ -723,6 +784,13 @@ export function useSessionTabs({
         currentActive.scrollState = capturedScroll;
       }
 
+      // Refresh every tab's saved status, not just the outgoing one: a
+      // background tab may have received deltas since it was last left, and
+      // those updates land on the tab object without touching the store.
+      for (const tab of tabsRef.current) {
+        statusStore.set(tab.id, statusSnapshotOf(tab));
+      }
+
       const currentDraftText = chatInputRef?.current?.getValue?.() ?? '';
       draftStore.set(currentActive.id, {
         text: currentDraftText,
@@ -733,8 +801,21 @@ export function useSessionTabs({
         fileTags: chatInputRef?.current?.getFileTags?.() ?? [],
         quotes: chatInputRef?.current?.getQuotes?.() ?? {},
       });
+      // Background tabs collect prompts in their own fields; save those too so
+      // selecting the tab restores the prompt it actually has now.
+      for (const tab of tabsRef.current) {
+        if (tab.id === currentActive.id) continue;
+        promptStore.set(tab.id, {
+          permissions: tab.pendingPermissions ?? [],
+          questions: tab.pendingQuestions ?? [],
+        });
+      }
       if (window.__dialogStore) {
         const dialogSnap = window.__dialogStore.getSnapshot();
+        promptStore.set(currentActive.id, {
+          permissions: dialogSnap.permissions,
+          questions: dialogSnap.questions,
+        });
         currentActive.pendingPermissions = dialogSnap.permissions;
         currentActive.pendingQuestions = dialogSnap.questions;
       }
@@ -743,7 +824,7 @@ export function useSessionTabs({
       // background turn keeps accumulating into this tab, not into the next one.
       archiveStreamingRuntime(currentActive.id);
     }
-  }, [chatInputRef, archiveStreamingRuntime, captureScrollState, draftStore]);
+  }, [chatInputRef, archiveStreamingRuntime, captureScrollState, draftStore, statusStore, promptStore]);
 
   // Select tab (pure view switch: preserves background generation, never interrupts)
   const selectTab = useCallback(
@@ -796,18 +877,19 @@ export function useSessionTabs({
       // Exchange the streaming runtime immediately after the transcript swap:
       // the next delta must see this tab's accumulator, and the message index is
       // intentionally reset so the live assistant is re-located in the new array.
-      restoreStreamingRuntimeFor(targetTab.id, targetTab.streamingActive);
-      setLoading?.(targetTab.loading || false);
-      setStreamingActive?.(targetTab.streamingActive || false);
-      setIsThinking?.(targetTab.isThinking || false);
-      setStatus?.(targetTab.status || '');
-      setRevertBoundaryId?.(targetTab.revertBoundaryId ?? null);
-      setIsCompacting?.(targetTab.isCompacting || false);
-      setCompactingStartTime?.(targetTab.compactingStartTime ?? null);
-      setTaskEvents?.(targetTab.taskEvents || {});
-      setSseTodos?.(targetTab.sseTodos || null);
-      setSubagentHistories?.(targetTab.subagentHistories || {});
-      setFilteredFileChanges?.(targetTab.filteredFileChanges || []);
+      const targetStatus = statusStore.get(targetTab.id);
+      restoreStreamingRuntimeFor(targetTab.id, targetStatus?.streamingActive ?? targetTab.streamingActive);
+      setLoading?.(targetStatus?.loading ?? targetTab.loading ?? false);
+      setStreamingActive?.(targetStatus?.streamingActive ?? targetTab.streamingActive ?? false);
+      setIsThinking?.(targetStatus?.isThinking ?? targetTab.isThinking ?? false);
+      setStatus?.(targetStatus?.status ?? targetTab.status ?? '');
+      setRevertBoundaryId?.(targetStatus ? targetStatus.revertBoundaryId : (targetTab.revertBoundaryId ?? null));
+      setIsCompacting?.(targetStatus?.isCompacting ?? targetTab.isCompacting ?? false);
+      setCompactingStartTime?.(targetStatus ? targetStatus.compactingStartTime : (targetTab.compactingStartTime ?? null));
+      setTaskEvents?.(targetStatus?.taskEvents ?? targetTab.taskEvents ?? {});
+      setSseTodos?.(targetStatus ? targetStatus.sseTodos : (targetTab.sseTodos ?? null));
+      setSubagentHistories?.(targetStatus?.subagentHistories ?? targetTab.subagentHistories ?? {});
+      setFilteredFileChanges?.(targetStatus?.filteredFileChanges ?? targetTab.filteredFileChanges ?? []);
 
       // Restore per-tab sliding window cursors into window
       window.__messageBaseIndex = targetTab.messageBaseIndex ?? 0;
@@ -841,13 +923,13 @@ export function useSessionTabs({
       }
 
       // Restore turnStartedAt & usage tracking to prevent cross-session pollution
-      const targetTurnStartedAt = targetTab.turnStartedAt ?? null;
+      const targetTurnStartedAt = targetStatus ? targetStatus.turnStartedAt : (targetTab.turnStartedAt ?? null);
       setLoadingStartTime?.(targetTurnStartedAt);
       window.__turnStartedAt = targetTurnStartedAt ?? undefined;
 
-      setUsagePercentage?.(targetTab.usagePercentage ?? 0);
-      setUsageUsedTokens?.(targetTab.usageUsedTokens);
-      setUsageMaxTokens?.(targetTab.usageMaxTokens);
+      setUsagePercentage?.(targetStatus?.usagePercentage ?? targetTab.usagePercentage ?? 0);
+      setUsageUsedTokens?.(targetStatus ? targetStatus.usageUsedTokens : targetTab.usageUsedTokens);
+      setUsageMaxTokens?.(targetStatus ? targetStatus.usageMaxTokens : targetTab.usageMaxTokens);
 
       // Restore input box draft. Order matters: text first, then attachments,
       // then file tags — `restoreFileTags` re-renders chips out of the restored
@@ -865,9 +947,10 @@ export function useSessionTabs({
 
       // Restore target tab's dialog state
       if (window.__dialogStore) {
+        const targetPrompts = promptStore.get(targetTab.id);
         window.__dialogStore.restore(
-          targetTab.pendingPermissions || [],
-          targetTab.pendingQuestions || []
+          targetPrompts?.permissions ?? targetTab.pendingPermissions ?? [],
+          targetPrompts?.questions ?? targetTab.pendingQuestions ?? []
         );
       }
 
@@ -911,6 +994,8 @@ export function useSessionTabs({
       setSessionLoading,
       chatInputRef,
       draftStore,
+      statusStore,
+      promptStore,
     ]
   );
 
@@ -982,6 +1067,7 @@ export function useSessionTabs({
         saveCurrentTabSnapshot();
 
         const newId = createTabId();
+        sendTabCommand(newId, 'tab.create');
         const newTab: SessionTabData = {
           id: newId,
           sessionId,
@@ -1131,6 +1217,7 @@ export function useSessionTabs({
     ) || '';
 
     const newId = createTabId();
+    sendTabCommand(newId, 'tab.create');
     const newTab: SessionTabData = {
       id: newId,
       sessionId: null,
@@ -1262,13 +1349,16 @@ export function useSessionTabs({
         sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId: closingTab.sessionId }));
       }
       if (closingTab?.sessionId) {
-        sendBridgeEvent('close_session', JSON.stringify({ sessionId: closingTab.sessionId }));
         clearSessionSequenceBarrier(closingTab.sessionId);
       }
+      // One command closes the tab whether or not it ever got a session.
+      sendTabCommand(tabId, 'tab.close');
       // Drop the archived runtime with the tab; a recycled tab id must never
       // inherit a dead session's accumulator.
       runtimeStore.delete(tabId);
       draftStore.delete(tabId);
+      statusStore.delete(tabId);
+      promptStore.delete(tabId);
 
       setTabs((prev) => {
         if (prev.length <= 1) {
@@ -1289,6 +1379,7 @@ export function useSessionTabs({
             filteredFileChanges: [],
             contextInfo: null,
           };
+          sendTabCommand(freshTab.id, 'tab.create');
           setActiveTabId(freshTab.id);
           setCurrentSessionId?.(null);
           setCustomSessionTitle(null);
@@ -1343,18 +1434,26 @@ export function useSessionTabs({
             setCustomSessionTitle(nextActive.title || null);
             setMessages(nextActive.messages || []);
             restoreScrollState?.(nextActive.scrollState ?? null);
-            restoreStreamingRuntimeFor(nextActive.id, nextActive.streamingActive);
-            setLoading?.(nextActive.loading || false);
-            setStreamingActive?.(nextActive.streamingActive || false);
-            setIsThinking?.(nextActive.isThinking || false);
-            setStatus?.(nextActive.status || '');
-            setRevertBoundaryId?.(nextActive.revertBoundaryId ?? null);
-            setIsCompacting?.(nextActive.isCompacting || false);
-            setCompactingStartTime?.(nextActive.compactingStartTime ?? null);
-            setTaskEvents?.(nextActive.taskEvents || {});
-            setSseTodos?.(nextActive.sseTodos || null);
-            setSubagentHistories?.(nextActive.subagentHistories || {});
-            setFilteredFileChanges?.(nextActive.filteredFileChanges || []);
+            // Refresh the sibling from its live fields before reading the
+            // stores; background updates since the last switch landed there.
+            statusStore.set(nextActive.id, statusSnapshotOf(nextActive));
+            promptStore.set(nextActive.id, {
+              permissions: nextActive.pendingPermissions ?? [],
+              questions: nextActive.pendingQuestions ?? [],
+            });
+            const nextStatus = statusStore.get(nextActive.id);
+            restoreStreamingRuntimeFor(nextActive.id, nextStatus?.streamingActive ?? nextActive.streamingActive);
+            setLoading?.(nextStatus?.loading ?? nextActive.loading ?? false);
+            setStreamingActive?.(nextStatus?.streamingActive ?? nextActive.streamingActive ?? false);
+            setIsThinking?.(nextStatus?.isThinking ?? nextActive.isThinking ?? false);
+            setStatus?.(nextStatus?.status ?? nextActive.status ?? '');
+            setRevertBoundaryId?.(nextStatus ? nextStatus.revertBoundaryId : (nextActive.revertBoundaryId ?? null));
+            setIsCompacting?.(nextStatus?.isCompacting ?? nextActive.isCompacting ?? false);
+            setCompactingStartTime?.(nextStatus ? nextStatus.compactingStartTime : (nextActive.compactingStartTime ?? null));
+            setTaskEvents?.(nextStatus?.taskEvents ?? nextActive.taskEvents ?? {});
+            setSseTodos?.(nextStatus ? nextStatus.sseTodos : (nextActive.sseTodos ?? null));
+            setSubagentHistories?.(nextStatus?.subagentHistories ?? nextActive.subagentHistories ?? {});
+            setFilteredFileChanges?.(nextStatus?.filteredFileChanges ?? nextActive.filteredFileChanges ?? []);
 
             const nextMode = nextActive.permissionMode || 'default';
             setPermissionMode?.(nextMode);
@@ -1377,20 +1476,21 @@ export function useSessionTabs({
             }
 
             // Restore turnStartedAt & usage tracking for the switched active tab
-            const nextTurnStartedAt = nextActive.turnStartedAt ?? null;
+            const nextTurnStartedAt = nextStatus ? nextStatus.turnStartedAt : (nextActive.turnStartedAt ?? null);
             setLoadingStartTime?.(nextTurnStartedAt);
             window.__turnStartedAt = nextTurnStartedAt ?? undefined;
 
-            setUsagePercentage?.(nextActive.usagePercentage ?? 0);
-            setUsageUsedTokens?.(nextActive.usageUsedTokens);
-            setUsageMaxTokens?.(nextActive.usageMaxTokens);
+            setUsagePercentage?.(nextStatus?.usagePercentage ?? nextActive.usagePercentage ?? 0);
+            setUsageUsedTokens?.(nextStatus ? nextStatus.usageUsedTokens : nextActive.usageUsedTokens);
+            setUsageMaxTokens?.(nextStatus ? nextStatus.usageMaxTokens : nextActive.usageMaxTokens);
 
             setSessionLoading?.(false);
 
             if (window.__dialogStore) {
+              const nextPrompts = promptStore.get(nextActive.id);
               window.__dialogStore.restore(
-                nextActive.pendingPermissions || [],
-                nextActive.pendingQuestions || []
+                nextPrompts?.permissions ?? nextActive.pendingPermissions ?? [],
+                nextPrompts?.questions ?? nextActive.pendingQuestions ?? []
               );
             }
           }
@@ -1428,6 +1528,9 @@ export function useSessionTabs({
       setUsageMaxTokens,
       setSessionLoading,
       runtimeStore,
+      draftStore,
+      statusStore,
+      promptStore,
       restoreStreamingRuntimeFor,
     ]
   );

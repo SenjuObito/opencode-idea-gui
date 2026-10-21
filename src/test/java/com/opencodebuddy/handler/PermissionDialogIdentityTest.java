@@ -161,9 +161,12 @@ public class PermissionDialogIdentityTest {
     }
 
     private String pendingQuestionSessionId(String requestId) throws Exception {
-        Field f = PermissionHandler.class.getDeclaredField("pendingQuestions");
+        Field brokerField = PermissionHandler.class.getDeclaredField("prompts");
+        brokerField.setAccessible(true);
+        PromptBroker broker = (PromptBroker) brokerField.get(handler);
+        Field f = PromptBroker.class.getDeclaredField("questions");
         f.setAccessible(true);
-        Map<?, ?> pending = (Map<?, ?>) f.get(handler);
+        Map<?, ?> pending = (Map<?, ?>) f.get(broker);
         Object entry = pending.get(requestId);
         if (entry == null) {
             return null;

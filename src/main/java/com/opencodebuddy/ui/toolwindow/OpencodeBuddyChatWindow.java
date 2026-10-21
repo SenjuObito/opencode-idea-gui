@@ -13,11 +13,13 @@ import com.opencodebuddy.session.SessionLifecycleManager;
 import com.opencodebuddy.session.SessionState;
 import com.opencodebuddy.session.StreamMessageCoalescer;
 import com.opencodebuddy.tab.TabId;
+import com.opencodebuddy.tab.TabCommand;
+import com.opencodebuddy.tab.TabCommandRouter;
 import com.opencodebuddy.tab.TabRecord;
 import com.opencodebuddy.tab.TabRegistry;
+import com.opencodebuddy.tab.TabSessionFactory;
 import com.opencodebuddy.tab.TabState;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
-import com.opencodebuddy.settings.TabStateService;
 import com.opencodebuddy.ui.ChatWindowDelegate;
 import com.opencodebuddy.ui.EditorContextTracker;
 import com.opencodebuddy.ui.SurfaceFrameFence;
@@ -32,6 +34,7 @@ import com.opencodebuddy.utils.PluginFileLogger;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -80,6 +83,8 @@ public class OpencodeBuddyChatWindow {
     private String defaultTabName;
     private volatile JBCefBrowser browser;
     private final TabRegistry tabRegistry = new TabRegistry();
+    private final TabSessionFactory tabSessionFactory;
+    private final TabCommandRouter tabCommandRouter;
     private volatile String activeTabId = null;
     private final WebviewWatchdog webviewWatchdog;
     private volatile StreamMessageCoalescer streamCoalescer;
@@ -211,6 +216,51 @@ public class OpencodeBuddyChatWindow {
                 () -> this.disposed,
                 this::executeQueuedWebviewScript
         );
+        this.webviewEventQueue.setLaneResolver(this::resolveWebviewEventLane);
+        this.webviewEventQueue.setActiveLaneSupplier(() -> {
+            TabId active = tabRegistry.getActiveTabId();
+            return active != null ? active.value() : null;
+        });
+        this.webviewEventQueue.setEpochResolver(lane -> {
+            TabRecord record = tabRegistry.get(TabId.of(lane));
+            return record != null ? record.getEpoch() : null;
+        });
+        this.webviewEventQueue.setSnapshotRequiredListener(this::onBridgeSnapshotRequired);
+
+        this.tabSessionFactory = new TabSessionFactory(tabRegistry, new TabSessionFactory.Host() {
+            @Override
+            public OpencodeSession newSession(String cwd) {
+                OpencodeSession session = new OpencodeSession(project, openCodeSDKBridge);
+                if (cwd != null && !cwd.isBlank()) {
+                    session.setCwd(cwd);
+                }
+                return session;
+            }
+
+            @Override
+            public StreamMessageCoalescer newCoalescer(TabId tabId) {
+                return createStreamCoalescer(tabId.value());
+            }
+
+            @Override
+            public SessionCallbackAdapter newAdapter(TabId tabId, StreamMessageCoalescer coalescer) {
+                return createCallbackAdapter(tabId.value(), coalescer);
+            }
+        });
+
+        this.tabCommandRouter = new TabCommandRouter(tabRegistry);
+        tabCommandRouter.register("tab.create", command ->
+                tabRegistry.create(command.tabId(),
+                        command.string("cwd") != null ? command.string("cwd")
+                                : (project != null ? project.getBasePath() : null)));
+        tabCommandRouter.register("tab.activate", command -> activateTab(command.tabId().value()));
+        tabCommandRouter.register("tab.close", command -> closeSession(command.tabId().value()));
+        tabCommandRouter.register("tab.title.set", command -> {
+            TabRecord record = tabRegistry.get(command.tabId());
+            if (record != null && !record.isClosed()) {
+                record.setTitle(command.string("title"));
+            }
+        });
         String projectPath = project != null ? project.getBasePath() : null;
         this.daemonBridge = new DaemonBridge(
                 com.opencodebuddy.bridge.NodeDetector.getInstance(),
@@ -524,7 +574,6 @@ public class OpencodeBuddyChatWindow {
                 LOG.debug("[TabLoading] Auto-initialized original tab name: " + this.originalTabName);
             }
 
-            persistTabSessionState();
         }
     }
 
@@ -1480,6 +1529,39 @@ public class OpencodeBuddyChatWindow {
         return record != null ? record.getSessionIdString() : null;
     }
 
+    /**
+     * Rebuild payload for a webview reload. Carries stable tab ids so the
+     * webview restores the same tabs (and the same active tab) instead of
+     * inventing new ids from session ids.
+     */
+    public String buildTabResyncPayload() {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("v", 2);
+        TabId active = tabRegistry.getActiveTabId();
+        if (active != null) {
+            payload.addProperty("activeTabId", active.value());
+        }
+        JsonArray tabs = new JsonArray();
+        for (TabRecord record : tabRegistry.liveTabs()) {
+            JsonObject entry = new JsonObject();
+            entry.addProperty("tabId", record.getTabId().value());
+            String sessionId = record.getSessionIdString();
+            if (sessionId != null) {
+                entry.addProperty("sessionId", sessionId);
+            }
+            String title = record.getTitle();
+            if (title != null) {
+                entry.addProperty("title", title);
+            }
+            entry.addProperty("streaming", record.isStreaming());
+            entry.addProperty("loading", record.getState() == TabState.LOADING_HISTORY);
+            entry.addProperty("epoch", record.getEpoch());
+            tabs.add(entry);
+        }
+        payload.add("tabs", tabs);
+        return payload.toString();
+    }
+
     public String getSessionId() {
         OpencodeSession active = getSession();
         return active != null ? active.getSessionId() : null;
@@ -1512,7 +1594,6 @@ public class OpencodeBuddyChatWindow {
         if (handlerContext != null) {
             handlerContext.setSession(next);
         }
-        persistTabSessionState();
     }
 
     /**
@@ -1565,42 +1646,37 @@ public class OpencodeBuddyChatWindow {
 
         TabId stableTabId = TabId.of(tabId);
         String initialCwd = project != null ? project.getBasePath() : null;
-        TabRecord record = tabRegistry.create(stableTabId, initialCwd);
-        if (record.getSession() != null) {
-            return record.getSession();
+        TabRecord existing = tabRegistry.get(stableTabId);
+        if (existing != null && existing.getSession() != null) {
+            return existing.getSession();
         }
         if (activeTabId == null) {
             activeTabId = tabId;
             tabRegistry.activate(stableTabId);
         }
 
-        OpencodeSession oldSession = this.getSession();
+        // Preferences are inherited from the tab the user was looking at, never
+        // from the (possibly brand-new, empty) tab being created.
+        TabRecord activeRecord = tabRegistry.get(tabRegistry.getActiveTabId());
+        OpencodeSession oldSession = activeRecord != null ? activeRecord.getSession() : null;
         String previousPermissionMode = (oldSession != null) ? oldSession.getPermissionMode() : "default";
         String previousProvider = (oldSession != null) ? oldSession.getProvider() : "opencode";
         String previousModel = (oldSession != null) ? oldSession.getModel() : null;
 
-        OpencodeSession newSession = new OpencodeSession(project, openCodeSDKBridge);
-        if (initialCwd != null) {
-            newSession.setCwd(initialCwd);
+        TabSessionFactory.Prepared prepared = tabSessionFactory.prepare(
+                stableTabId,
+                initialCwd,
+                session -> {
+                    session.setPermissionMode(previousPermissionMode);
+                    session.setProvider(previousProvider);
+                    if (previousModel != null) {
+                        session.setModel(previousModel);
+                    }
+                });
+        if (prepared.created() && handlerContext != null && prepared.session() != null) {
+            handlerContext.registerSession(tabId, prepared.session());
         }
-        newSession.setPermissionMode(previousPermissionMode);
-        newSession.setProvider(previousProvider);
-        if (previousModel != null) {
-            newSession.setModel(previousModel);
-        }
-
-        StreamMessageCoalescer newCoalescer = createStreamCoalescer(tabId);
-        SessionCallbackAdapter newAdapter = createCallbackAdapter(tabId, newCoalescer);
-        if (newAdapter != null) {
-            newSession.setCallback(newAdapter);
-        }
-
-        record.setProvisionalResources(newSession, newAdapter, newCoalescer);
-        tabRegistry.markCreating(stableTabId);
-        if (handlerContext != null) {
-            handlerContext.registerSession(tabId, newSession);
-        }
-        return newSession;
+        return prepared.session();
     }
 
     private TabRecord findTabRecord(String id) {
@@ -1720,7 +1796,6 @@ public class OpencodeBuddyChatWindow {
                         }
                     }
                     if (getActiveSessionId() == null || targetSessionId.equals(getActiveSessionId())) {
-                        persistTabSessionState();
                     }
                 }
             }
@@ -1767,30 +1842,23 @@ public class OpencodeBuddyChatWindow {
             return;
         }
         TabId stableTabId = TabId.of(tabId);
-        TabRecord record = tabRegistry.create(stableTabId,
-                session.getCwd() != null ? session.getCwd()
-                        : (project != null ? project.getBasePath() : null));
-        if (record.getSessionId() != null
-                && !record.getSessionIdString().equals(canonicalSessionId)) {
-            throw new IllegalStateException("tab " + tabId + " is already bound to "
-                    + record.getSessionIdString());
-        }
-
+        TabRecord existing = tabRegistry.get(stableTabId);
         SessionCallbackAdapter effectiveAdapter = adapter != null
-                ? adapter : record.getAdapter();
+                ? adapter : (existing != null ? existing.getAdapter() : null);
         if (effectiveAdapter == null) {
             effectiveAdapter = findAdapter(canonicalSessionId);
         }
         StreamMessageCoalescer effectiveCoalescer = coalescer != null
-                ? coalescer : record.getCoalescer();
+                ? coalescer : (existing != null ? existing.getCoalescer() : null);
         if (effectiveCoalescer == null) {
             effectiveCoalescer = getStreamCoalescer(canonicalSessionId);
         }
 
+        String cwd = session.getCwd() != null ? session.getCwd()
+                : (project != null ? project.getBasePath() : null);
+        tabSessionFactory.attach(stableTabId, canonicalSessionId, session,
+                effectiveAdapter, effectiveCoalescer, cwd);
         registerSession(canonicalSessionId, session, effectiveAdapter, effectiveCoalescer);
-        tabRegistry.bind(stableTabId, canonicalSessionId, session,
-                effectiveAdapter, effectiveCoalescer);
-        tabRegistry.markLoadingHistory(stableTabId);
         if (handlerContext != null) {
             handlerContext.removeSession(tabId);
         }
@@ -1832,7 +1900,6 @@ public class OpencodeBuddyChatWindow {
             if (handlerContext != null) {
                 handlerContext.setSession(boundSession);
             }
-            persistTabSessionState();
         }
         LOG.info("[Tab] bound " + tabId + " -> " + canonicalSessionId);
     }
@@ -1986,7 +2053,6 @@ public class OpencodeBuddyChatWindow {
             handlerContext.setCurrentProvider(sourceSession.getProvider());
             handlerContext.setCurrentModel(sourceSession.getModel());
         }
-        persistTabSessionState();
     }
 
     static void copySessionPreferences(SessionState source, SessionState target) {
@@ -2012,34 +2078,28 @@ public class OpencodeBuddyChatWindow {
      * 重载会直接把它们抹掉。
      */
     public void resyncSessionFromServerIfNeeded() {
-        if (getSession() == null || !frontendReady) {
+        OpencodeSession session = getSession();
+        if (session == null || !frontendReady) {
             return;
         }
-
-        TabStateService.TabSessionState currentState = new TabStateService.TabSessionState();
-        currentState.sessionId = getSession().getSessionId();
-        resyncSessionFromServerIfNeeded(currentState);
-    }
-
-    /** 重新同步的退避节奏：服务端 transcript 可能还没惰性加载出来。 */
-    private static final int RESYNC_MAX_ATTEMPTS = 3;
-    private static final long RESYNC_RETRY_DELAY_MS = 600;
-
-    private void resyncSessionFromServerIfNeeded(TabStateService.TabSessionState savedState) {
-        if (!TabSessionRestorePolicy.shouldStartHistoryLoad(savedState, frontendReady) || getSession() == null) {
+        // Only a bound, idle, empty tab is re-synced. A reload of a tab that is
+        // already showing messages (or streaming) would wipe them.
+        if (session.getSessionId() == null || session.getSessionId().isBlank()) {
             return;
         }
-        // 视图里已经有消息就绝不重载 —— 见方法头注释。
-        if (getSession().isBusy() || getSession().isLoading() || !getSession().getMessages().isEmpty()) {
+        if (session.isBusy() || session.isLoading() || !session.getMessages().isEmpty()) {
             return;
         }
         if (!sessionResyncStarted.compareAndSet(false, true)) {
             return;
         }
 
-        OpencodeSession targetSession = getSession();
-        resyncSessionFromServerWithRetry(targetSession, RESYNC_MAX_ATTEMPTS);
+        resyncSessionFromServerWithRetry(session, RESYNC_MAX_ATTEMPTS);
     }
+
+    /** 重新同步的退避节奏：服务端 transcript 可能还没惰性加载出来。 */
+    private static final int RESYNC_MAX_ATTEMPTS = 3;
+    private static final long RESYNC_RETRY_DELAY_MS = 600;
 
     /**
      * 重新同步会话消息，失败或为空时退避重试。
@@ -2094,7 +2154,6 @@ public class OpencodeBuddyChatWindow {
                 + (failure != null ? failure.getMessage() : "empty result"));
         // 解除绑定：下一次发送会开一条新会话，不会把旧会话的整份消息带回来。
         targetSession.setSessionInfo(null, targetSession.getCwd());
-        persistTabSessionState();
         // 允许切回本标签页时再试一次 —— 本次失败不代表以后不行。
         sessionResyncStarted.set(false);
 
@@ -2810,6 +2869,11 @@ public class OpencodeBuddyChatWindow {
             return;
         }
 
+        if ("tab_command".equals(type)) {
+            handleTabCommand(content);
+            return;
+        }
+
         PluginFileLogger.throttled("INFO", "FRONTEND->BACKEND", type,
                 type + " | " + content, 1000L);
 
@@ -2824,6 +2888,38 @@ public class OpencodeBuddyChatWindow {
 
         LOG.warn("Unknown message type: " + type);
         PluginFileLogger.warn("FRONTEND->BACKEND", "UNHANDLED type=" + type + " content=" + content);
+    }
+
+    /**
+     * A tab-scoped command envelope from the webview:
+     * {@code {tabId, command, requestId, payload}}.
+     */
+    private void handleTabCommand(String content) {
+        try {
+            JsonObject json = JsonParser.parseString(content).getAsJsonObject();
+            String tabId = json.has("tabId") && !json.get("tabId").isJsonNull()
+                    ? json.get("tabId").getAsString() : null;
+            String command = json.has("command") && !json.get("command").isJsonNull()
+                    ? json.get("command").getAsString() : null;
+            String requestId = json.has("requestId") && !json.get("requestId").isJsonNull()
+                    ? json.get("requestId").getAsString() : null;
+            JsonObject payload = json.has("payload") && json.get("payload").isJsonObject()
+                    ? json.getAsJsonObject("payload") : new JsonObject();
+            if (tabId == null || tabId.isBlank() || command == null || command.isBlank()) {
+                LOG.warn("[TabCommand] rejected malformed command: " + content);
+                return;
+            }
+            TabCommandRouter.Result result = tabCommandRouter.route(
+                    new TabCommand(TabId.of(tabId), command, requestId, payload));
+            if (result != TabCommandRouter.Result.ROUTED
+                    && result != TabCommandRouter.Result.DUPLICATE) {
+                PluginFileLogger.warn("FRONTEND->BACKEND",
+                        "tab_command " + command + " tab=" + tabId + " -> " + result);
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("[TabCommand] failed to parse: " + content, e);
+            PluginFileLogger.warn("FRONTEND->BACKEND", "invalid tab_command: " + content);
+        }
     }
 
     // ==================== Session Delegates ====================
@@ -2852,7 +2948,6 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void onSessionIdReceived(String newSessionId) {
                 super.onSessionIdReceived(newSessionId);
-                persistTabSessionState();
             }
         };
         getSession().setCallback(sessionCallbackAdapter);
@@ -2929,7 +3024,6 @@ public class OpencodeBuddyChatWindow {
             this.openCodeSDKBridge.addDaemonEventListener(this.titleEventListener);
         }
 
-        persistTabSessionState();
     }
 
     /**
@@ -3190,6 +3284,58 @@ public class OpencodeBuddyChatWindow {
         }
     }
 
+    /**
+     * Scheduling lane for one webview call: the tab that owns the first
+     * argument (a canonical session id or a tab id). Only scheduling uses this
+     * guess; ownership of a message is still decided by the daemon/session
+     * routing, never by this method.
+     */
+    private String resolveWebviewEventLane(String[] args) {
+        if (args == null || args.length == 0 || args[0] == null) {
+            return BridgeScheduler.GLOBAL_LANE;
+        }
+        String first = args[0];
+        if (first.startsWith("ses_")) {
+            TabRecord bySession = tabRegistry.findBySession(first);
+            return bySession != null ? bySession.getTabId().value() : BridgeScheduler.GLOBAL_LANE;
+        }
+        if (first.startsWith("tab-") && tabRegistry.get(TabId.of(first)) != null) {
+            return first;
+        }
+        return BridgeScheduler.GLOBAL_LANE;
+    }
+
+    /**
+     * The scheduler had to drop a delta for this tab. Push the authority
+     * snapshot from the session object so the visible transcript converges
+     * instead of staying permanently truncated.
+     */
+    private void onBridgeSnapshotRequired(String laneId) {
+        if (laneId == null || BridgeScheduler.GLOBAL_LANE.equals(laneId)) {
+            return;
+        }
+        TabRecord record;
+        try {
+            record = tabRegistry.get(TabId.of(laneId));
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        if (record == null || record.isClosed() || record.getActor().isClosed()) {
+            return;
+        }
+        record.getActor().submit(() -> {
+            OpencodeSession session = record.getSession();
+            StreamMessageCoalescer coalescer = record.getCoalescer();
+            if (session != null && coalescer != null) {
+                coalescer.enqueue(session.getMessages());
+                coalescer.flush(null);
+            }
+            if (webviewEventQueue != null) {
+                webviewEventQueue.clearSnapshotRequired(laneId);
+            }
+        });
+    }
+
     private void onStreamEnded() {
         onStreamEnded(getActiveSessionId());
     }
@@ -3220,7 +3366,6 @@ public class OpencodeBuddyChatWindow {
     private void initializeSessionInfo() {
         String workingDirectory = sessionLifecycleManager.determineWorkingDirectory();
         getSession().setSessionInfo(null, workingDirectory);
-        persistTabSessionState();
         LOG.info("Initialized with working directory: " + workingDirectory);
     }
 
@@ -3239,41 +3384,6 @@ public class OpencodeBuddyChatWindow {
             callJavaScript("showLoading", sid, "false");
             com.opencodebuddy.notifications.OpencodeNotifier.clearStatus(project);
         }));
-    }
-
-    private int getTabIndex() {
-        Content content = this.parentContent;
-        if (content == null) {
-            return -1;
-        }
-        ContentManager contentManager = content.getManager();
-        if (contentManager == null) {
-            return -1;
-        }
-        return contentManager.getIndexOfContent(content);
-    }
-
-    private void persistTabSessionState() {
-        if (project == null || project.isDisposed() || getSession() == null) {
-            return;
-        }
-
-        int tabIndex = getTabIndex();
-        if (tabIndex < 0) {
-            return;
-        }
-
-        TabStateService.TabSessionState snapshot = new TabStateService.TabSessionState();
-        snapshot.provider = getSession().getProvider();
-        snapshot.sessionId = getSession().getSessionId();
-        snapshot.cwd = getSession().getCwd();
-        snapshot.model = getSession().getModel();
-        snapshot.permissionMode = getSession().getPermissionMode();
-        snapshot.reasoningEffort = getSession().getReasoningEffort();
-
-        TabStateService.getInstance(project).saveTabSessionState(tabIndex, snapshot);
-
-
     }
 
     // ==================== Code Snippets ====================
@@ -3787,13 +3897,8 @@ public class OpencodeBuddyChatWindow {
             }
 
             @Override
-            public void persistTabSessionState() {
-                OpencodeBuddyChatWindow.this.persistTabSessionState();
-            }
-
-            @Override
-            public java.util.List<String> getHostedSessionIds() {
-                return tabRegistry.liveSessionIds();
+            public String buildTabResyncPayload() {
+                return OpencodeBuddyChatWindow.this.buildTabResyncPayload();
             }
 
             @Override

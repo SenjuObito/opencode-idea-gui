@@ -19,6 +19,7 @@ public final class TabRecord {
     private final TabId tabId;
     private final String cwd;
     private final TabSettings settings = new TabSettings();
+    private final TabSessionActor actor;
     private final AtomicLong epoch = new AtomicLong(0);
     private final AtomicLong revision = new AtomicLong();
 
@@ -32,10 +33,16 @@ public final class TabRecord {
     public TabRecord(TabId tabId, String cwd) {
         this.tabId = Objects.requireNonNull(tabId, "tabId");
         this.cwd = cwd;
+        this.actor = new TabSessionActor(tabId);
     }
 
     public TabId getTabId() {
         return tabId;
+    }
+
+    /** The tab's serial mutation queue. Closed with the tab. */
+    public TabSessionActor getActor() {
+        return actor;
     }
 
     public String getCwd() {
@@ -152,5 +159,6 @@ public final class TabRecord {
     public void close() {
         state = TabState.CLOSED;
         clearSessionResources();
+        actor.close();
     }
 }

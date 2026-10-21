@@ -6,10 +6,26 @@ import { useSessionTabs } from './useSessionTabs';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeMessage } from '../types';
 
-vi.mock('../utils/bridge', () => ({
+const bridgeMocks = vi.hoisted(() => ({
   sendBridgeEvent: vi.fn(),
-  sendTypedBridgeEvent: vi.fn(),
+  sendTabCommand: vi.fn(),
 }));
+
+vi.mock('../utils/bridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/bridge')>();
+  return {
+    ...actual,
+    sendBridgeEvent: bridgeMocks.sendBridgeEvent,
+    sendTypedBridgeEvent: vi.fn(),
+    sendTabCommand: (tabId: string, command: string, payload: Record<string, unknown> = {}) => {
+      bridgeMocks.sendTabCommand(tabId, command, payload);
+      return bridgeMocks.sendBridgeEvent(
+        'tab_command',
+        JSON.stringify({ tabId, command, payload }),
+      );
+    },
+  };
+});
 
 /**
  * 多标签页 / 多会话归属测试。
@@ -208,6 +224,42 @@ describe('useSessionTabs - multi-session attribution', () => {
       result.current.selectTab('tab-1');
     });
     expect(restoreScrollState).toHaveBeenCalledWith(savedState);
+  });
+
+  it('restores a background tab status and prompt written while it was hidden', () => {
+    const setStatus = vi.fn();
+    const setLoading = vi.fn();
+    const restore = vi.fn();
+    (window as any).__dialogStore = {
+      getSnapshot: () => ({ permissions: [], questions: [] }),
+      restore,
+    };
+
+    const { result } = renderTabs({ currentSessionId: 'ses_a', setStatus, setLoading });
+    act(() => {
+      store().updateTabSessionId('tab-1', 'ses_a');
+    });
+    const tab1Id = result.current.activeTabId;
+    act(() => {
+      result.current.createTab();
+    });
+
+    // While tab 1 is hidden, a background turn updates its own fields and a
+    // permission arrives for it.
+    const tab1 = result.current.tabs.find((tab) => tab.id === tab1Id)!;
+    act(() => {
+      tab1.loading = true;
+      tab1.status = 'running';
+      tab1.pendingPermissions = [{ channelId: 'per-bg' }];
+    });
+
+    act(() => {
+      result.current.selectTab(tab1Id);
+    });
+
+    expect(setLoading).toHaveBeenLastCalledWith(true);
+    expect(setStatus).toHaveBeenLastCalledWith('running');
+    expect(restore).toHaveBeenCalledWith([{ channelId: 'per-bg' }], []);
   });
 });
 
@@ -521,7 +573,9 @@ describe('useSessionTabs - history session loading', () => {
     });
 
     const calls = vi.mocked(sendBridgeEvent).mock.calls;
-    const activateCall = calls.findIndex((c) => c[0] === 'tab_activate');
+    const activateCall = calls.findIndex(
+      (c) => c[0] === 'tab_command' && String(c[1]).includes('"command":"tab.activate"'),
+    );
     const modeCall = calls.findIndex((c) => c[0] === 'set_mode');
 
     expect(activateCall).toBeGreaterThanOrEqual(0);
@@ -610,7 +664,7 @@ describe('useSessionTabs - history session loading', () => {
 
     // Without this the host's active tab would remain the tab just closed.
     const activateCall = vi.mocked(sendBridgeEvent).mock.calls.find(
-      (c) => c[0] === 'tab_activate',
+      (c) => c[0] === 'tab_command' && String(c[1]).includes('"command":"tab.activate"'),
     );
     expect(activateCall?.[1]).toContain(`"tabId":"${tab1Id}"`);
     expect(result.current.activeTabId).toBe(tab1Id);

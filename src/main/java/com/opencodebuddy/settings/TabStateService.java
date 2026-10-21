@@ -11,7 +11,9 @@ import java.util.Map;
 
 /**
  * Tab State Persistence Service.
- * Saves and restores custom tab names plus per-tab session binding state.
+ * Saves and restores custom tab names. Session binding is owned by
+ * {@code TabRegistry} for the lifetime of the window and is never restored from
+ * disk: a reload asks the host for the live tab list instead.
  */
 @State(
     name = "OpenCodeBuddyTabState",
@@ -39,11 +41,7 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
         if (myState.tabNames == null) {
             myState.tabNames = new HashMap<>();
         }
-        if (myState.tabSessions == null) {
-            myState.tabSessions = new HashMap<>();
-        }
-        LOG.info("[TabStateService] Loaded tab state with " + myState.tabNames.size()
-                + " tab names and " + myState.tabSessions.size() + " tab sessions");
+        LOG.info("[TabStateService] Loaded tab state with " + myState.tabNames.size() + " tab names");
     }
 
     /**
@@ -69,37 +67,11 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
     }
 
     /**
-     * Save or update session binding state for a tab.
-     */
-    public void saveTabSessionState(int tabIndex, @Nullable TabSessionState sessionState) {
-        if (sessionState == null) {
-            myState.tabSessions.remove(tabIndex);
-            LOG.info("[TabStateService] Cleared tab session state: index=" + tabIndex);
-            return;
-        }
-        myState.tabSessions.put(tabIndex, sessionState.copy());
-        LOG.info("[TabStateService] Saved tab session state: index=" + tabIndex
-                + ", provider=" + sessionState.provider
-                + ", sessionId=" + sessionState.sessionId
-                + ", cwd=" + sessionState.cwd + ")");
-    }
-
-    /**
-     * Get session binding state for a tab.
-     */
-    @Nullable
-    public TabSessionState getTabSessionState(int tabIndex) {
-        TabSessionState state = myState.tabSessions.get(tabIndex);
-        return state != null ? state.copy() : null;
-    }
-
-    /**
-     * Remove a tab name and session state.
+     * Remove a tab name.
      * @param tabIndex the tab index
      */
     public void removeTabName(int tabIndex) {
         myState.tabNames.remove(tabIndex);
-        myState.tabSessions.remove(tabIndex);
         LOG.info("[TabStateService] Removed tab state for index: " + tabIndex);
     }
 
@@ -112,12 +84,11 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
     }
 
     /**
-     * Clear all tab names and session state.
+     * Clear all tab names.
      */
     public void clearAllTabNames() {
         myState.tabNames.clear();
-        myState.tabSessions.clear();
-        LOG.info("[TabStateService] Cleared all tab names and session state");
+        LOG.info("[TabStateService] Cleared all tab names");
     }
 
     /**
@@ -126,7 +97,6 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
      */
     public void onTabRemoved(int removedIndex) {
         myState.tabNames.remove(removedIndex);
-        myState.tabSessions.remove(removedIndex);
 
         Map<Integer, String> newTabNames = new HashMap<>();
         for (Map.Entry<Integer, String> entry : myState.tabNames.entrySet()) {
@@ -138,17 +108,6 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
             }
         }
         myState.tabNames = newTabNames;
-
-        Map<Integer, TabSessionState> newTabSessions = new HashMap<>();
-        for (Map.Entry<Integer, TabSessionState> entry : myState.tabSessions.entrySet()) {
-            int oldIndex = entry.getKey();
-            if (oldIndex > removedIndex) {
-                newTabSessions.put(oldIndex - 1, entry.getValue());
-            } else {
-                newTabSessions.put(oldIndex, entry.getValue());
-            }
-        }
-        myState.tabSessions = newTabSessions;
 
         if (myState.tabCount > 0) {
             myState.tabCount--;
@@ -176,29 +135,6 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
     }
 
     /**
-     * Per-tab persisted session snapshot.
-     */
-    public static class TabSessionState {
-        public String provider;
-        public String sessionId;
-        public String cwd;
-        public String model;
-        public String permissionMode;
-        public String reasoningEffort;
-
-        public TabSessionState copy() {
-            TabSessionState copy = new TabSessionState();
-            copy.provider = this.provider;
-            copy.sessionId = this.sessionId;
-            copy.cwd = this.cwd;
-            copy.model = this.model;
-            copy.permissionMode = this.permissionMode;
-            copy.reasoningEffort = this.reasoningEffort;
-            return copy;
-        }
-    }
-
-    /**
      * Persistent state class.
      */
     public static class State {
@@ -206,11 +142,6 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
          * Map from tab index to tab name.
          */
         public Map<Integer, String> tabNames = new HashMap<>();
-
-        /**
-         * Map from tab index to tab session state.
-         */
-        public Map<Integer, TabSessionState> tabSessions = new HashMap<>();
 
         /**
          * Number of tabs.

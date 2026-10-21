@@ -176,6 +176,32 @@ export const sendBridgeEvent = (event: string, content = '') => {
   return callBridge(`${event}:${content}`);
 };
 
+function createTabRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Send one tab-scoped command. The stable tab id is mandatory: the host never
+ * falls back to "the active tab". `requestId` makes a replay idempotent after a
+ * webview reload.
+ */
+export const sendTabCommand = (
+  tabId: string,
+  command: string,
+  payload: Record<string, unknown> = {},
+): boolean => {
+  if (!tabId || !command) return false;
+  return sendBridgeEvent('tab_command', JSON.stringify({
+    tabId,
+    command,
+    requestId: createTabRequestId(),
+    payload,
+  }));
+};
+
 /** 强类型桥接调用函数 */
 export const sendTypedBridgeEvent = <T>(event: BridgeMessageType, payload?: T): boolean => {
   const content = payload === undefined ? '' : typeof payload === 'string' ? payload : JSON.stringify(payload);

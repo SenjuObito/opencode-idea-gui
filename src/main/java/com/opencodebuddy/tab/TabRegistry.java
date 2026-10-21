@@ -169,17 +169,6 @@ public final class TabRegistry {
         return result;
     }
 
-    public synchronized List<String> liveSessionIds() {
-        List<String> result = new ArrayList<>();
-        for (TabRecord record : liveTabs()) {
-            String id = record.getSessionIdString();
-            if (id != null && !id.isBlank()) {
-                result.add(id);
-            }
-        }
-        return result;
-    }
-
     /**
      * Close and remove a tab, releasing both indexes. Idempotent.
      *

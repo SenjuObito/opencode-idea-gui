@@ -309,30 +309,32 @@ public class PermissionHandlerTest {
         assertEquals(1, soundNotifier.callCount);
     }
 
-    // --- reflection helpers (the three pending-request maps are private) ---
+    // --- reflection helpers (prompt state lives in PromptBroker) ---
 
     @SuppressWarnings("unchecked")
+    private static <T> T brokerField(PermissionHandler target, String name)
+            throws NoSuchFieldException, IllegalAccessException {
+        Field brokerField = PermissionHandler.class.getDeclaredField("prompts");
+        brokerField.setAccessible(true);
+        PromptBroker broker = (PromptBroker) brokerField.get(target);
+        Field field = PromptBroker.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return (T) field.get(broker);
+    }
+
     private Map<String, CompletableFuture<Integer>> getPermissionMap()
             throws NoSuchFieldException, IllegalAccessException {
-        Field f = PermissionHandler.class.getDeclaredField("pendingPermissionRequests");
-        f.setAccessible(true);
-        return (Map<String, CompletableFuture<Integer>>) f.get(handler);
+        return brokerField(handler, "permissions");
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, CompletableFuture<JsonObject>> getAskUserMap()
             throws NoSuchFieldException, IllegalAccessException {
-        Field f = PermissionHandler.class.getDeclaredField("pendingAskUserQuestionRequests");
-        f.setAccessible(true);
-        return (Map<String, CompletableFuture<JsonObject>>) f.get(handler);
+        return brokerField(handler, "askFutures");
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, CompletableFuture<JsonObject>> getPlanApprovalMap()
             throws NoSuchFieldException, IllegalAccessException {
-        Field f = PermissionHandler.class.getDeclaredField("pendingPlanApprovalRequests");
-        f.setAccessible(true);
-        return (Map<String, CompletableFuture<JsonObject>>) f.get(handler);
+        return brokerField(handler, "planFutures");
     }
 
     private void injectPermissionFuture(String key, CompletableFuture<Integer> future)
@@ -342,10 +344,13 @@ public class PermissionHandlerTest {
 
     private void injectSession(String fieldName, String key, String sessionId)
             throws NoSuchFieldException, IllegalAccessException {
-        Field f = PermissionHandler.class.getDeclaredField(fieldName);
-        f.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Map<String, String> map = (Map<String, String>) f.get(handler);
+        String brokerFieldName = switch (fieldName) {
+            case "permissionRequestSessions" -> "permissionSessions";
+            case "askRequestSessions" -> "askSessions";
+            case "planRequestSessions" -> "planSessions";
+            default -> fieldName;
+        };
+        Map<String, String> map = brokerField(handler, brokerFieldName);
         map.put(key, sessionId);
     }
 
@@ -454,9 +459,7 @@ public class PermissionHandlerTest {
         assertEquals(1, visual.callCount);
         assertEquals(1, sound.callCount);
 
-        Field f = PermissionHandler.class.getDeclaredField("pendingQuestions");
-        f.setAccessible(true);
-        Map<?, ?> map = (Map<?, ?>) f.get(customHandler);
+        Map<?, ?> map = brokerField(customHandler, "questions");
         assertTrue("pendingQuestions should contain q-test-1", map.containsKey("q-test-1"));
     }
 
@@ -466,9 +469,7 @@ public class PermissionHandlerTest {
         String questionJson = "{\"requestId\":\"q-closed-1\",\"questions\":[]}";
         customHandler.onQuestionRequested(questionJson);
 
-        Field f = PermissionHandler.class.getDeclaredField("pendingQuestions");
-        f.setAccessible(true);
-        Map<?, ?> map = (Map<?, ?>) f.get(customHandler);
+        Map<?, ?> map = brokerField(customHandler, "questions");
         assertTrue(map.containsKey("q-closed-1"));
 
         customHandler.onPromptClosed("question", "{\"requestId\":\"q-closed-1\"}");

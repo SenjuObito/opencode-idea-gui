@@ -891,7 +891,10 @@ public class DaemonBridge {
                 return;
             }
         }
-        if (id != null) {
+        // A named session that has no sink yet must be buffered for that
+        // session. Falling back to an id-matched request handler here would
+        // hand its line to whichever request happened to use the same id.
+        if (session == null && id != null) {
             RequestHandler handler = context.getRequestHandler(id);
             if (handler != null) {
                 handler.callback.onLine(line);

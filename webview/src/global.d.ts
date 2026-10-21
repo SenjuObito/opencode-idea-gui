@@ -535,10 +535,11 @@ interface Window {
 
   /**
    * Rebuild the tab strip after a webview reload. Payload is
-   * `{"sessions":[{"sessionId":"..."}],"activeSessionId":"..."}` — the sessions
-   * Java still hosts in memory. Transcripts load on demand.
+   * `{"v":2,"activeTabId":"...","tabs":[{"tabId":"...","sessionId":"...",
+   * "title":"...","streaming":false,"loading":false,"epoch":1}]}`.
+   * The stable tab ids come from the host; transcripts load on demand.
    */
-  restoreSessionTabs?: (json: string) => void;
+  onTabResync?: (json: string) => void;
 
   /**
    * Authoritative session hydration callback when switching tabs or synchronizing session state.
@@ -609,11 +610,6 @@ interface Window {
    * Pending slash commands payload before provider initialization
    */
   __pendingSlashCommands?: string;
-
-  /**
-   * Pending session ID before App component mounts (for rewind feature)
-   */
-  __pendingSessionId?: string;
 
   /**
    * Apply IDEA editor font configuration (called from Java backend)

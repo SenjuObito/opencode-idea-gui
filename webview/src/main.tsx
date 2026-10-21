@@ -534,16 +534,6 @@ if (typeof window !== 'undefined' && !window.updateDollarCommands) {
   };
 }
 
-// Pre-register setSessionId to handle backend calls that arrive before React initializes.
-// This stores the session ID required by the rewind feature.
-if (typeof window !== 'undefined' && !window.setSessionId) {
-  debugLog('[Main] Pre-registering setSessionId placeholder');
-  window.setSessionId = (sessionId: string) => {
-    debugLog('[Main] Storing pending session ID:', sessionId);
-    window.__pendingSessionId = sessionId;
-  };
-}
-
 // Pre-register updateSendShortcut to handle backend status responses that arrive before React initializes
 if (typeof window !== 'undefined' && !window.updateSendShortcut) {
   debugLog('[Main] Pre-registering updateSendShortcut placeholder');

@@ -37,7 +37,6 @@ import com.opencodebuddy.session.StreamMessageCoalescer;
 import com.opencodebuddy.util.JsUtils;
 import com.opencodebuddy.util.MessageJsonConverter;
 import com.opencodebuddy.utils.PluginFileLogger;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -101,8 +100,14 @@ public class ChatWindowDelegate {
         void onSurfaceDamageApplied(String token, String phase, boolean applied);
         void setSlashCommandsFetched(boolean fetched);
         void setFetchedSlashCommandsCount(int count);
-        void persistTabSessionState();
         void updateTabTitle(String title);
+
+        /**
+         * Snapshot of every live tab (stable tab id, bound session, title,
+         * activity and epoch). Used to rebuild the strip after a webview
+         * reload; the active tab is part of the payload, never inferred.
+         */
+        String buildTabResyncPayload();
 
         /**
          * Soft-reload the currently active session's transcript without interrupting
@@ -113,17 +118,6 @@ public class ChatWindowDelegate {
          * reload is deferred to stream end.</p>
          */
         void reloadActiveSessionMessages();
-
-        /**
-         * Session ids currently hosted by this window.
-         *
-         * <p>After a webview reload the React context is gone, so every tab but
-         * the active one disappears. Java still holds these sessions in memory,
-         * which makes it the only place able to tell the rebuilt frontend which
-         * tabs to recreate. Deliberately memory-only: IDE restarts intentionally
-         * start from a fresh session ({@code TabSessionRestorePolicy}).</p>
-         */
-        java.util.List<String> getHostedSessionIds();
 
         default void executeJavaScriptCode(String jsCode) {
         }
@@ -176,7 +170,6 @@ public class ChatWindowDelegate {
                 OpencodeSession session = host.getSession();
                 if (session != null) {
                     session.setPermissionMode(mode);
-                    host.persistTabSessionState();
                     LOG.info("Loaded permission mode from settings: " + mode);
                     com.opencodebuddy.notifications.OpencodeNotifier.setMode(host.getProject(), mode);
                 }
@@ -476,7 +469,6 @@ public class ChatWindowDelegate {
         if (runtimeRecovery) {
             refreshFrontendDerivedState();
         }
-        host.persistTabSessionState();
 
         host.getStreamCoalescer().flush(null);
     }
@@ -484,38 +476,20 @@ public class ChatWindowDelegate {
     /**
      * Recreates the tab strip after a webview reload.
      *
-     * <p>Only the active session is replayed with its transcript; the rest are
-     * recreated as session-bound shells whose messages load on first activation.
-     * The source is Java's in-memory session map, never persisted state — an IDE
-     * restart is supposed to start clean.</p>
+     * <p>Only the active tab is replayed with its transcript; the rest are
+     * recreated as stable-tab-id shells whose messages load on first activation.
+     * The payload carries the host's active tab so the reload cannot silently
+     * switch the user to another session.</p>
      */
     private void pushHostedSessionTabs() {
         if (host.isDisposed()) {
             return;
         }
-        java.util.List<String> sessionIds = host.getHostedSessionIds();
-        if (sessionIds == null || sessionIds.isEmpty()) {
+        String payload = host.buildTabResyncPayload();
+        if (payload == null || payload.isBlank()) {
             return;
         }
-        JsonArray sessions = new JsonArray();
-        for (String sessionId : sessionIds) {
-            if (sessionId == null || sessionId.trim().isEmpty()) {
-                continue;
-            }
-            JsonObject entry = new JsonObject();
-            entry.addProperty("sessionId", sessionId);
-            sessions.add(entry);
-        }
-        if (sessions.size() == 0) {
-            return;
-        }
-        JsonObject payload = new JsonObject();
-        payload.add("sessions", sessions);
-        String activeSessionId = host.getSessionId();
-        if (activeSessionId != null && !activeSessionId.trim().isEmpty()) {
-            payload.addProperty("activeSessionId", activeSessionId);
-        }
-        host.callJavaScript("restoreSessionTabs", JsUtils.escapeJs(payload.toString()));
+        host.callJavaScript("onTabResync", JsUtils.escapeJs(payload));
     }
 
     /**

@@ -111,59 +111,6 @@ public class SessionLifecycleManager {
     }
 
     /**
-     * Create a new session with an optional client-assigned sessionId.
-     */
-    public void createNewSession() {
-        createNewSession(null);
-    }
-
-    public void createNewSession(String clientSessionId) {
-        LOG.info("Creating new session (clientSessionId=" + clientSessionId + ")...");
-
-        OpencodeSession oldSession = host.getSession();
-        OpencodeSession defaultSession = createDefaultSession();
-        String previousPermissionMode = (oldSession != null) ? oldSession.getPermissionMode() : defaultSession.getPermissionMode();
-        String previousProvider = (oldSession != null) ? oldSession.getProvider() : defaultSession.getProvider();
-        String previousModel = (oldSession != null) ? oldSession.getModel() : defaultSession.getModel();
-        LOG.info("Preserving session state: mode=" + previousPermissionMode
-                         + ", provider=" + previousProvider + ", model=" + previousModel);
-
-        String targetSessionId = (clientSessionId != null && !clientSessionId.isBlank())
-                ? clientSessionId
-                : java.util.UUID.randomUUID().toString();
-
-        OpencodeSession newSession = createDefaultSession();
-        newSession.setPermissionMode(previousPermissionMode);
-        newSession.setProvider(previousProvider);
-        newSession.setModel(previousModel);
-
-        StreamMessageCoalescer newCoalescer = host.createStreamCoalescer(targetSessionId);
-        if (newCoalescer == null) {
-            newCoalescer = host.getStreamCoalescer();
-        }
-        SessionCallbackAdapter newAdapter = host.createCallbackAdapter(targetSessionId, newCoalescer);
-        if (newAdapter != null) {
-            newSession.setCallback(newAdapter);
-        }
-
-        host.registerSession(targetSessionId, newSession, newAdapter, newCoalescer);
-        if (host.getHandlerContext() != null) {
-            host.getHandlerContext().registerSession(targetSessionId, newSession);
-        }
-
-        long clearBarrierSeq = (newCoalescer != null) ? newCoalescer.resetStreamState() : 0L;
-        host.callJavaScript("clearMessages", targetSessionId, String.valueOf(clearBarrierSeq));
-
-        ApplicationManager.getApplication().invokeLater(() -> {
-            host.callJavaScript("onStreamEnd", targetSessionId);
-            host.callJavaScript("showLoading", targetSessionId, "false");
-        });
-
-        completeNewSessionBootstrap(newSession, determineWorkingDirectory(),
-                "New session created successfully, working directory: ");
-    }
-
-    /**
      * Load a history session by ID.
      */
     public void loadHistorySession(String sessionId, String projectPath) {
@@ -510,27 +457,5 @@ public class SessionLifecycleManager {
         return new OpencodeSession(
                 host.getProject(),
                 host.getOpenCodeSDKBridge());
-    }
-
-    private void completeNewSessionBootstrap(OpencodeSession newSession, String workingDirectory, String successLogPrefix) {
-        host.clearPendingPermissionRequests();
-        host.setSession(newSession);
-        host.getHandlerContext().setSession(newSession);
-        host.setupSessionCallbacks();
-
-        newSession.setSessionInfo(null, workingDirectory);
-        LOG.info(successLogPrefix + workingDirectory + ", epoch=" + newSession.getRuntimeSessionEpoch());
-        host.getOpenCodeSDKBridge().preconnect(null, workingDirectory);
-        fetchSlashCommandsOnStartup();
-
-        ApplicationManager.getApplication().invokeLater(() -> {
-            // Release the frontend session transition guard so updateMessages works again.
-            // Must come BEFORE updateStatus to ensure the guard is lifted before any
-            // subsequent message updates arrive.
-            host.callJavaScript("historyLoadComplete");
-            host.callJavaScript("updateStatus",
-                    JsUtils.escapeJs("toast.newSessionCreatedReady"));
-            resetTokenUsage();
-        });
     }
 }

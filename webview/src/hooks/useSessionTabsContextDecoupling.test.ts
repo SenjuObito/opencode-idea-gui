@@ -5,10 +5,15 @@ import { useSessionTabs } from './useSessionTabs';
 import type { ContextInfo } from './useWindowCallbacks';
 import type { ClaudeMessage } from '../types';
 
-vi.mock('../utils/bridge', () => ({
-  sendBridgeEvent: vi.fn(),
-  sendTypedBridgeEvent: vi.fn(),
-}));
+vi.mock('../utils/bridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/bridge')>();
+  return {
+    ...actual,
+    sendBridgeEvent: vi.fn(),
+    sendTypedBridgeEvent: vi.fn(),
+    sendTabCommand: vi.fn(),
+  };
+});
 
 describe('useSessionTabs - Context Decoupling', () => {
   beforeEach(() => {

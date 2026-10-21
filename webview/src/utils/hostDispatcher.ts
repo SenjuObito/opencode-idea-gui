@@ -16,11 +16,20 @@ interface PendingHostEvent {
   queuedAt: number;
 }
 
+interface HostEnvelope {
+  v?: number;
+  type?: string;
+  tabId?: string;
+  epoch?: number;
+  payload?: { args?: unknown[] } | unknown[];
+}
+
 const MAX_PENDING_HOST_EVENTS = 2_000;
 const MAX_QUEUE_AGE_MS = 30_000;
 const FLUSH_INTERVAL_MS = 50;
 
 const pending: PendingHostEvent[] = [];
+const lastEpochByTab = new Map<string, number>();
 let flushTimer: number | null = null;
 
 function resolveHandler(type: string): ((...args: unknown[]) => void) | null {
@@ -96,12 +105,74 @@ export function pendingHostEventCount(): number {
   return pending.length;
 }
 
+/**
+ * Apply one typed host envelope.
+ *
+ * `tabId` + `epoch` let the dispatcher reject an event produced for an older
+ * binding of the same tab (a late snapshot from before a rebind must not
+ * repaint the new session). Events without an epoch keep legacy semantics.
+ */
+export function dispatchHostEnvelope(envelope: HostEnvelope): void {
+  if (!envelope || typeof envelope.type !== 'string' || !envelope.type) return;
+
+  if (envelope.tabId) {
+    const epoch = typeof envelope.epoch === 'number' ? envelope.epoch : 0;
+    const last = lastEpochByTab.get(envelope.tabId) ?? -1;
+    if (epoch > 0 && epoch < last) {
+      return;
+    }
+    if (epoch > last) {
+      lastEpochByTab.set(envelope.tabId, epoch);
+    }
+  }
+
+  const payload = envelope.payload;
+  let args: unknown[] = [];
+  if (Array.isArray(payload)) {
+    args = payload;
+  } else if (payload && typeof payload === 'object') {
+    const candidate = (payload as { args?: unknown }).args;
+    if (Array.isArray(candidate)) args = candidate;
+  }
+  dispatchHostEvent(envelope.type, args);
+}
+
+export function dispatchHostEnvelopeBatch(batch: unknown): void {
+  if (!Array.isArray(batch)) return;
+  for (const envelope of batch) {
+    try {
+      dispatchHostEnvelope(envelope as HostEnvelope);
+    } catch (error) {
+      console.error('[HostDispatcher] envelope failed:', error);
+    }
+  }
+}
+
+/** Test hook: forget per-tab epochs. */
+export function resetHostDispatcherEpochs(): void {
+  lastEpochByTab.clear();
+}
+
+/**
+ * Trust the host's current epoch for a tab. Used after a reload resync so a
+ * delayed event from before the reload is rejected instead of repainting.
+ */
+export function observeHostEpoch(tabId: string, epoch: number): void {
+  if (!tabId || !Number.isFinite(epoch) || epoch <= 0) return;
+  const last = lastEpochByTab.get(tabId) ?? -1;
+  if (epoch > last) {
+    lastEpochByTab.set(tabId, epoch);
+  }
+}
+
 declare global {
   interface Window {
     __opencodeDispatch?: (type: string, args?: unknown[]) => void;
+    __opencodeDispatchBatch?: (batch: unknown) => void;
     __flushOpencodeDispatch?: () => void;
   }
 }
 
 window.__opencodeDispatch = dispatchHostEvent;
+window.__opencodeDispatchBatch = dispatchHostEnvelopeBatch;
 window.__flushOpencodeDispatch = flushHostDispatcher;

@@ -17,7 +17,6 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -55,21 +54,7 @@ public class PermissionHandler extends BaseMessageHandler {
         "plan_approval_response"
     };
 
-    private static class PendingQuestion {
-        final String sessionId;
-        final JsonArray questions;
-        final String toolName;
-        final String directory;
-
-        PendingQuestion(String sessionId, JsonArray questions, String toolName, String directory) {
-            this.sessionId = sessionId;
-            this.questions = questions;
-            this.toolName = toolName;
-            this.directory = directory;
-        }
-    }
-
-    private final Map<String, PendingQuestion> pendingQuestions = new ConcurrentHashMap<>();
+    private final PromptBroker prompts = new PromptBroker();
 
     private static int payloadLength(String value) {
         return value == null ? 0 : value.length();
@@ -104,24 +89,6 @@ public class PermissionHandler extends BaseMessageHandler {
     private final SafetyNetScheduler safetyNetScheduler;
     private final AskUserQuestionVisualNotifier askUserQuestionVisualNotifier;
     private final AskUserQuestionSoundNotifier askUserQuestionSoundNotifier;
-
-    // Permission request map
-    private final Map<String, CompletableFuture<Integer>> pendingPermissionRequests = new ConcurrentHashMap<>();
-
-    /** Request id -> owning session id for shown permission dialogs. */
-    private final Map<String, String> permissionRequestSessions = new ConcurrentHashMap<>();
-
-    // AskUserQuestion request map (requestId -> CompletableFuture<JsonObject>)
-    private final Map<String, CompletableFuture<JsonObject>> pendingAskUserQuestionRequests = new ConcurrentHashMap<>();
-
-    /** Request id -> owning session id for shown question dialogs. */
-    private final Map<String, String> askRequestSessions = new ConcurrentHashMap<>();
-
-    // PlanApproval request map (requestId -> CompletableFuture<JsonObject>)
-    private final Map<String, CompletableFuture<JsonObject>> pendingPlanApprovalRequests = new ConcurrentHashMap<>();
-
-    /** Request id -> owning session id for shown plan dialogs. */
-    private final Map<String, String> planRequestSessions = new ConcurrentHashMap<>();
 
     // Permission denied callback
     public interface PermissionDeniedCallback {
@@ -262,7 +229,7 @@ public class PermissionHandler extends BaseMessageHandler {
             }
             if (sessionId != null) {
                 requestData.addProperty("sessionId", sessionId);
-                permissionRequestSessions.put(request.getChannelId(), sessionId);
+                prompts.permissionSessions.put(request.getChannelId(), sessionId);
             }
 
             JsonObject inputsJson = request.getInputs() != null
@@ -321,10 +288,10 @@ public class PermissionHandler extends BaseMessageHandler {
             }
 
             LOG.info("[PERM_DECISION] channelId=" + channelId + ", allow=" + allow + ", remember=" + remember);
-            LOG.info("[PERM_DECISION] pendingPermissionRequests size before remove: " + pendingPermissionRequests.size());
+            LOG.info("[PERM_DECISION] pending permissions size before remove: " + prompts.permissions.size());
 
-            CompletableFuture<Integer> pendingFuture = pendingPermissionRequests.remove(channelId);
-            permissionRequestSessions.remove(channelId);
+            CompletableFuture<Integer> pendingFuture = prompts.permissions.remove(channelId);
+            prompts.permissionSessions.remove(channelId);
 
             if (pendingFuture != null) {
                 LOG.info("[PERM_DECISION] Found pending future, completing with allow=" + allow);
@@ -344,7 +311,7 @@ public class PermissionHandler extends BaseMessageHandler {
                 }
             } else {
                 LOG.warn("[PERM_DECISION] No pending future found for channelId=" + channelId + ", falling back to session handler");
-                LOG.warn("[PERM_DECISION] Current pendingPermissionRequests keys: " + pendingPermissionRequests.keySet());
+                LOG.warn("[PERM_DECISION] Current pending permission keys: " + prompts.permissions.keySet());
                 // Handle a legacy/local permission request. Route by the
                 // decision's own session id; never borrow whatever session is
                 // currently active.
@@ -397,11 +364,11 @@ public class PermissionHandler extends BaseMessageHandler {
         int askUserCount = 0;
         int planCount = 0;
 
-        for (String channelId : new java.util.ArrayList<>(permissionRequestSessions.keySet())) {
-            String owner = permissionRequestSessions.get(channelId);
+        for (String channelId : new java.util.ArrayList<>(prompts.permissionSessions.keySet())) {
+            String owner = prompts.permissionSessions.get(channelId);
             if (!all && !filter.equals(owner)) continue;
-            CompletableFuture<Integer> future = pendingPermissionRequests.remove(channelId);
-            permissionRequestSessions.remove(channelId);
+            CompletableFuture<Integer> future = prompts.permissions.remove(channelId);
+            prompts.permissionSessions.remove(channelId);
             if (future != null) {
                 future.complete(PermissionResponse.DENY.getValue());
             } else if (owner != null) {
@@ -415,18 +382,18 @@ public class PermissionHandler extends BaseMessageHandler {
         }
         // Futures without metadata (legacy calls) are still cleared globally.
         if (all) {
-            for (Map.Entry<String, CompletableFuture<Integer>> entry : pendingPermissionRequests.entrySet()) {
+            for (Map.Entry<String, CompletableFuture<Integer>> entry : prompts.permissions.entrySet()) {
                 entry.getValue().complete(PermissionResponse.DENY.getValue());
             }
-            pendingPermissionRequests.clear();
+            prompts.permissions.clear();
         }
 
-        for (String requestId : new java.util.ArrayList<>(askRequestSessions.keySet())) {
-            String owner = askRequestSessions.get(requestId);
+        for (String requestId : new java.util.ArrayList<>(prompts.askSessions.keySet())) {
+            String owner = prompts.askSessions.get(requestId);
             if (!all && !filter.equals(owner)) continue;
-            CompletableFuture<JsonObject> future = pendingAskUserQuestionRequests.remove(requestId);
-            PendingQuestion pending = pendingQuestions.remove(requestId);
-            askRequestSessions.remove(requestId);
+            CompletableFuture<JsonObject> future = prompts.askFutures.remove(requestId);
+            PromptBroker.PendingQuestion pending = prompts.questions.remove(requestId);
+            prompts.askSessions.remove(requestId);
             if (future != null) {
                 future.complete(null);
             }
@@ -435,20 +402,20 @@ public class PermissionHandler extends BaseMessageHandler {
                 askUserCount++;
             }
         }
-        for (Map.Entry<String, PendingQuestion> entry : pendingQuestions.entrySet()) {
-            PendingQuestion pending = entry.getValue();
+        for (Map.Entry<String, PromptBroker.PendingQuestion> entry : prompts.questions.entrySet()) {
+            PromptBroker.PendingQuestion pending = entry.getValue();
             if (all || (pending.sessionId != null && pending.sessionId.equals(filter))) {
-                pendingQuestions.remove(entry.getKey());
+                prompts.questions.remove(entry.getKey());
                 forceCloseFrontendDialog("forceCloseAskUserQuestionDialog", entry.getKey());
                 askUserCount++;
             }
         }
 
-        for (String requestId : new java.util.ArrayList<>(planRequestSessions.keySet())) {
-            String owner = planRequestSessions.get(requestId);
+        for (String requestId : new java.util.ArrayList<>(prompts.planSessions.keySet())) {
+            String owner = prompts.planSessions.get(requestId);
             if (!all && !filter.equals(owner)) continue;
-            CompletableFuture<JsonObject> future = pendingPlanApprovalRequests.remove(requestId);
-            planRequestSessions.remove(requestId);
+            CompletableFuture<JsonObject> future = prompts.planFutures.remove(requestId);
+            prompts.planSessions.remove(requestId);
             if (future != null) {
                 JsonObject rejected = new JsonObject();
                 rejected.addProperty("approved", false);
@@ -459,18 +426,18 @@ public class PermissionHandler extends BaseMessageHandler {
             planCount++;
         }
         if (all) {
-            for (Map.Entry<String, CompletableFuture<JsonObject>> entry : pendingPlanApprovalRequests.entrySet()) {
+            for (Map.Entry<String, CompletableFuture<JsonObject>> entry : prompts.planFutures.entrySet()) {
                 JsonObject rejected = new JsonObject();
                 rejected.addProperty("approved", false);
                 rejected.addProperty("message", "Session changed");
                 entry.getValue().complete(rejected);
             }
-            pendingPlanApprovalRequests.clear();
-            if (pendingAskUserQuestionRequests.size() > 0) {
-                for (CompletableFuture<JsonObject> future : pendingAskUserQuestionRequests.values()) {
+            prompts.planFutures.clear();
+            if (prompts.askFutures.size() > 0) {
+                for (CompletableFuture<JsonObject> future : prompts.askFutures.values()) {
                     future.complete(null);
                 }
-                pendingAskUserQuestionRequests.clear();
+                prompts.askFutures.clear();
             }
         }
 
@@ -521,7 +488,7 @@ public class PermissionHandler extends BaseMessageHandler {
                     : new JsonArray();
             String directory = context.resolveEffectiveWorkingDirectory();
 
-            pendingQuestions.put(requestId, new PendingQuestion(sessionId, questions, toolName, directory));
+            prompts.questions.put(requestId, new PromptBroker.PendingQuestion(sessionId, questions, toolName, directory));
 
             // Trigger visual toast and sound reminders
             try {
@@ -570,9 +537,9 @@ public class PermissionHandler extends BaseMessageHandler {
                     requestId = stringOrNull(payload, "id");
                 }
                 if (requestId != null && !requestId.isBlank()) {
-                    pendingQuestions.remove(requestId);
-                    askRequestSessions.remove(requestId);
-                    CompletableFuture<JsonObject> future = pendingAskUserQuestionRequests.remove(requestId);
+                    prompts.questions.remove(requestId);
+                    prompts.askSessions.remove(requestId);
+                    CompletableFuture<JsonObject> future = prompts.askFutures.remove(requestId);
                     if (future != null) {
                         future.complete(null);
                     }
@@ -583,8 +550,8 @@ public class PermissionHandler extends BaseMessageHandler {
                 if (requestId == null) requestId = stringOrNull(payload, "requestID");
                 if (requestId == null) requestId = stringOrNull(payload, "id");
                 if (requestId != null && !requestId.isBlank()) {
-                    planRequestSessions.remove(requestId);
-                    CompletableFuture<JsonObject> future = pendingPlanApprovalRequests.remove(requestId);
+                    prompts.planSessions.remove(requestId);
+                    CompletableFuture<JsonObject> future = prompts.planFutures.remove(requestId);
                     if (future != null) {
                         JsonObject rejected = new JsonObject();
                         rejected.addProperty("approved", false);
@@ -605,8 +572,8 @@ public class PermissionHandler extends BaseMessageHandler {
                     permissionId = stringOrNull(payload, "id");
                 }
                 if (permissionId != null && !permissionId.isBlank()) {
-                    permissionRequestSessions.remove(permissionId);
-                    CompletableFuture<Integer> future = pendingPermissionRequests.remove(permissionId);
+                    prompts.permissionSessions.remove(permissionId);
+                    CompletableFuture<Integer> future = prompts.permissions.remove(permissionId);
                     if (future != null) {
                         future.complete(PermissionResponse.DENY.getValue());
                     }
@@ -631,10 +598,10 @@ public class PermissionHandler extends BaseMessageHandler {
                     ? questionsData.getAsJsonArray("questions").size()
                     : 0));
 
-        pendingAskUserQuestionRequests.put(requestId, future);
+        prompts.askFutures.put(requestId, future);
         String dialogSessionId = stringOrNull(questionsData, "sessionId");
         if (dialogSessionId != null && !dialogSessionId.isBlank()) {
-            askRequestSessions.put(requestId, dialogSessionId);
+            prompts.askSessions.put(requestId, dialogSessionId);
         }
 
         // Remind the user (via the opt-in system toast and sound) that OpenCode is waiting for an
@@ -657,8 +624,8 @@ public class PermissionHandler extends BaseMessageHandler {
             scheduleSafetyNet(future, () -> {
                 if (future.complete(new JsonObject())) {
                     LOG.warn("[ASK_USER_QUESTION][SHOW_DIALOG] Safety-net timeout fired (webview unreachable) for requestId=" + requestId);
-                    pendingAskUserQuestionRequests.remove(requestId);
-                    String ownerSessionId = askRequestSessions.remove(requestId);
+                    prompts.askFutures.remove(requestId);
+                    String ownerSessionId = prompts.askSessions.remove(requestId);
                     forceCloseFrontendDialog("forceCloseAskUserQuestionDialog", requestId);
                     OpencodeSession target = ownerSessionId != null
                             ? context.getSession(ownerSessionId) : null;
@@ -670,8 +637,8 @@ public class PermissionHandler extends BaseMessageHandler {
 
         } catch (Exception e) {
             LOG.error("[ASK_USER_QUESTION][SHOW_DIALOG] ERROR: errorClass=" + errorClass(e), e);
-            pendingAskUserQuestionRequests.remove(requestId);
-            askRequestSessions.remove(requestId);
+            prompts.askFutures.remove(requestId);
+            prompts.askSessions.remove(requestId);
             future.complete(new JsonObject());
         }
 
@@ -695,8 +662,8 @@ public class PermissionHandler extends BaseMessageHandler {
                 ? response.get("answers").getAsJsonObject()
                 : new JsonObject();
 
-            CompletableFuture<JsonObject> pendingFuture = pendingAskUserQuestionRequests.remove(requestId);
-            askRequestSessions.remove(requestId);
+            CompletableFuture<JsonObject> pendingFuture = prompts.askFutures.remove(requestId);
+            prompts.askSessions.remove(requestId);
 
             if (pendingFuture != null) {
                 LOG.debug("[ASK_USER_QUESTION][HANDLE_RESPONSE] Completing future with answerCount=" + answers.size());
@@ -704,7 +671,7 @@ public class PermissionHandler extends BaseMessageHandler {
                 return;
             }
 
-            PendingQuestion pending = pendingQuestions.remove(requestId);
+            PromptBroker.PendingQuestion pending = prompts.questions.remove(requestId);
             if (pending == null) {
                 LOG.warn("[ASK_USER_QUESTION][HANDLE_RESPONSE] No pending request found for requestId: " + requestId);
                 return;
@@ -719,7 +686,7 @@ public class PermissionHandler extends BaseMessageHandler {
                             if (error != null || !Boolean.TRUE.equals(ok)) {
                                 String msg = error != null ? error.getMessage() : "daemon rejected";
                                 LOG.warn("[OpenCode] replyQuestion failed: id=" + requestId + " error=" + msg);
-                                pendingQuestions.put(requestId, pending);
+                                prompts.questions.put(requestId, pending);
                                 callJavaScript("window.showToast", escapeJs("回答提交失败: " + msg));
                                 forceCloseFrontendDialog("invalidateQuestionCard", requestId);
                             } else {
@@ -734,7 +701,7 @@ public class PermissionHandler extends BaseMessageHandler {
                         });
             } else {
                 LOG.warn("[OpenCode] replyQuestion failed: bridge is null for requestId: " + requestId);
-                pendingQuestions.put(requestId, pending);
+                prompts.questions.put(requestId, pending);
                 callJavaScript("window.showToast", escapeJs("回答提交失败: bridge is not available"));
                 forceCloseFrontendDialog("invalidateQuestionCard", requestId);
             }
@@ -755,7 +722,7 @@ public class PermissionHandler extends BaseMessageHandler {
                 return;
             }
             String requestId = stringOrNull(response, "requestId");
-            PendingQuestion pending = pendingQuestions.remove(requestId);
+            PromptBroker.PendingQuestion pending = prompts.questions.remove(requestId);
             if (pending == null) {
                 return;
             }
@@ -838,10 +805,10 @@ public class PermissionHandler extends BaseMessageHandler {
         LOG.debug("[PLAN_APPROVAL][SHOW_DIALOG] requestId=" + requestId);
         LOG.debug("[PLAN_APPROVAL][SHOW_DIALOG] fieldCount=" + planData.size());
 
-        pendingPlanApprovalRequests.put(requestId, future);
+        prompts.planFutures.put(requestId, future);
         String planSessionId = stringOrNull(planData, "sessionId");
         if (planSessionId != null && !planSessionId.isBlank()) {
-            planRequestSessions.put(requestId, planSessionId);
+            prompts.planSessions.put(requestId, planSessionId);
         }
 
         try {
@@ -858,16 +825,16 @@ public class PermissionHandler extends BaseMessageHandler {
                 timeoutResponse.addProperty("message", "Plan approval timed out");
                 if (future.complete(timeoutResponse)) {
                     LOG.warn("[PLAN_APPROVAL][SHOW_DIALOG] Safety-net timeout fired (webview unreachable) for requestId=" + requestId);
-                    pendingPlanApprovalRequests.remove(requestId);
-                    planRequestSessions.remove(requestId);
+                    prompts.planFutures.remove(requestId);
+                    prompts.planSessions.remove(requestId);
                     forceCloseFrontendDialog("forceClosePlanApprovalDialog", requestId);
                 }
             });
 
         } catch (Exception e) {
             LOG.error("[PLAN_APPROVAL][SHOW_DIALOG] ERROR: errorClass=" + errorClass(e), e);
-            pendingPlanApprovalRequests.remove(requestId);
-            planRequestSessions.remove(requestId);
+            prompts.planFutures.remove(requestId);
+            prompts.planSessions.remove(requestId);
             JsonObject errorResponse = new JsonObject();
             errorResponse.addProperty("approved", false);
             errorResponse.addProperty("targetMode", "default");
@@ -891,8 +858,8 @@ public class PermissionHandler extends BaseMessageHandler {
             boolean approved = response.has("approved") && response.get("approved").getAsBoolean();
             String targetMode = response.has("targetMode") ? response.get("targetMode").getAsString() : "default";
 
-            CompletableFuture<JsonObject> pendingFuture = pendingPlanApprovalRequests.remove(requestId);
-            planRequestSessions.remove(requestId);
+            CompletableFuture<JsonObject> pendingFuture = prompts.planFutures.remove(requestId);
+            prompts.planSessions.remove(requestId);
 
             if (pendingFuture != null) {
                 JsonObject result = new JsonObject();

@@ -46,23 +46,64 @@
 - `claimUnboundTab`、`switch_session`、`create_new_session` 前端路径删除。
 - tab id 改为 UUID/随机稳定 id，避免时间戳碰撞。
 
+### 会话执行与命令
+
+- 新增 `TabSessionActor`：per-tab 串行执行器；关闭后拒绝排队中/新任务，
+  由 `TabRecord` 拥有并随 tab 一起关闭。
+- 新增 `TabSessionFactory`：统一 `prepare`（新 tab）与 `attach`（历史会话），
+  不再在窗口里手写 session/adapter/coalescer 组装。
+- 新增 `TabCommandRouter` + `TabCommand`：`tab.create` 在路由线程内联执行，
+  其余命令投递到目标 tab 的 actor；`requestId` 经 2048 项 LRU 去重，
+  重复的 reload/重放命令不会执行第二次。
+- `handleJavaScriptMessageLocked` 识别 `tab_command`，未知 tab 不再回落到
+  当前活动 tab。
+
+### 调度与 typed envelope
+
+- 新增 `BridgeScheduler`：按 tab 分 lane 轮询，活动 lane 权重 3、后台 1，
+  每批后轮转起点避免超大事件饿死后续 lane；每 lane 上限 256 个事件，
+  每批最多 64 个事件 / 256k 字符。
+- delta 在 lane 尾部合并，`updateStatus` 等 latest-only 事件只保留最新；
+  `updateMessages` 作为快照边界，同一 lane 的旧快照被替换。
+- 队列满时优先丢 delta 并标记 `snapshotRequired`，终态事件不丢；
+  监听器重放 `session.getMessages()` 后清除标记。
+- `WebviewEventQueue` 改为 `BridgeScheduler` 的薄子类，保留原有 API 与测试。
+- 新协议 `{v:2, type, tabId?, epoch?, payload:{args}}`；无 raw script 的批次
+  一次调用 `window.__opencodeDispatchBatch`，raw script 仍按调用顺序逐条执行。
+- webview `hostDispatcher` 接受 envelope 批次，并按 `tabId` 拒绝低于已见
+  epoch 的事件；旧 `restoreSessionTabs` 路径删除。
+
+### Prompt 与 tab 状态
+
+- 新增 `PromptBroker`，拥有 permission / question / plan 的 future 与
+  session 关联表；`PermissionHandler` 保留 dialog 显示、回复解析和跨表清理编排。
+- 新增 `TabStatusStore`、`TabPromptStore`：切 tab、close、reload resync 时
+  按稳定 `tabId` 保存/恢复/清理状态，后台 tab 的更新不会覆盖前台快照。
+- 新增 `onTabResync`：payload 携带稳定 `tabId`、`activeTabId`、每 tab 的
+  `epoch`，替换旧的按 sessionId 重建 tab 列表。
+- reload/daemon 重启后的重同步按稳定 tab 恢复；迟到事件由 epoch 丢弃。
+
+### 旧路径清理
+
+- 删除 `TabStateService.tabSessions` 与 per-tab session 落盘/恢复。
+- 删除 `TabSessionRestorePolicy`、未使用的 UUID
+  `SessionLifecycleManager.createNewSession`、`__pendingSessionId`。
+- `DaemonBridge.deliverDataLine` 只在数据行没有 session 时才回落到 request
+  handler；命名了 session 的迟到行按该 session 缓冲，避免跨会话串流。
+
 ## 验证
 
-在 `/Users/obito/source/repos/opencode-idea-gui-refactor` 执行：
+在 `D:\source\repos\opencode-idea-gui` 执行：
 
-- `./gradlew test`：通过。
-- `npm test`：169 个文件、1496 个测试通过。
-- `tsc --noEmit`：通过。
+- `.\gradlew.bat test -x buildWebview`：793 个测试通过，7 个跳过。
+- `npm test -- --run`：170 个文件、1502 个测试通过。
+- `npx tsc --noEmit`：通过。
 - `git diff --check`：通过。
+- 宿主调度基准（6 tab / 3 流 / 10k 消息）：10k delta 合并为 1 条脚本，
+  10k 离散消息产生 314 条脚本、无丢弃，20k 次入队耗时 123ms。
 
 ## 未完成
 
-- `TabSessionActor`
-- `TabSessionFactory`
-- `TabCommandRouter`
-- `BridgeScheduler` 的 per-tab 公平调度
-- 完整 typed envelope 协议
-- 独立 `PromptBroker` 类（当前仍由 `PermissionHandler` 承担）
-- 独立 `TabStatusStore` / `TabPromptStore` 的最终收口
-- reload/daemon 重启 resync、epoch/requestId 幂等验收
-- 真实 JCEF 6 tab / 3 流 / 10k 消息性能基准
+- 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵
+  （1000 次切 tab、50 次 reload、100 次权限请求）。需要 IDE 运行时，
+  当前环境无法启动 JCEF；步骤、记录表和预算见 `docs/jcef-benchmark.md`。

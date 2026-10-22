@@ -748,12 +748,6 @@
     "copySessionId": "CLI resume用にセッションIDをコピー",
     "sessionIdCopied": "セッションIDをコピーしました",
     "copyFailed": "コピーに失敗しました",
-    "convertToCliSession": "CLI認識セッションに変換",
-    "convertButton": "CLIに変換",
-    "convertSuccess": "セッションをCLI認識可能に変換しました",
-    "convertFailed": "変換に失敗しました",
-    "confirmConvert": "CLIセッションに変換しますか？",
-    "convertConfirmMessage": "セッションのentrypointを変更し、OpenCode CLIの/resumeリストに表示されるようにします。",
     "timeAgo": {
       "yearsAgo": "年前",
       "monthsAgo": "ヶ月前",
@@ -761,16 +755,6 @@
       "hoursAgo": "時間前",
       "minutesAgo": "分前",
       "secondsAgo": "秒前"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "無効なセッションID",
-      "SESSION_ACTIVE": "現在アクティブなセッションは変換できません。先に新しいセッションを開始してから変換してください",
-      "SESSION_NOT_FOUND": "セッションファイルが見つかりません",
-      "FILE_NOT_EXIST": "セッションファイルが存在しません",
-      "FILE_LOCKED": "セッションファイルは別のプロセスによってアクセスされています",
-      "NOT_SDK_SESSION": "このセッションはSDKで作成されていません（entrypointがsdk-cliではありません）",
-      "ALREADY_CLI_SESSION": "このセッションはすでにCLIセッションです",
-      "CONVERSION_FAILED": "変換に失敗しました。後でもう一度お試しください"
     },
     "entrypointLabel": {
       "sdk-cli": "SDKセッション",

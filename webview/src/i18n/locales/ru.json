@@ -755,12 +755,6 @@
     "copySessionId": "Копировать ID сессии для CLI resume",
     "sessionIdCopied": "ID сессии скопирован",
     "copyFailed": "Не удалось скопировать",
-    "convertToCliSession": "Преобразовать в сессию, распознаваемую CLI",
-    "convertButton": "Преобразовать в CLI",
-    "convertSuccess": "Сессия преобразована для распознавания CLI",
-    "convertFailed": "Ошибка преобразования",
-    "confirmConvert": "Преобразовать в сессию CLI?",
-    "convertConfirmMessage": "Это изменит entrypoint сессии, чтобы она отображалась в списке /resume CLI OpenCode.",
     "timeAgo": {
       "yearsAgo_one": "{{count}} год назад",
       "yearsAgo_other": "{{count}} лет назад",
@@ -783,16 +777,6 @@
       "hoursAgo_many": "{{count}} часов назад",
       "minutesAgo_few": "{{count}} минуты назад",
       "minutesAgo_many": "{{count}} минут назад"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "Недействительный ID сеанса",
-      "SESSION_ACTIVE": "Невозможно преобразовать текущий активный сеанс. Сначала начните новый сеанс, затем преобразуйте этот",
-      "SESSION_NOT_FOUND": "Файл сеанса не найден",
-      "FILE_NOT_EXIST": "Файл сеанса не существует",
-      "FILE_LOCKED": "Файл сеанса используется другим процессом",
-      "NOT_SDK_SESSION": "Этот сеанс не был создан SDK (entrypoint не sdk-cli)",
-      "ALREADY_CLI_SESSION": "Этот сеанс уже является CLI сеансом",
-      "CONVERSION_FAILED": "Не удалось выполнить преобразование, попробуйте позже"
     },
     "entrypointLabel": {
       "sdk-cli": "SDK сеанс",

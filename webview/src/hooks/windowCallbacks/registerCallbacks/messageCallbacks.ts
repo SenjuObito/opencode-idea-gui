@@ -10,7 +10,7 @@
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import type { ContextUsageData } from '../../../components/ContextUsageDialog';
-import { sendBridgeEvent, sendWindowCommand, cardDebugLog } from '../../../utils/bridge';
+import { sendWindowCommand, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { isSessionTransitioning, transitionTargetOfSession } from '../tabTransition';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
@@ -747,9 +747,8 @@ export function registerMessageCallbacks(
     const oldScrollTop = container?.scrollTop ?? 0;
 
     // ── 分页累积上限：页区域超过 MAX_PAGED_MESSAGES 时丢最老的页 ──
-    // 大型会话用户连点分页会让 webview state 无界增长；被裁掉的区间经
-    // set_earlier_cursor 回报宿主回滚游标，下次「加载更早」可重新回源，
-    // 不产生取不到的空档。
+    // 大型会话用户连点分页会让 webview state 无界增长；被裁掉的区间只影响
+    // 本地窗口，宿主下一次仍按请求里的 pageStart 回源，不产生取不到的空档。
     const MAX_PAGED_MESSAGES = 800;
     let drop = 0;
     let newStart = pageStart != null && Number.isSafeInteger(pageStart) && (pageStart as number) >= 0
@@ -769,12 +768,6 @@ export function registerMessageCallbacks(
     const prevPrepended = window.__prependedHistoryMessageCount;
     window.__prependedHistoryMessageCount =
       Math.max(0, (typeof prevPrepended === 'number' ? prevPrepended : 0) + parsed.length - drop);
-    if (drop > 0) {
-      sendBridgeEvent('set_earlier_cursor', JSON.stringify({
-        sessionId: currentSessionIdRef.current, // legacy-allow: the session on screen, not an event attribution
-        cursor: newStart,
-      }));
-    }
     if (container) {
       requestAnimationFrame(() => {
         const currentContainer = messagesContainerRef.current;

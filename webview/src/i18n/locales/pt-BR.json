@@ -798,12 +798,6 @@
     "copySessionId": "Copiar ID da sessão para CLI resume",
     "sessionIdCopied": "ID da sessão copiado",
     "copyFailed": "Falha ao copiar",
-    "convertToCliSession": "Converter para sessão reconhecida pelo CLI",
-    "convertButton": "Converter p/ CLI",
-    "convertSuccess": "Sessão convertida para ser reconhecida pelo CLI",
-    "convertFailed": "Falha na conversão",
-    "confirmConvert": "Converter para sessão CLI?",
-    "convertConfirmMessage": "Isso modificará o entrypoint da sessão para torná-la visível na lista /resume do CLI do OpenCode.",
     "timeAgo": {
       "yearsAgo": "anos atrás",
       "monthsAgo": "meses atrás",
@@ -811,16 +805,6 @@
       "hoursAgo": "horas atrás",
       "minutesAgo": "minutos atrás",
       "secondsAgo": "segundos atrás"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "ID de sessão inválido",
-      "SESSION_ACTIVE": "Não é possível converter a sessão atualmente ativa. Inicie uma nova sessão primeiro e depois converta esta",
-      "SESSION_NOT_FOUND": "Arquivo de sessão não encontrado",
-      "FILE_NOT_EXIST": "O arquivo de sessão não existe",
-      "FILE_LOCKED": "O arquivo de sessão está sendo acessado por outro processo",
-      "NOT_SDK_SESSION": "Esta sessão não foi criada pelo SDK (entrypoint não é sdk-cli)",
-      "ALREADY_CLI_SESSION": "Esta sessão já é uma sessão CLI",
-      "CONVERSION_FAILED": "Falha na conversão, tente novamente mais tarde"
     },
     "entrypointLabel": {
       "sdk-cli": "Sessão SDK",

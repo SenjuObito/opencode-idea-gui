@@ -783,12 +783,6 @@
     "copySessionId": "CLI resume용 세션 ID 복사",
     "sessionIdCopied": "세션 ID 복사됨",
     "copyFailed": "복사 실패",
-    "convertToCliSession": "CLI 인식 세션으로 변환",
-    "convertButton": "CLI로 변환",
-    "convertSuccess": "세션이 CLI 인식 가능으로 변환되었습니다",
-    "convertFailed": "변환 실패",
-    "confirmConvert": "CLI 세션으로 변환하시겠습니까?",
-    "convertConfirmMessage": "세션의 entrypoint를 수정하여 OpenCode CLI의 /resume 목록에 표시되도록 합니다.",
     "timeAgo": {
       "yearsAgo": "년 전",
       "monthsAgo": "개월 전",
@@ -796,16 +790,6 @@
       "hoursAgo": "시간 전",
       "minutesAgo": "분 전",
       "secondsAgo": "초 전"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "잘못된 세션 ID",
-      "SESSION_ACTIVE": "현재 활성 세션은 변환할 수 없습니다. 먼저 새 세션을 시작한 후 이 세션을 변환하세요",
-      "SESSION_NOT_FOUND": "세션 파일을 찾을 수 없습니다",
-      "FILE_NOT_EXIST": "세션 파일이 존재하지 않습니다",
-      "FILE_LOCKED": "세션 파일이 다른 프로세스에서 사용 중입니다",
-      "NOT_SDK_SESSION": "이 세션은 SDK로 생성되지 않았습니다 (entrypoint가 sdk-cli가 아님)",
-      "ALREADY_CLI_SESSION": "이 세션은 이미 CLI 세션입니다",
-      "CONVERSION_FAILED": "변환 실패, 나중에 다시 시도하세요"
     },
     "entrypointLabel": {
       "sdk-cli": "SDK 세션",

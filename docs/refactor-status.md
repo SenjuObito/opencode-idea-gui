@@ -32,7 +32,7 @@ cd webview && npx vitest run
 | 条目 | 内容 | 状态 | 证据 / 提交 |
 |---|---|---|---|
 | A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload |
-| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 主路径与生命周期事件已统一；webview 仅剩 8 处 `sendBridgeEvent`，全部指向宿主未实现的旧功能（子会话历史、CLI 转换、自定义模型定价、早期游标） |
+| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 主路径与生命周期事件已统一；仅剩 5 处 `load_subagent_session` 旧调用，需 core 暴露子会话定位/读取后迁入信封 |
 | A3 | 路由表已权威（31 个事件）；约 96 个 `window.*` 全局仍在 | 部分完成 | 路由层已落地，全局清理待做 |
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |
@@ -52,7 +52,7 @@ cd webview && npx vitest run
 
 | 剩余项 | 性质 | 估算 |
 |---|---|---|
-| A2 剩余：约 70 处 `sendBridgeEvent` 迁入命令信封并删除旧入口 | 机械、量大 | 1–2 天 |
+| A2 剩余：5 处 `load_subagent_session` 需 core 子会话读取接口 | 依赖 core | 0.5–1 天（含 core） |
 | A3 剩余：摘除约 96 个 `window.*` 全局，只保留路由表分发 | 机械、量大 | 0.5–1 天 |
 | C8 剩余：`TabRecord` 的 prompts / TabDraft | 结构性 | 0.25 天 |
 | C7 剩余：无（`TabStreamRouter` 已持有 adapter/coalescer） | 已完成 | 0 |
@@ -65,8 +65,9 @@ cd webview && npx vitest run
 
 ## 四、结论
 
-- 命名事件主路径（A1）与会话命令主路径已经收口；A2 仍有约 70 处窗口/设置/历史
-  命令走旧 `sendBridgeEvent`，不能再说"只有一种走法"。
+- 命名事件主路径（A1）与会话命令主路径已经收口；A2 只剩 5 处子会话历史
+  调用，等 core 提供子会话定位/读取后迁入信封，其余旧 `sendBridgeEvent`
+  功能入口已随宿主未实现路径删除。
 - 附件链路（C8 附件部分 / D10）已经完整，且不依赖 core 改动。
 - 新会话引导（C7 的 `PendingSend` / `TabSnapshot`）已落地；core 现在先播报
   `[SESSION_ID]` 再绑定身份，v1/v2 共用。

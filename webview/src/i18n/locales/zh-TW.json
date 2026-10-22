@@ -752,12 +752,6 @@
     "copySessionId": "複製會話ID用於CLI恢復",
     "sessionIdCopied": "會話ID已複製",
     "copyFailed": "複製失敗",
-    "convertToCliSession": "轉換為 CLI 可辨識會話",
-    "convertButton": "轉為CLI",
-    "convertSuccess": "會話已轉換為 CLI 可辨識",
-    "convertFailed": "轉換失敗",
-    "confirmConvert": "轉換為 CLI 會話？",
-    "convertConfirmMessage": "此操作將修改會話的 entrypoint，使其在 OpenCode CLI 的 /resume 列表中顯示。",
     "timeAgo": {
       "yearsAgo": "年前",
       "monthsAgo": "個月前",
@@ -765,16 +759,6 @@
       "hoursAgo": "小時前",
       "minutesAgo": "分鐘前",
       "secondsAgo": "秒前"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "無效的會話 ID",
-      "SESSION_ACTIVE": "無法轉換當前活躍的會話，請先開啟新會話後再轉換",
-      "SESSION_NOT_FOUND": "未找到會話檔案",
-      "FILE_NOT_EXIST": "會話檔案不存在",
-      "FILE_LOCKED": "會話檔案正在被其他程序訪問",
-      "NOT_SDK_SESSION": "此會話不是 SDK 創建的會話（entrypoint 不是 sdk-cli）",
-      "ALREADY_CLI_SESSION": "此會話已經是 CLI 會話",
-      "CONVERSION_FAILED": "轉換失敗，請稍後重試"
     },
     "entrypointLabel": {
       "sdk-cli": "SDK會話",

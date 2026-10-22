@@ -334,7 +334,7 @@ const App = () => {
     forceCreateNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
-    toggleFavoriteSession, updateHistoryTitle, applyHistoryTitleLocal, convertToCliSession,
+    toggleFavoriteSession, updateHistoryTitle, applyHistoryTitleLocal,
   } = useSessionManagement({
     messages, loading, historyData, currentSessionId, currentSessionIdRef, currentProvider,
     setHistoryData, setMessages, setCurrentView, setCurrentSessionId,
@@ -1315,7 +1315,6 @@ const App = () => {
             <HistoryView
               historyData={historyData}
               currentProvider={currentProvider}
-              currentSessionId={currentSessionId}
               onLoadSession={(sessionId) => {
                 const session = historyData?.sessions?.find(s => s.sessionId === sessionId);
                 openSessionInTab(
@@ -1331,7 +1330,6 @@ const App = () => {
               onExportSession={exportHistorySession}
               onToggleFavorite={toggleFavoriteSession}
               onUpdateTitle={updateHistoryTitle}
-              onConvertToCliSession={convertToCliSession}
               onRetry={handleRetryHistory}
             />
           )}

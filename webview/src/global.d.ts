@@ -164,15 +164,6 @@ interface Window {
   onTodoUpdated?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
-   * SDK-to-CLI session conversion result callback.
-   * Called by the Java backend after attempting to convert entrypoint from "sdk-cli" to "cli".
-   * Payload: { success: boolean, infoCode?: string, errorCode?: string }.
-   * infoCode carries extra context on success (e.g. ALREADY_CLI_SESSION);
-   * errorCode identifies the failure reason for i18n lookup.
-   */
-  onConversionResult?: (json: string) => void;
-
-  /**
    * Add user message to chat (used for external Quick Fix feature)
    * Immediately shows the user's message in the chat UI before AI response
    */

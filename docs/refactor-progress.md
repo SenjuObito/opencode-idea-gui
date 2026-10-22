@@ -513,3 +513,16 @@
   才回退窗口 sink。
 - 新增 `TabRecordTest.eventSinkBelongsToTheRecord`。
 
+## 第四轮补 9：删除宿主从未实现的三个旧入口
+
+- `set_earlier_cursor`：分页裁剪只影响 webview 本地窗口，宿主下一页仍按
+  `pageStart` 回源，不需要回写游标；删除无效发送与注释。
+- `set_custom_model_pricing`：删除 `usePluginModels` 向 Java 同步自定义模型
+  定价的分支；opencode 的定价来自 provider/model 元数据。相关测试改为只验证
+  本地保存与校验。
+- `convert_to_cli_session`：opencode 会话本身就是 CLI 会话，宿主没有转换
+  服务；删除历史列表按钮、确认弹窗、入口点判断、`onConversionResult`
+  回调、CSS 与对应 i18n 文案。
+- A2 目前只剩 5 处 `load_subagent_session`，需要 core 暴露子会话定位/读取
+  接口后才能迁入 `host_command`。
+

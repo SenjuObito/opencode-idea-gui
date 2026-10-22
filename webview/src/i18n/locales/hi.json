@@ -743,12 +743,6 @@
     "copySessionId": "CLI resume के लिए सेशन ID कॉपी करें",
     "sessionIdCopied": "सेशन ID कॉपी किया गया",
     "copyFailed": "कॉपी विफल",
-    "convertToCliSession": "CLI पहचान सेशन में बदलें",
-    "convertButton": "CLI में बदलें",
-    "convertSuccess": "सेशन CLI पहचान में बदल दिया गया",
-    "convertFailed": "रूपांतरण विफल",
-    "confirmConvert": "CLI सेशन में बदलें?",
-    "convertConfirmMessage": "यह सत्र का entrypoint संशोधित करेगा ताकि यह OpenCode CLI की /resume सूची में दिखाई दे।",
     "timeAgo": {
       "yearsAgo": "साल पहले",
       "monthsAgo": "महीने पहले",
@@ -756,16 +750,6 @@
       "hoursAgo": "घंटे पहले",
       "minutesAgo": "मिनट पहले",
       "secondsAgo": "सेकंड पहले"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "अमान्य सत्र ID",
-      "SESSION_ACTIVE": "वर्तमान में सक्रिय सत्र को परिवर्तित नहीं किया जा सकता। पहले नया सत्र शुरू करें, फिर इसे परिवर्तित करें",
-      "SESSION_NOT_FOUND": "सत्र फ़ाइल नहीं मिली",
-      "FILE_NOT_EXIST": "सत्र फ़ाइल मौजूद नहीं है",
-      "FILE_LOCKED": "सत्र फ़ाइल किसी अन्य प्रक्रिया द्वारा एक्सेस की जा रही है",
-      "NOT_SDK_SESSION": "यह सत्र SDK द्वारा नहीं बनाया गया (entrypoint sdk-cli नहीं है)",
-      "ALREADY_CLI_SESSION": "यह सत्र पहले से ही CLI सत्र है",
-      "CONVERSION_FAILED": "रूपांतरण विफल, कृपया बाद में पुनः प्रयास करें"
     },
     "entrypointLabel": {
       "sdk-cli": "SDK सत्र",

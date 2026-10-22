@@ -11,7 +11,7 @@ import { downloadJSON } from '../../../utils/exportMarkdown';
 import { releaseSessionTransition } from '../sessionTransition';
 import { isTabTransitioning, transitionTargetFor } from '../tabTransition';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
-import { sendWindowCommand, cardDebugLog } from '../../../utils/bridge';
+import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
@@ -200,46 +200,8 @@ export function registerSessionCallbacks(
   };
 
   // =========================================================================
-  // SDK-to-CLI Session Conversion Result Callback
+  // Semantic event registrations
   // =========================================================================
-
-  window.onConversionResult = (json: string) => {
-    const reloadHistory = () => {
-      const provider = options.currentProviderRef.current;
-      if (provider) {
-        sendWindowCommand('history.deepSearch');
-      } else {
-        cardDebugLog('[Frontend] Provider unavailable for conversion state reload');
-      }
-    };
-
-    try {
-      const result = JSON.parse(json);
-      if (result.success) {
-        if (result.infoCode === 'ALREADY_CLI_SESSION') {
-          addToast(tRef.current('history.conversionErrors.ALREADY_CLI_SESSION'), 'info');
-        } else {
-          addToast(tRef.current('history.convertSuccess'), 'success');
-          reloadHistory();
-        }
-        return;
-      }
-
-      const errorCode = result.errorCode;
-      let errorMessage = tRef.current('history.convertFailed');
-
-      if (errorCode && tRef.current(`history.conversionErrors.${errorCode}`)) {
-        errorMessage = tRef.current(`history.conversionErrors.${errorCode}`);
-      }
-
-      addToast(errorMessage, 'error');
-      reloadHistory();
-    } catch (error) {
-      console.error('[Frontend] Failed to parse conversion result:', error);
-      addToast(tRef.current('history.convertFailed'), 'error');
-      reloadHistory();
-    }
-  };
 
   // The semantic catalog is the routing table: the dispatcher looks the
   // handler up here first, the window globals stay for the legacy path.

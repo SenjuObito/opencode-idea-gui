@@ -70,7 +70,11 @@ public class BridgeSchedulerTest {
         String script = BridgeScheduler.buildBatchScript(List.of(call));
 
         assertTrue(script.contains("\"v\":2"));
-        assertTrue(script.contains("\"type\":\"onContentDelta\""));
+        // The protocol names the event semantically; the legacy function name
+        // travels next to it so the webview can still resolve the handler.
+        assertTrue(script.contains("\"type\":\"content.delta\""));
+        assertTrue(script.contains("\"fn\":\"onContentDelta\""));
+        assertTrue(script.contains("\"sessionId\":\"ses_1\""));
         assertTrue(script.contains("\"tabId\":\"tab-a\""));
         assertTrue(script.contains("\"epoch\":7"));
         assertTrue(script.contains("\"args\":[\"ses_1\",\"hi\"]"));
@@ -205,7 +209,7 @@ public class BridgeSchedulerTest {
         }
 
         assertEquals("the 257th terminal event must survive a full lane",
-                257, count(String.join("", scripts), "\"type\":\"showPermissionDialog\""));
+                257, count(String.join("", scripts), "\"type\":\"permission.requested\""));
         scheduler.dispose();
     }
 

@@ -2,6 +2,9 @@
 
 分支：`refactor/full-cutover`
 
+> 本文件是逐轮流水记录。**当前状态总表**（16 个条目、剩余估算）
+> 见 `docs/refactor-status.md`。
+
 ## 已完成
 
 ### 宿主身份与状态

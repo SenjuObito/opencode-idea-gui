@@ -147,6 +147,22 @@ public class WindowEventHandlerTest {
         assertEquals(Long.valueOf(7L), historyCommitEpoch.get());
     }
 
+    /** tab_activate carries a stable tabId, not a sessionId. */
+    @Test
+    public void dispatchesTabActivateByTabId() {
+        AtomicReference<String> observed = new AtomicReference<>();
+        HandlerContext context = new HandlerContext(null, null, null, new MockJsCallback());
+        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback() {
+            @Override
+            public void onActivateTab(String tabId) {
+                observed.set(tabId);
+            }
+        });
+
+        assertTrue(handler.handle("tab_activate", "{\"tabId\":\"tab-42\"}"));
+        assertEquals("tab-42", observed.get());
+    }
+
     /** Verifies that a tokenized surface phase acknowledgment is parsed without losing identity. */
     @Test
     public void dispatchesSurfaceDamageAppliedCallback() {
@@ -184,7 +200,6 @@ public class WindowEventHandlerTest {
         @Override public void onHeartbeat(String content) { }
         @Override public void onTabLoadingChanged(boolean loading) { }
         @Override public void onTabStatusChanged(String status) { }
-        @Override public void onCreateNewSession() { }
         @Override public void onFrontendReady() { }
         @Override public void onHistoryRenderComplete(long commitEpoch) { }
         @Override public void onSurfaceDamageApplied(

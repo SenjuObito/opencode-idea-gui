@@ -99,20 +99,18 @@ export function useQuoteTags({ editableRef }: UseQuoteTagsOptions): UseQuoteTags
     // Collect preserved IDs from background tab drafts so tab switching doesn't prune them
     const preservedIds = new Set<string>();
     try {
-      const tabs = window.__sessionTabsStore?.getTabs?.();
-      if (Array.isArray(tabs)) {
-        for (const tab of tabs) {
-          if (tab.draft?.quotes) {
-            for (const qId of Object.keys(tab.draft.quotes)) {
-              preservedIds.add(qId);
-            }
+      const drafts = window.__sessionTabsStore?.getDrafts?.() ?? [];
+      for (const draft of drafts) {
+        if (draft.quotes) {
+          for (const qId of Object.keys(draft.quotes)) {
+            preservedIds.add(qId);
           }
-          if (tab.draft?.text && hasQuoteToken(tab.draft.text)) {
-            const scan = quoteTokenRegex();
-            let m: RegExpExecArray | null;
-            while ((m = scan.exec(tab.draft.text)) !== null) {
-              preservedIds.add(m[1]);
-            }
+        }
+        if (draft.text && hasQuoteToken(draft.text)) {
+          const scan = quoteTokenRegex();
+          let m: RegExpExecArray | null;
+          while ((m = scan.exec(draft.text)) !== null) {
+            preservedIds.add(m[1]);
           }
         }
       }

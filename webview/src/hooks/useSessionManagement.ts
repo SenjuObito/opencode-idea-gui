@@ -195,47 +195,59 @@ export function useSessionManagement({
     }, 15_000); // 15 seconds — generous enough for slow history loads
   }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSseTodos, setSubagentHistories, onResetToPreferredModel]);
 
+  /**
+   * Open a fresh, unbound tab.
+   *
+   * The host no longer creates a session here. A tab exists before its
+   * opencode session; the first send binds both. This prevents the old
+   * random-UUID "new session" that the UI could never match.
+   */
+  const openNewSessionTab = useCallback(() => {
+    const createTab = (window as Window & { __openNewSessionTab?: () => void }).__openNewSessionTab;
+    if (typeof createTab === 'function') {
+      createTab();
+      return;
+    }
+    // Startup/test fallback: clear the view. The first send still creates the
+    // real session through its tab id.
+    beginSessionTransition(null, null);
+  }, [beginSessionTransition]);
+
   // Create new session
   const createNewSession = useCallback(() => {
-    // [FIX] Prioritize loading check - if AI is responding, must interrupt first
-    // This prevents creating new session without stopping the current conversation
     if (loading) {
-      // If loading (AI is responding), show interrupt confirmation.
       pendingActionRef.current = 'newSession';
       setShowInterruptConfirm(true);
     } else {
-      beginSessionTransition(null, null);
-      sendBridgeEvent('create_new_session');
+      openNewSessionTab();
     }
-  }, [beginSessionTransition, loading]);
+  }, [loading, openNewSessionTab]);
 
   // Force create new session (no confirmation, used by /clear /new /reset commands)
   const forceCreateNewSession = useCallback(() => {
     if (loading) {
       sendBridgeEvent('interrupt_session');
     }
-    beginSessionTransition(null, null);
-    sendBridgeEvent('create_new_session');
-  }, [beginSessionTransition, loading]);
+    openNewSessionTab();
+  }, [loading, openNewSessionTab]);
 
   const forceCreateNewSessionWithProvider = useCallback((providerId: string) => {
     if (loading) {
       sendBridgeEvent('interrupt_session');
     }
-    beginSessionTransition(null, null);
+    // The provider selection travels with the tab's next send; do not create a
+    // host session here.
     sendBridgeEvent('set_provider', providerId);
-    sendBridgeEvent('create_new_session');
-  }, [beginSessionTransition, loading]);
+    openNewSessionTab();
+  }, [loading, openNewSessionTab]);
 
   // Confirm interrupt
   const handleConfirmInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
-    // Send interrupt signal and create new session
     sendBridgeEvent('interrupt_session');
-    beginSessionTransition(null, null);
-    sendBridgeEvent('create_new_session');
+    openNewSessionTab();
     pendingActionRef.current = null;
-  }, [beginSessionTransition]);
+  }, [openNewSessionTab]);
 
   // Cancel interrupt
   const handleCancelInterrupt = useCallback(() => {
@@ -292,7 +304,7 @@ export function useSessionManagement({
           window.__sessionTransitionTargetSessionId = null;
         }
       }, 5_000);
-      sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
+      sendBridgeEvent('load_session', JSON.stringify({ sessionId, tabId: window.__sessionTabsStore?.getActiveTabId?.() }));
       setCurrentView('chat');
       return;
     }
@@ -314,7 +326,7 @@ export function useSessionManagement({
       window.__sessionTabsStore?.updateTabSessionId?.(activeTabId, sessionId);
     }
     beginSessionTransition(sessionId, session?.title ?? null);
-    sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
+    sendBridgeEvent('load_session', JSON.stringify({ sessionId, tabId: activeTabId }));
     setCurrentView('chat');
   }, [beginSessionTransition, setCurrentView, currentSessionId]);
 
@@ -359,7 +371,7 @@ export function useSessionManagement({
           startedSessionTransition = true;
           // Set flag to suppress next updateStatus toast
           suppressNextStatusToastRef.current = true;
-          sendBridgeEvent('create_new_session');
+          openNewSessionTab();
         } else {
           startedSessionTransition = true;
         }
@@ -367,7 +379,7 @@ export function useSessionManagement({
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast]);
+  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast, openNewSessionTab]);
 
   // Batch delete history sessions
   const deleteHistorySessions = useCallback((sessionIds: string[]) => {
@@ -414,7 +426,7 @@ export function useSessionManagement({
           beginSessionTransition(null, null);
           startedSessionTransition = true;
           suppressNextStatusToastRef.current = true;
-          sendBridgeEvent('create_new_session');
+          openNewSessionTab();
         } else {
           startedSessionTransition = true;
         }
@@ -422,7 +434,7 @@ export function useSessionManagement({
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, beginSessionTransition, showSessionDeletedToast]);
+  }, [historyData, currentSessionId, loading, setHistoryData, beginSessionTransition, showSessionDeletedToast, openNewSessionTab]);
 
   // Export history session
   const exportHistorySession = useCallback((sessionId: string, title: string) => {

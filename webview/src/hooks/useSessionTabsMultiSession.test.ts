@@ -378,31 +378,12 @@ describe('useSessionTabs - history session loading', () => {
     unmount();
   });
 
-  it('claims the unbound tab when claimUnboundTab is invoked', () => {
-    const { result, unmount } = renderTabsHost();
-    expect(result.current.tabs[0].sessionId).toBeNull();
-
-    act(() => {
-      const claimed = store().claimUnboundTab?.('ses_new_123');
-      expect(claimed).toBe(true);
-    });
-
-    expect(result.current.tabs[0].sessionId).toBe('ses_new_123');
-    expect(store().isActiveSession('ses_new_123')).toBe(true);
-
-    // After claiming, a second claim for a different id returns false because there are no more unbound tabs
-    act(() => {
-      const secondClaim = store().claimUnboundTab?.('ses_other');
-      expect(secondClaim).toBe(false);
-    });
-    unmount();
-  });
 
   it('preserves and restores sliding window cursors per tab', () => {
     const { result, unmount } = renderTabsHost();
     // Tab 1: bind to ses_1 and set cursor
     act(() => {
-      store().claimUnboundTab?.('ses_1');
+      store().updateTabSessionId('tab-1', 'ses_1');
       window.__messageBaseIndex = 15;
       window.__opencodeListStart = 10;
       window.__prependedHistoryMessageCount = 5;
@@ -504,10 +485,10 @@ describe('useSessionTabs - history session loading', () => {
     expect(draft.text).toBe('draft A');
   });
 
-  it('switches the host session before replaying build/plan mode', () => {
-    // The legacy wire format carries no session id, so `set_mode` is applied to
-    // "the window's current session". Sending it before `switch_session` rewrites
-    // the outgoing tab's mode — that is how two tabs swapped build/plan settings.
+  it('activates the host tab before replaying build/plan mode', () => {
+    // `set_mode` is scoped to this tab's session, but the host's active tab
+    // still feeds window-level notifications. Activating the target tab first
+    // keeps those observers from seeing the outgoing tab.
     const { result } = renderHook(() =>
       useSessionTabs({
         currentSessionId: 'ses_a',
@@ -540,14 +521,15 @@ describe('useSessionTabs - history session loading', () => {
     });
 
     const calls = vi.mocked(sendBridgeEvent).mock.calls;
-    const switchCall = calls.findIndex((c) => c[0] === 'switch_session');
+    const activateCall = calls.findIndex((c) => c[0] === 'tab_activate');
     const modeCall = calls.findIndex((c) => c[0] === 'set_mode');
 
-    expect(switchCall).toBeGreaterThanOrEqual(0);
+    expect(activateCall).toBeGreaterThanOrEqual(0);
     expect(modeCall).toBeGreaterThanOrEqual(0);
-    expect(switchCall).toBeLessThan(modeCall);
+    expect(activateCall).toBeLessThan(modeCall);
 
-    // And the mode payload is scoped to the tab's own session.
+    // Activation is by stable tab id; the mode payload is scoped to the session.
+    expect(calls[activateCall][1]).toContain(`"tabId":"${tab1Id}"`);
     expect(calls[modeCall][1]).toContain('"sessionId":"ses_a"');
   });
 
@@ -626,11 +608,11 @@ describe('useSessionTabs - history session loading', () => {
       result.current.closeTab(tab2Id);
     });
 
-    // Without this the next turn would be sent to the session just closed.
-    const switchCall = vi.mocked(sendBridgeEvent).mock.calls.find(
-      (c) => c[0] === 'switch_session',
+    // Without this the host's active tab would remain the tab just closed.
+    const activateCall = vi.mocked(sendBridgeEvent).mock.calls.find(
+      (c) => c[0] === 'tab_activate',
     );
-    expect(switchCall?.[1]).toContain('"sessionId":"ses_a"');
+    expect(activateCall?.[1]).toContain(`"tabId":"${tab1Id}"`);
     expect(result.current.activeTabId).toBe(tab1Id);
   });
 
@@ -718,6 +700,58 @@ describe('useSessionTabs - history session loading', () => {
     expect(result.current.tabs[0].title).toBe('会话 A 的标题');
     expect(result.current.tabs[1].title).toBe('新会话');
     expect(setCustomTitle).not.toHaveBeenCalled();
+  });
+
+  it('keeps the StatusPanel expanded/page selection on each tab', () => {
+    const { result } = renderHook(() => {
+      const [sessionId, setSessionId] = useState<string | null>(null);
+      return useSessionTabs({
+        currentSessionId: sessionId,
+        setCurrentSessionId: setSessionId,
+        sessionTitle: '',
+        setCustomSessionTitle: vi.fn(),
+        updateHistoryTitle: vi.fn(),
+        messages: emptyMessages,
+        setMessages: vi.fn(),
+        loading: false,
+        streamingActive: false,
+        isShared: false,
+        forceCreateNewSession: vi.fn(),
+        loadHistorySession: vi.fn(),
+        t: mockT,
+      } as any);
+    });
+
+    act(() => {
+      store().updateTabSessionId('tab-1', 'ses_a');
+    });
+    const tab1Id = result.current.activeTabId;
+    act(() => {
+      result.current.createTab();
+    });
+    const tab2Id = result.current.activeTabId;
+
+    // Tab 2 opens Edits and collapses its panel.
+    act(() => {
+      result.current.setStatusPanelTab('files');
+      result.current.toggleStatusPanel();
+    });
+    expect(result.current.statusPanelTab).toBe('files');
+    expect(result.current.statusPanelExpanded).toBe(false);
+
+    // Tab 1 keeps its own default view state.
+    act(() => {
+      result.current.selectTab(tab1Id);
+    });
+    expect(result.current.statusPanelTab).toBeNull();
+    expect(result.current.statusPanelExpanded).toBe(true);
+
+    // Returning to tab 2 restores exactly what it had.
+    act(() => {
+      result.current.selectTab(tab2Id);
+    });
+    expect(result.current.statusPanelTab).toBe('files');
+    expect(result.current.statusPanelExpanded).toBe(false);
   });
 });
 

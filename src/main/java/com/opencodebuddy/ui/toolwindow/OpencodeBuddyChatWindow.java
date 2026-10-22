@@ -4,7 +4,6 @@ import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.handler.history.HistoryHandler;
 import com.opencodebuddy.handler.core.MessageDispatcher;
 import com.opencodebuddy.handler.PermissionHandler;
-import com.opencodebuddy.permission.PermissionService;
 import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.session.OpencodePermissionRegistry;
@@ -13,6 +12,10 @@ import com.opencodebuddy.session.SessionCallbackAdapter;
 import com.opencodebuddy.session.SessionLifecycleManager;
 import com.opencodebuddy.session.SessionState;
 import com.opencodebuddy.session.StreamMessageCoalescer;
+import com.opencodebuddy.tab.TabId;
+import com.opencodebuddy.tab.TabRecord;
+import com.opencodebuddy.tab.TabRegistry;
+import com.opencodebuddy.tab.TabState;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.settings.TabStateService;
 import com.opencodebuddy.ui.ChatWindowDelegate;
@@ -76,21 +79,16 @@ public class OpencodeBuddyChatWindow {
     private String originalTabName;
     private String defaultTabName;
     private volatile String sessionId = null;
-    // Stable PermissionService routing key, assigned once at construction.
-    // Kept separate from sessionId, which is overwritten with AI session IDs
-    // (onSessionIdReceived) and would otherwise break dispose-time cleanup and
-    // clearPermissionDecisionMemory(), both of which must reach the instance
-    // the bridges actually route permission requests to.
-    private String permissionServiceKey = null;
-
     private volatile JBCefBrowser browser;
     // volatile: read from the daemon reader thread by the session_updated listener
     // and its loadFromServer continuation, while reassigned on the EDT.
     private volatile OpencodeSession session;
+    private final TabRegistry tabRegistry = new TabRegistry();
     private final Map<String, OpencodeSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, SessionCallbackAdapter> sessionAdapters = new ConcurrentHashMap<>();
     private final Map<String, StreamMessageCoalescer> sessionCoalescers = new ConcurrentHashMap<>();
     private volatile String activeSessionId = null;
+    private volatile String activeTabId = null;
     private final WebviewWatchdog webviewWatchdog;
     private volatile StreamMessageCoalescer streamCoalescer;
 
@@ -317,8 +315,9 @@ public class OpencodeBuddyChatWindow {
         chatWindowDelegate.loadNodePathFromSettings();
         chatWindowDelegate.syncActiveProvider();
         chatWindowDelegate.initializeHandlers();
-        this.permissionServiceKey = chatWindowDelegate.setupPermissionService();
-        this.sessionId = this.permissionServiceKey;
+        // A fresh window has no opencode session. The permission-service key is
+        // a legacy file-IPC routing key, never a session identity.
+        this.sessionId = null;
 
         this.sessionLifecycleManager = new SessionLifecycleManager(new SessionLifecycleManager.SessionHost() {
             @Override
@@ -353,8 +352,23 @@ public class OpencodeBuddyChatWindow {
             }
 
             @Override
-            public void switchSession(String targetSessionId) {
-                OpencodeBuddyChatWindow.this.switchSession(targetSessionId);
+            public void bindHistorySession(
+                    String tabId,
+                    String sessionId,
+                    OpencodeSession session,
+                    SessionCallbackAdapter adapter,
+                    StreamMessageCoalescer coalescer
+            ) {
+                OpencodeBuddyChatWindow.this.bindHistorySession(
+                        tabId, sessionId, session, adapter, coalescer);
+            }
+
+            @Override
+            public void markHistoryLoaded(String sessionId) {
+                TabRecord record = tabRegistry.findBySession(sessionId);
+                if (record != null) {
+                    tabRegistry.markBound(record.getTabId());
+                }
             }
 
             @Override
@@ -390,18 +404,6 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void clearPendingPermissionRequests() {
                 permissionHandler.clearPendingRequests();
-            }
-
-            @Override
-            public void clearPermissionDecisionMemory() {
-                try {
-                    if (permissionServiceKey != null && !permissionServiceKey.isEmpty()) {
-                        PermissionService permissionService = PermissionService.getInstance(project, permissionServiceKey);
-                        permissionService.clearDecisionMemory();
-                    }
-                } catch (Exception e) {
-                    LOG.warn("Failed to clear permission decision memory: " + e.getMessage());
-                }
             }
 
             @Override
@@ -644,6 +646,12 @@ public class OpencodeBuddyChatWindow {
      * session.</p>
      */
     boolean anySessionStreamActive() {
+        for (TabRecord record : tabRegistry.liveTabs()) {
+            StreamMessageCoalescer coalescer = record.getCoalescer();
+            if (coalescer != null && coalescer.isStreamActive()) {
+                return true;
+            }
+        }
         for (StreamMessageCoalescer coalescer : sessionCoalescers.values()) {
             if (coalescer != null && coalescer.isStreamActive()) {
                 return true;
@@ -1494,10 +1502,46 @@ public class OpencodeBuddyChatWindow {
         return session;
     }
 
+    /**
+     * View-level activation. It updates only the host pointer used by legacy
+     * window-level notifications; it never hydrates, reconciles or moves
+     * messages, and it never decides message ownership.
+     */
+    public void activateTab(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            return;
+        }
+        TabId stableTabId = TabId.of(tabId);
+        TabRecord record = tabRegistry.create(stableTabId,
+                project != null ? project.getBasePath() : null);
+        tabRegistry.activate(stableTabId);
+        activeTabId = tabId;
+        activeSessionId = record.getSessionIdString();
+        sessionId = record.getSessionIdString();
+        session = record.getSession();
+        sessionCallbackAdapter = record.getAdapter();
+        if (record.getCoalescer() != null) {
+            streamCoalescer = record.getCoalescer();
+        }
+        if (handlerContext != null) {
+            handlerContext.setSession(record.getSession());
+        }
+    }
+
     public OpencodeSession getSession(String targetSessionId) {
         if (targetSessionId == null || targetSessionId.isBlank()) {
             return null;
         }
+        // A caller may name either the stable tab id or the canonical session id.
+        TabRecord byTab = tabRegistry.get(TabId.of(targetSessionId));
+        if (byTab != null && byTab.getSession() != null) {
+            return byTab.getSession();
+        }
+        TabRecord bySession = tabRegistry.findBySession(targetSessionId);
+        if (bySession != null && bySession.getSession() != null) {
+            return bySession.getSession();
+        }
+        // Transitional fallback for paths that still hold a raw session object.
         OpencodeSession s = sessions.get(targetSessionId);
         if (s != null) {
             return s;
@@ -1505,47 +1549,50 @@ public class OpencodeBuddyChatWindow {
         if (session != null && targetSessionId.equals(session.getSessionId())) {
             return session;
         }
-        return handlerContext != null ? handlerContext.getSession(targetSessionId) : null;
+        return null;
     }
 
     public OpencodeSession createSessionForTab(String tabId) {
         if (tabId == null || tabId.isBlank()) {
-            tabId = "tab-" + System.currentTimeMillis();
+            throw new IllegalArgumentException("tabId must not be blank");
         }
-        OpencodeSession existing = sessions.get(tabId);
-        if (existing != null) {
-            return existing;
+
+        TabId stableTabId = TabId.of(tabId);
+        String initialCwd = project != null ? project.getBasePath() : null;
+        TabRecord record = tabRegistry.create(stableTabId, initialCwd);
+        if (record.getSession() != null) {
+            return record.getSession();
+        }
+        if (activeTabId == null) {
+            activeTabId = tabId;
+            tabRegistry.activate(stableTabId);
         }
 
         OpencodeSession oldSession = this.session;
         String previousPermissionMode = (oldSession != null) ? oldSession.getPermissionMode() : "default";
-        String previousProvider = (oldSession != null) ? oldSession.getProvider() : "claude";
-        String previousModel = (oldSession != null) ? oldSession.getModel() : "claude-sonnet-4-6";
+        String previousProvider = (oldSession != null) ? oldSession.getProvider() : "opencode";
+        String previousModel = (oldSession != null) ? oldSession.getModel() : null;
 
         OpencodeSession newSession = new OpencodeSession(project, openCodeSDKBridge);
-        String initialCwd = (oldSession != null && oldSession.getCwd() != null)
-                ? oldSession.getCwd()
-                : (project != null ? project.getBasePath() : null);
         if (initialCwd != null) {
             newSession.setCwd(initialCwd);
         }
         newSession.setPermissionMode(previousPermissionMode);
         newSession.setProvider(previousProvider);
-        newSession.setModel(previousModel);
+        if (previousModel != null) {
+            newSession.setModel(previousModel);
+        }
 
         StreamMessageCoalescer newCoalescer = createStreamCoalescer(tabId);
-        if (newCoalescer == null) {
-            newCoalescer = streamCoalescer;
-        }
         SessionCallbackAdapter newAdapter = createCallbackAdapter(tabId, newCoalescer);
         if (newAdapter != null) {
             newSession.setCallback(newAdapter);
         }
 
-        registerSession(tabId, newSession, newAdapter, newCoalescer);
-        if (this.session == null) {
-            this.session = newSession;
-            this.activeSessionId = tabId;
+        record.setProvisionalResources(newSession, newAdapter, newCoalescer);
+        tabRegistry.markCreating(stableTabId);
+        if (handlerContext != null) {
+            handlerContext.registerSession(tabId, newSession);
         }
         return newSession;
     }
@@ -1559,7 +1606,11 @@ public class OpencodeBuddyChatWindow {
     }
 
     public StreamMessageCoalescer createStreamCoalescer(String targetSessionId) {
-        StreamMessageCoalescer newCoalescer = new StreamMessageCoalescer(targetSessionId, new StreamMessageCoalescer.JsCallbackTarget() {
+        // A new tab has no canonical session yet. Constructing the coalescer with
+        // the tab id would stamp every snapshot with a non-session identity.
+        String identity = com.opencodebuddy.tab.SessionId.tryParse(targetSessionId) != null
+                ? targetSessionId : null;
+        StreamMessageCoalescer newCoalescer = new StreamMessageCoalescer(identity, new StreamMessageCoalescer.JsCallbackTarget() {
             @Override
             public void callJavaScript(String functionName, String... args) {
                 OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
@@ -1603,8 +1654,12 @@ public class OpencodeBuddyChatWindow {
 
     public SessionCallbackAdapter createCallbackAdapter(String targetSessionId, StreamMessageCoalescer coalescer) {
         StreamMessageCoalescer effectiveCoalescer = coalescer != null ? coalescer : getStreamCoalescer(targetSessionId);
+        String tabRefId = com.opencodebuddy.tab.SessionId.tryParse(targetSessionId) == null
+                ? targetSessionId : null;
+        String initialIdentity = com.opencodebuddy.tab.SessionId.tryParse(targetSessionId) != null
+                ? targetSessionId : null;
         SessionCallbackAdapter newAdapter = new SessionCallbackAdapter(
-                targetSessionId,
+                initialIdentity,
                 effectiveCoalescer,
                 new SessionCallbackAdapter.JsTarget() {
                     @Override
@@ -1614,12 +1669,22 @@ public class OpencodeBuddyChatWindow {
                 },
                 permissionHandler,
                 () -> slashCommandsFetched,
-                () -> onStreamEnded(targetSessionId)
+                () -> onStreamEnded(targetSessionId),
+                tabRefId
         ) {
+            @Override
+            public void onStreamStart() {
+                super.onStreamStart();
+                markTabStreaming(targetSessionId, true);
+            }
+
             @Override
             public void onSessionIdReceived(String newSessionId) {
                 super.onSessionIdReceived(newSessionId);
-                if (targetSessionId != null && !targetSessionId.equals(newSessionId)) {
+                if (tabRefId != null) {
+                    bindTabSession(tabRefId, newSessionId, this);
+                } else if (targetSessionId != null && !targetSessionId.equals(newSessionId)) {
+                    // Legacy session-only path (history load without a tab id).
                     OpencodeSession existingSession = sessions.remove(targetSessionId);
                     if (existingSession != null) {
                         sessions.put(newSessionId, existingSession);
@@ -1628,10 +1693,8 @@ public class OpencodeBuddyChatWindow {
                     if (existingAdapter != null) {
                         sessionAdapters.put(newSessionId, existingAdapter);
                     }
-                    // Re-key the data-plane sink: from here on the daemon stamps
-                    // the NEW id, and the old key must not keep receiving lines.
-                    if (OpencodeBuddyChatWindow.this.daemonBridge != null) {
-                        OpencodeBuddyChatWindow.this.daemonBridge.unregisterSessionSink(targetSessionId);
+                    if (daemonBridge != null) {
+                        daemonBridge.unregisterSessionSink(targetSessionId);
                     }
                     if (existingSession != null) {
                         bindSessionSink(newSessionId, existingSession);
@@ -1639,6 +1702,7 @@ public class OpencodeBuddyChatWindow {
                     StreamMessageCoalescer existingCoalescer = sessionCoalescers.remove(targetSessionId);
                     if (existingCoalescer != null) {
                         sessionCoalescers.put(newSessionId, existingCoalescer);
+                        existingCoalescer.setSessionId(newSessionId);
                     }
                     if (handlerContext != null) {
                         handlerContext.removeSession(targetSessionId);
@@ -1646,11 +1710,11 @@ public class OpencodeBuddyChatWindow {
                             handlerContext.registerSession(newSessionId, existingSession);
                         }
                     }
-                }
-                if (activeSessionId == null || activeSessionId.equals(targetSessionId)) {
-                    sessionId = newSessionId;
-                    activeSessionId = newSessionId;
-                    persistTabSessionState();
+                    if (activeSessionId == null || activeSessionId.equals(targetSessionId)) {
+                        sessionId = newSessionId;
+                        activeSessionId = newSessionId;
+                        persistTabSessionState();
+                    }
                 }
             }
         };
@@ -1660,10 +1724,150 @@ public class OpencodeBuddyChatWindow {
         return newAdapter;
     }
 
+    /**
+     * Completes the non-atomic-looking part of a tab's first send: resources
+     * already exist on the TabRecord, and the canonical id arrives from the
+     * daemon. All indexes are updated in one place.
+     */
+    /**
+     * Bind a history-loaded session to the tab that requested it. The loader
+     * hydrates the transcript separately; this method only makes the routing
+     * pointers authoritative so late deltas never land in another tab.
+     */
+    public void bindHistorySession(
+            String tabId,
+            String canonicalSessionId,
+            OpencodeSession session,
+            SessionCallbackAdapter adapter,
+            StreamMessageCoalescer coalescer
+    ) {
+        if (tabId == null || tabId.isBlank()) {
+            registerSession(canonicalSessionId, session, adapter, coalescer);
+            TabRecord bySession = tabRegistry.findBySession(canonicalSessionId);
+            if (bySession != null) {
+                activateTab(bySession.getTabId().value());
+            } else {
+                this.session = session;
+                this.sessionId = canonicalSessionId;
+                this.activeSessionId = canonicalSessionId;
+                if (adapter != null) {
+                    this.sessionCallbackAdapter = adapter;
+                }
+                if (coalescer != null) {
+                    this.streamCoalescer = coalescer;
+                }
+                if (handlerContext != null) {
+                    handlerContext.setSession(session);
+                }
+            }
+            return;
+        }
+        if (session == null) {
+            return;
+        }
+        TabId stableTabId = TabId.of(tabId);
+        TabRecord record = tabRegistry.create(stableTabId,
+                session.getCwd() != null ? session.getCwd()
+                        : (project != null ? project.getBasePath() : null));
+        if (record.getSessionId() != null
+                && !record.getSessionIdString().equals(canonicalSessionId)) {
+            throw new IllegalStateException("tab " + tabId + " is already bound to "
+                    + record.getSessionIdString());
+        }
+
+        SessionCallbackAdapter effectiveAdapter = adapter != null
+                ? adapter : record.getAdapter();
+        if (effectiveAdapter == null) {
+            effectiveAdapter = sessionAdapters.get(canonicalSessionId);
+        }
+        StreamMessageCoalescer effectiveCoalescer = coalescer != null
+                ? coalescer : record.getCoalescer();
+        if (effectiveCoalescer == null) {
+            effectiveCoalescer = sessionCoalescers.get(canonicalSessionId);
+        }
+
+        registerSession(canonicalSessionId, session, effectiveAdapter, effectiveCoalescer);
+        tabRegistry.bind(stableTabId, canonicalSessionId, session,
+                effectiveAdapter, effectiveCoalescer);
+        tabRegistry.markLoadingHistory(stableTabId);
+        if (handlerContext != null) {
+            handlerContext.removeSession(tabId);
+        }
+        activateTab(tabId);
+        LOG.info("[History] Bound session " + canonicalSessionId + " to tab " + tabId);
+    }
+
+    private void bindTabSession(String tabId, String canonicalSessionId, SessionCallbackAdapter adapter) {
+        TabId stableTabId = TabId.of(tabId);
+        TabRecord record = tabRegistry.get(stableTabId);
+        if (record == null || record.isClosed()) {
+            return;
+        }
+        OpencodeSession boundSession = record.getSession() != null ? record.getSession() : getSession(tabId);
+        if (boundSession == null) {
+            LOG.warn("[Tab] Cannot bind " + canonicalSessionId + " to " + tabId + ": no session object");
+            return;
+        }
+        StreamMessageCoalescer boundCoalescer = record.getCoalescer() != null
+                ? record.getCoalescer() : getStreamCoalescer(tabId);
+        SessionCallbackAdapter boundAdapter = adapter != null ? adapter : record.getAdapter();
+
+        tabRegistry.bind(stableTabId, canonicalSessionId, boundSession, boundAdapter, boundCoalescer);
+
+        if (boundAdapter != null) {
+            boundAdapter.setSessionId(canonicalSessionId);
+        }
+        if (boundCoalescer != null) {
+            boundCoalescer.setSessionId(canonicalSessionId);
+        }
+        bindSessionSink(canonicalSessionId, boundSession);
+
+        // Transitional mirrors used by legacy lookup paths. The registry is
+        // authoritative; these maps exist only until the remaining handlers are
+        // migrated to TabRegistry.
+        sessions.remove(tabId);
+        sessions.put(canonicalSessionId, boundSession);
+        if (boundAdapter != null) {
+            sessionAdapters.remove(tabId);
+            sessionAdapters.put(canonicalSessionId, boundAdapter);
+        }
+        if (boundCoalescer != null) {
+            sessionCoalescers.remove(tabId);
+            sessionCoalescers.put(canonicalSessionId, boundCoalescer);
+        }
+        if (handlerContext != null) {
+            handlerContext.removeSession(tabId);
+            handlerContext.registerSession(canonicalSessionId, boundSession);
+        }
+
+        if (activeTabId == null || activeTabId.equals(tabId) || activeSessionId == null) {
+            this.session = boundSession;
+            this.activeSessionId = canonicalSessionId;
+            this.sessionId = canonicalSessionId;
+            if (handlerContext != null) {
+                handlerContext.setSession(boundSession);
+            }
+            persistTabSessionState();
+        }
+        LOG.info("[Tab] bound " + tabId + " -> " + canonicalSessionId);
+    }
+
     public void registerSession(String targetSessionId, OpencodeSession s, SessionCallbackAdapter adapter, StreamMessageCoalescer coalescer) {
         if (targetSessionId == null || targetSessionId.isBlank()) {
             return;
         }
+        boolean canonical = com.opencodebuddy.tab.SessionId.tryParse(targetSessionId) != null;
+        if (!canonical) {
+            TabRecord record = tabRegistry.create(TabId.of(targetSessionId),
+                    s != null ? s.getCwd() : (project != null ? project.getBasePath() : null));
+            record.setProvisionalResources(s, adapter, coalescer);
+            tabRegistry.markCreating(TabId.of(targetSessionId));
+            if (s != null && handlerContext != null) {
+                handlerContext.registerSession(targetSessionId, s);
+            }
+            return;
+        }
+
         if (s != null) {
             sessions.put(targetSessionId, s);
             if (handlerContext != null) {
@@ -1672,17 +1876,13 @@ public class OpencodeBuddyChatWindow {
             bindSessionSink(targetSessionId, s);
         }
         if (adapter != null) {
-            // Backfill the adapter's identity. It is constructed before the
-            // daemon reports the canonical opencode id, and until it is filled
-            // every session-scoped callback is dropped (by design) rather than
-            // mis-routed to the active tab.
-            if (adapter.getSessionId() == null || adapter.getSessionId().isBlank()
-                    || !targetSessionId.equals(adapter.getSessionId())) {
+            if (adapter.getSessionId() == null || adapter.getSessionId().isBlank()) {
                 adapter.setSessionId(targetSessionId);
             }
             sessionAdapters.put(targetSessionId, adapter);
         }
         if (coalescer != null) {
+            coalescer.setSessionId(targetSessionId);
             sessionCoalescers.put(targetSessionId, coalescer);
         }
     }
@@ -1702,49 +1902,6 @@ public class OpencodeBuddyChatWindow {
             return;
         }
         daemonBridge.registerSessionSink(sessionId, s.getStreamRouter());
-    }
-
-    public void switchSession(String targetSessionId) {
-        if (targetSessionId == null || targetSessionId.isBlank()) {
-            return;
-        }
-        activeSessionId = targetSessionId;
-        OpencodeSession targetSession = getSession(targetSessionId);
-        if (targetSession != null) {
-            this.session = targetSession;
-            this.sessionId = resolveExposedSessionId(targetSession.getSessionId(), this.permissionServiceKey);
-            // Keep the handler context pointed at the same object. Handlers resolve
-            // "the current session" through it (`ModelProviderHandler.handleSetModel`
-            // calls `context.getSession()`), so a stale entry silently writes the new
-            // model / reasoning effort onto the *previously* active session — the
-            // user changes the model, the host logs the change, and the next turn
-            // still runs on the old one.
-            if (handlerContext != null) {
-                handlerContext.setSession(targetSession);
-            }
-            SessionCallbackAdapter adapter = sessionAdapters.get(targetSessionId);
-            if (adapter != null) {
-                this.sessionCallbackAdapter = adapter;
-            }
-            StreamMessageCoalescer coalescer = sessionCoalescers.get(targetSessionId);
-            if (coalescer != null) {
-                this.streamCoalescer = coalescer;
-            }
-            persistTabSessionState();
-            hydrateSessionToWebview(targetSession);
-
-            if (!targetSession.isBusy()) {
-                targetSession.reconcileWithServer().thenAccept(updated -> {
-                    if (Boolean.TRUE.equals(updated)) {
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
-                            if (!disposed && targetSessionId.equals(activeSessionId)) {
-                                hydrateSessionToWebview(targetSession);
-                            }
-                        });
-                    }
-                });
-            }
-        }
     }
 
     public void hydrateSessionToWebview(OpencodeSession targetSession) {
@@ -1780,25 +1937,56 @@ public class OpencodeBuddyChatWindow {
         if (targetSessionId == null || targetSessionId.isBlank()) {
             return;
         }
-        sessions.remove(targetSessionId);
-        if (daemonBridge != null) {
-            // Symmetric teardown: the sink holds this session's parser + handler,
-            // so a missing unregister is a leak per closed tab.
-            daemonBridge.unregisterSessionSink(targetSessionId);
+        TabRecord record = tabRegistry.get(TabId.of(targetSessionId));
+        if (record == null) {
+            record = tabRegistry.findBySession(targetSessionId);
         }
-        SessionCallbackAdapter adapter = sessionAdapters.remove(targetSessionId);
+        String canonicalSessionId = record != null ? record.getSessionIdString() : null;
+        String tabKey = record != null ? record.getTabId().value() : targetSessionId;
+        SessionCallbackAdapter closedAdapter = record != null ? record.getAdapter() : null;
+        StreamMessageCoalescer closedCoalescer = record != null ? record.getCoalescer() : null;
+        if (canonicalSessionId != null && permissionHandler != null) {
+            permissionHandler.clearPendingRequests(canonicalSessionId);
+        }
+
+        if (record != null) {
+            tabRegistry.close(record.getTabId());
+        } else {
+            sessions.remove(targetSessionId);
+        }
+        if (canonicalSessionId != null && daemonBridge != null) {
+            daemonBridge.unregisterSessionSink(canonicalSessionId);
+        }
+        if (daemonBridge != null) {
+            daemonBridge.unregisterSessionSink(tabKey);
+        }
+        SessionCallbackAdapter adapter = closedAdapter != null
+                ? closedAdapter : sessionAdapters.remove(targetSessionId);
         if (adapter != null) {
             adapter.dispose();
         }
-        StreamMessageCoalescer coalescer = sessionCoalescers.remove(targetSessionId);
+        StreamMessageCoalescer coalescer = closedCoalescer != null
+                ? closedCoalescer : sessionCoalescers.remove(targetSessionId);
         if (coalescer != null) {
             coalescer.dispose();
         }
-        // Pending permission prompts of a closed tab must not linger: they keep a
-        // sessionId + directory alive and would otherwise only disappear on cap.
-        OpencodePermissionRegistry.clearSession(targetSessionId);
+        if (canonicalSessionId != null) {
+            sessions.remove(canonicalSessionId);
+            sessionAdapters.remove(canonicalSessionId);
+            sessionCoalescers.remove(canonicalSessionId);
+            OpencodePermissionRegistry.clearSession(canonicalSessionId);
+        }
         if (handlerContext != null) {
-            handlerContext.removeSession(targetSessionId);
+            if (canonicalSessionId != null) {
+                handlerContext.removeSession(canonicalSessionId);
+            }
+            handlerContext.removeSession(tabKey);
+        }
+        if (tabKey.equals(activeTabId)) {
+            activeTabId = null;
+            activeSessionId = null;
+            sessionId = null;
+            sessionCallbackAdapter = null;
         }
     }
 
@@ -2660,12 +2848,11 @@ public class OpencodeBuddyChatWindow {
     // ==================== Session Delegates ====================
 
     private void setupSessionCallbacks() {
-        // Re-sync the exposed sessionId with the freshly bound session so a stale
-        // AI session ID from a previous session is not exposed via getSessionId().
-        // Falling back to permissionServiceKey (never null after construction)
-        // keeps the exposed ID stable for consumers that skip floating-window
-        // registration on a null ID.
-        this.sessionId = resolveExposedSessionId(session.getSessionId(), this.permissionServiceKey);
+        // A fresh window has no canonical session. Never expose the legacy
+        // permission-service key as a session id: doing so created a pseudo
+        // session that outlived the first real send.
+        this.sessionId = session.getSessionId() != null && !session.getSessionId().isBlank()
+                ? session.getSessionId() : null;
 
         if (this.sessionCallbackAdapter != null) {
             this.sessionCallbackAdapter.deactivate();
@@ -2693,9 +2880,6 @@ public class OpencodeBuddyChatWindow {
         session.setCallback(sessionCallbackAdapter);
 
         String curId = session.getSessionId();
-        if (curId == null || curId.isBlank()) {
-            curId = this.sessionId;
-        }
         if (curId != null && !curId.isBlank()) {
             registerSession(curId, session, sessionCallbackAdapter, streamCoalescer);
             activeSessionId = curId;
@@ -3007,15 +3191,26 @@ public class OpencodeBuddyChatWindow {
         if (sessionId == null) {
             return false;
         }
-        if (sessions.containsKey(sessionId)) {
+        if (tabRegistry.findBySession(sessionId) != null) {
             return true;
         }
         OpencodeSession current = session;
-        if (current == null) {
-            return false;
+        return current != null && sessionId.equals(current.getSessionId());
+    }
+
+    private void markTabStreaming(String targetSessionId, boolean streaming) {
+        TabRecord record = null;
+        if (targetSessionId != null && !targetSessionId.isBlank()) {
+            record = tabRegistry.get(TabId.of(targetSessionId));
+            if (record == null) {
+                record = tabRegistry.findBySession(targetSessionId);
+            }
+        } else if (activeTabId != null) {
+            record = tabRegistry.get(TabId.of(activeTabId));
         }
-        String currentId = current.getSessionId();
-        return sessionId.equals(currentId) || sessionId.equals(permissionServiceKey);
+        if (record != null) {
+            tabRegistry.markStreaming(record.getTabId(), streaming);
+        }
     }
 
     private void onStreamEnded() {
@@ -3023,6 +3218,7 @@ public class OpencodeBuddyChatWindow {
     }
 
     private void onStreamEnded(String targetSessionId) {
+        markTabStreaming(targetSessionId, false);
         OpencodeSession target = targetSessionId != null ? getSession(targetSessionId) : this.session;
         if (target == null) {
             target = this.session;
@@ -3101,18 +3297,6 @@ public class OpencodeBuddyChatWindow {
         TabStateService.getInstance(project).saveTabSessionState(tabIndex, snapshot);
 
 
-    }
-
-    /**
-     * Decide what {@link #getSessionId()} exposes after session callbacks are
-     * (re-)bound: the bound session's own ID when it has one (history load),
-     * otherwise the stable permission-service key (fresh session) — never a
-     * stale ID left over from a previously bound session.
-     */
-    static String resolveExposedSessionId(String boundSessionId, String permissionServiceKey) {
-        return boundSessionId != null && !boundSessionId.trim().isEmpty()
-                ? boundSessionId
-                : permissionServiceKey;
     }
 
     // ==================== Code Snippets ====================
@@ -3235,6 +3419,7 @@ public class OpencodeBuddyChatWindow {
         }
         sessionAdapters.clear();
         sessions.clear();
+        tabRegistry.clear();
         if (sessionCallbackAdapter != null) {
             sessionCallbackAdapter.dispose();
         }
@@ -3245,19 +3430,6 @@ public class OpencodeBuddyChatWindow {
                 LOG.warn("Failed to remove daemon event listener: " + e.getMessage());
             }
             titleEventListener = null;
-        }
-
-        try {
-            if (this.permissionServiceKey != null && !this.permissionServiceKey.isEmpty()) {
-                PermissionService permissionService = PermissionService.getInstance(project, this.permissionServiceKey);
-                permissionService.unregisterDialogShower(project);
-                permissionService.unregisterAskUserQuestionDialogShower(project);
-                permissionService.unregisterPlanApprovalDialogShower(project);
-                PermissionService.removeInstance(this.permissionServiceKey);
-                LOG.info("Removed PermissionService instance for key: " + this.permissionServiceKey);
-            }
-        } catch (Exception e) {
-            LOG.warn("Failed to unregister dialog showers or remove session instance: " + e.getMessage());
         }
 
         LOG.info("Starting window resource cleanup, project: " + project.getName());
@@ -3644,7 +3816,7 @@ public class OpencodeBuddyChatWindow {
 
             @Override
             public java.util.List<String> getHostedSessionIds() {
-                return new java.util.ArrayList<>(sessionCoalescers.keySet());
+                return tabRegistry.liveSessionIds();
             }
 
             @Override
@@ -3658,8 +3830,8 @@ public class OpencodeBuddyChatWindow {
             }
 
             @Override
-            public void switchSession(String targetSessionId) {
-                OpencodeBuddyChatWindow.this.switchSession(targetSessionId);
+            public void activateTab(String tabId) {
+                OpencodeBuddyChatWindow.this.activateTab(tabId);
             }
 
             @Override

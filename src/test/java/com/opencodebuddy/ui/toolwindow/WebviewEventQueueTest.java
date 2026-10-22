@@ -14,6 +14,17 @@ import static org.junit.Assert.assertTrue;
 public class WebviewEventQueueTest {
 
     @Test
+    public void routesCallsThroughTheUnifiedDispatcherWithDirectFallback() {
+        WebviewEventQueue.JsCall<Object> call = new WebviewEventQueue.JsCall<>(
+                new Object(), "onTodoUpdated", new String[]{"ses_1", "[]"}, null);
+
+        String script = WebviewEventQueue.buildBatchScript(List.of(call));
+
+        assertTrue(script.contains("window.__opencodeDispatch('onTodoUpdated', ['ses_1', '[]'])"));
+        assertTrue(script.contains("window.onTodoUpdated('ses_1', '[]')"));
+    }
+
+    @Test
     public void mergesAdjacentContentDeltasIntoOneOrderedCall() {
         AtomicReference<Object> browser = new AtomicReference<>(new Object());
         AtomicBoolean disposed = new AtomicBoolean();
@@ -29,6 +40,25 @@ public class WebviewEventQueueTest {
 
         assertEquals(1, scripts.size());
         assertTrue(scripts.get(0).contains("window.onContentDelta('ab')"));
+        queue.dispose();
+    }
+
+    @Test
+    public void coalescesALargeDeltaBurstIntoOneBoundedDispatch() {
+        AtomicReference<Object> browser = new AtomicReference<>(new Object());
+        AtomicBoolean disposed = new AtomicBoolean();
+        List<Runnable> scheduled = new ArrayList<>();
+        List<String> scripts = new ArrayList<>();
+        WebviewEventQueue<Object> queue = newQueue(browser, disposed, scheduled, scripts);
+
+        for (int i = 0; i < 5_000; i++) {
+            queue.enqueue("onContentDelta", "x");
+        }
+
+        assertEquals(1, scheduled.size());
+        scheduled.remove(0).run();
+        assertEquals(1, scripts.size());
+        assertTrue(scripts.get(0).contains("window.__opencodeDispatch('onContentDelta'"));
         queue.dispose();
     }
 

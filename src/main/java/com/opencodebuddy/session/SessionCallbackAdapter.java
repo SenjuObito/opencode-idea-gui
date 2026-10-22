@@ -40,6 +40,8 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     private final Alarm streamEndFallbackAlarm;
     private volatile boolean active = true;
     private volatile String sessionId;
+    /** Stable UI tab that owns this adapter. Empty for legacy/session-only paths. */
+    private final String tabId;
     /** Lock making deactivate() atomic with onMessageUpdate()'s active-check-then-enqueue. */
     private final Object lifecycleLock = new Object();
     /** Guards against duplicate onStreamEnd delivery from dual-path dispatch. */
@@ -65,7 +67,21 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             BooleanSupplier slashCommandsFetchedSupplier,
             Runnable streamEndCallback
     ) {
+        this(sessionId, streamCoalescer, jsTarget, permissionHandler,
+                slashCommandsFetchedSupplier, streamEndCallback, null);
+    }
+
+    public SessionCallbackAdapter(
+            String sessionId,
+            StreamMessageCoalescer streamCoalescer,
+            JsTarget jsTarget,
+            PermissionHandler permissionHandler,
+            BooleanSupplier slashCommandsFetchedSupplier,
+            Runnable streamEndCallback,
+            String tabId
+    ) {
         this.sessionId = sessionId;
+        this.tabId = tabId;
         this.streamCoalescer = streamCoalescer;
         // Propagate immediately: the coalescer stamps its own session id onto
         // every updateMessages it pushes, and an un-stamped snapshot is now
@@ -256,7 +272,11 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("setSessionId", JsUtils.escapeJs(sessionId), JsUtils.escapeJs(oldSessionId != null ? oldSessionId : ""));
+            jsTarget.callJavaScript(
+                    "setSessionId",
+                    JsUtils.escapeJs(sessionId),
+                    JsUtils.escapeJs(oldSessionId != null ? oldSessionId : ""),
+                    JsUtils.escapeJs(tabId != null ? tabId : ""));
         });
     }
 

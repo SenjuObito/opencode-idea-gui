@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage } from '../types';
 import type { ContextInfo } from './useWindowCallbacks';
 import type { TabScrollState } from './useScrollBehavior';
 import type { SessionTabData } from '../components/ChatHeader/types';
+import type { TabType } from '../components/StatusPanel/types';
+import { TabStore, createTabId } from '../store/tabStore';
+import { TabRuntimeStore } from '../store/tabRuntimeStore';
+import { TabDraftStore } from '../store/tabDraftStore';
 import type { ModelInfo, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { getFirstPreferredModelId, resolveSessionModel } from '../components/ChatInputBox/modelSelectUtils';
 import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
@@ -15,7 +19,6 @@ import {
   clearStreamingRuntime,
   restoreStreamingRuntime,
   type StreamingRuntimeRefs,
-  type StreamingRuntimeSnapshot,
 } from '../utils/streamingRuntime';
 
 interface UseSessionTabsOptions {
@@ -158,7 +161,7 @@ export function useSessionTabs({
   restoreScrollState,
   t,
 }: UseSessionTabsOptions) {
-  const [tabs, setTabs] = useState<SessionTabData[]>([
+  const [tabStore] = useState(() => new TabStore([
     {
       id: 'tab-1',
       sessionId: null,
@@ -171,13 +174,22 @@ export function useSessionTabs({
       reasoningEffort: reasoningEffort || 'default',
       filteredFileChanges: [],
       contextInfo: contextInfo ?? null,
+      statusPanelExpanded: true,
+      statusPanelTab: null,
       turnStartedAt: loadingStartTime ?? null,
       usagePercentage: usagePercentage ?? 0,
       usageUsedTokens: usageUsedTokens,
       usageMaxTokens: usageMaxTokens,
     },
-  ]);
-  const [activeTabId, setActiveTabId] = useState<string>('tab-1');
+  ], 'tab-1'));
+  const tabs = useSyncExternalStore(tabStore.subscribe, tabStore.getTabs, tabStore.getTabs);
+  const activeTabId = useSyncExternalStore(
+    tabStore.subscribe,
+    tabStore.getActiveTabId,
+    tabStore.getActiveTabId,
+  );
+  const setTabs = tabStore.setTabs;
+  const setActiveTabId = tabStore.setActiveTabId;
   const historyLoadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -206,7 +218,8 @@ export function useSessionTabs({
    * tab object (`{...tab}`), so embedding a 10-field snapshot there would make
    * that hot path copy it on every delta.
    */
-  const runtimeSnapshotsRef = useRef<Map<string, StreamingRuntimeSnapshot>>(new Map());
+  const [runtimeStore] = useState(() => new TabRuntimeStore());
+  const [draftStore] = useState(() => new TabDraftStore());
 
   // Real-time runtime state ref to completely eliminate stale closures when saving snapshots
   const runtimeStateRef = useRef({
@@ -415,6 +428,48 @@ export function useSessionTabs({
     return true;
   }, []);
 
+  /**
+   * Update one tab by its stable tab id. Events that already carry a tabId use
+   * this directly instead of searching by sessionId: a tab may not be bound yet,
+   * and a background event must never fall through to the active tab.
+   */
+  const updateTab = useCallback((tabId: string, updater: (tab: SessionTabData) => void): boolean => {
+    if (!tabId) return false;
+    const matched = tabsRef.current.some((tab) => tab.id === tabId);
+    if (!matched) return false;
+    setTabs((prev) => {
+      const idx = prev.findIndex((tab) => tab.id === tabId);
+      if (idx === -1) return prev;
+      const next = prev.slice();
+      const clone = { ...next[idx] };
+      updater(clone);
+      next[idx] = clone;
+      return next;
+    });
+    return true;
+  }, []);
+
+  /** Apply a cleanup to every tab. Used by force-close signals that carry no tab id. */
+  const updateAllTabs = useCallback((updater: (tab: SessionTabData) => void) => {
+    setTabs((prev) => prev.map((tab) => {
+      const clone = { ...tab };
+      updater(clone);
+      return clone;
+    }));
+  }, []);
+
+  const getTabIdForSession = useCallback((sessionId: string | null | undefined): string | null => {
+    if (!sessionId) return null;
+    const match = tabsRef.current.find(
+      (tab) => tab.sessionId === sessionId || tab.id === sessionId,
+    );
+    return match?.id ?? null;
+  }, []);
+
+  const isActiveTab = useCallback((tabId: string | null | undefined): boolean => {
+    return !!tabId && tabId === activeTabIdRef.current;
+  }, []);
+
   const updateTabSessionId = useCallback((tabId: string, sessionId: string) => {
     setTabs((prev) =>
       prev.map((tab) => {
@@ -461,29 +516,6 @@ export function useSessionTabs({
     }
   }, []);
 
-  const claimUnboundTab = useCallback((targetSessionId: string): boolean => {
-    if (!targetSessionId) return false;
-    const tabs = tabsRef.current;
-    if (tabs.some((t) => t.sessionId === targetSessionId)) {
-      return false; // already belongs to a known tab
-    }
-    // Prioritize currently active tab if it has no sessionId bound yet
-    const activeTab = tabs.find((t) => t.id === activeTabIdRef.current);
-    const unbound = (activeTab && !activeTab.sessionId)
-      ? activeTab
-      : tabs.find((t) => !t.sessionId);
-    if (!unbound) return false;
-    unbound.sessionId = targetSessionId;
-    if (activeTabIdRef.current === unbound.id) {
-      if (currentSessionIdRef) {
-        currentSessionIdRef.current = targetSessionId;
-      }
-      setCurrentSessionId?.(targetSessionId);
-    }
-    setTabs([...tabs]);
-    return true;
-  }, [currentSessionIdRef, setCurrentSessionId]);
-
   useEffect(() => {
     window.__sessionTabsStore = {
       getActiveTabId: () => activeTabIdRef.current,
@@ -499,19 +531,23 @@ export function useSessionTabs({
         return cur?.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
       },
       getTabs: () => tabsRef.current,
+      getDrafts: () => draftStore.getAll(),
       isActiveSession,
+      isActiveTab,
+      getTabIdForSession,
+      updateTab,
+      updateAllTabs,
       updateBackgroundTab,
       updateTabSessionId,
       updateTabTitle,
       closeTabBySessionId,
-      claimUnboundTab,
       archiveActiveStreamingRuntime,
       clearStreamingRuntimeFor,
     };
     return () => {
       delete window.__sessionTabsStore;
     };
-  }, [isActiveSession, updateBackgroundTab, updateTabSessionId, updateTabTitle, closeTabBySessionId, claimUnboundTab]);
+  }, [isActiveSession, isActiveTab, getTabIdForSession, updateTab, updateAllTabs, updateBackgroundTab, updateTabSessionId, updateTabTitle, closeTabBySessionId, draftStore]);
 
   // Helper: Save current active tab snapshot using real-time runtimeStateRef
   // The ref bag is passed in as a plain object, so pin it in a ref to keep the
@@ -525,14 +561,14 @@ export function useSessionTabs({
   const archiveStreamingRuntime = useCallback((tabId: string) => {
     const refs = streamingRuntimeRefsRef.current;
     if (!refs) return;
-    runtimeSnapshotsRef.current.set(tabId, captureStreamingRuntime(refs));
-  }, []);
+    runtimeStore.set(tabId, captureStreamingRuntime(refs));
+  }, [runtimeStore]);
 
   /** Load the tab's archived runtime, or the default if it never streamed. */
   const restoreStreamingRuntimeFor = useCallback((tabId: string, streamingHint?: boolean) => {
     const refs = streamingRuntimeRefsRef.current;
     if (!refs) return;
-    const snapshot = runtimeSnapshotsRef.current.get(tabId);
+    const snapshot = runtimeStore.get(tabId);
     if (snapshot) {
       restoreStreamingRuntime(refs, snapshot);
       return;
@@ -544,7 +580,7 @@ export function useSessionTabs({
     if (streamingHint) {
       refs.isStreamingRef.current = true;
     }
-  }, []);
+  }, [runtimeStore]);
 
   /**
    * Exposed so `beginSessionTransition` can archive before it wipes the refs.
@@ -562,8 +598,8 @@ export function useSessionTabs({
   const clearStreamingRuntimeFor = useCallback((sessionId: string) => {
     if (!sessionId) return;
     const owner = tabsRef.current.find((tab) => tab.sessionId === sessionId);
-    if (owner) runtimeSnapshotsRef.current.delete(owner.id);
-  }, []);
+    if (owner) runtimeStore.delete(owner.id);
+  }, [runtimeStore]);
 
   /**
    * Point the host at a tab's session. Must run BEFORE any per-session bridge
@@ -574,9 +610,9 @@ export function useSessionTabs({
    * window-level notifications. Keeping it aligned avoids those observing the
    * outgoing tab. Tabs without a session are skipped: they have no host target.
    */
-  const syncHostSessionTo = useCallback((sessionId: string | null | undefined) => {
-    if (!sessionId) return;
-    sendBridgeEvent('switch_session', JSON.stringify({ sessionId }));
+  const syncHostActiveTabTo = useCallback((tabId: string | null | undefined) => {
+    if (!tabId) return;
+    sendBridgeEvent('tab_activate', JSON.stringify({ tabId }));
   }, []);
 
   /**
@@ -627,7 +663,7 @@ export function useSessionTabs({
           if (known.has(sessionId)) continue;
           known.add(sessionId);
           additions.push({
-            id: `tab-${Date.now()}-${additions.length}`,
+            id: createTabId(),
             sessionId,
             // The real title arrives with the transcript; a short id prefix keeps
             // the tab identifiable in the meantime.
@@ -688,7 +724,7 @@ export function useSessionTabs({
       }
 
       const currentDraftText = chatInputRef?.current?.getValue?.() ?? '';
-      currentActive.draft = {
+      draftStore.set(currentActive.id, {
         text: currentDraftText,
         // Attachments and file tags live inside the input box (uncontrolled
         // mode), so they must be pulled out explicitly — writing an empty array
@@ -696,7 +732,7 @@ export function useSessionTabs({
         attachments: chatInputRef?.current?.getAttachments?.() ?? [],
         fileTags: chatInputRef?.current?.getFileTags?.() ?? [],
         quotes: chatInputRef?.current?.getQuotes?.() ?? {},
-      };
+      });
       if (window.__dialogStore) {
         const dialogSnap = window.__dialogStore.getSnapshot();
         currentActive.pendingPermissions = dialogSnap.permissions;
@@ -707,7 +743,7 @@ export function useSessionTabs({
       // background turn keeps accumulating into this tab, not into the next one.
       archiveStreamingRuntime(currentActive.id);
     }
-  }, [chatInputRef, archiveStreamingRuntime, captureScrollState]);
+  }, [chatInputRef, archiveStreamingRuntime, captureScrollState, draftStore]);
 
   // Select tab (pure view switch: preserves background generation, never interrupts)
   const selectTab = useCallback(
@@ -740,10 +776,9 @@ export function useSessionTabs({
         releaseSessionTransition();
       }
 
-      // Switch the host's session first: every per-session bridge call below
-      // (mode / model / reasoning effort) is applied to whatever session the
-      // window currently points at.
-      syncHostSessionTo(targetTab.sessionId);
+      // Activate the target tab first so window-level host notifications see
+      // the tab the user is switching to.
+      syncHostActiveTabTo(targetTab.id);
 
       // Restore target tab's snapshot into active view
       if (currentSessionIdRef) {
@@ -818,10 +853,11 @@ export function useSessionTabs({
       // then file tags — `restoreFileTags` re-renders chips out of the restored
       // text, so it has to run last.
       if (chatInputRef?.current?.setValue) {
-        chatInputRef.current.setValue(targetTab.draft?.text ?? '');
-        chatInputRef.current.setAttachments?.(targetTab.draft?.attachments ?? []);
-        chatInputRef.current.restoreFileTags?.(targetTab.draft?.fileTags ?? []);
-        chatInputRef.current.restoreQuoteTags?.(targetTab.draft?.quotes ?? {});
+        const draft = draftStore.get(targetTab.id);
+        chatInputRef.current.setValue(draft?.text ?? '');
+        chatInputRef.current.setAttachments?.(draft?.attachments ?? []);
+        chatInputRef.current.restoreFileTags?.(draft?.fileTags ?? []);
+        chatInputRef.current.restoreQuoteTags?.(draft?.quotes ?? {});
       }
 
       // Switching tabs must NEVER show "loading history session" in status bar
@@ -846,7 +882,7 @@ export function useSessionTabs({
       saveCurrentTabSnapshot,
       restoreStreamingRuntimeFor,
       restoreScrollState,
-      syncHostSessionTo,
+      syncHostActiveTabTo,
       syncPermissionModeTo,
       setCurrentSessionId,
       setCustomSessionTitle,
@@ -874,6 +910,7 @@ export function useSessionTabs({
       availableModels,
       setSessionLoading,
       chatInputRef,
+      draftStore,
     ]
   );
 
@@ -944,7 +981,7 @@ export function useSessionTabs({
         // Create new tab for this history session
         saveCurrentTabSnapshot();
 
-        const newId = `tab-${Date.now()}`;
+        const newId = createTabId();
         const newTab: SessionTabData = {
           id: newId,
           sessionId,
@@ -976,7 +1013,7 @@ export function useSessionTabs({
       }
 
       // Point the host at this session before the mode/model calls below.
-      syncHostSessionTo(sessionId);
+      syncHostActiveTabTo(activeTabIdRef.current);
 
       // 同步 Tab 标题到 IDE ToolWindow，切换历史会话 Tab 时跟随标签页标题
       sendBridgeEvent('update_tab_title', resolvedTitle);
@@ -1035,7 +1072,7 @@ export function useSessionTabs({
       if (loadHistorySession) {
         loadHistorySession(sessionId);
       } else {
-        sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
+        sendBridgeEvent('load_session', JSON.stringify({ sessionId, tabId: activeTabIdRef.current }));
       }
     },
     [
@@ -1045,6 +1082,7 @@ export function useSessionTabs({
       messages,
       defaultAutoOpenFileEnabled,
       loadHistorySession,
+      syncHostActiveTabTo,
       t,
       currentProvider,
       availableModels,
@@ -1092,7 +1130,7 @@ export function useSessionTabs({
       availableModels || [],
     ) || '';
 
-    const newId = `tab-${Date.now()}`;
+    const newId = createTabId();
     const newTab: SessionTabData = {
       id: newId,
       sessionId: null,
@@ -1167,6 +1205,7 @@ export function useSessionTabs({
 
     // 同步新 Tab 标题到 IDE ToolWindow
     sendBridgeEvent('update_tab_title', newTab.title);
+    syncHostActiveTabTo(newId);
   }, [
     saveCurrentTabSnapshot,
     restoreScrollState,
@@ -1199,7 +1238,20 @@ export function useSessionTabs({
     setSessionLoading,
     setCurrentView,
     chatInputRef,
+    syncHostActiveTabTo,
   ]);
+
+  // Expose the local tab creator to session commands (/new, /clear, header
+  // button) without making them depend on the hook instance. Creating a tab is
+  // pure UI: no host session is created until the first send.
+  useEffect(() => {
+    window.__openNewSessionTab = createTab;
+    return () => {
+      if (window.__openNewSessionTab === createTab) {
+        delete window.__openNewSessionTab;
+      }
+    };
+  }, [createTab]);
 
   // Close tab
   const closeTab = useCallback(
@@ -1215,7 +1267,8 @@ export function useSessionTabs({
       }
       // Drop the archived runtime with the tab; a recycled tab id must never
       // inherit a dead session's accumulator.
-      runtimeSnapshotsRef.current.delete(tabId);
+      runtimeStore.delete(tabId);
+      draftStore.delete(tabId);
 
       setTabs((prev) => {
         if (prev.length <= 1) {
@@ -1224,7 +1277,7 @@ export function useSessionTabs({
             availableModels || [],
           ) || '';
           const freshTab: SessionTabData = {
-            id: `tab-${Date.now()}`,
+            id: createTabId(),
             sessionId: null,
             title: t('common.newSession', { defaultValue: '新会话' }),
             messages: [],
@@ -1282,7 +1335,7 @@ export function useSessionTabs({
             setActiveTabId(nextActive.id);
             // Closing the active tab moves the view to a sibling: the host must
             // follow it, or the next turn is sent to the session we just closed.
-            syncHostSessionTo(nextActive.sessionId);
+            syncHostActiveTabTo(nextActive.id);
             if (currentSessionIdRef) {
               currentSessionIdRef.current = nextActive.sessionId;
             }
@@ -1374,6 +1427,8 @@ export function useSessionTabs({
       setUsageUsedTokens,
       setUsageMaxTokens,
       setSessionLoading,
+      runtimeStore,
+      restoreStreamingRuntimeFor,
     ]
   );
 
@@ -1423,6 +1478,24 @@ export function useSessionTabs({
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeTabAutoOpenFileEnabled = activeTab?.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
+  const statusPanelExpanded = activeTab?.statusPanelExpanded ?? true;
+  const statusPanelTab = activeTab?.statusPanelTab ?? null;
+
+  const setStatusPanelTab = useCallback((tab: TabType | null) => {
+    setTabs((prev) => prev.map((item) => (
+      item.id === activeTabIdRef.current
+        ? { ...item, statusPanelTab: tab }
+        : item
+    )));
+  }, []);
+
+  const toggleStatusPanel = useCallback(() => {
+    setTabs((prev) => prev.map((item) => (
+      item.id === activeTabIdRef.current
+        ? { ...item, statusPanelExpanded: !(item.statusPanelExpanded ?? true) }
+        : item
+    )));
+  }, []);
 
   const setActiveTabAutoOpenFileEnabled = useCallback((enabled: boolean) => {
     setTabs((prev) =>
@@ -1462,5 +1535,9 @@ export function useSessionTabs({
     openSessionInTab,
     activeTabAutoOpenFileEnabled,
     setActiveTabAutoOpenFileEnabled,
+    statusPanelExpanded,
+    statusPanelTab,
+    setStatusPanelTab,
+    toggleStatusPanel,
   };
 }

@@ -417,6 +417,49 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
   });
 
+  it('setSessionId binds the explicit owning tab id before any legacy fallback', () => {
+    const updateTabSessionId = vi.fn();
+    const activeRef = { current: null as string | null };
+    window.__sessionTabsStore = {
+      getActiveTabId: () => 'tab-active',
+      getTabs: () => [
+        { id: 'tab-active', sessionId: null },
+        { id: 'tab-bg', sessionId: null },
+      ],
+      updateTabSessionId,
+    } as any;
+    const opts = createOptions({ currentSessionIdRef: activeRef });
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      window.setSessionId!('sess-bg', '', 'tab-bg');
+    });
+
+    expect(updateTabSessionId).toHaveBeenCalledWith('tab-bg', 'sess-bg');
+    expect(activeRef.current).toBeNull();
+    expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
+  });
+
+  it('setSessionId does not adopt the active draft when the explicit tab id is unknown', () => {
+    const updateTabSessionId = vi.fn();
+    const activeRef = { current: null as string | null };
+    window.__sessionTabsStore = {
+      getActiveTabId: () => 'tab-active',
+      getTabs: () => [{ id: 'tab-active', sessionId: null }],
+      updateTabSessionId,
+    } as any;
+    const opts = createOptions({ currentSessionIdRef: activeRef });
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      window.setSessionId!('sess-unknown', '', 'tab-missing');
+    });
+
+    expect(updateTabSessionId).not.toHaveBeenCalled();
+    expect(activeRef.current).toBeNull();
+    expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
+  });
+
   it('setSessionId drops an identity no tab claims instead of switching the active session', () => {
     const updateTabSessionId = vi.fn();
     const activeRef = { current: 'sess-active' };

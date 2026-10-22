@@ -1,3 +1,6 @@
+// Unified host event dispatcher must exist before any bridge listener runs.
+import './utils/hostDispatcher';
+
 // VS Code bridge: must load before React so window.sendToJava + message
 // dispatch are installed before bridgeStartup's waitForBridge polls.
 import './vscodeBridge';

@@ -118,11 +118,6 @@ const App = () => {
   const isFirstMountRef = useRef(true);
   const chatInputRef = useRef<ChatInputBoxHandle>(null);
 
-  // StatusPanel collapse state — kept in App.tsx because forceStatusUpdate is
-  // intentionally local: a tiny re-render trigger paired with userCollapsedRef.
-  const userCollapsedRef = useRef(false);
-  const [, forceStatusUpdate] = useState(0);
-
   // Message anchor node registry for anchor rail navigation
   const messageNodeMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const [anchorCollapsedCount, setAnchorCollapsedCount] = useState(0);
@@ -1093,8 +1088,6 @@ const App = () => {
     setCurrentView('settings');
   }, [setSettingsInitialTab, setCurrentView]);
 
-  const statusPanelExpanded = !userCollapsedRef.current;
-
   // Synchronize dynamic sessionTitle to IDE ToolWindow Tab display name
   useEffect(() => {
     const isDefaultNewSession = !sessionTitle || sessionTitle === t('common.newSession');
@@ -1119,6 +1112,10 @@ const App = () => {
     openSessionInTab,
     activeTabAutoOpenFileEnabled,
     setActiveTabAutoOpenFileEnabled,
+    statusPanelExpanded,
+    statusPanelTab,
+    setStatusPanelTab,
+    toggleStatusPanel,
   } = useSessionTabs({
     currentSessionId,
     currentSessionIdRef,
@@ -1267,14 +1264,15 @@ const App = () => {
               messagesEndRef={messagesEndRef}
               inputAreaRef={inputAreaRef}
               messageNodeMapRef={messageNodeMapRef}
-              userCollapsedRef={userCollapsedRef}
               messageListRef={messageListRef}
               isAutoScrollingRef={isAutoScrollingRef}
               anchorCollapsedCount={anchorCollapsedCount}
               setAnchorCollapsedCount={setAnchorCollapsedCount}
               onMessageNodeRef={handleMessageNodeRef}
               statusPanelExpanded={statusPanelExpanded}
-              forceStatusUpdate={forceStatusUpdate}
+              statusPanelTab={statusPanelTab}
+              onStatusPanelTabChange={setStatusPanelTab}
+              onToggleStatusPanel={toggleStatusPanel}
               onUndoFile={handleUndoFile}
               onDiscardAll={onDiscardAll}
               onKeepAll={handleKeepAll}

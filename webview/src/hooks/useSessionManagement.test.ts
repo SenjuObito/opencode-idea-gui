@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import { afterEach } from 'vitest';
 import { useSessionManagement } from './useSessionManagement.js';
 import type { HistoryData } from '../types/index.js';
 
@@ -29,9 +30,14 @@ describe('useSessionManagement', () => {
     window.__sessionTransitionToken = null;
     window.__pendingSessionTransitionToast = undefined;
     window.sendToJava = vi.fn();
+    window.__openNewSessionTab = vi.fn();
   });
 
-  it('starts a clean session transition for a direct new session', () => {
+  afterEach(() => {
+    delete window.__openNewSessionTab;
+  });
+
+  it('opens a local tab for a direct new session', () => {
     const mocks = createMocks();
 
     const { result } = renderHook(() =>
@@ -49,19 +55,9 @@ describe('useSessionManagement', () => {
       result.current.createNewSession();
     });
 
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
-    expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
-    expect(mocks.setStatus).toHaveBeenCalledWith('');
-    expect(mocks.setLoading).toHaveBeenCalledWith(false);
-    expect(mocks.setIsThinking).toHaveBeenCalledWith(false);
-    expect(mocks.setStreamingActive).toHaveBeenCalledWith(false);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith(null);
-    expect(mocks.setCustomSessionTitle).toHaveBeenCalledWith(null);
-    expect(mocks.setUsagePercentage).toHaveBeenCalledWith(0);
-    expect(mocks.setUsageUsedTokens).toHaveBeenCalledWith(undefined);
-    expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
+    // No host session is created before the first send.
+    expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
+    expect(window.sendToJava).not.toHaveBeenCalledWith('create_new_session:');
   });
 
 
@@ -234,7 +230,7 @@ describe('useSessionManagement', () => {
     });
 
     expect(window.sendToJava).toHaveBeenCalledWith('delete_sessions:["history-1","history-2"]');
-    expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
+    expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
     expect(mocks.addToast).not.toHaveBeenCalledWith('history.sessionDeleted', 'success');
     expect(window.__pendingSessionTransitionToast).toEqual({
       message: 'history.sessionDeleted',
@@ -261,14 +257,8 @@ describe('useSessionManagement', () => {
     });
 
     expect(window.sendToJava).toHaveBeenCalledWith('interrupt_session:');
-    expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
-    expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith(null);
-    expect(mocks.setUsagePercentage).toHaveBeenCalledWith(0);
-    expect(mocks.setUsageUsedTokens).toHaveBeenCalledWith(undefined);
+    expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
+    expect(window.sendToJava).not.toHaveBeenCalledWith('create_new_session:');
   });
 
 
@@ -290,12 +280,8 @@ describe('useSessionManagement', () => {
       result.current.createNewSession();
     });
 
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
-    expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith(null);
-    expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
+    expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
+    expect(window.sendToJava).not.toHaveBeenCalledWith('create_new_session:');
   });
 
   it('still shows the interrupt dialog while loading', () => {
@@ -320,7 +306,7 @@ describe('useSessionManagement', () => {
     expect(result.current.showInterruptConfirm).toBe(true);
     expect(window.__sessionTransitioning).toBe(false);
     expect(mocks.setMessages).not.toHaveBeenCalled();
-    expect(window.sendToJava).not.toHaveBeenCalledWith('create_new_session:');
+    expect(window.__openNewSessionTab).not.toHaveBeenCalled();
   });
 
   it('handleConfirmInterrupt completes interrupt+transition', () => {
@@ -348,17 +334,15 @@ describe('useSessionManagement', () => {
       result.current.handleConfirmInterrupt();
     });
 
-    // Dialog cleared, transition started, and BOTH bridge events fired exactly once.
+    // Dialog cleared, the tab is opened locally, and interrupt fires once.
     expect(result.current.showInterruptConfirm).toBe(false);
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
+    expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
 
     const calls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map(
       (c: unknown[]) => c[0]
     );
     expect(calls.filter((c) => c === 'interrupt_session:')).toHaveLength(1);
-    expect(calls.filter((c) => c === 'create_new_session:')).toHaveLength(1);
+    expect(calls.filter((c) => c === 'create_new_session:')).toHaveLength(0);
   });
 
   it('handleConfirmInterrupt interrupts and cleans state', () => {
@@ -386,12 +370,8 @@ describe('useSessionManagement', () => {
     });
 
     expect(window.sendToJava).toHaveBeenCalledWith('interrupt_session:');
-    expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
-    expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith(null);
+    expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
+    expect(window.sendToJava).not.toHaveBeenCalledWith('create_new_session:');
   });
 
   it('loadHistorySession without loading state does not send interrupt', () => {
@@ -521,23 +501,27 @@ describe('useSessionManagement', () => {
     );
   });
 
-  it('all transition paths reset usage tokens', () => {
+  it('history transition resets usage tokens', () => {
     const mocks = createMocks();
+    const historyData = {
+      success: true,
+      sessions: [{ sessionId: 'hist-usage', title: 'Usage', provider: 'opencode', messageCount: 0, lastTimestamp: Date.now() }],
+      total: 1,
+    } as unknown as HistoryData;
 
     const { result } = renderHook(() =>
       useSessionManagement({
         messages: [],
         loading: false,
-        historyData: null,
+        historyData,
         currentSessionId: 'session-1',
         ...mocks,
         t,
       })
     );
 
-    // Test forceCreateNewSession
     act(() => {
-      result.current.forceCreateNewSession();
+      result.current.loadHistorySession('hist-usage');
     });
 
     expect(mocks.setUsagePercentage).toHaveBeenCalledWith(0);
@@ -547,12 +531,17 @@ describe('useSessionManagement', () => {
 
   it('beginSessionTransition clears all transient UI states synchronously', () => {
     const mocks = createMocks();
+    const historyData = {
+      success: true,
+      sessions: [{ sessionId: 'hist-reset', title: 'Reset', provider: 'opencode', messageCount: 0, lastTimestamp: Date.now() }],
+      total: 1,
+    } as unknown as HistoryData;
 
     const { result } = renderHook(() =>
       useSessionManagement({
         messages: [],
         loading: false,
-        historyData: null,
+        historyData,
         currentSessionId: 'session-1',
         ...mocks,
         t,
@@ -560,7 +549,7 @@ describe('useSessionManagement', () => {
     );
 
     act(() => {
-      result.current.forceCreateNewSession();
+      result.current.loadHistorySession('hist-reset');
     });
 
     // All transient UI states must be synchronously cleared

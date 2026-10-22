@@ -15,6 +15,39 @@ const getRenderedBlocks = (message: ClaudeMessage) =>
   );
 
 describe('useStreamingMessages', () => {
+  it('keeps streaming refs isolated per active tab', () => {
+    let activeTabId = 'tab-a';
+    (window as any).__sessionTabsStore = { getActiveTabId: () => activeTabId };
+
+    const { result } = renderHook(() => useStreamingMessages());
+    result.current.streamingContentRef.current = 'A-content';
+    result.current.streamingThinkingRef.current = 'A-thinking';
+    result.current.isStreamingRef.current = true;
+    result.current.streamingMessageIndexRef.current = 7;
+    result.current.streamingTurnIdRef.current = 11;
+    result.current.autoExpandedThinkingKeysRef.current.add('a-key');
+
+    activeTabId = 'tab-b';
+    expect(result.current.streamingContentRef.current).toBe('');
+    expect(result.current.streamingThinkingRef.current).toBe('');
+    expect(result.current.isStreamingRef.current).toBe(false);
+    expect(result.current.streamingMessageIndexRef.current).toBe(-1);
+    expect(result.current.streamingTurnIdRef.current).toBe(-1);
+    expect(result.current.autoExpandedThinkingKeysRef.current.size).toBe(0);
+
+    result.current.streamingContentRef.current = 'B-content';
+    activeTabId = 'tab-a';
+
+    expect(result.current.streamingContentRef.current).toBe('A-content');
+    expect(result.current.streamingThinkingRef.current).toBe('A-thinking');
+    expect(result.current.isStreamingRef.current).toBe(true);
+    expect(result.current.streamingMessageIndexRef.current).toBe(7);
+    expect(result.current.streamingTurnIdRef.current).toBe(11);
+    expect(result.current.autoExpandedThinkingKeysRef.current.has('a-key')).toBe(true);
+
+    delete (window as any).__sessionTabsStore;
+  });
+
   it('sets .content from streamingContentRef and syncs a single raw text block', () => {
     const { result } = renderHook(() => useStreamingMessages());
 

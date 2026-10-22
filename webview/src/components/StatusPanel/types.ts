@@ -13,6 +13,10 @@ export interface StatusPanelProps {
   sessionLoading?: boolean;
   /** Whether the panel is expanded */
   expanded?: boolean;
+  /** Selected StatusPanel page; when supplied the parent owns it per tab. */
+  activeTab?: TabType | null;
+  /** Change the selected StatusPanel page. */
+  onActiveTabChange?: (tab: TabType | null) => void;
   /** Whether the conversation is currently streaming (active) */
   isStreaming?: boolean;
   /** Callback when a file is successfully undone */

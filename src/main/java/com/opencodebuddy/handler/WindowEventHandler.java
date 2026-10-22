@@ -18,7 +18,7 @@ public class WindowEventHandler extends BaseMessageHandler {
     private static final Logger LOG = Logger.getInstance(WindowEventHandler.class);
     private static final String[] SUPPORTED_TYPES = {
         "heartbeat", "tab_loading_changed", "tab_status_changed",
-        "create_new_session", "switch_session", "close_session",
+        "tab_activate", "close_session",
         "frontend_ready", "history_dom_committed",
         "history_render_complete", "surface_damage_applied",
         "refresh_slash_commands",
@@ -34,10 +34,8 @@ public class WindowEventHandler extends BaseMessageHandler {
         void onHeartbeat(String content);
         void onTabLoadingChanged(boolean loading);
         void onTabStatusChanged(String status);
-        void onCreateNewSession();
-        default void onCreateNewSession(String sessionId) { onCreateNewSession(); }
-        default void onSwitchSession(String sessionId) {}
-        default void onCloseSession(String sessionId) {}
+        default void onActivateTab(String tabId) {}
+        default void onCloseSession(String targetId) {}
         void onFrontendReady();
         void onHistoryRenderComplete(long commitEpoch);
         void onSurfaceDamageApplied(String token, String phase, boolean applied);
@@ -64,11 +62,8 @@ public class WindowEventHandler extends BaseMessageHandler {
             case "tab_status_changed":
                 handleTabStatusChanged(content);
                 return true;
-            case "create_new_session":
-                callback.onCreateNewSession(parseSessionId(content));
-                return true;
-            case "switch_session":
-                handleSwitchSession(content);
+            case "tab_activate":
+                callback.onActivateTab(parseSessionId(content));
                 return true;
             case "close_session":
                 handleCloseSession(content);
@@ -661,16 +656,13 @@ public class WindowEventHandler extends BaseMessageHandler {
                 if (json != null && json.has("sessionId") && !json.get("sessionId").isJsonNull()) {
                     return json.get("sessionId").getAsString();
                 }
+                if (json != null && json.has("tabId") && !json.get("tabId").isJsonNull()) {
+                    return json.get("tabId").getAsString();
+                }
+                return null;
             }
         } catch (Exception ignored) {}
         return content.trim();
-    }
-
-    private void handleSwitchSession(String content) {
-        String sessionId = parseSessionId(content);
-        if (sessionId != null && !sessionId.isEmpty()) {
-            callback.onSwitchSession(sessionId);
-        }
     }
 
     private void handleCloseSession(String content) {

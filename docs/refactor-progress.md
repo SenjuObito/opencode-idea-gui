@@ -102,6 +102,39 @@
 - 宿主调度基准（6 tab / 3 流 / 10k 消息）：10k delta 合并为 1 条脚本，
   10k 离散消息产生 314 条脚本、无丢弃，20k 次入队耗时 123ms。
 
+## 第三轮收口：运行态归属与事件身份
+
+### 前端运行态按 tab 归属（§6.3 / 决策基线 4）
+
+- `useStreamingMessages` 的 per-tab runtime map 是运行态的唯一 owner；refs
+  只是"活动 tab 的视图"（proxy），不再是存储。
+- 删除 `utils/streamingRuntime.ts`（capture/restore/clear）与
+  `store/tabRuntimeStore.ts`（快照归档）：切 tab 不再搬运运行态，tab 的运行态
+  留在原处，关 tab 时随 tab 释放。
+- 会话切换守卫从窗口级 flag 改为 per-tab（`store/tabTransitionStore.ts` +
+  `hooks/windowCallbacks/tabTransition.ts`）：之前任何 tab 切换都会静音所有
+  tab 的事件，现在只有切换中的那个 tab 被静音。
+
+### 会话级事件携带 tabId（§7.2 / INV-1）
+
+- `SessionCallbackAdapter` 的 tabId 可写，绑定时写入；所有会话级事件在末尾
+  附带 tabId（delta / stream start+end / loading / status / title / thinking /
+  summary / turn end / block reset / usage / uuid patch / task / todo / revert /
+  messages removed）。
+- webview 侧按 tabId 直写目标 tab，不再用 sessionId 谓词反查归属。
+- `BridgeScheduler` 的 lane 解析优先使用事件自带的 tabId：未绑定会话的事件
+  也能进正确的 lane，而不是落到全局 lane。
+
+### 静态护栏升级
+
+- `single-runtime-swap` / `global-transition-lock` 进入硬门禁；
+  `-PstrictLegacy=true` 现在 0 forbidden / 0 debt 通过。
+
+### 集成测试
+
+- 新增 `MultiTabEventProtocolIntegrationTest`：两个 tab 同时流式，断言每个
+  事件都带自己的 tab 与 session，且互不出现对方的身份。
+
 ## 未完成
 
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵

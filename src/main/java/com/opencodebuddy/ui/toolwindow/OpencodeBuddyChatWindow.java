@@ -73,6 +73,10 @@ import java.util.function.BooleanSupplier;
 public class OpencodeBuddyChatWindow {
 
     private static final Logger LOG = Logger.getInstance(OpencodeBuddyChatWindow.class);
+
+    /** The shape of a stable webview tab id. */
+    private static final java.util.regex.Pattern TAB_ID_PATTERN =
+            java.util.regex.Pattern.compile("^tab-[A-Za-z0-9-]+$");
     private final JPanel mainPanel;
     private final DaemonBridge daemonBridge;
     private final OpenCodeSDKBridge openCodeSDKBridge;
@@ -3373,7 +3377,18 @@ public class OpencodeBuddyChatWindow {
      * routing, never by this method.
      */
     private String resolveWebviewEventLane(String[] args) {
-        if (args == null || args.length == 0 || args[0] == null) {
+        if (args == null || args.length == 0) {
+            return BridgeScheduler.GLOBAL_LANE;
+        }
+        // Session-level events name their tab as the last argument. That is
+        // the exact lane — even for a session that is not bound yet, whose
+        // first argument would fall back to the global lane.
+        String last = args[args.length - 1];
+        if (last != null && TAB_ID_PATTERN.matcher(last).matches()
+                && tabRegistry.get(TabId.of(last)) != null) {
+            return last;
+        }
+        if (args[0] == null) {
             return BridgeScheduler.GLOBAL_LANE;
         }
         String first = args[0];

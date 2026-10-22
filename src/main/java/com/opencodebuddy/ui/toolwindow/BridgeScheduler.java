@@ -67,6 +67,71 @@ class BridgeScheduler<T> {
     private boolean draining;
     private boolean disposed;
 
+    /** Observation counters; reported when a tab closes, never used for routing. */
+    private long enqueuedCount;
+    private long deliveredCount;
+    private long mergedCount;
+    private long droppedCount;
+    private long frameCount;
+    private long lastFrameChars;
+    private long maxFrameChars;
+    private long reloadCount;
+
+    /** A point-in-time view of the scheduler's work, per window. */
+    static final class Metrics {
+        final long enqueued;
+        final long delivered;
+        final long merged;
+        final long dropped;
+        final long frames;
+        final long lastFrameChars;
+        final long maxFrameChars;
+        final long reloads;
+        final int queueDepth;
+        final int lanes;
+
+        Metrics(long enqueued, long delivered, long merged, long dropped, long frames,
+                long lastFrameChars, long maxFrameChars, long reloads,
+                int queueDepth, int lanes) {
+            this.enqueued = enqueued;
+            this.delivered = delivered;
+            this.merged = merged;
+            this.dropped = dropped;
+            this.frames = frames;
+            this.lastFrameChars = lastFrameChars;
+            this.maxFrameChars = maxFrameChars;
+            this.reloads = reloads;
+            this.queueDepth = queueDepth;
+            this.lanes = lanes;
+        }
+
+        @Override
+        public String toString() {
+            return "queueDepth=" + queueDepth
+                    + " lanes=" + lanes
+                    + " enqueued=" + enqueued
+                    + " delivered=" + delivered
+                    + " merged=" + merged
+                    + " dropped=" + dropped
+                    + " frames=" + frames
+                    + " lastFrameChars=" + lastFrameChars
+                    + " maxFrameChars=" + maxFrameChars
+                    + " reloads=" + reloads;
+        }
+    }
+
+    Metrics metrics() {
+        synchronized (lock) {
+            int depth = 0;
+            for (Lane<T> lane : lanes.values()) {
+                depth += lane.pending.size();
+            }
+            return new Metrics(enqueuedCount, deliveredCount, mergedCount, droppedCount,
+                    frameCount, lastFrameChars, maxFrameChars, reloadCount,
+                    depth, lanes.size());
+        }
+    }
+
     private Function<String[], String> laneResolver = args -> GLOBAL_LANE;
     private Supplier<String> activeLaneSupplier = () -> null;
     private Function<String, Long> epochResolver = lane -> null;
@@ -160,6 +225,7 @@ class BridgeScheduler<T> {
         synchronized (lock) {
             lanes.clear();
             queuedBrowser = browserSupplier.get();
+            reloadCount++;
         }
     }
 
@@ -198,6 +264,7 @@ class BridgeScheduler<T> {
             if (disposed || disposedSupplier.getAsBoolean()) {
                 return;
             }
+            enqueuedCount++;
             if (queuedBrowser != call.browser) {
                 lanes.clear();
                 queuedBrowser = call.browser;
@@ -209,9 +276,11 @@ class BridgeScheduler<T> {
             }
 
             if (isDelta(call) && mergeWithTailDelta(lane, call)) {
+                mergedCount++;
                 return;
             }
             if (isLatestOnly(call) && mergeWithTailLatest(lane, call)) {
+                mergedCount++;
                 return;
             }
             if (isMessageSnapshot(call)) {
@@ -232,6 +301,7 @@ class BridgeScheduler<T> {
                     } else {
                         LOG.warn("Dropping webview event because lane " + laneId + " is full: "
                                 + (call.functionName != null ? call.functionName : "raw"));
+                        droppedCount++;
                         if (isDelta(call)) {
                             lane.snapshotRequired = true;
                         }
@@ -302,7 +372,14 @@ class BridgeScheduler<T> {
 
         try {
             if (!batch.isEmpty()) {
-                scriptExecutor.accept(targetBrowser, buildBatchScript(batch));
+                String script = buildBatchScript(batch);
+                synchronized (lock) {
+                    deliveredCount += batch.size();
+                    frameCount++;
+                    lastFrameChars = script.length();
+                    maxFrameChars = Math.max(maxFrameChars, script.length());
+                }
+                scriptExecutor.accept(targetBrowser, script);
             }
         } catch (Exception | LinkageError e) {
             LOG.warn("Failed to execute queued webview events: " + e.getMessage(), e);
@@ -615,6 +692,7 @@ class BridgeScheduler<T> {
         while (iterator.hasNext()) {
             if (isDisposable(iterator.next())) {
                 iterator.remove();
+                droppedCount++;
                 return true;
             }
         }
@@ -626,6 +704,7 @@ class BridgeScheduler<T> {
         while (iterator.hasNext()) {
             if (isDelta(iterator.next())) {
                 iterator.remove();
+                droppedCount++;
                 lane.snapshotRequired = true;
                 return true;
             }
@@ -638,6 +717,7 @@ class BridgeScheduler<T> {
         while (iterator.hasNext()) {
             if (!isLifecycle(iterator.next())) {
                 iterator.remove();
+                droppedCount++;
                 return true;
             }
         }

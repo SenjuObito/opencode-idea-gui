@@ -10,9 +10,9 @@
 
 | 状态 | 条目数 | 占比 |
 |---|---:|---:|
-| 已完成 | 8 | 50% |
+| 已完成 | 9 | 56% |
 | 部分完成 | 4 | 25% |
-| 未开始 | 4 | 25% |
+| 未开始 | 3 | 19% |
 | 合计 | 16 | 100% |
 
 四项验证（每一轮都必须全绿才提交）：
@@ -45,7 +45,7 @@ cd webview && npx vitest run
 | E13 | 每帧参数预算 32KB（单事件超预算单独成帧） | 已完成 | `17ada18` |
 | E14 | 渲染：消息分页 / 窗口化、序列化缓存、Markdown 缓存、引用稳定 | 未开始 | — |
 | E15 | 内存：每 tab 消息单副本（宿主 + webview 镜像目前两份） | 未开始 | — |
-| E16 | 指标上报：queue depth / 丢弃数 / turn 时长 | 未开始 | — |
+| E16 | 指标上报：queue depth / 丢弃数 / turn 时长 | 已完成 | 本轮：`BridgeScheduler.Metrics` 记录队列深度、合并/丢弃数、成帧数/字节、reload 数；`TabRecord` 记录上一回合时长；tab 关闭与窗口销毁时按 tab/session 写日志 |
 | §13 | JCEF 真实基准与功能矩阵 | 待环境 | 步骤见 `docs/jcef-benchmark.md`、`docs/functional-matrix.md`，需 IDE 运行时 |
 
 ## 三、剩余工作与估算
@@ -57,7 +57,7 @@ cd webview && npx vitest run
 | C8 剩余：`TabRecord` 的 eventSink / prompts / TabDraft | 结构性 | 0.5 天 |
 | C7 剩余：无（`TabStreamRouter` 已持有 adapter/coalescer） | 已完成 | 0 |
 | C9：拆 `useSessionTabs.ts`、删 `sessionTransition.ts`、迁 `PermissionManager` | 结构性、高风险 | 2–3 天 |
-| E14 / E15 / E16：渲染窗口化与缓存、消息单副本、指标上报 | 结构性 | 2–4 天 |
+| E14 / E15：渲染窗口化与缓存、消息单副本 | 结构性 | 2–4 天 |
 | §13：JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工执行） |
 
 合计约 **8–12 个工作日**。按当前节奏（每次一个可提交的块 + 四项验证全绿再提交），

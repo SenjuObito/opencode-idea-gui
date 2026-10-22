@@ -2282,8 +2282,10 @@ public class OpencodeBuddyChatWindow {
             }
         }
 
+        String metricSessionId = record != null ? record.getSessionIdString() : null;
         if (record != null) {
             tabRegistry.close(record.getTabId());
+            logTabMetrics(record, metricSessionId);
         }
         if (canonicalSessionId != null && daemonBridge != null) {
             daemonBridge.unregisterSessionSink(canonicalSessionId);
@@ -2311,6 +2313,25 @@ public class OpencodeBuddyChatWindow {
         if (tabKey.equals(activeTabId)) {
             activeTabId = null;
             sessionCallbackAdapter = null;
+        }
+    }
+
+    /**
+     * Report the bridge and turn counters for a tab that just closed.
+     *
+     * <p>These are the numbers the performance plan asks for: queue depth,
+     * dropped/merged calls, frame size, reloads and turn duration. A log line
+     * carries the tab and session id so a slow tab can be identified without
+     * replaying the session.</p>
+     */
+    private void logTabMetrics(TabRecord record, String sessionId) {
+        try {
+            LOG.info("[metrics] tab=" + record.getTabId().value()
+                    + " session=" + (sessionId != null ? sessionId : "(none)")
+                    + " turnMs=" + record.getLastTurnDurationMs()
+                    + " " + webviewEventQueue.metrics());
+        } catch (RuntimeException e) {
+            LOG.debug("Failed to report bridge metrics: " + e.getMessage());
         }
     }
 
@@ -3799,6 +3820,7 @@ public class OpencodeBuddyChatWindow {
             return;
         }
         this.disposed = true;
+        LOG.info("[metrics] window dispose " + webviewEventQueue.metrics());
         JBCefBrowser targetBrowser = this.browser;
         cancelScheduledOsrSurfaceRefresh();
         surfaceRefreshCoordinator.invalidate();

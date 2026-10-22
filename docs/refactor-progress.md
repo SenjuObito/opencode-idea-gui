@@ -492,3 +492,14 @@
 - 对未知权限 id 的迟到决策改为记录并丢弃，不再回退到本地 future。
 - `PermissionRequest` 本身保留，它是权限弹窗与回调的传输对象。
 
+## 第四轮补 7：桥接指标可观测
+
+- `BridgeScheduler` 增加只读计数：入队、实际下发、delta 合并、丢弃、成帧数、
+  最后一帧/最大帧字符数、reload 次数；`metrics()` 同时给出当前队列深度和
+  活跃 lane 数。计数只用于观测，不参与路由。
+- 丢弃点统一计数：lane 满时丢弃当前事件，或为腾位置淘汰可丢弃/可合并事件。
+- `TabRecord` 在离开 `STREAMING` 时记录上一回合时长，关闭 tab 也结算。
+- 关闭 tab 和销毁窗口时写一条 `[metrics]` 日志，带 `tabId` / `sessionId` /
+  `turnMs` 和队列快照；日志不再只指向“当前会话”。
+- 新增 `BridgeSchedulerMetricsTest` 覆盖队列深度、下发成帧、delta 合并和丢弃计数。
+

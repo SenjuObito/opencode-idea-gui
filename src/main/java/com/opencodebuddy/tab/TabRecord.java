@@ -44,6 +44,8 @@ public final class TabRecord {
     private volatile SessionId sessionId;
     private volatile OpencodeSession session;
     private volatile String title;
+    private volatile long streamingStartedAtMillis;
+    private volatile long lastTurnDurationMs;
 
     public TabRecord(TabId tabId, String cwd) {
         this.tabId = Objects.requireNonNull(tabId, "tabId");
@@ -71,7 +73,27 @@ public final class TabRecord {
     }
 
     public void setState(TabState state) {
-        this.state = Objects.requireNonNull(state, "state");
+        TabState next = Objects.requireNonNull(state, "state");
+        TabState previous = this.state;
+        this.state = next;
+        if (next == TabState.STREAMING && previous != TabState.STREAMING) {
+            streamingStartedAtMillis = System.currentTimeMillis();
+        } else if (previous == TabState.STREAMING && next != TabState.STREAMING) {
+            finishTurnDuration();
+        }
+    }
+
+    private void finishTurnDuration() {
+        long started = streamingStartedAtMillis;
+        if (started > 0) {
+            lastTurnDurationMs = Math.max(0, System.currentTimeMillis() - started);
+            streamingStartedAtMillis = 0;
+        }
+    }
+
+    /** Duration of the most recently finished streaming turn, or 0. */
+    public long getLastTurnDurationMs() {
+        return lastTurnDurationMs;
     }
 
     public SessionId getSessionId() {
@@ -257,7 +279,7 @@ public final class TabRecord {
     }
 
     public synchronized void close() {
-        state = TabState.CLOSED;
+        setState(TabState.CLOSED);
         clearSessionResources();
         settledTurns.clear();
         settledTurnOrder.clear();

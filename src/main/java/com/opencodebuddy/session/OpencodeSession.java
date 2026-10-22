@@ -3,6 +3,7 @@ package com.opencodebuddy.session;
 import com.opencodebuddy.permission.PermissionManager;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
+import com.opencodebuddy.tab.TabStreamRouter;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
@@ -58,7 +59,7 @@ public class OpencodeSession {
      * sink: the daemon tags each line with its session, the bridge hands it here,
      * and it is parsed into exactly this session's callback.
      */
-    private final SessionStreamRouter streamRouter;
+    private final TabStreamRouter streamRouter;
 
     // SDK bridge
     private final OpenCodeSDKBridge openCodeSDKBridge;
@@ -252,7 +253,7 @@ public class OpencodeSession {
         this.messageMerger = new com.opencodebuddy.session.MessageMerger();
         this.contextCollector = new com.opencodebuddy.session.EditorContextCollector(project);
         this.callbackFacade = new SessionCallbackFacade(project);
-        this.streamRouter = new SessionStreamRouter(state, callbackFacade.getCallbackHandler());
+        this.streamRouter = new TabStreamRouter(state, callbackFacade.getCallbackHandler());
         this.contextService = new SessionContextService(project);
         this.providerRouter = new SessionProviderRouter(openCodeSDKBridge);
         this.sendService = new SessionSendService(
@@ -305,7 +306,7 @@ public class OpencodeSession {
      * the bridge so lines tagged with this session's id reach the right handler
      * regardless of which request happens to be in flight.
      */
-    public SessionStreamRouter getStreamRouter() {
+    public TabStreamRouter getStreamRouter() {
         return streamRouter;
     }
 

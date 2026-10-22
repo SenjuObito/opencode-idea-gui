@@ -1,9 +1,12 @@
-package com.opencodebuddy.session;
+package com.opencodebuddy.tab;
 
 import com.google.gson.Gson;
 import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.common.SDKResult;
 import com.opencodebuddy.provider.opencode.OpenCodeMarkerParser;
+import com.opencodebuddy.session.CallbackHandler;
+import com.opencodebuddy.session.OpenCodeMessageHandler;
+import com.opencodebuddy.session.SessionState;
 import com.intellij.openapi.diagnostic.Logger;
 
 /**
@@ -27,9 +30,9 @@ import com.intellij.openapi.diagnostic.Logger;
  * session-wide instance behaves identically to a per-turn one while also being
  * able to serve out-of-turn events.</p>
  */
-public final class SessionStreamRouter implements DaemonBridge.SessionLineSink {
+public final class TabStreamRouter implements DaemonBridge.SessionLineSink {
 
-    private static final Logger LOG = Logger.getInstance(SessionStreamRouter.class);
+    private static final Logger LOG = Logger.getInstance(TabStreamRouter.class);
 
     /**
      * Cap on the scratch result's retained {@code [MESSAGE]} blocks. Nothing
@@ -45,7 +48,7 @@ public final class SessionStreamRouter implements DaemonBridge.SessionLineSink {
     private final OpenCodeMarkerParser.StreamContext streamContext =
             new OpenCodeMarkerParser.StreamContext();
 
-    public SessionStreamRouter(SessionState state, CallbackHandler callbackHandler) {
+    public TabStreamRouter(SessionState state, CallbackHandler callbackHandler) {
         this.messageHandler = new OpenCodeMessageHandler(state, callbackHandler);
     }
 
@@ -63,7 +66,7 @@ public final class SessionStreamRouter implements DaemonBridge.SessionLineSink {
         try {
             markerParser.processOutputLine(line, messageHandler, scratchResult, streamContext);
         } catch (Exception e) {
-            LOG.warn("SessionStreamRouter failed to process line: " + e.getMessage());
+            LOG.warn("TabStreamRouter failed to process line: " + e.getMessage());
         }
         if (scratchResult.messages.size() > MAX_SCRATCH_MESSAGES) {
             scratchResult.messages.clear();

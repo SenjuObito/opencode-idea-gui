@@ -110,7 +110,9 @@ public class SettingsHandler extends BaseMessageHandler {
         "get_ui_preferences",
         "set_ui_preferences",
         "get_pinned_models",
-        "set_pinned_models"
+        "set_pinned_models",
+        "settings.pinnedModels.get",
+        "settings.pinnedModels"
     };
 
     public SettingsHandler(HandlerContext context) {
@@ -400,6 +402,7 @@ public class SettingsHandler extends BaseMessageHandler {
                 }
                 return true;
             case "get_pinned_models":
+            case "settings.pinnedModels.get":
                 ApplicationManager.getApplication().invokeLater(() -> {
                     try {
                         JsonObject pinned = context.getSettingsService().getPinnedModels();
@@ -411,6 +414,7 @@ public class SettingsHandler extends BaseMessageHandler {
                 });
                 return true;
             case "set_pinned_models":
+            case "settings.pinnedModels":
                 try {
                     JsonObject patch = gson.fromJson(content, JsonObject.class);
                     context.getSettingsService().setPinnedModels(patch);

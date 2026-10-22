@@ -12,7 +12,7 @@ import { TabPromptStore } from '../store/tabPromptStore';
 import { TabMessageStore } from '../store/tabMessageStore';
 import type { ModelInfo, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { getFirstPreferredModelId, resolveSessionModel } from '../components/ChatInputBox/modelSelectUtils';
-import { sendSessionCommand, sendHostCommand, sendBridgeEvent, sendInterrupt, sendTabCommand, cardDebugLog } from '../utils/bridge';
+import { sendSessionCommand, sendHostCommand, sendInterrupt, sendTabCommand, cardDebugLog } from '../utils/bridge';
 import { observeHostEpoch, resetHostDispatcherEpochs } from '../utils/hostDispatcher';
 import { clearSessionSequenceBarrier } from './windowCallbacks/sequenceBarrier';
 import { clearTransition, endTransition, transitionTargetFor } from './windowCallbacks/tabTransition';
@@ -840,7 +840,7 @@ export function useSessionTabs({
       setCurrentSessionId?.(targetTab.sessionId);
       setCustomSessionTitle(targetTab.title || null);
       // 同步 Tab 标题到 IDE ToolWindow，切换 Tab 时跟随标签页标题
-      sendBridgeEvent('update_tab_title', targetTab.title || '');
+      sendHostCommand(targetTab.id, 'tab.title.set', { title: targetTab.title || '' });
       setMessages(targetTab.messages || []);
       // Queue the target tab's own reader position. The layout effect in
       // useScrollBehavior applies it after this commit and skips auto-follow,
@@ -1084,7 +1084,7 @@ export function useSessionTabs({
       syncHostActiveTabTo(activeTabIdRef.current);
 
       // 同步 Tab 标题到 IDE ToolWindow，切换历史会话 Tab 时跟随标签页标题
-      sendBridgeEvent('update_tab_title', resolvedTitle);
+      sendHostCommand(activeTabIdRef.current, 'tab.title.set', { title: resolvedTitle });
 
       setMessages([]);
       // A freshly opened tab starts at the newest message and must not inherit
@@ -1274,7 +1274,7 @@ export function useSessionTabs({
     window.__dialogStore?.clearActive?.();
 
     // 同步新 Tab 标题到 IDE ToolWindow
-    sendBridgeEvent('update_tab_title', newTab.title);
+    sendHostCommand(newId, 'tab.title.set', { title: newTab.title });
     syncHostActiveTabTo(newId);
   }, [
     saveCurrentTabSnapshot,

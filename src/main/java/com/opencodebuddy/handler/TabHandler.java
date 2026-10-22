@@ -22,7 +22,8 @@ public class TabHandler extends BaseMessageHandler {
 
     private static final String[] SUPPORTED_TYPES = {
         "create_new_tab",
-        "update_tab_title"
+        "update_tab_title",
+        "tab.title.set"
     };
 
     private final Consumer<String> tabTitleUpdater;
@@ -48,7 +49,7 @@ public class TabHandler extends BaseMessageHandler {
             handleCreateNewTab();
             return true;
         }
-        if ("update_tab_title".equals(type)) {
+        if ("update_tab_title".equals(type) || "tab.title.set".equals(type)) {
             LOG.debug("[TabHandler] Processing update_tab_title");
             handleUpdateTabTitle(content);
             return true;

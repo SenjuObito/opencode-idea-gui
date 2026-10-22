@@ -3,6 +3,7 @@ package com.opencodebuddy.session;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
+import com.opencodebuddy.tab.TabStreamRouter;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -23,7 +24,7 @@ public class SessionSendService {
     private final SessionCallbackFacade callbackFacade;
     private final SessionContextService contextService;
     private final OpenCodeSDKBridge bridge;
-    private final SessionStreamRouter streamRouter;
+    private final TabStreamRouter streamRouter;
 
     public SessionSendService(
             Project project,
@@ -31,7 +32,7 @@ public class SessionSendService {
             SessionCallbackFacade callbackFacade,
             OpenCodeSDKBridge bridge,
             SessionContextService contextService,
-            SessionStreamRouter streamRouter
+            TabStreamRouter streamRouter
     ) {
         this.project = project;
         this.state = state;

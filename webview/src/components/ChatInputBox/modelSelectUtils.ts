@@ -6,7 +6,7 @@
 
 import type { ModelInfo } from './types';
 
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendWindowCommand } from '../../utils/bridge';
 
 /** Show search once the list is long enough to scroll through. */
 export const MODEL_SEARCH_THRESHOLD = 8;
@@ -143,7 +143,7 @@ export function writePinnedModelIds(providerId: string, modelIds: string[]): voi
   } catch {
     // sandboxed / quota — ignore
   }
-  sendBridgeEvent('set_pinned_models', JSON.stringify({ [providerId]: modelIds }));
+  sendWindowCommand('settings.pinnedModels', { [providerId]: modelIds });
 }
 
 /** Toggle pin; returns the next pinned id list for this provider (most recently pinned models appear first). */

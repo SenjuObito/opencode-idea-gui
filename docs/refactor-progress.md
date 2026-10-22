@@ -416,3 +416,17 @@
 - A3：约 96 个 `window.*` 全局仍由 dispatcher 回退调用。
 - C7：`SessionStreamRouter` 仍沿用 session 包名；`TabStreamRouter` 未改名/迁包。
 - C8 / C9 / E14 / E15 / E16 未开始或仅部分；§13.3/§13.4 仍需真机执行。
+
+## 第四轮补充：把会话/窗口命令继续搬进信封
+
+- `SessionStreamRouter` 改名为 `TabStreamRouter` 并迁入 `com.opencodebuddy.tab`，
+  与 `TabSnapshot` / `PendingSend` 同包；`OpencodeSession` 持有它，行为不变。
+- 新增多 tab 关闭场景回归：一个 tab 还在流式时关闭它，另一个 tab 的事件仍继续，
+  关闭 tab 不再发布任何事件（`MultiTabEventProtocolIntegrationTest`）。
+- 历史列表刷新改 `history.refresh`；分享/取消分享改 `session.share` /
+  `session.unshare`；撤销的 latest 回退改 `session.revert` 信封，修掉原先
+  发送 `revert_session` 但宿主未注册该类型的断链。
+- 设置/代理/标题继续语义化：`settings.pinnedModels[.get]`、`agents.list`、
+  `tab.title.set`；webview 的 `get_agents`、`get/set_pinned_models`、
+  `update_tab_title` 调用点已迁移，旧宿主类型保留兼容入口。
+- 数字更新：webview 非测试/非传输的 `sendBridgeEvent` 从约 70 处降到 46 处。

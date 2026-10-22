@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AgentConfig } from '../../../types/agent';
 import type { ImportPreviewResult, ConflictStrategy } from '../../../types/import';
+import { sendWindowCommand } from '../../../utils/bridge';
 
 const sendToJava = (message: string) => {
   if (window.sendToJava) {
@@ -74,7 +75,7 @@ export function useAgentManagement(options: UseAgentManagementOptions = {}) {
     const TIMEOUT = 3000; // 3-second timeout
 
     setAgentsLoading(true);
-    sendToJava('get_agents:');
+    sendWindowCommand('agents.list');
 
     // Set up timeout timer
     const timeoutId = setTimeout(() => {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
-import { sendHostCommand, sendSessionCommand, sendBridgeEvent } from './utils/bridge';
+import { sendHostCommand, sendSessionCommand, sendWindowCommand, sendBridgeEvent } from './utils/bridge';
 import { createTabId } from './store/tabStore';
 import { copyViaHost } from './utils/copyUtils';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
@@ -353,7 +353,7 @@ const App = () => {
 
   const handleRetryHistory = useCallback(() => {
     setHistoryData(null);
-    sendBridgeEvent('load_history_data', currentProvider);
+    sendWindowCommand('history.refresh');
   }, [currentProvider, setHistoryData]);
 
   // ── Share state ──
@@ -375,12 +375,12 @@ const App = () => {
     // No premature success toast here: the share URL only becomes copyable
     // when the host round-trips onShareSuccess. Feedback happens there.
     setSharePending(true);
-    sendBridgeEvent('share_session', currentSessionId);
+    sendSessionCommand('session.share', currentSessionId);
   }, [currentSessionId, sharePending, shareHidden]);
 
   const handleUnshare = useCallback(async () => {
     if (!currentSessionId) return;
-    sendBridgeEvent('unshare_session', currentSessionId);
+    sendSessionCommand('session.unshare', currentSessionId);
     setIsShared(false);
     setShareUrl(null);
   }, [currentSessionId]);
@@ -449,7 +449,7 @@ const App = () => {
     if (!id) {
       // live 消息尚未回填 opencode id —— 让宿主通过 listMessages 解析最后一条用户消息
       console.warn('[App] undo: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('revert_session', JSON.stringify({ sessionId: sid, messageId: 'latest' }));
+      sendSessionCommand('session.revert', sid, { messageId: 'latest' });
       applyRevertState(true, 'latest');
       return;
     }
@@ -1095,10 +1095,11 @@ const App = () => {
   // Synchronize dynamic sessionTitle to IDE ToolWindow Tab display name
   useEffect(() => {
     const isDefaultNewSession = !sessionTitle || sessionTitle === t('common.newSession');
-    if (isDefaultNewSession) {
-      sendBridgeEvent('update_tab_title', '');
+    const titleTabId = window.__sessionTabsStore?.getActiveTabId?.();
+    if (titleTabId) {
+      sendHostCommand(titleTabId, 'tab.title.set', { title: isDefaultNewSession ? '' : sessionTitle });
     } else {
-      sendBridgeEvent('update_tab_title', sessionTitle);
+      sendBridgeEvent('update_tab_title', isDefaultNewSession ? '' : sessionTitle);
     }
   }, [sessionTitle, t]);
 

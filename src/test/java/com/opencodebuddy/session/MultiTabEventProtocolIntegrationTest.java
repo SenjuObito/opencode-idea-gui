@@ -169,6 +169,46 @@ public class MultiTabEventProtocolIntegrationTest {
         }
     }
 
+    @Test
+    public void closingOneStreamingTabStopsItsEventsOnly() {
+        RecordingTarget targetA = new RecordingTarget();
+        RecordingTarget targetB = new RecordingTarget();
+        SessionCallbackAdapter adapterA = adapter("ses_a", "tab-a", targetA);
+        SessionCallbackAdapter adapterB = adapter("ses_b", "tab-b", targetB);
+        try {
+            adapterA.onContentDelta("A-before");
+            adapterB.onContentDelta("B-before");
+            awaitCalls(targetA, 1);
+            awaitCalls(targetB, 1);
+            int aBefore = targetA.calls.size();
+
+            adapterA.deactivate();
+            adapterA.onContentDelta("A-after-close");
+            adapterB.onContentDelta("B-after-close");
+            awaitCalls(targetB, 2);
+
+            try {
+                Thread.sleep(100L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            assertEquals("a closed tab kept publishing", aBefore, targetA.calls.size());
+            boolean sawBAfterClose = false;
+            for (com.opencodebuddy.tab.TabEvent event : targetB.calls) {
+                if ("content.delta".equals(event.getType())
+                        && event.getPayload().get("delta") != null
+                        && event.getPayload().get("delta").toString().contains("B-after-close")) {
+                    sawBAfterClose = true;
+                }
+            }
+            assertTrue("the surviving tab stopped streaming too", sawBAfterClose);
+        } finally {
+            adapterA.deactivate();
+            adapterB.deactivate();
+        }
+    }
+
     private static Application synchronousApplication() {
         return (Application) Proxy.newProxyInstance(
                 Application.class.getClassLoader(),

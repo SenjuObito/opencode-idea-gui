@@ -15,6 +15,7 @@ public class HistoryHandler extends BaseMessageHandler {
 
     private static final String[] SUPPORTED_TYPES = {
             "load_history_data",
+            "history.refresh",
             "session.load",
             "delete_session",  // Delete session
             "delete_sessions", // Batch delete sessions
@@ -65,7 +66,8 @@ public class HistoryHandler extends BaseMessageHandler {
     public boolean handle(String type, String content) {
         switch (type) {
             case "load_history_data":
-                LOG.debug("[HistoryHandler] 处理: load_history_data, provider=" + content);
+            case "history.refresh":
+                LOG.debug("[HistoryHandler] 处理: history.refresh, provider=" + content);
                 this.currentProvider = HandlerContext.DEFAULT_PROVIDER;
                 historyLoadService.handleLoadHistoryData(currentProvider);
                 return true;

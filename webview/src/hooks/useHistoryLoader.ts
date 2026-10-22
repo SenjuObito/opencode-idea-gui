@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
+import { sendWindowCommand, cardDebugLog } from '../utils/bridge';
 
 export interface UseHistoryLoaderOptions {
   currentView: 'chat' | 'history' | 'settings';
@@ -20,7 +20,7 @@ export function useHistoryLoader(options: UseHistoryLoaderOptions): void {
 
     const requestHistoryData = () => {
       if (window.sendToJava) {
-        sendBridgeEvent('load_history_data', currentProvider);
+        sendWindowCommand('history.refresh');
       } else {
         historyRetryCount++;
         if (historyRetryCount < MAX_HISTORY_RETRIES) {

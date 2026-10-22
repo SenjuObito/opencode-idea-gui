@@ -727,7 +727,7 @@ waitForBridge(() => {
   // Authoritative appearance / behaviour settings (host globalState). Sent
   // right after frontend_ready so the host can answer from warm state.
   requestUiPreferences();
-  sendBridgeEvent('get_pinned_models');
+  sendWindowCommand('settings.pinnedModels.get');
   sendBridgeEvent('get_editor_font_config');
   sendBridgeEvent('get_ui_font_config');
   sendBridgeEvent('get_code_font_config');

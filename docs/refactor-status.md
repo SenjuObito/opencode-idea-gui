@@ -32,12 +32,12 @@ cd webview && npx vitest run
 | 条目 | 内容 | 状态 | 证据 / 提交 |
 |---|---|---|---|
 | A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload |
-| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 主路径已统一；webview 仍有约 70 处 `sendBridgeEvent`（历史/设置/窗口命令） |
+| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 主路径已统一；webview 仍有约 46 处 `sendBridgeEvent`（历史/设置/窗口命令），旧类型仍保留兼容入口 |
 | A3 | 路由表已权威（31 个事件）；约 96 个 `window.*` 全局仍在 | 部分完成 | 路由层已落地，全局清理待做 |
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |
 | B6 | daemon 重启：给所有 STREAMING tab 发 `turn.ended reason=daemon_restart` | 已完成 | `9e191cc` |
-| C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 部分完成 | `99bd04c`：`TabSnapshot`、`PendingSend`、core 先播报 `[SESSION_ID]`；`TabStreamRouter` 仍名 `SessionStreamRouter`，adapter/coalescer 未替换 |
+| C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 部分完成 | `d3c0542`：`TabSnapshot`、`PendingSend`、`TabStreamRouter` 均已落地；`TabStreamRouter` 仍依赖 `SessionCallbackAdapter` / `StreamMessageCoalescer` |
 | C8 | `TabRecord` 字段：附件归属已完成；缺 router / eventSink / prompts / TabDraft | 部分完成 | `17ada18`（附件归属）、`dc1b76a`（分块上传） |
 | C9 | 删除清单：`useSessionTabs.ts`（1641 行）、`sessionTransition.ts`、`PermissionManager` | 未开始 | 风险最高，需分两步：先搬家后删旧 |
 | D10 | 附件传输：分块上传，发送只带引用 | 已完成 | `dc1b76a` |

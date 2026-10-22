@@ -36,6 +36,7 @@ public class AgentHandler extends BaseMessageHandler {
 
     private static final String[] SUPPORTED_TYPES = {
         "get_agents",
+        "agents.list",
         "add_agent",
         "update_agent",
         "delete_agent",
@@ -64,6 +65,7 @@ public class AgentHandler extends BaseMessageHandler {
     public boolean handle(String type, String content) {
         switch (type) {
             case "get_agents":
+            case "agents.list":
                 handleGetAgents();
                 return true;
             case "add_agent":

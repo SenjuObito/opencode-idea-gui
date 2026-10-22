@@ -23,6 +23,7 @@ public class WindowEventHandler extends BaseMessageHandler {
         "history_render_complete", "surface_damage_applied",
         "refresh_slash_commands", "commands.refresh",
         "session.fork", "share_session", "unshare_session",
+        "session.share", "session.unshare",
         "session.revert", "session.unrevert", "session.compact",
         "context.refresh"
     };
@@ -96,10 +97,12 @@ public class WindowEventHandler extends BaseMessageHandler {
                 handleSessionFork(content);
                 return true;
             case "share_session":
-                handleShareSession(content);
+            case "session.share":
+                handleShareSession(parseSessionId(content));
                 return true;
             case "unshare_session":
-                handleUnshareSession(content);
+            case "session.unshare":
+                handleUnshareSession(parseSessionId(content));
                 return true;
             case "session.revert":
                 handleRevertSession(content);

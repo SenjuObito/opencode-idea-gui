@@ -1,6 +1,6 @@
 import type { DropdownItemData } from '../types';
 import type { AgentConfig } from '../../../types/agent';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { sendWindowCommand } from '../../../utils/bridge';
 import i18n from '../../../i18n/config';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
 
@@ -204,7 +204,7 @@ function requestRefresh(): boolean {
   }
 
   const attempt = retryCount + 1;
-  const sent = sendBridgeEvent('get_agents');
+  const sent = sendWindowCommand('agents.list');
   if (!sent) {
     debugLog('[AgentProvider] Bridge not available yet, refresh not sent');
     return false;

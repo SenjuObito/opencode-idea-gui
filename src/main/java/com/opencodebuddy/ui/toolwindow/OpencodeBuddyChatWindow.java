@@ -2088,8 +2088,12 @@ public class OpencodeBuddyChatWindow {
         String tabKey = record != null ? record.getTabId().value() : targetSessionId;
         SessionCallbackAdapter closedAdapter = record != null ? record.getAdapter() : null;
         StreamMessageCoalescer closedCoalescer = record != null ? record.getCoalescer() : null;
-        if (canonicalSessionId != null && permissionHandler != null) {
-            permissionHandler.clearPendingRequests(canonicalSessionId);
+        if (permissionHandler != null) {
+            // The tab owns its prompts: reject exactly this tab's requests.
+            permissionHandler.clearPendingRequestsForTab(record != null ? record.getTabId().value() : tabKey);
+            if (canonicalSessionId != null) {
+                permissionHandler.clearPendingRequests(canonicalSessionId);
+            }
         }
 
         if (record != null) {

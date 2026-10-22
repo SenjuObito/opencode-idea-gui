@@ -135,6 +135,17 @@
 - 新增 `MultiTabEventProtocolIntegrationTest`：两个 tab 同时流式，断言每个
   事件都带自己的 tab 与 session，且互不出现对方的身份。
 
+### 权限收口到 `com.opencodebuddy.prompt`（§5.9 / §10 / §15.1）
+
+- 新增 `com.opencodebuddy.prompt`：`PromptKind`、`PendingPrompt`、
+  `PromptDecision`、`PromptBroker`（从 `handler` 包迁出并成为 public）。
+- prompt 记录归属它的 tab（`permissionTabs` / `askTabs` / `planTabs`），
+  `PromptBroker.rejectForTab(tabId)` 只拒绝该 tab 的 prompt，其他 tab 不受影响。
+- 关闭 tab 时除了按 session 清理，还会按 tab 拒绝该 tab 的 prompt
+  （`PermissionHandler.clearPendingRequestsForTab`）。
+- `PermissionManager` 保留：它是**会话级**状态（权限模式 + 工具记忆），不是
+  prompt 登记表，合并进全局 broker 反而会让模式变成全局的。
+
 ## 未完成
 
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵

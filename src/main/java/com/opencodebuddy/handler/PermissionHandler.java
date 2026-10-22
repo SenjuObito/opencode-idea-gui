@@ -4,6 +4,7 @@ import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.opencodebuddy.permission.PermissionRequest;
+import com.opencodebuddy.prompt.PromptBroker;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
@@ -230,6 +231,9 @@ public class PermissionHandler extends BaseMessageHandler {
             if (sessionId != null) {
                 requestData.addProperty("sessionId", sessionId);
                 prompts.permissionSessions.put(request.getChannelId(), sessionId);
+                // The tab owns the prompt: closing the tab has to reject it,
+                // and the badge of a background tab has to find it.
+                prompts.rememberPermissionTab(request.getChannelId(), context.getTabIdForSession(sessionId));
                 // The tab is the identity the webview routes by; the session id
                 // alone only says which conversation the prompt belongs to.
                 String tabId = context.getTabIdForSession(sessionId);
@@ -353,6 +357,27 @@ public class PermissionHandler extends BaseMessageHandler {
      */
     public void clearPendingRequests() {
         clearPendingRequests(null);
+    }
+
+    /**
+     * Clear the prompts owned by one tab.
+     *
+     * <p>The tab is the owner of its prompts: closing it rejects exactly its
+     * own requests and leaves every other tab's prompts alone. The session id
+     * alone is not enough — a tab can hold a prompt for a session that was
+     * never bound (a brand-new tab) or that has already been replaced.</p>
+     *
+     * @return the request ids that were rejected
+     */
+    public java.util.List<String> clearPendingRequestsForTab(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            return java.util.Collections.emptyList();
+        }
+        java.util.List<String> rejected = prompts.rejectForTab(tabId);
+        if (!rejected.isEmpty()) {
+            LOG.info("[PERM_CLEAR] Rejected " + rejected.size() + " prompt(s) of tab " + tabId);
+        }
+        return rejected;
     }
 
     /**
@@ -495,6 +520,7 @@ public class PermissionHandler extends BaseMessageHandler {
             String directory = context.resolveEffectiveWorkingDirectory();
 
             prompts.questions.put(requestId, new PromptBroker.PendingQuestion(sessionId, questions, toolName, directory));
+            prompts.rememberQuestionTab(requestId, context.getTabIdForSession(sessionId));
 
             // Trigger visual toast and sound reminders
             try {
@@ -613,6 +639,8 @@ public class PermissionHandler extends BaseMessageHandler {
         if (dialogSessionId != null && !dialogSessionId.isBlank()) {
             prompts.askSessions.put(requestId, dialogSessionId);
         }
+        // The tab owns the prompt: closing the tab rejects it.
+        prompts.rememberQuestionTab(requestId, context.getTabIdForSession(dialogSessionId));
 
         // Remind the user (via the opt-in system toast and sound) that OpenCode is waiting for an
         // answer. Triggered here — before the JS dialog render — so the toast fires
@@ -819,6 +847,7 @@ public class PermissionHandler extends BaseMessageHandler {
         String planSessionId = stringOrNull(planData, "sessionId");
         if (planSessionId != null && !planSessionId.isBlank()) {
             prompts.planSessions.put(requestId, planSessionId);
+            prompts.rememberPlanTab(requestId, context.getTabIdForSession(planSessionId));
         }
 
         try {

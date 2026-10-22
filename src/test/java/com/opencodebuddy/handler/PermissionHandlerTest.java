@@ -1,6 +1,7 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
+import com.opencodebuddy.prompt.PromptBroker;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.JsonObject;
 import org.junit.Before;

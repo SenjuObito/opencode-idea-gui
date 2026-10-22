@@ -19,7 +19,6 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 vi.mock('../../../utils/bridge', () => ({
   cardDebugLog: vi.fn(),
   sendBridgeEvent: vi.fn(),
-  sendTypedBridgeEvent: vi.fn(),
 }));
 
 interface FakeTab {

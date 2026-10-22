@@ -32,7 +32,6 @@ vi.mock('../utils/bridge', async (importOriginal) => {
   return {
     ...actual,
     sendBridgeEvent: bridgeMocks.sendBridgeEvent,
-    sendTypedBridgeEvent: vi.fn(),
     // The real `sendTabCommand` calls the module-local `sendBridgeEvent`, which a
     // mock cannot intercept, so the tab commands are re-emitted on the same
     // envelope the real one builds.

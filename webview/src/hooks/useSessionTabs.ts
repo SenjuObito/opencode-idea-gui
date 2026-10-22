@@ -1534,6 +1534,9 @@ export function useSessionTabs({
       setTabs((prev) =>
         prev.map((t) => (t.id === tabId ? { ...t, title: newTitle, isCustomTitle: true } : t))
       );
+      // The host keeps the same user title on the tab record, so the IDE's tab
+      // strip and the window title cannot disagree after a rename.
+      sendHostCommand(tabId, 'tab.title.set', { title: newTitle });
       if (tabId === activeTabIdRef.current) {
         setCustomSessionTitle(newTitle);
         if (currentSessionId) {

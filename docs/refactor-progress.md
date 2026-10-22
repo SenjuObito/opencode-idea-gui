@@ -347,3 +347,16 @@
   解析走 tab registry，避免命中"某个 tab 已经切走"的旧会话。
 - 宿主对未知类型回 `command.rejected`（`UNKNOWN_TYPE`），并忘记该 requestId，
   允许前端修正后重试。
+
+### tab.* 命令进路由表
+
+- `host_command` 里的 `tab.*` 现在直接交给 `TabCommandRouter`：解析 tab、
+  按 requestId 幂等、在该 tab 的 actor 上串行执行，失败的会回
+  `command.rejected`（`UNKNOWN_TAB` / `CLOSED` / `UNKNOWN_COMMAND`）。
+- 删除旧的 `tab_command` 传输与其解析器：一个传输，一条路径。
+- `tab.title.set` 写的是**用户标题**（`TabRecord.setUserTitle`），之后不再被
+  自动标题覆盖；webview 重命名 tab 时同步下发。
+- `update_title` 改名为 `session.rename`，走会话级命令
+  （`{customTitle}` 在 payload，sessionId 在信封）。
+- 删除 `webview/src/types/protocol.ts` 与 `sendTypedBridgeEvent`：那份清单还在
+  描述已删除的 `send_message` / `set_model` / `update_title`。

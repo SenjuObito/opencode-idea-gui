@@ -122,6 +122,18 @@ public final class TabRecord {
         settings.applyAutoTitle(title);
     }
 
+    /**
+     * Apply a title the user typed.
+     *
+     * <p>An auto title never overrides it afterwards: the user asked for this
+     * name, and a rename that a later auto title silently undid is exactly how
+     * the tab strip used to drift from the history list.</p>
+     */
+    public void setUserTitle(String title) {
+        this.title = title;
+        settings.applyUserTitle(title);
+    }
+
     public long getEpoch() {
         return epoch.get();
     }

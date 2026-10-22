@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
-import { sendHostCommand, sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { sendHostCommand, sendSessionCommand, sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
@@ -482,9 +482,8 @@ export function useSessionManagement({
 
   // Update session title
   const updateHistoryTitle = useCallback((sessionId: string, newTitle: string) => {
-    // Send update title request to backend
-    const updateData = JSON.stringify({ sessionId, customTitle: newTitle });
-    sendBridgeEvent('update_title', updateData);
+    // The rename is a command: it names the session it renames.
+    sendSessionCommand('session.rename', sessionId, { customTitle: newTitle });
 
     // Immediately update frontend state
     if (historyData && historyData.sessions) {

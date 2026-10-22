@@ -11,7 +11,6 @@ vi.mock('../utils/bridge', async (importOriginal) => {
   return {
     ...actual,
     sendBridgeEvent: vi.fn(),
-    sendTypedBridgeEvent: vi.fn(),
     sendTabCommand: vi.fn(),
   };
 });

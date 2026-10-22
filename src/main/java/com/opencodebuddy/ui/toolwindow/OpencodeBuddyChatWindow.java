@@ -271,7 +271,7 @@ public class OpencodeBuddyChatWindow {
         tabCommandRouter.register("tab.title.set", command -> {
             TabRecord record = tabRegistry.get(command.tabId());
             if (record != null && !record.isClosed()) {
-                record.setTitle(command.string("title"));
+                record.setUserTitle(command.string("title"));
             }
         });
         String projectPath = project != null ? project.getBasePath() : null;
@@ -3113,11 +3113,6 @@ public class OpencodeBuddyChatWindow {
             return;
         }
 
-        if ("tab_command".equals(type)) {
-            handleTabCommand(content);
-            return;
-        }
-
         if (com.opencodebuddy.handler.core.HostCommand.TRANSPORT.equals(type)) {
             handleHostCommand(content);
             return;
@@ -3164,6 +3159,13 @@ public class OpencodeBuddyChatWindow {
             return;
         }
 
+        // The tab commands are the registry's business, not a handler's: they
+        // create, point at and close tabs, which the handlers cannot see.
+        if (command.getType().startsWith("tab.")) {
+            routeTabCommand(command);
+            return;
+        }
+
         MessageDispatcher dispatcher = this.messageDispatcher;
         if (dispatcher == null) {
             publishCommandRejection(command.getTabId(), command.getRequestId(),
@@ -3190,34 +3192,28 @@ public class OpencodeBuddyChatWindow {
     }
 
     /**
-     * A tab-scoped command envelope from the webview:
-     * {@code {tabId, command, requestId, payload}}.
+     * Hand a {@code tab.*} command to the router that owns the registry.
+     *
+     * <p>The router resolves the tab, drops a replayed request id and runs the
+     * handler on that tab's actor, so two commands for one tab cannot interleave
+     * and a command for a closed tab cannot revive it.</p>
      */
-    private void handleTabCommand(String content) {
-        try {
-            JsonObject json = JsonParser.parseString(content).getAsJsonObject();
-            String tabId = json.has("tabId") && !json.get("tabId").isJsonNull()
-                    ? json.get("tabId").getAsString() : null;
-            String command = json.has("command") && !json.get("command").isJsonNull()
-                    ? json.get("command").getAsString() : null;
-            String requestId = json.has("requestId") && !json.get("requestId").isJsonNull()
-                    ? json.get("requestId").getAsString() : null;
-            JsonObject payload = json.has("payload") && json.get("payload").isJsonObject()
-                    ? json.getAsJsonObject("payload") : new JsonObject();
-            if (tabId == null || tabId.isBlank() || command == null || command.isBlank()) {
-                LOG.warn("[TabCommand] rejected malformed command: " + content);
-                return;
-            }
-            TabCommandRouter.Result result = tabCommandRouter.route(
-                    new TabCommand(TabId.of(tabId), command, requestId, payload));
-            if (result != TabCommandRouter.Result.ROUTED
-                    && result != TabCommandRouter.Result.DUPLICATE) {
-                PluginFileLogger.warn("FRONTEND->BACKEND",
-                        "tab_command " + command + " tab=" + tabId + " -> " + result);
-            }
-        } catch (RuntimeException e) {
-            LOG.warn("[TabCommand] failed to parse: " + content, e);
-            PluginFileLogger.warn("FRONTEND->BACKEND", "invalid tab_command: " + content);
+    private void routeTabCommand(com.opencodebuddy.handler.core.HostCommand command) {
+        if (command.getTabId() == null) {
+            publishCommandRejection(null, command.getRequestId(),
+                    "MISSING_TAB_ID", "a tab command must name its tab");
+            return;
+        }
+        JsonObject payload = JsonParser.parseString(command.getPayloadJson()).getAsJsonObject();
+        TabCommandRouter.Result result = tabCommandRouter.route(
+                new TabCommand(TabId.of(command.getTabId()), command.getType(),
+                        command.getRequestId(), payload));
+        if (result != TabCommandRouter.Result.ROUTED
+                && result != TabCommandRouter.Result.DUPLICATE) {
+            PluginFileLogger.warn("FRONTEND->BACKEND",
+                    command.getType() + " tab=" + command.getTabId() + " -> " + result);
+            publishCommandRejection(command.getTabId(), command.getRequestId(),
+                    result.name(), "the tab command could not be routed");
         }
     }
 

@@ -20,7 +20,7 @@ public class HistoryHandler extends BaseMessageHandler {
             "delete_sessions", // Batch delete sessions
             "export_session",  // Export session
             "toggle_favorite", // Toggle favorite status
-            "update_title",    // Update session title
+            "session.rename", // Rename the session title
             "delete_title",    // Delete orphaned custom title (B-011)
             "deep_search_history" // Deep search (clear cache and reload)
     };
@@ -89,8 +89,8 @@ public class HistoryHandler extends BaseMessageHandler {
                 LOG.info("[HistoryHandler] 处理: toggle_favorite, sessionId=" + content);
                 historyMetadataService.handleToggleFavorite(content);
                 return true;
-            case "update_title":
-                LOG.info("[HistoryHandler] 处理: update_title");
+            case "session.rename":
+                LOG.info("[HistoryHandler] 处理: session.rename");
                 historyMetadataService.handleUpdateTitle(content, currentProvider);
                 return true;
             case "delete_title":

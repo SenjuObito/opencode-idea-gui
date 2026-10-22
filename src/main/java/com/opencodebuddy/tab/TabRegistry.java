@@ -169,6 +169,25 @@ public final class TabRegistry {
         return result;
     }
 
+    /** One immutable view per live tab, for reload/resync. */
+    public synchronized List<TabSnapshot> snapshots() {
+        List<TabSnapshot> result = new ArrayList<>();
+        for (TabRecord record : tabs.values()) {
+            if (record.isClosed()) {
+                continue;
+            }
+            result.add(new TabSnapshot(
+                    record.getTabId().value(),
+                    record.getSessionIdString(),
+                    record.getTitle(),
+                    record.getTabId().equals(activeTabId),
+                    record.isStreaming(),
+                    record.getState() == TabState.LOADING_HISTORY,
+                    record.getEpoch()));
+        }
+        return result;
+    }
+
     /**
      * Close and remove a tab, releasing both indexes. Idempotent.
      *

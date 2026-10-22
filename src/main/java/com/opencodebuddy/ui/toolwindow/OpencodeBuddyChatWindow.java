@@ -1568,21 +1568,8 @@ public class OpencodeBuddyChatWindow {
             payload.addProperty("activeTabId", active.value());
         }
         JsonArray tabs = new JsonArray();
-        for (TabRecord record : tabRegistry.liveTabs()) {
-            JsonObject entry = new JsonObject();
-            entry.addProperty("tabId", record.getTabId().value());
-            String sessionId = record.getSessionIdString();
-            if (sessionId != null) {
-                entry.addProperty("sessionId", sessionId);
-            }
-            String title = record.getTitle();
-            if (title != null) {
-                entry.addProperty("title", title);
-            }
-            entry.addProperty("streaming", record.isStreaming());
-            entry.addProperty("loading", record.getState() == TabState.LOADING_HISTORY);
-            entry.addProperty("epoch", record.getEpoch());
-            tabs.add(entry);
+        for (com.opencodebuddy.tab.TabSnapshot snapshot : tabRegistry.snapshots()) {
+            tabs.add(snapshot.toJson());
         }
         payload.add("tabs", tabs);
         return payload.toString();

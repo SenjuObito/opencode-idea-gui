@@ -29,6 +29,26 @@ public class TabRegistryTest {
     }
 
     @Test
+    public void snapshotsCarryStableIdsAndTheActiveFlag() {
+        TabRegistry registry = new TabRegistry();
+        TabId first = tab("tab-a");
+        TabId second = tab("tab-b");
+        registry.create(first, "/repo");
+        registry.create(second, "/repo");
+        registry.bind(first, "ses_a", null, null, null);
+        registry.activate(second);
+
+        java.util.List<TabSnapshot> snapshots = registry.snapshots();
+
+        assertEquals(2, snapshots.size());
+        assertEquals("tab-a", snapshots.get(0).tabId());
+        assertEquals("ses_a", snapshots.get(0).sessionId());
+        assertEquals(false, snapshots.get(0).active());
+        assertEquals("tab-b", snapshots.get(1).tabId());
+        assertEquals(true, snapshots.get(1).active());
+    }
+
+    @Test
     public void bindIsAtomicAndIndexesBothDirections() {
         TabRegistry registry = new TabRegistry();
         TabRecord record = registry.create(tab("tab-a"), "/repo");

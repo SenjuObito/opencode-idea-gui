@@ -379,3 +379,40 @@
   并回 `command.rejected`。
 - 失败只回一个事件 `attachment.failed`（`onAttachmentFailed` → toast），
   成功路径不需要事件：命令本就是有序的。
+
+## 第四轮：新会话引导与命名事件收口
+
+对应提交：宿主 `99bd04c`，core `bb91c57`。
+
+### 新会话引导（C7 / §8.2.1）
+- core 在 `bindSession` 之前播报 `[SESSION_ID]`：该行只有请求 id、没有 session；
+  后续行才由 session 归属。send/shell 共用 v1/v2 的同一 daemon 路径。
+- 新增宿主 `tab/PendingSend`：按 `requestId` 保存新会话绑定前的内容行，
+  `[SESSION_ID]` 到达后交给发起请求以绑定 tab，sink 注册后按线序回放；
+  30s 未拿到 id 则失败该请求，不再让首轮永远挂起。
+- `DaemonBridge` 增加 `registerPendingSend` / `unregisterPendingSend`；
+  `OpenCodeSDKBridge.sendMessage` / `shell` 全部注册 PendingSend；
+  删除 `[SESSION_ID]` 的临时 id 分支，历史/查询等 request-scoped 回包仍按 id 路由。
+- 新增 `TabSnapshot` + `TabRegistry.snapshots()`，reload 的 `tab.resync`
+  由不可变快照生成，不再遍历可变 `TabRecord`。
+- 回归：`PendingSendTest`、`OpenCodeListMessagesRoutingTest` 新增无 session 戳
+  引导行 + 绑定前内容回放场景。
+
+### 命名事件遗留（A1）
+- `UsagePushService` 不再调用 `window.onUsageUpdate`：改发 `usage.updated`，
+  带目标 session 的 tabId；模型切换按目标 session 更新，不再使用 active tab 的用量。
+- `PermissionHandler` 的问答完成改发 `question.answered`，webview 同时接受对象与旧 JSON 字符串。
+- `TabEventBus` 接入窗口 `publishTabEvent`，不再是有类无调用。
+
+### 命令按 tab 寻址（D12）
+- 新增 `commands.refresh`（保留 `refresh_slash_commands` 兼容入口）；
+  webview 优先以 active tabId 发送，宿主按该 tab 的 session cwd 刷新命令列表。
+- `WindowEventHandler.Callback.onRefreshSlashCommands` 增加 tabId 参数；
+  `SessionLifecycleManager.fetchSlashCommandsOnStartup(tabId)` 按 tab 解析 session，
+  无绑定回退 active/project cwd。
+
+### 仍未收口
+- A2：仍有约 70 处 `sendBridgeEvent`（含窗口/设置/历史命令），双传输未全删。
+- A3：约 96 个 `window.*` 全局仍由 dispatcher 回退调用。
+- C7：`SessionStreamRouter` 仍沿用 session 包名；`TabStreamRouter` 未改名/迁包。
+- C8 / C9 / E14 / E15 / E16 未开始或仅部分；§13.3/§13.4 仍需真机执行。

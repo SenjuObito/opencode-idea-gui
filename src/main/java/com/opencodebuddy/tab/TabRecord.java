@@ -17,6 +17,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>There is deliberately no {@code active} flag here. Activity is a view
  * concern owned by the webview; it must never decide which tab receives a
  * message or a permission prompt.</p>
+ *
+ * <p>Prompts are not stored as a list on this record: {@link com.opencodebuddy.prompt.PromptBroker}
+ * is the single owner of every pending permission/question/plan future and
+ * keys each one by its owning tab, so closing a tab rejects exactly its prompts.
+ * The editable draft likewise lives in the webview's {@code TabDraftStore};
+ * the host only serializes sends through {@link PendingSend}.</p>
  */
 public final class TabRecord {
 

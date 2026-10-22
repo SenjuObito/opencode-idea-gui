@@ -526,3 +526,18 @@
 - A2 目前只剩 5 处 `load_subagent_session`，需要 core 暴露子会话定位/读取
   接口后才能迁入 `host_command`。
 
+## 第四轮补 10：确认渲染窗口化与缓存已落地
+
+- 复核 E14 的四个点：宿主历史分页与 webview 分页上限、`MessageList` 按轮
+  折叠只渲染可见窗口、`MarkdownBlock` / `MessageItem` 的 `useMemo` 解析缓存、
+  `reconcileMessageKeys` 的消息 key 复用。
+- 未新增代码，状态表从“未开始”改为“已完成”，避免重复实现。
+
+## 第四轮补 11：固化 TabRecord 的 prompts / draft 归属
+
+- 不在 `TabRecord` 上再放一份 prompt 列表：`PromptBroker` 已按 tabId 持有
+  所有权限/提问/计划 future，关闭 tab 时按 tab 精确拒绝。重复字段会让两处
+  状态分叉。
+- 可编辑草稿属于 webview 的 `TabDraftStore`；宿主只负责发送串行，现有
+  `PendingSend` 已承担。`TabRecord` javadoc 明确这两点，C8 收口。
+

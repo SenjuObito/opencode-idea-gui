@@ -856,6 +856,8 @@ tasks.register('checkLegacyPatterns') {
         'single-runtime-swap':     [files: webviewSources, pattern: ~/captureStreamingRuntime|restoreStreamingRuntime/],
         // The transition guard is per tab, never a window-wide flag.
         'global-transition-lock':  [files: webviewSources, pattern: ~/__sessionTransitioning/],
+        // A session map may only be keyed by a canonical session id.
+        'mixed-session-map-keys':  [files: javaSources, pattern: /sessions\.put|sessionCoalescers\.keySet/],
     ]
     def debt = [
         // The event handlers must not route by "the session on screen": a

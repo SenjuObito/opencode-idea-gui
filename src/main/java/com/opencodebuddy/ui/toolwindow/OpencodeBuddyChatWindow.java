@@ -3226,7 +3226,10 @@ public class OpencodeBuddyChatWindow {
 
         // The tab commands are the registry's business, not a handler's: they
         // create, point at and close tabs, which the handlers cannot see.
-        if (command.getType().startsWith("tab.")) {
+        // Lifecycle events also use a `tab.` prefix (tab.loading.changed,
+        // tab.status.changed) but belong to the window dispatcher; only types
+        // the router registered are treated as tab commands.
+        if (command.getType().startsWith("tab.") && tabCommandRouter.handles(command.getType())) {
             routeTabCommand(command);
             return;
         }

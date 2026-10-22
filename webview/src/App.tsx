@@ -1096,10 +1096,11 @@ const App = () => {
   useEffect(() => {
     const isDefaultNewSession = !sessionTitle || sessionTitle === t('common.newSession');
     const titleTabId = window.__sessionTabsStore?.getActiveTabId?.();
+    // A tab command must name its tab. Before the store has an active tab there
+    // is nothing to rename; sending a window-level title command was rejected by
+    // the host and surfaced as a startup error toast.
     if (titleTabId) {
       sendHostCommand(titleTabId, 'tab.title.set', { title: isDefaultNewSession ? '' : sessionTitle });
-    } else {
-      sendWindowCommand('tab.title.set', { title: isDefaultNewSession ? '' : sessionTitle });
     }
   }, [sessionTitle, t]);
 

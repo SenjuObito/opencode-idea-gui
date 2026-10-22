@@ -62,6 +62,11 @@ public final class TabCommandRouter {
         handlers.put(type, handler);
     }
 
+    /** True when this type belongs to the tab registry, not the window dispatcher. */
+    public boolean handles(String type) {
+        return type != null && handlers.containsKey(type);
+    }
+
     public Result route(TabCommand command) {
         if (command == null) {
             return Result.UNKNOWN_COMMAND;

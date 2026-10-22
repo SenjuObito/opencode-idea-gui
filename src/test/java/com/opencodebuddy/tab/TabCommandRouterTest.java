@@ -19,6 +19,17 @@ public class TabCommandRouterTest {
     }
 
     @Test
+    public void onlyRegisteredTypesAreTabCommands() {
+        TabCommandRouter router = new TabCommandRouter(new TabRegistry());
+        router.register("tab.title.set", command -> { });
+
+        assertTrue(router.handles("tab.title.set"));
+        assertFalse(router.handles("tab.loading.changed"));
+        assertFalse(router.handles("tab.status.changed"));
+        assertFalse(router.handles(null));
+    }
+
+    @Test
     public void routesToTheNamedTabOnItsActor() throws Exception {
         TabRegistry registry = new TabRegistry();
         registry.create(TabId.of("tab-a"), "/repo");

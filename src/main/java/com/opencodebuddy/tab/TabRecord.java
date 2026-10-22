@@ -43,8 +43,6 @@ public final class TabRecord {
     private volatile TabState state = TabState.NEW;
     private volatile SessionId sessionId;
     private volatile OpencodeSession session;
-    private volatile SessionCallbackAdapter adapter;
-    private volatile StreamMessageCoalescer coalescer;
     private volatile String title;
 
     public TabRecord(TabId tabId, String cwd) {
@@ -89,11 +87,19 @@ public final class TabRecord {
     }
 
     public SessionCallbackAdapter getAdapter() {
-        return adapter;
+        OpencodeSession current = session;
+        return current != null ? current.getStreamRouter().getAdapter() : null;
     }
 
     public StreamMessageCoalescer getCoalescer() {
-        return coalescer;
+        OpencodeSession current = session;
+        return current != null ? current.getStreamRouter().getCoalescer() : null;
+    }
+
+    /** The tab's data-plane router; the single owner of adapter and coalescer. */
+    public TabStreamRouter getRouter() {
+        OpencodeSession current = session;
+        return current != null ? current.getStreamRouter() : null;
     }
 
     public TabSettings getSettings() {
@@ -203,6 +209,7 @@ public final class TabRecord {
      */
     /** Replace the session object while keeping the tab's canonical binding. */
     public void setSession(OpencodeSession session) {
+        releasePreviousSession(session);
         this.session = session;
     }
 
@@ -211,9 +218,11 @@ public final class TabRecord {
             SessionCallbackAdapter adapter,
             StreamMessageCoalescer coalescer
     ) {
+        releasePreviousSession(session);
         this.session = session;
-        this.adapter = adapter;
-        this.coalescer = coalescer;
+        if (session != null) {
+            session.getStreamRouter().attachOutputs(adapter, coalescer);
+        }
     }
 
     public void setSessionResources(
@@ -222,17 +231,29 @@ public final class TabRecord {
             SessionCallbackAdapter adapter,
             StreamMessageCoalescer coalescer
     ) {
+        releasePreviousSession(session);
         this.sessionId = sessionId;
         this.session = session;
-        this.adapter = adapter;
-        this.coalescer = coalescer;
+        if (session != null) {
+            session.getStreamRouter().attachOutputs(adapter, coalescer);
+        }
+    }
+
+    /** A replaced session must not keep the outputs of the tab's old session. */
+    private void releasePreviousSession(OpencodeSession next) {
+        OpencodeSession previous = session;
+        if (previous != null && previous != next) {
+            previous.getStreamRouter().clearOutputs();
+        }
     }
 
     public void clearSessionResources() {
+        OpencodeSession current = session;
+        if (current != null) {
+            current.getStreamRouter().clearOutputs();
+        }
         this.sessionId = null;
         this.session = null;
-        this.adapter = null;
-        this.coalescer = null;
     }
 
     public synchronized void close() {

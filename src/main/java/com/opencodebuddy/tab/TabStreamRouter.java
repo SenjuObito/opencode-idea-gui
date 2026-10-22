@@ -6,7 +6,9 @@ import com.opencodebuddy.provider.common.SDKResult;
 import com.opencodebuddy.provider.opencode.OpenCodeMarkerParser;
 import com.opencodebuddy.session.CallbackHandler;
 import com.opencodebuddy.session.OpenCodeMessageHandler;
+import com.opencodebuddy.session.SessionCallbackAdapter;
 import com.opencodebuddy.session.SessionState;
+import com.opencodebuddy.session.StreamMessageCoalescer;
 import com.intellij.openapi.diagnostic.Logger;
 
 /**
@@ -48,8 +50,38 @@ public final class TabStreamRouter implements DaemonBridge.SessionLineSink {
     private final OpenCodeMarkerParser.StreamContext streamContext =
             new OpenCodeMarkerParser.StreamContext();
 
+    /**
+     * The two outputs this tab owns. The router is the single owner so a tab
+     * cannot end up with an adapter from one session and a coalescer from
+     * another; they are attached together and released together.
+     */
+    private volatile SessionCallbackAdapter adapter;
+    private volatile StreamMessageCoalescer coalescer;
+
     public TabStreamRouter(SessionState state, CallbackHandler callbackHandler) {
         this.messageHandler = new OpenCodeMessageHandler(state, callbackHandler);
+    }
+
+    /** Attach the tab's renderer-facing outputs. */
+    public void attachOutputs(SessionCallbackAdapter adapter, StreamMessageCoalescer coalescer) {
+        this.adapter = adapter;
+        this.coalescer = coalescer;
+    }
+
+    /** The tab's session→webview adapter. */
+    public SessionCallbackAdapter getAdapter() {
+        return adapter;
+    }
+
+    /** The tab's message coalescer. */
+    public StreamMessageCoalescer getCoalescer() {
+        return coalescer;
+    }
+
+    /** Drop the outputs when the tab closes or its session is replaced. */
+    public void clearOutputs() {
+        adapter = null;
+        coalescer = null;
     }
 
     /**

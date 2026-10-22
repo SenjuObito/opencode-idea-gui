@@ -414,7 +414,8 @@
 ### 仍未收口
 - A2：仍有约 70 处 `sendBridgeEvent`（含窗口/设置/历史命令），双传输未全删。
 - A3：约 96 个 `window.*` 全局仍由 dispatcher 回退调用。
-- C7：`SessionStreamRouter` 仍沿用 session 包名；`TabStreamRouter` 未改名/迁包。
+- C7：`SessionStreamRouter` 仍沿用 session 包名；`TabStreamRouter` 未改名/迁包
+  （已在「第四轮补 4」收口）。
 - C8 / C9 / E14 / E15 / E16 未开始或仅部分；§13.3/§13.4 仍需真机执行。
 
 ## 第四轮补充：把会话/窗口命令继续搬进信封
@@ -455,3 +456,17 @@
   全部是宿主未实现的旧功能（子会话历史、CLI 转换、自定义模型定价、早期游标）。
 - 新增 `HistoryHandlerTest` / `ClipboardHandlerTest.extractText` 覆盖信封与旧值
   两条路径。
+
+## 第四轮补 4：TabStreamRouter 成为每 tab 输出唯一持有者
+
+- `TabStreamRouter` 新增 `attachOutputs` / `getAdapter` / `getCoalescer` /
+  `clearOutputs`：adapter 与 coalescer 成对挂载、成对释放，不再由
+  `TabRecord` 和 session 各存一份引用。
+- `TabRecord` 删除 adapter / coalescer 字段，`getAdapter` / `getCoalescer`
+  委托给当前 session 的 router；新增 `getRouter()` 作为数据面入口。
+- 换 session 时先释放旧 session 的 router 输出，避免历史切换后旧 adapter
+  继续持有该 tab 的事件出口。
+- 关闭 tab 仍在 `record.close()` 前捕获 adapter/coalescer 并 dispose，
+  释放语义不变。
+- 验证：gradle 852 测试、tsc、vitest 173 文件 / 1516 测试、
+  `checkLegacyPatterns` 0 forbidden / 0 debt 全绿。

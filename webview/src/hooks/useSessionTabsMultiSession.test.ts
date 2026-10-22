@@ -12,18 +12,51 @@ const bridgeMocks = vi.hoisted(() => ({
   sendTabCommand: vi.fn(),
 }));
 
+/** Re-emit a command on the envelope the real helper builds. */
+const emitCommand = (
+  transport: { type: string; tabId?: string | null; sessionId?: string | null; payload?: Record<string, unknown> },
+) => bridgeMocks.sendBridgeEvent(
+  'host_command',
+  JSON.stringify({
+    v: 2,
+    type: transport.type,
+    requestId: `test-${transport.tabId ?? 'none'}-${transport.type}`,
+    tabId: transport.tabId ?? null,
+    sessionId: transport.sessionId ?? null,
+    payload: transport.payload ?? {},
+  }),
+);
+
 vi.mock('../utils/bridge', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/bridge')>();
   return {
     ...actual,
     sendBridgeEvent: bridgeMocks.sendBridgeEvent,
     sendTypedBridgeEvent: vi.fn(),
+    // The real `sendTabCommand` calls the module-local `sendBridgeEvent`, which a
+    // mock cannot intercept, so the tab commands are re-emitted on the same
+    // envelope the real one builds.
     sendTabCommand: (tabId: string, command: string, payload: Record<string, unknown> = {}) => {
       bridgeMocks.sendTabCommand(tabId, command, payload);
-      return bridgeMocks.sendBridgeEvent(
-        'tab_command',
-        JSON.stringify({ tabId, command, payload }),
-      );
+      return emitCommand({ type: command, tabId, payload });
+    },
+    // The real helpers call the module-local `sendBridgeEvent`, which a mock
+    // cannot intercept, so they are re-emitted on the same envelope shape.
+    sendHostCommand: (
+      tabId: string | null | undefined,
+      type: string,
+      payload: Record<string, unknown> = {},
+      sessionId: string | null | undefined = null,
+    ) => emitCommand({ type, tabId, sessionId, payload }),
+    sendSessionCommand: (
+      type: string,
+      sessionId: string | null | undefined,
+      payload: Record<string, unknown> = {},
+    ) => {
+      const tabId = sessionId
+        ? window.__sessionTabsStore?.getTabIdForSession?.(sessionId)
+        : window.__sessionTabsStore?.getActiveTabId?.();
+      return emitCommand({ type, tabId, sessionId, payload });
     },
   };
 });
@@ -577,19 +610,20 @@ describe('useSessionTabs - history session loading', () => {
       result.current.selectTab(tab1Id);
     });
 
-    const calls = vi.mocked(sendBridgeEvent).mock.calls;
-    const activateCall = calls.findIndex(
-      (c) => c[0] === 'tab_command' && String(c[1]).includes('"command":"tab.activate"'),
-    );
-    const modeCall = calls.findIndex((c) => c[0] === 'set_mode');
+    // Every command travels on one transport; the envelope names its type.
+    const calls = vi.mocked(sendBridgeEvent).mock.calls
+      .filter((c) => c[0] === 'host_command')
+      .map((c) => JSON.parse(String(c[1])));
+    const activateCall = calls.findIndex((c) => c.type === 'tab.activate');
+    const modeCall = calls.findIndex((c) => c.type === 'settings.mode');
 
     expect(activateCall).toBeGreaterThanOrEqual(0);
     expect(modeCall).toBeGreaterThanOrEqual(0);
     expect(activateCall).toBeLessThan(modeCall);
 
     // Activation is by stable tab id; the mode payload is scoped to the session.
-    expect(calls[activateCall][1]).toContain(`"tabId":"${tab1Id}"`);
-    expect(calls[modeCall][1]).toContain('"sessionId":"ses_a"');
+    expect(calls[activateCall].tabId).toBe(tab1Id);
+    expect(calls[modeCall].sessionId).toBe('ses_a');
   });
 
   it('does not rewrite the host session when creating an unbound tab', () => {
@@ -668,10 +702,11 @@ describe('useSessionTabs - history session loading', () => {
     });
 
     // Without this the host's active tab would remain the tab just closed.
-    const activateCall = vi.mocked(sendBridgeEvent).mock.calls.find(
-      (c) => c[0] === 'tab_command' && String(c[1]).includes('"command":"tab.activate"'),
-    );
-    expect(activateCall?.[1]).toContain(`"tabId":"${tab1Id}"`);
+    const activateCall = vi.mocked(sendBridgeEvent).mock.calls
+      .filter((c) => c[0] === 'host_command')
+      .map((c) => JSON.parse(String(c[1])))
+      .find((envelope) => envelope.type === 'tab.activate');
+    expect(activateCall?.tabId).toBe(tab1Id);
     expect(result.current.activeTabId).toBe(tab1Id);
   });
 

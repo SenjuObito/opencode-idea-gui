@@ -36,9 +36,9 @@ public class SettingsHandler extends BaseMessageHandler {
 
     private static final String[] SUPPORTED_TYPES = {
         "get_mode",
-        "set_mode",
-        "set_model",
-        "set_reasoning_effort",
+        "settings.mode",
+        "settings.model",
+        "settings.reasoning",
         "get_node_path",
         "set_node_path",
         "get_opencode_cli_path",
@@ -165,14 +165,14 @@ public class SettingsHandler extends BaseMessageHandler {
             case "get_mode":
                 permissionModeHandler.handleGetMode();
                 return true;
-            case "set_mode":
+            case "settings.mode":
                 permissionModeHandler.handleSetMode(content);
                 return true;
             // Model
-            case "set_model":
+            case "settings.model":
                 modelProviderHandler.handleSetModel(content);
                 return true;
-            case "set_reasoning_effort":
+            case "settings.reasoning":
                 modelProviderHandler.handleSetReasoningEffort(content);
                 return true;
             // Node path

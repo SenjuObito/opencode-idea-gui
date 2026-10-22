@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { TFunction as I18nTFunction } from 'i18next';
-import { sendBridgeEvent } from '../utils/bridge';
+import { sendSessionCommand, sendBridgeEvent } from '../utils/bridge';
 import type {
   PermissionMode,
   ReasoningEffort,
@@ -23,35 +23,25 @@ export interface UseModelProviderStateOptions {
 }
 
 /**
- * Build the `set_model` payload.
+ * Build the payload for a model selection.
  *
- * With a bound session the host receives `{ model, sessionId }` so it writes the
- * selection onto *that* OpencodeSession instead of "the window's current one" —
- * those drift apart as soon as the user switches tabs, and the change lands on
- * the wrong conversation while the UI reports success.
- *
- * An unbound tab still has a legacy bare-string form for backwards compatibility,
- * but callers must not use it: a tab without a session has no host target, so its
- * model travels with `send_message` instead.
+ * <p>The session the change is scoped to travels in the command envelope, not in
+ * the payload: one identity, one place. The host merges the envelope's session
+ * into the payload before the handler sees it, so a payload that repeated it
+ * could only ever disagree with the envelope.</p>
  */
 export function buildModelSelectionPayload(
   modelId: string,
-  sessionId: string | null | undefined,
   options?: { silent?: boolean },
-): string {
-  if (!sessionId) return modelId;
-  const payload: Record<string, unknown> = { model: modelId, sessionId };
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = { model: modelId };
   if (options?.silent) payload.silent = true;
-  return JSON.stringify(payload);
+  return payload;
 }
 
-/** Same scoping rule as {@link buildModelSelectionPayload}, for reasoning effort. */
-export function buildReasoningEffortPayload(
-  effort: string,
-  sessionId: string | null | undefined,
-): string {
-  if (!sessionId) return effort;
-  return JSON.stringify({ reasoningEffort: effort, sessionId });
+/** Same rule as {@link buildModelSelectionPayload}, for reasoning effort. */
+export function buildReasoningEffortPayload(effort: string): Record<string, unknown> {
+  return { reasoningEffort: effort };
 }
 
 /**
@@ -121,7 +111,7 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
     // send_message payload, so writing it to "the window's current session"
     // would rewrite the previously active tab instead.
     if (!sessionId) return;
-    sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode }));
+    sendSessionCommand('settings.mode', sessionId, { mode });
   }, [setOpenCodePermissionMode, currentSessionId, currentSessionIdRef]);
 
   /**
@@ -137,7 +127,7 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     // No session yet: keep it local; the model is sent with the first message.
     if (!sessionId) return;
-    sendBridgeEvent('set_model', buildModelSelectionPayload(modelId, sessionId, options));
+    sendSessionCommand('settings.model', sessionId, buildModelSelectionPayload(modelId, options));
   }, [setSelectedOpenCodeModel, currentSessionId, currentSessionIdRef]);
 
   const handleProviderSelect = useCallback((providerId: string) => {
@@ -146,15 +136,15 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
     setPermissionMode(openCodePermissionMode);
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     if (!sessionId) return;
-    sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode: openCodePermissionMode }));
-    sendBridgeEvent('set_model', buildModelSelectionPayload(selectedOpenCodeModel, sessionId));
+    sendSessionCommand('settings.mode', sessionId, { mode: openCodePermissionMode });
+    sendSessionCommand('settings.model', sessionId, buildModelSelectionPayload(selectedOpenCodeModel));
   }, [openCodePermissionMode, selectedOpenCodeModel, currentSessionId, currentSessionIdRef]);
 
   const handleReasoningChange = useCallback((effort: ReasoningEffort) => {
     setReasoningEffort(effort);
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     if (!sessionId) return;
-    sendBridgeEvent('set_reasoning_effort', buildReasoningEffortPayload(effort, sessionId));
+    sendSessionCommand('settings.reasoning', sessionId, buildReasoningEffortPayload(effort));
   }, [setReasoningEffort, currentSessionId, currentSessionIdRef]);
 
   const handleToggleThinking = useCallback((enabled: boolean) => {

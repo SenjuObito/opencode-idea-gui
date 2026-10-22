@@ -4,21 +4,35 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useModelProviderState } from './useModelProviderState';
 import { sendBridgeEvent } from '../utils/bridge';
 
-vi.mock('../utils/bridge', () => ({
-  sendBridgeEvent: vi.fn(),
-  cardDebugLog: vi.fn(),
-}));
+vi.mock('../utils/bridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/bridge')>();
+  return {
+    ...actual,
+    sendBridgeEvent: vi.fn(),
+    cardDebugLog: vi.fn(),
+  };
+});
 
 const t = ((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as any;
 
-const configCalls = () => vi.mocked(sendBridgeEvent).mock.calls.filter(
-  ([name]) => name === 'set_model' || name === 'set_mode' || name === 'set_reasoning_effort',
-);
+/** The configuration commands the webview sent, as their envelopes. */
+const configCalls = () => ((window.sendToJava as unknown as ReturnType<typeof vi.fn>)?.mock?.calls ?? [])
+  .map((call: unknown[]) => call[0] as string)
+  .filter((call) => call.startsWith('host_command:'))
+  .map((call) => JSON.parse(call.substring('host_command:'.length)))
+  .filter((envelope) => ['settings.model', 'settings.mode', 'settings.reasoning']
+    .includes(envelope.type));
 
 describe('useModelProviderState - unbound tab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sendToJava = vi.fn();
     localStorage.clear();
+    // The commands name the tab that owns the session.
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => 'tab-1',
+      getTabIdForSession: () => 'tab-1',
+    };
   });
 
   it('does not write model/mode/effort while the active tab has no session', () => {
@@ -59,17 +73,15 @@ describe('useModelProviderState - unbound tab', () => {
     });
 
     const calls = configCalls();
-    expect(calls).toContainEqual([
-      'set_model',
-      JSON.stringify({ model: 'opencode/new-model', sessionId: 'ses_bound' }),
-    ]);
-    expect(calls).toContainEqual([
-      'set_mode',
-      JSON.stringify({ sessionId: 'ses_bound', mode: 'plan' }),
-    ]);
-    expect(calls).toContainEqual([
-      'set_reasoning_effort',
-      JSON.stringify({ reasoningEffort: 'high', sessionId: 'ses_bound' }),
-    ]);
+    // The envelope carries the identity; the payload only the content.
+    const model = calls.find((envelope) => envelope.type === 'settings.model');
+    expect(model.payload).toEqual({ model: 'opencode/new-model' });
+    expect(model.sessionId).toBe('ses_bound');
+    const mode = calls.find((envelope) => envelope.type === 'settings.mode');
+    expect(mode.payload).toEqual({ mode: 'plan' });
+    expect(mode.sessionId).toBe('ses_bound');
+    const effort = calls.find((envelope) => envelope.type === 'settings.reasoning');
+    expect(effort.payload).toEqual({ reasoningEffort: 'high' });
+    expect(effort.sessionId).toBe('ses_bound');
   });
 });

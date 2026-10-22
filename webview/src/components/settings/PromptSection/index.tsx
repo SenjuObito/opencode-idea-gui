@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { sendWindowCommand } from '../../../utils/bridge';
 import styles from './style.module.less';
 
 /**
@@ -137,7 +137,7 @@ const PromptSection = () => {
   const [showLibrary, setShowLibrary] = useState(false);
 
   const refresh = useCallback((targetScope: Scope) => {
-    sendBridgeEvent('commands_list', JSON.stringify({ scope: targetScope }));
+    sendWindowCommand('commands.list', { scope: targetScope });
   }, []);
 
   useEffect(() => {
@@ -161,17 +161,17 @@ const PromptSection = () => {
     const onSaved = (json: string) => {
       try {
         const data = JSON.parse(json);
-        sendBridgeEvent('commands_list', JSON.stringify({ scope: data.scope || scope }));
+        sendWindowCommand('commands.list', { scope: data.scope || scope });
       } catch {
-        sendBridgeEvent('commands_list', JSON.stringify({ scope }));
+        sendWindowCommand('commands.list', { scope });
       }
     };
     const onDeleted = (json: string) => {
       try {
         const data = JSON.parse(json);
-        sendBridgeEvent('commands_list', JSON.stringify({ scope: data.scope || scope }));
+        sendWindowCommand('commands.list', { scope: data.scope || scope });
       } catch {
-        sendBridgeEvent('commands_list', JSON.stringify({ scope }));
+        sendWindowCommand('commands.list', { scope });
       }
     };
 
@@ -209,13 +209,13 @@ const PromptSection = () => {
     };
     window.onCommandsRead = onRead;
     window.__onCommandsRead = onRead;
-    sendBridgeEvent('commands_read', JSON.stringify({ scope, name }));
+    sendWindowCommand('commands.read', { scope, name });
   };
 
   const save = () => {
-    sendBridgeEvent('commands_save', JSON.stringify({
+    sendWindowCommand('commands.save', {
       scope, name: editor.name, originalName: editor.original, content: editor.content,
-    }));
+    });
     setEditor({ open: false, name: '', original: '', content: '' });
   };
 
@@ -223,7 +223,7 @@ const PromptSection = () => {
     if (!window.confirm(t('settings.commands.confirmDelete', { name }))) {
       return;
     }
-    sendBridgeEvent('commands_delete', JSON.stringify({ scope, name }));
+    sendWindowCommand('commands.delete', { scope, name });
   };
 
   const importTemplate = (tpl: CommandTemplate) => {

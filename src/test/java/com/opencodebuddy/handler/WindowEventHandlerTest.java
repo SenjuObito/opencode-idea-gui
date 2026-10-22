@@ -83,7 +83,7 @@ public class WindowEventHandlerTest {
 
         JsonObject payload = new JsonObject();
         payload.addProperty("sessionId", "session_123");
-        assertTrue(handler.handle("compact_session", payload.toString()));
+        assertTrue(handler.handle("session.compact", payload.toString()));
         assertEquals(1, jsCallback.calls.size());
         assertEquals("onCompactError:session_123,Nothing to compact yet", jsCallback.calls.get(0));
     }

@@ -12,7 +12,7 @@ import { TabPromptStore } from '../store/tabPromptStore';
 import { TabMessageStore } from '../store/tabMessageStore';
 import type { ModelInfo, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { getFirstPreferredModelId, resolveSessionModel } from '../components/ChatInputBox/modelSelectUtils';
-import { sendBridgeEvent, sendInterrupt, sendTabCommand, cardDebugLog } from '../utils/bridge';
+import { sendSessionCommand, sendHostCommand, sendBridgeEvent, sendInterrupt, sendTabCommand, cardDebugLog } from '../utils/bridge';
 import { observeHostEpoch, resetHostDispatcherEpochs } from '../utils/hostDispatcher';
 import { clearSessionSequenceBarrier } from './windowCallbacks/sequenceBarrier';
 import { clearTransition, endTransition, transitionTargetFor } from './windowCallbacks/tabTransition';
@@ -600,7 +600,7 @@ export function useSessionTabs({
   const syncPermissionModeTo = useCallback(
     (sessionId: string | null | undefined, mode: string) => {
       if (!sessionId) return;
-      sendBridgeEvent('set_mode', JSON.stringify({ sessionId, mode }));
+      sendSessionCommand('settings.mode', sessionId, { mode });
     },
     [],
   );
@@ -891,7 +891,7 @@ export function useSessionTabs({
 
       // Restore contextInfo if target tab has a specific snapshot
       const isAutoOpen = targetTab.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
-      sendBridgeEvent('refresh_editor_context', JSON.stringify({ tabId: targetTab.id, enabled: isAutoOpen }));
+      sendHostCommand(targetTab.id, 'context.refresh', { enabled: isAutoOpen });
       if (targetTab.contextInfo) {
         setContextInfo?.(targetTab.contextInfo);
       }
@@ -1140,7 +1140,7 @@ export function useSessionTabs({
       if (loadHistorySession) {
         loadHistorySession(sessionId);
       } else {
-        sendBridgeEvent('load_session', JSON.stringify({ sessionId, tabId: activeTabIdRef.current }));
+        sendHostCommand(activeTabIdRef.current, 'session.load', { sessionId }, sessionId);
       }
     },
     [
@@ -1549,12 +1549,16 @@ export function useSessionTabs({
     [currentSessionId, setCustomSessionTitle, updateHistoryTitle]
   );
 
-  // Fork tab
+  // Fork tab. The fork lands in a tab of its own: the command names both the
+  // source it copies and the target it lands in, so a fork never touches the
+  // tab the user is reading.
   const forkTab = useCallback(
     (tab: SessionTabData) => {
-      if (tab.sessionId) {
-        sendBridgeEvent('fork_session', JSON.stringify({ sessionId: tab.sessionId, type: 'full' }));
-      }
+      if (!tab.sessionId) return;
+      sendHostCommand(tab.id, 'session.fork', {
+        sourceTabId: tab.id,
+        targetTabId: createTabId(),
+      });
     },
     []
   );
@@ -1597,7 +1601,7 @@ export function useSessionTabs({
         return tab;
       })
     );
-    sendBridgeEvent('refresh_editor_context', JSON.stringify({ tabId: activeTabIdRef.current, enabled }));
+    sendHostCommand(activeTabIdRef.current, 'context.refresh', { enabled });
   }, []);
 
   // Reorder tabs (supports long-press drag and drop reordering)

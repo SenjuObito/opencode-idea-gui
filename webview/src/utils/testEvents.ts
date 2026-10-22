@@ -79,3 +79,40 @@ export function boundEvent(
 export function promptEvent(request: HostEventPayload, sessionId?: string | null): EventPair {
   return [request, envelope(sessionId, (request.tabId as string) ?? null)];
 }
+
+/**
+ * Parse a command the webview sent: {@code 'host_command:{...}'}.
+ *
+ * @returns the envelope, or null when the call is not a command
+ */
+export function commandEnvelope(call: string): {
+  v: number;
+  type: string;
+  requestId: string;
+  tabId: string | null;
+  sessionId: string | null;
+  payload: HostEventPayload;
+} | null {
+  const prefix = 'host_command:';
+  if (!call.startsWith(prefix)) return null;
+  try {
+    const envelope = JSON.parse(call.substring(prefix.length));
+    return {
+      v: envelope.v,
+      type: envelope.type,
+      requestId: envelope.requestId,
+      tabId: envelope.tabId ?? null,
+      sessionId: envelope.sessionId ?? null,
+      payload: envelope.payload ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** The commands the webview sent, in order. */
+export function sentCommands(calls: string[]): ReturnType<typeof commandEnvelope>[] {
+  return calls
+    .map((call) => commandEnvelope(call))
+    .filter((envelope): envelope is NonNullable<typeof envelope> => envelope !== null);
+}

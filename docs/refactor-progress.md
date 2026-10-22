@@ -319,3 +319,31 @@
 - fork 不再回落到"当前会话"：只 fork 调用方点名的会话，支持用 tabId 寻址。
 - 新增测试：`HostCommandTest`、`RequestIdLedgerTest`、
   `SessionHandlerHostCommandTest`、`TabRecordTest`。
+
+## 命令目录统一（A2 收口）
+
+一条命令，一种走法：webview 的每个命令现在都发在同一个传输上
+`host_command:{v, type, requestId, tabId, sessionId, payload}`，宿主按 `type`
+路由，不再为每种命令各开一个桥接事件。
+
+- 前端新增三个发送面：`sendHostCommand(tabId, type, payload, sessionId)`
+  （tab 级）、`sendSessionCommand(type, sessionId, payload)`（会话级，自动解析
+  会话所属 tab）、`sendWindowCommand(type, payload)`（窗口级，不属任何 tab）。
+- 旧的 `sendTabCommand` 也改为发同一个信封（`tab.*` 命令）。
+- 命令类型统一为 `域.动作`：`session.send|interrupt|restart|load|fork|revert|
+  unrevert|compact`、`settings.mode|model|reasoning`、`context.refresh`、
+  `commands.list|read|save|delete`、`tab.create|activate|close`。
+  旧的 `send_message`、`interrupt_session`、`set_mode`、`commands_list` 等
+  在宿主侧直接删除，不再保留双份入口。
+- `HostCommand.parse(content, expectedType, tabIdRequired)`：命令必须点名 tab 或
+  会话；窗口级命令显式声明不点名，宿主不会替它猜。
+- 身份只有一个来源：payload 不再重复 sessionId，宿主把信封身份合并进 payload
+  后再交给 handler，因此"信封说的"和"payload 说的"不可能打架。
+- `session.send` 的两种形态（纯文本 / 带附件）合并为一条命令，
+  `hasAttachments()` 精确判断，不再靠字符串包含猜测。
+- `session.fork` 只保留 v2 语义（`sourceTabId` + `targetTabId`）：fork 永不改动
+  源 tab，落点 tab 由 `bindForkedSession` 绑定。
+- 新增 `HandlerContext.getSessionForTab(tabId)` / `setTabSessionLookup`：按 tab
+  解析走 tab registry，避免命中"某个 tab 已经切走"的旧会话。
+- 宿主对未知类型回 `command.rejected`（`UNKNOWN_TYPE`），并忘记该 requestId，
+  允许前端修正后重试。

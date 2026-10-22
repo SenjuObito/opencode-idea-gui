@@ -16,9 +16,9 @@ describe('bridge v2 command envelope', () => {
     expect(sendHostCommand('tab-1', 'session.send', { text: 'hi' }, 'ses_a')).toBe(true);
 
     const call = lastCall();
-    expect(call.startsWith('session.send:')).toBe(true);
+    expect(call.startsWith('host_command:')).toBe(true);
 
-    const envelope = JSON.parse(call.substring('session.send:'.length));
+    const envelope = JSON.parse(call.substring('host_command:'.length));
     expect(envelope.v).toBe(2);
     expect(envelope.type).toBe('session.send');
     expect(envelope.tabId).toBe('tab-1');
@@ -37,7 +37,7 @@ describe('bridge v2 command envelope', () => {
     sendHostCommand('tab-1', 'session.send', { text: 'b' });
 
     const calls = (window.sendToJava as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    const ids = calls.map((call) => JSON.parse((call[0] as string).substring('session.send:'.length)).requestId);
+    const ids = calls.map((call) => JSON.parse((call[0] as string).substring('host_command:'.length)).requestId);
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
@@ -48,9 +48,9 @@ describe('bridge interrupt', () => {
     delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
   });
 
-  const payload = () => {
+  const payloadRaw = () => {
     const call = (window.sendToJava as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    return JSON.parse(call.substring('interrupt_session:'.length));
+    return call;
   };
 
   it('names the tab it stops', () => {
@@ -60,8 +60,10 @@ describe('bridge interrupt', () => {
     };
 
     expect(sendInterrupt({ sessionId: 'ses_a' })).toBe(true);
-    expect(payload().tabId).toBe('tab-7');
-    expect(payload().sessionId).toBe('ses_a');
+    const envelope = JSON.parse(payloadRaw().substring('host_command:'.length));
+    expect(envelope.type).toBe('session.interrupt');
+    expect(envelope.tabId).toBe('tab-7');
+    expect(envelope.sessionId).toBe('ses_a');
   });
 
   it('stops the tab that owns the session, not the active one', () => {
@@ -72,7 +74,8 @@ describe('bridge interrupt', () => {
     };
 
     sendInterrupt({ sessionId: 'ses_background' });
-    expect(payload().tabId).toBe('tab-background');
+    const envelope = JSON.parse(payloadRaw().substring('host_command:'.length));
+    expect(envelope.tabId).toBe('tab-background');
   });
 
   it('prefers an explicit tab id', () => {
@@ -82,6 +85,7 @@ describe('bridge interrupt', () => {
     };
 
     sendInterrupt({ tabId: 'tab-explicit', sessionId: 'ses_a' });
-    expect(payload().tabId).toBe('tab-explicit');
+    const envelope = JSON.parse(payloadRaw().substring('host_command:'.length));
+    expect(envelope.tabId).toBe('tab-explicit');
   });
 });

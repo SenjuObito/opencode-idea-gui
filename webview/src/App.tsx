@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
-import { sendBridgeEvent } from './utils/bridge';
+import { sendHostCommand, sendSessionCommand, sendBridgeEvent } from './utils/bridge';
 import { createTabId } from './store/tabStore';
 import { copyViaHost } from './utils/copyUtils';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
@@ -454,7 +454,7 @@ const App = () => {
       return;
     }
     console.debug('[App] undo: reverting to message', id);
-    sendBridgeEvent('revert_session', JSON.stringify({ sessionId: sid, messageId: id }));
+    sendSessionCommand('session.revert', sid, { messageId: id });
     // Optimistic: boundary is the undone user message; the host's
     // onRevertStateUpdate push carries the authoritative pointer.
     applyRevertState(true, id);
@@ -480,7 +480,7 @@ const App = () => {
       return;
     }
     const sid = currentSessionIdRef.current;
-    sendBridgeEvent('unrevert_session', JSON.stringify({ sessionId: sid }));
+    sendSessionCommand('session.unrevert', sid, {});
     applyRevertState(false);
   }, [applyRevertState, streamingActive]);
 
@@ -502,10 +502,10 @@ const App = () => {
     const targetTabId = createTabId();
     if (!id) {
       console.warn('[App] fork: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('session.fork', JSON.stringify({ sourceTabId, targetTabId, messageId: 'latest' }));
+      sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId, messageId: 'latest' });
       return;
     }
-    sendBridgeEvent('session.fork', JSON.stringify({ sourceTabId, targetTabId, messageId: id }));
+    sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId, messageId: id });
   }, [streamingActive, addToast, t, getMessageId]);
 
   /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
@@ -519,7 +519,7 @@ const App = () => {
       ?? window.__sessionTabsStore?.getActiveTabId?.()
       ?? '';
     const targetTabId = createTabId();
-    sendBridgeEvent('session.fork', JSON.stringify({ sourceTabId, targetTabId }));
+    sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId });
   }, [streamingActive, addToast, t]);
 
   // Latest user message id, used by the builtin /undo slash command.
@@ -878,7 +878,7 @@ const App = () => {
       dispatchRevert(pending.target);
     } else {
       const sid = currentSessionIdRef.current;
-      sendBridgeEvent('unrevert_session', JSON.stringify({ sessionId: sid }));
+      sendSessionCommand('session.unrevert', sid, {});
       applyRevertState(false);
     }
   }, [pendingRevert, interruptSession, dispatchRevert, applyRevertState]);
@@ -918,7 +918,7 @@ const App = () => {
   // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
   const doCompact = useCallback(() => {
     consumeRevertBoundary();
-    sendBridgeEvent('compact_session', JSON.stringify({ sessionId: currentSessionId, model: selectedModel }));
+    sendSessionCommand('session.compact', currentSessionId, { model: selectedModel });
     setIsCompacting(true);
     setCompactingStartTime(Date.now());
     userPausedRef.current = false;

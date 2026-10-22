@@ -22,9 +22,9 @@ public class WindowEventHandler extends BaseMessageHandler {
         "frontend_ready", "history_dom_committed",
         "history_render_complete", "surface_damage_applied",
         "refresh_slash_commands",
-        "fork_session", "share_session", "unshare_session",
-        "revert_session", "unrevert_session", "compact_session",
-        "refresh_editor_context"
+        "session.fork", "share_session", "unshare_session",
+        "session.revert", "session.unrevert", "session.compact",
+        "context.refresh"
     };
 
     /**
@@ -91,8 +91,8 @@ public class WindowEventHandler extends BaseMessageHandler {
             case "refresh_slash_commands":
                 callback.onRefreshSlashCommands();
                 return true;
-            case "fork_session":
-                handleForkSession(content);
+            case "session.fork":
+                handleSessionFork(content);
                 return true;
             case "share_session":
                 handleShareSession(content);
@@ -100,20 +100,17 @@ public class WindowEventHandler extends BaseMessageHandler {
             case "unshare_session":
                 handleUnshareSession(content);
                 return true;
-            case "revert_session":
+            case "session.revert":
                 handleRevertSession(content);
                 return true;
-            case "unrevert_session":
+            case "session.unrevert":
                 handleUnrevertSession(content);
                 return true;
-            case "compact_session":
+            case "session.compact":
                 handleCompactSession(content);
                 return true;
-            case "refresh_editor_context":
+            case "context.refresh":
                 handleRefreshEditorContext(content);
-                return true;
-            case "session.fork":
-                handleSessionFork(content);
                 return true;
             default:
                 return false;
@@ -139,97 +136,6 @@ public class WindowEventHandler extends BaseMessageHandler {
     // Fork / Share / Revert / Compact (daemon-backed, mirrors the vscode host)
     // =========================================================================
 
-    private void handleForkSession(String content) {
-        String targetSessionId = activeTabSessionIdOrEmpty();
-        String messageId = null;
-        boolean isFull = false;
-
-        if (content != null) {
-            String trimmed = content.trim();
-            if ("full".equals(trimmed)) {
-                isFull = true;
-            } else if (trimmed.startsWith("{")) {
-                try {
-                    com.google.gson.JsonObject obj = new com.google.gson.Gson().fromJson(trimmed, com.google.gson.JsonObject.class);
-                    if (obj != null) {
-                        if (obj.has("sessionId") && !obj.get("sessionId").isJsonNull()) {
-                            String s = obj.get("sessionId").getAsString();
-                            if (s != null && !s.isBlank()) {
-                                targetSessionId = s.trim();
-                            }
-                        }
-                        if (obj.has("tabId") && !obj.get("tabId").isJsonNull()) {
-                            String tabRef = obj.get("tabId").getAsString();
-                            if (tabRef != null && !tabRef.isBlank() && (targetSessionId == null || targetSessionId.isBlank())) {
-                                // The caller named a tab: resolve the session that
-                                // tab is bound to instead of guessing.
-                                com.opencodebuddy.session.OpencodeSession tabSession = context.getSession(tabRef);
-                                if (tabSession != null && tabSession.getSessionId() != null) {
-                                    targetSessionId = tabSession.getSessionId();
-                                }
-                            }
-                        }
-                        if (obj.has("type") && "full".equals(obj.get("type").getAsString())) {
-                            isFull = true;
-                        }
-                        if (obj.has("messageId") && !obj.get("messageId").isJsonNull()) {
-                            messageId = obj.get("messageId").getAsString();
-                        } else if (obj.has("messageID") && !obj.get("messageID").isJsonNull()) {
-                            messageId = obj.get("messageID").getAsString();
-                        }
-                    }
-                } catch (Exception ignored) {}
-            } else if (!trimmed.isEmpty()) {
-                messageId = trimmed;
-            }
-        }
-
-        final String sessionId = targetSessionId;
-        LOG.info("[fork] request content=\"" + content + "\" sessionId=\"" + sessionId + "\" isFull=" + isFull + " messageId=" + messageId);
-        if (sessionId == null || sessionId.isEmpty()) {
-            LOG.warn("[fork] skipped: no active sessionId");
-            callJavaScript("onForkError", "no active session");
-            return;
-        }
-
-        // The fork source is the session the caller named. There is no fallback
-        // to "the session on screen": forking the wrong conversation is worse
-        // than refusing the fork.
-        com.opencodebuddy.session.OpencodeSession session = context.getSession(sessionId);
-        if (session == null) {
-            LOG.warn("[fork] skipped: no session for sessionId=" + sessionId);
-            callJavaScript("onForkError", "no session for " + sessionId);
-            return;
-        }
-        if (session != null && session.isBusy()) {
-            LOG.warn("[fork] skipped: session busy");
-            callJavaScript("onForkError", "session busy");
-            return;
-        }
-
-        if (isFull) {
-            requestFork(sessionId, null);
-            return;
-        }
-
-        withMessageId(sessionId, messageId, "fork", resolvedId -> {
-            requestFork(sessionId, resolvedId);
-        }, err -> {
-            callJavaScript("onForkError", err != null ? err : "");
-        });
-    }
-
-    private void requestFork(String sessionId, String messageID) {
-        requestFork(sessionId, messageID, null);
-    }
-
-    /**
-     * Fork a session.
-     *
-     * @param targetTabId when set, the forked session is bound to that tab and
-     *                    the webview is told about the binding; the source tab
-     *                    is never touched
-     */
     private void requestFork(String sessionId, String messageID, String targetTabId) {
         String cwd = context.resolveEffectiveWorkingDirectory();
         com.google.gson.JsonObject params = new com.google.gson.JsonObject();
@@ -309,7 +215,7 @@ public class WindowEventHandler extends BaseMessageHandler {
             return;
         }
 
-        com.opencodebuddy.session.OpencodeSession source = context.getSession(sourceTabId);
+        com.opencodebuddy.session.OpencodeSession source = context.getSessionForTab(sourceTabId);
         if (source == null || source.getSessionId() == null || source.getSessionId().isBlank()) {
             LOG.warn("[fork] source tab has no session: " + sourceTabId);
             callJavaScript("onForkError", "the source tab has no session to fork");

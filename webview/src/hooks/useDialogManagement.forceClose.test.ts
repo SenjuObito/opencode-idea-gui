@@ -215,8 +215,8 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
 
     expect(result.current.askUserQuestionDialogOpen).toBe(false);
     expect(result.current.currentAskUserQuestionRequest).toBeNull();
-    expect(sendCalls.some((c) => c.startsWith('question.reply:'))).toBe(true);
-    expect(sendCalls.some((c) => c.startsWith('interrupt_session:') && c.includes('ses_123'))).toBe(true);
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('question.reply'))).toBe(true);
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('session.interrupt') && c.includes('ses_123'))).toBe(true);
   });
 
   it('handlePermissionTimeout rejects permission, interrupts session, and closes dialog', () => {
@@ -244,7 +244,7 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
 
     expect(result.current.permissionDialogOpen).toBe(false);
     expect(result.current.currentPermissionRequest).toBeNull();
-    expect(sendCalls.some((c) => c.startsWith('permission.reply:') && c.includes('"allow":false'))).toBe(true);
-    expect(sendCalls.some((c) => c.startsWith('interrupt_session:') && c.includes('ses_456'))).toBe(true);
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('permission.reply') && c.includes('"allow":false'))).toBe(true);
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('session.interrupt') && c.includes('ses_456'))).toBe(true);
   });
 });

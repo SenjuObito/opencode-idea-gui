@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
-import { sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { sendHostCommand, sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
@@ -302,7 +302,7 @@ export function useSessionManagement({
           cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
         }
       }, 5_000);
-      sendBridgeEvent('load_session', JSON.stringify({ sessionId, tabId: window.__sessionTabsStore?.getActiveTabId?.() }));
+      sendHostCommand(window.__sessionTabsStore?.getActiveTabId?.() ?? '', 'session.load', { sessionId }, sessionId);
       setCurrentView('chat');
       return;
     }
@@ -324,7 +324,8 @@ export function useSessionManagement({
       window.__sessionTabsStore?.updateTabSessionId?.(activeTabId, sessionId);
     }
     beginSessionTransition(sessionId, session?.title ?? null);
-    sendBridgeEvent('load_session', JSON.stringify({ sessionId, tabId: activeTabId }));
+    // The command names the session; the tab is the tab that shows it.
+    sendHostCommand(activeTabId ?? '', 'session.load', { sessionId }, sessionId);
     setCurrentView('chat');
   }, [beginSessionTransition, setCurrentView, currentSessionId]);
 

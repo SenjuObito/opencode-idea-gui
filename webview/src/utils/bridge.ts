@@ -194,10 +194,13 @@ export const sendTabCommand = (
   payload: Record<string, unknown> = {},
 ): boolean => {
   if (!tabId || !command) return false;
-  return sendBridgeEvent('tab_command', JSON.stringify({
-    tabId,
-    command,
+  // The tab commands travel on the same envelope as every other command.
+  return sendBridgeEvent('host_command', JSON.stringify({
+    v: 2,
+    type: command,
     requestId: createTabRequestId(),
+    tabId,
+    sessionId: null,
     payload,
   }));
 };
@@ -213,7 +216,8 @@ export interface HostCommandEnvelope {
   v: 2;
   type: string;
   requestId: string;
-  tabId: string;
+  /** The owning tab, or null for a window-level command. */
+  tabId: string | null;
   sessionId: string | null;
   payload: Record<string, unknown>;
 }
@@ -244,7 +248,8 @@ export const sendHostCommand = (
     sessionId: sessionId ?? null,
     payload,
   };
-  return sendBridgeEvent(type, JSON.stringify(envelope));
+  // Every command travels on one transport: the host routes it by its type.
+  return sendBridgeEvent('host_command', JSON.stringify(envelope));
 };
 
 /**
@@ -264,10 +269,53 @@ export const sendInterrupt = (
     ?? ownerTabId
     ?? window.__sessionTabsStore?.getActiveTabId?.()
     ?? '';
-  return sendBridgeEvent('interrupt_session', JSON.stringify({
-    tabId,
-    sessionId: options.sessionId ?? undefined,
-  }));
+  // The interrupt is a command like every other: it names the tab it stops.
+  return sendHostCommand(tabId, 'session.interrupt', {}, options.sessionId ?? null);
+};
+
+/**
+ * Send a command that belongs to a session.
+ *
+ * <p>The tab that owns the session is resolved here, so the host receives a
+ * command that names both. A command without a tab cannot be routed and is
+ * refused by the host.</p>
+ */
+export const sendSessionCommand = (
+  type: string,
+  sessionId: string | null | undefined,
+  payload: Record<string, unknown> = {},
+): boolean => {
+  const tabId = sessionId
+    ? window.__sessionTabsStore?.getTabIdForSession?.(sessionId)
+    : window.__sessionTabsStore?.getActiveTabId?.();
+  if (!tabId) {
+    console.warn(`[bridge] dropped the ${type} command: no tab owns the session`);
+    return false;
+  }
+  return sendHostCommand(tabId, type, payload, sessionId ?? null);
+};
+
+/**
+ * Send a window-level command: one that belongs to no tab.
+ *
+ * <p>The command catalog keeps these separate on purpose. A settings change
+ * that names a tab would be applied to that tab's session, while the panel that
+ * sent it is showing the whole project.</p>
+ */
+export const sendWindowCommand = (
+  type: string,
+  payload: Record<string, unknown> = {},
+): boolean => {
+  if (!type) return false;
+  const envelope: HostCommandEnvelope = {
+    v: 2,
+    type,
+    requestId: createTabRequestId(),
+    tabId: null,
+    sessionId: null,
+    payload,
+  };
+  return sendBridgeEvent('host_command', JSON.stringify(envelope));
 };
 
 /** 强类型桥接调用函数 */

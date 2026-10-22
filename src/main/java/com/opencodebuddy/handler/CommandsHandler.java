@@ -26,7 +26,7 @@ public class CommandsHandler extends BaseMessageHandler {
 
     private static final Logger LOG = Logger.getInstance(CommandsHandler.class);
     private static final String[] SUPPORTED_TYPES = {
-        "commands_list", "commands_read", "commands_save", "commands_delete"
+        "commands.list", "commands.read", "commands.save", "commands.delete"
     };
     private static final String GLOBAL_COMMAND_DIR = ".config/opencode/command";
     private static final String PROJECT_COMMAND_DIR = ".opencode/command";
@@ -47,10 +47,10 @@ public class CommandsHandler extends BaseMessageHandler {
         try {
             JsonObject payload = parse(content);
             switch (type) {
-                case "commands_list" -> handleList(payload);
-                case "commands_read" -> handleRead(payload);
-                case "commands_save" -> handleSave(payload);
-                case "commands_delete" -> handleDelete(payload);
+                case "commands.list" -> handleList(payload);
+                case "commands.read" -> handleRead(payload);
+                case "commands.save" -> handleSave(payload);
+                case "commands.delete" -> handleDelete(payload);
                 default -> { return false; }
             }
             return true;

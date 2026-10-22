@@ -41,11 +41,14 @@ describe('useMessageSender - /context command', () => {
   // Commands travel in the v2 envelope; the content lives in `payload` and the
   // identity in the envelope itself.
   const getEnvelope = (eventName: string) => {
+    // Every command travels on one transport; the envelope names its type.
     const calls = (window.sendToJava as any).mock.calls.map((call: [string]) => call[0]);
-    const prefix = `${eventName}:`;
+    const prefix = 'host_command:';
     const sendCall = calls.find((call: string) => call.startsWith(prefix));
     expect(sendCall).toBeTruthy();
-    return JSON.parse(sendCall!.substring(prefix.length));
+    const envelope = JSON.parse(sendCall!.substring(prefix.length));
+    expect(envelope.type).toBe(eventName);
+    return envelope;
   };
 
   const getBridgePayload = (eventName: string) => getEnvelope(eventName).payload;

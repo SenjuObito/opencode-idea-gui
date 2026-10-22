@@ -90,6 +90,9 @@ public class OpencodeBuddyChatWindow {
     private volatile JBCefBrowser browser;
     private final TabRegistry tabRegistry = new TabRegistry();
     private final TabSessionFactory tabSessionFactory;
+    /** The request ids of the commands this window already ran. */
+    private final com.opencodebuddy.handler.core.RequestIdLedger hostCommandIds =
+            new com.opencodebuddy.handler.core.RequestIdLedger();
     /** The attachments each tab staged; released with the tab. */
     private final com.opencodebuddy.tab.TabAttachmentStore attachmentStore =
             new com.opencodebuddy.tab.TabAttachmentStore(
@@ -3115,6 +3118,11 @@ public class OpencodeBuddyChatWindow {
             return;
         }
 
+        if (com.opencodebuddy.handler.core.HostCommand.TRANSPORT.equals(type)) {
+            handleHostCommand(content);
+            return;
+        }
+
         PluginFileLogger.throttled("INFO", "FRONTEND->BACKEND", type,
                 type + " | " + content, 1000L);
 
@@ -3129,6 +3137,56 @@ public class OpencodeBuddyChatWindow {
 
         LOG.warn("Unknown message type: " + type);
         PluginFileLogger.warn("FRONTEND->BACKEND", "UNHANDLED type=" + type + " content=" + content);
+    }
+
+    /**
+     * The uniform command envelope from the webview:
+     * {@code {v, type, requestId, tabId, sessionId?, payload}}.
+     *
+     * <p>Every command arrives here: the envelope is validated, the request id
+     * is remembered (a replayed command runs once), and the payload — with the
+     * envelope's identity merged in — goes to the handler that owns the command
+     * type.</p>
+     */
+    private void handleHostCommand(String content) {
+        com.opencodebuddy.handler.core.HostCommand command;
+        try {
+            command = com.opencodebuddy.handler.core.HostCommand.parse(content, null, false);
+        } catch (com.opencodebuddy.handler.core.HostCommand.Invalid invalid) {
+            LOG.warn("[HostCommand] rejected: " + invalid.getMessage());
+            publishCommandRejection(null, null, invalid.getCode(), invalid.getMessage());
+            return;
+        }
+
+        if (!hostCommandIds.remember(command.getRequestId())) {
+            // A replayed command: the first one already ran.
+            LOG.debug("[HostCommand] ignoring the replayed command " + command.getRequestId());
+            return;
+        }
+
+        MessageDispatcher dispatcher = this.messageDispatcher;
+        if (dispatcher == null) {
+            publishCommandRejection(command.getTabId(), command.getRequestId(),
+                    "NO_DISPATCHER", "the window has no dispatcher");
+            return;
+        }
+        if (!dispatcher.dispatch(command.getType(), command.getPayloadJson())) {
+            hostCommandIds.forget(command.getRequestId());
+            LOG.warn("[HostCommand] unknown command type: " + command.getType());
+            publishCommandRejection(command.getTabId(), command.getRequestId(),
+                    "UNKNOWN_TYPE", "unknown command " + command.getType());
+        }
+    }
+
+    /** Tell the webview that a command was refused. */
+    private void publishCommandRejection(String tabId, String requestId, String code, String message) {
+        publishTabEvent(com.opencodebuddy.tab.TabEvent.of("command.rejected")
+                .tab(tabId)
+                .field("tabId", tabId != null ? tabId : "")
+                .field("requestId", requestId != null ? requestId : "")
+                .field("code", code)
+                .field("message", message)
+                .build());
     }
 
     /**
@@ -4097,6 +4155,12 @@ public class OpencodeBuddyChatWindow {
                 handlerContext = ctx;
                 if (ctx != null) {
                     ctx.setSessionCreator(OpencodeBuddyChatWindow.this::createSessionForTab);
+                    // A command that names a tab resolves through the registry,
+                    // so it can only ever reach the session that tab shows.
+                    ctx.setTabSessionLookup(id -> {
+                        TabRecord record = findTabRecord(id);
+                        return record != null ? record.getSession() : null;
+                    });
                 }
             }
 

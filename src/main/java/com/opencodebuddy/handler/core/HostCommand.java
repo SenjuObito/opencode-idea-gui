@@ -4,19 +4,25 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 /**
- * One webview → host command in the v2 envelope
- * ({@code {v, type, requestId, tabId, sessionId?, payload}}).
+ * The uniform webview → host command.
  *
- * <p>Parsing and validation live here so every entry point applies the same
- * rules: the version must match, the tab id is mandatory, and the payload is
- * handed on with the envelope's identity merged in. That is what removes the
- * "which session is this?" guess from the handlers.</p>
+ * <p>Every command travels in the same envelope:
+ * {@code {v, type, requestId, tabId, sessionId?, payload}}. The host validates
+ * it, remembers the request id (so a replayed command runs once) and hands the
+ * payload to the handler that owns the command type.</p>
+ *
+ * <p>The envelope owns the identity: the payload may repeat it, but the
+ * envelope's value wins, so a handler can never be talked into acting on a
+ * different tab than the one the command names.</p>
  */
 public final class HostCommand {
 
     public static final int VERSION = 2;
 
-    /** Rejection reason carried back to the webview as {@code commandRejected}. */
+    /** The bridge event every command travels on. */
+    public static final String TRANSPORT = "host_command";
+
+    /** Rejection reason carried back to the webview as {@code command.rejected}. */
     public static final class Invalid extends Exception {
         private final String code;
 
@@ -36,7 +42,13 @@ public final class HostCommand {
     private final String requestId;
     private final String payloadJson;
 
-    private HostCommand(String type, String tabId, String sessionId, String requestId, String payloadJson) {
+    private HostCommand(
+            String type,
+            String tabId,
+            String sessionId,
+            String requestId,
+            String payloadJson
+    ) {
         this.type = type;
         this.tabId = tabId;
         this.sessionId = sessionId;
@@ -45,22 +57,14 @@ public final class HostCommand {
     }
 
     /**
-     * @param content   the raw bridge payload
-     * @param expectedType the command type this entry point accepts
-     * @throws Invalid when the envelope is malformed or names another command
-     */
-    public static HostCommand parse(String content, String expectedType) throws Invalid {
-        return parse(content, expectedType, true);
-    }
-
-    /**
-     * Parse a command.
+     * Parse a command envelope.
      *
-     * @param tabIdRequired when false, a command may name only the session —
-     *                      the prompt replies do: the host resolves the tab
-     *                      from the session the prompt belongs to.
+     * @param content       the raw bridge payload
+     * @param expectedType  the command type this entry point accepts, or null
+     * @param tabIdRequired when false, a command may name only the session
      */
-    public static HostCommand parse(String content, String expectedType, boolean tabIdRequired) throws Invalid {
+    public static HostCommand parse(String content, String expectedType, boolean tabIdRequired)
+            throws Invalid {
         if (content == null || content.isBlank()) {
             throw new Invalid("BAD_ENVELOPE", "empty command");
         }
@@ -68,47 +72,49 @@ public final class HostCommand {
         try {
             root = JsonParser.parseString(content).getAsJsonObject();
         } catch (RuntimeException e) {
-            throw new Invalid("BAD_ENVELOPE", "command is not a JSON object");
+            throw new Invalid("BAD_ENVELOPE", "the command is not a JSON object");
         }
-
-        if (!root.has("v") || root.get("v").isJsonNull()
-                || root.get("v").getAsInt() != VERSION) {
-            throw new Invalid("UNSUPPORTED_VERSION", "command envelope must be v" + VERSION);
+        if (!root.has("v") || root.get("v").isJsonNull() || root.get("v").getAsInt() != VERSION) {
+            throw new Invalid("UNSUPPORTED_VERSION", "a command envelope must be v" + VERSION);
         }
-
         String type = stringField(root, "type");
         if (type == null) {
-            throw new Invalid("MISSING_TYPE", "command type is required");
+            throw new Invalid("MISSING_TYPE", "the command type is required");
         }
         if (expectedType != null && !expectedType.equals(type)) {
             throw new Invalid("UNKNOWN_TYPE", "expected " + expectedType + " but got " + type);
         }
-
-        String tabId = stringField(root, "tabId");
-        if (tabId == null && tabIdRequired) {
-            throw new Invalid("MISSING_TAB_ID", "tabId is required");
-        }
-        String sessionId = stringField(root, "sessionId");
-        if (tabId == null && sessionId == null) {
-            throw new Invalid("MISSING_TAB_ID",
-                    "the command must name the tab or the session it belongs to");
-        }
-
         String requestId = stringField(root, "requestId");
         if (requestId == null) {
-            throw new Invalid("MISSING_REQUEST_ID", "requestId is required");
+            throw new Invalid("MISSING_REQUEST_ID", "the command request id is required");
+        }
+        String tabId = stringField(root, "tabId");
+        String sessionId = stringField(root, "sessionId");
+        if (tabId == null && tabIdRequired) {
+            if (sessionId == null) {
+                throw new Invalid("MISSING_TAB_ID",
+                        "the command must name the tab it belongs to");
+            }
         }
 
         JsonObject payload = root.has("payload") && root.get("payload").isJsonObject()
                 ? root.getAsJsonObject("payload").deepCopy()
                 : new JsonObject();
-        // The envelope owns identity; a payload copy can never disagree with it.
-        payload.addProperty("tabId", tabId);
+        // The envelope owns the identity.
+        if (tabId != null) {
+            payload.addProperty("tabId", tabId);
+        }
         if (sessionId != null) {
             payload.addProperty("sessionId", sessionId);
         }
+        payload.addProperty("requestId", requestId);
 
         return new HostCommand(type, tabId, sessionId, requestId, payload.toString());
+    }
+
+    /** Parse a command that must name its tab. */
+    public static HostCommand parse(String content, String expectedType) throws Invalid {
+        return parse(content, expectedType, true);
     }
 
     private static String stringField(JsonObject root, String name) {
@@ -127,7 +133,6 @@ public final class HostCommand {
         return tabId;
     }
 
-    /** @return the canonical session named by the command, or {@code null} for a tab-only command */
     public String getSessionId() {
         return sessionId;
     }
@@ -136,7 +141,7 @@ public final class HostCommand {
         return requestId;
     }
 
-    /** Payload with {@code tabId}/{@code sessionId} merged in from the envelope. */
+    /** The payload with the envelope's identity merged in. */
     public String getPayloadJson() {
         return payloadJson;
     }

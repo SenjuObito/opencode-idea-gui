@@ -247,6 +247,37 @@ public class HandlerContext {
         this.sessionLookup = lookup;
     }
 
+    private volatile java.util.function.Function<String, OpencodeSession> tabSessionLookup;
+
+    /**
+     * The session a tab currently holds, or {@code null}.
+     *
+     * <p>A tab is the unit the user sees, so a command that names a tab must be
+     * resolved through the tab registry: the session pool also answers for
+     * sessions that no tab holds any more (a tab that switched to another
+     * conversation), and acting on one of those would edit a conversation the
+     * user cannot see.</p>
+     */
+    public OpencodeSession getSessionForTab(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            return null;
+        }
+        if (tabSessionLookup != null) {
+            OpencodeSession held = tabSessionLookup.apply(tabId);
+            if (held != null) {
+                return held;
+            }
+        }
+        // Tabs are also registered under their id when the session is created.
+        return getSession(tabId);
+    }
+
+    /** Set the resolver that turns a tab id into the session that tab holds. */
+    public void setTabSessionLookup(
+            java.util.function.Function<String, OpencodeSession> lookup) {
+        this.tabSessionLookup = lookup;
+    }
+
     private volatile java.util.function.Function<String, OpencodeSession> sessionCreator;
 
     public void setSessionCreator(java.util.function.Function<String, OpencodeSession> creator) {

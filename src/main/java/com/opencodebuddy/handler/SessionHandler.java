@@ -12,6 +12,7 @@ import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.session.SessionState;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -33,15 +34,9 @@ public class SessionHandler extends BaseMessageHandler {
     private static final Logger LOG = Logger.getInstance(SessionHandler.class);
 
     private static final String[] SUPPORTED_TYPES = {
-            // v2 envelope (preferred): identity travels with the command.
             "session.send",
-            // Legacy per-field payloads; kept while the remaining senders
-            // migrate, and still validated for a tab id inside the payload.
-            "send_message",
-            "send_message_with_attachments",
-            "interrupt_session",
-            "restart_session"
-            // Note: create_new_session should not be handled here; it should be handled by OpencodeBuddyToolWindow.createNewSession()
+            "session.interrupt",
+            "session.restart"
     };
 
     /** Replayed commands must not send the same prompt twice. */
@@ -60,22 +55,15 @@ public class SessionHandler extends BaseMessageHandler {
     public boolean handle(String type, String content) {
         switch (type) {
             case "session.send":
+                LOG.debug("[SessionHandler] 处理: session.send");
                 handleHostSessionSend(content);
                 return true;
-            case "send_message":
-                LOG.debug("[SessionHandler] 处理: send_message");
-                handleSendMessage(content);
-                return true;
-            case "send_message_with_attachments":
-                LOG.debug("[SessionHandler] 处理: send_message_with_attachments");
-                handleSendMessageWithAttachments(content);
-                return true;
-            case "interrupt_session":
-                LOG.debug("[SessionHandler] 处理: interrupt_session");
+            case "session.interrupt":
+                LOG.debug("[SessionHandler] 处理: session.interrupt");
                 handleInterruptSession(content);
                 return true;
-            case "restart_session":
-                LOG.debug("[SessionHandler] 处理: restart_session");
+            case "session.restart":
+                LOG.debug("[SessionHandler] 处理: session.restart");
                 handleRestartSession(content);
                 return true;
             default:
@@ -194,7 +182,27 @@ public class SessionHandler extends BaseMessageHandler {
             return;
         }
 
-        handleSendMessage(command.getPayloadJson());
+        // One command, two shapes: the attachments are part of the payload.
+        String payload = command.getPayloadJson();
+        if (hasAttachments(payload)) {
+            handleSendMessageWithAttachments(payload);
+            return;
+        }
+        handleSendMessage(payload);
+    }
+
+    /** Does this send carry attachments? */
+    private static boolean hasAttachments(String payload) {
+        try {
+            JsonObject json = com.google.gson.JsonParser.parseString(payload).getAsJsonObject();
+            if (!json.has("attachments") || json.get("attachments").isJsonNull()) {
+                return false;
+            }
+            JsonElement attachments = json.get("attachments");
+            return attachments.isJsonArray() && !attachments.getAsJsonArray().isEmpty();
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /**

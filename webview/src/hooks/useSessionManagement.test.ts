@@ -3,6 +3,7 @@ import { afterEach } from 'vitest';
 import { useSessionManagement } from './useSessionManagement.js';
 import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor } from './windowCallbacks/tabTransition';
 import type { HistoryData } from '../types/index.js';
+import { sentCommands } from '../utils/testEvents';
 
 describe('useSessionManagement', () => {
   const t = ((key: string) => key) as any;
@@ -33,14 +34,24 @@ describe('useSessionManagement', () => {
     };
   };
 
+  /** Did a `session.load` command go out for this session? */
+  const sessionLoadCalls = (sessionId: string) => {
+    const calls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls
+      .map((call: unknown[]) => call[0] as string);
+    return sentCommands(calls).some(
+      (envelope) => envelope?.type === 'session.load'
+        && (envelope?.payload as { sessionId?: string }).sessionId === sessionId,
+    );
+  };
+
   const interruptCalls = () => (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls
     .map((c: unknown[]) => c[0] as string)
-    .filter((c: string) => c.startsWith('interrupt_session:'));
+    .filter((c: string) => c.startsWith('host_command:') && c.includes('session.interrupt'));
 
   const interruptPayload = () => {
     const call = interruptCalls()[0];
     if (!call) return null;
-    return JSON.parse(call.substring('interrupt_session:'.length));
+    return JSON.parse(call.substring('host_command:'.length));
   };
 
   beforeEach(() => {
@@ -350,7 +361,9 @@ describe('useSessionManagement', () => {
     });
     expect(result.current.showInterruptConfirm).toBe(true);
 
-    // User confirms interrupt.
+    // User confirms interrupt. The command names the tab it stops, so the test
+    // needs the same active-tab store the app always has.
+    withActiveTab();
     act(() => {
       result.current.handleConfirmInterrupt();
     });
@@ -362,7 +375,7 @@ describe('useSessionManagement', () => {
     const calls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map(
       (c: unknown[]) => c[0]
     );
-    expect(calls.filter((c) => c.startsWith('interrupt_session:'))).toHaveLength(1);
+    expect(calls.filter((c) => c.startsWith('host_command:') && c.includes('session.interrupt'))).toHaveLength(1);
     expect(calls.filter((c) => c === 'create_new_session:')).toHaveLength(0);
   });
 
@@ -433,10 +446,8 @@ describe('useSessionManagement', () => {
 
     // Should NOT send interrupt when not loading
     const calls = (window.sendToJava as any).mock.calls.map((c: any) => c[0]);
-    expect(calls.filter((c) => c.startsWith('interrupt_session:'))).toHaveLength(0);
-    expect(calls).toContain(
-      'load_session:{"sessionId":"hist-2","tabId":"tab-1"}',
-    );
+    expect(sentCommands(calls).filter((e) => e?.type === 'session.interrupt')).toHaveLength(0);
+    expect(sessionLoadCalls('hist-2')).toBe(true);
 
     // But should still set transition guard
     expect(isTabTransitioning('tab-1')).toBe(true);
@@ -482,9 +493,7 @@ describe('useSessionManagement', () => {
 
     // 历史快照的行内 provider/model 从不更新，不再随 load_session 下发；
     // 会话级状态由宿主从 daemon session.get 权威恢复。
-    expect(window.sendToJava).toHaveBeenCalledWith(
-      'load_session:{"sessionId":"hist-opencode"}'
-    );
+    expect(sessionLoadCalls('hist-opencode')).toBe(true);
   });
 
   it('loadHistorySession ignores stale row provider/model', () => {
@@ -520,9 +529,7 @@ describe('useSessionManagement', () => {
       result.current.loadHistorySession('hist-codex');
     });
 
-    expect(window.sendToJava).toHaveBeenCalledWith(
-      'load_session:{"sessionId":"hist-codex"}'
-    );
+    expect(sessionLoadCalls('hist-codex')).toBe(true);
   });
 
   it('history transition resets usage tokens', () => {

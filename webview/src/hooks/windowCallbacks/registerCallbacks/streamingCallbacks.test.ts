@@ -57,7 +57,6 @@ function createHarness(initialMessages: ClaudeMessage[], turnIdCounter: number) 
 
 describe('onStreamStart bubble routing', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
   });
 
   afterEach(() => {
@@ -199,7 +198,6 @@ describe('onStreamStart bubble routing', () => {
 
 describe('onStreamEnd finalizes dangling tool_use when the turn never streamed', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
     window.__deniedToolIds = undefined;
   });
 

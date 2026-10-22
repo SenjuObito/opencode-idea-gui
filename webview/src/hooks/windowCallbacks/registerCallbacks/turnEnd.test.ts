@@ -69,7 +69,6 @@ function createHarness() {
 
 describe('onTurnEnd — session-scoped, idempotent terminal', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
     delete window.__sessionTabsStore;
     window.__deniedToolIds = undefined;
   });

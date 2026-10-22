@@ -541,3 +541,9 @@
 - 可编辑草稿属于 webview 的 `TabDraftStore`；宿主只负责发送串行，现有
   `PendingSend` 已承担。`TabRecord` javadoc 明确这两点，C8 收口。
 
+## 第四轮补 12：清掉 `__sessionTransitioning` 测试残留
+
+- 运行时守卫早已迁到 `tabTransition` 的 per-tab store；`__sessionTransitioning`
+  只在测试里赋值，不参与任何判断。
+- 删除四处测试赋值，测试名与注释改为 tab 级 transition，避免继续误导。
+

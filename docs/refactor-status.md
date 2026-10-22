@@ -34,7 +34,7 @@ cd webview && npx vitest run
 |---|---|---|---|
 | A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload |
 | A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 主路径与生命周期事件已统一；仅剩 5 处 `load_subagent_session` 旧调用，需 core 暴露子会话定位/读取后迁入信封 |
-| A3 | 路由表已权威（31 个事件）；约 96 个 `window.*` 全局仍在 | 部分完成 | 路由层已落地，全局清理待做 |
+| A3 | 路由表已权威（31 个事件）；约 96 个 `window.*` 全局仍在 | 部分完成 | 路由层已落地；已删除无运行时使用的 `__sessionTransitioning` 测试残留，其余全局清理待做 |
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |
 | B6 | daemon 重启：给所有 STREAMING tab 发 `turn.ended reason=daemon_restart` | 已完成 | `9e191cc` |

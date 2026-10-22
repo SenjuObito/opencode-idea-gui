@@ -7,7 +7,7 @@
  * 这里守住的规则：**写操作只落在持有该 sessionId 的 tab 上；没有任何 tab 持有
  * 时，落到当前视图而不是被丢掉**（丢掉的表现是「会话打开了却是空的」）。
  *
- * 另一条是会话切换守卫：`__sessionTransitioning` 期间，只有目标会话的快照被放行，
+ * 另一条是会话切换守卫：tabTransition 期间，只有目标会话的快照被放行，
  * 旧会话残留的帧一律拒绝 —— 否则切会话后旧对话会重新长出来。
  */
 
@@ -238,7 +238,6 @@ describe('history load routing — foreground session', () => {
   it('rejects a stale snapshot from the previous session while transitioning', () => {
     // 旧会话的帧带着更小的 sequence，必须在守卫与序列屏障处被挡掉。
     const h = createHarness('ses_fg');
-    window.__sessionTransitioning = true;
     window.clearMessages!(...sessionEvent('ses_fg', { sequence: '7' }));
 
     window.updateMessages!(...snapshotEvent('ses_fg', JSON.stringify([
@@ -252,7 +251,6 @@ describe('history load routing — foreground session', () => {
     const tabs: FakeTab[] = [{ id: 'tab-fg', sessionId: 'ses_fg', messages: [] }];
     const h = createHarness('ses_fg');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
-    window.__sessionTransitioning = true;
 
     window.updateMessages!(...snapshotEvent('ses_other', JSON.stringify(historySnapshot()), '9'));
 

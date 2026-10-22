@@ -306,7 +306,7 @@ describe('useWindowCallbacks integration', () => {
 
   // ===== historyLoadComplete releases transition guard ========
 
-  it('historyLoadComplete releases __sessionTransitioning guard', () => {
+  it('historyLoadComplete releases the tab transition guard', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
@@ -403,7 +403,7 @@ describe('useWindowCallbacks integration', () => {
 
   // ===== setSessionId releases transition guard =====
 
-  it('setSessionId releases __sessionTransitioning guard', () => {
+  it('setSessionId releases the tab transition guard', () => {
     window.__sessionTabsStore = {
       getActiveTabId: () => 'tab-new',
       getTabs: () => [{ id: 'tab-new', sessionId: null }],
@@ -625,7 +625,7 @@ describe('useWindowCallbacks integration', () => {
 
   // ===== updateMessages is blocked during transition =====
 
-  it('updateMessages is silently dropped while __sessionTransitioning is true', () => {
+  it('updateMessages is silently dropped while the tab transition guard is active', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
@@ -663,7 +663,7 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setMessages).toHaveBeenCalled();
   });
 
-  it('updateMessages with matching targetSessionId is processed even when __sessionTransitioning is true', () => {
+  it('updateMessages with matching targetSessionId is processed even during a transition', () => {
     const opts = createOptions({
       currentSessionIdRef: { current: 'ses_target_123' },
     });
@@ -1208,7 +1208,7 @@ describe('useWindowCallbacks integration', () => {
     expect((next[1].raw as any)?.uuid).toBe('uuid-123');
   });
 
-  it('patchMessageUuid is ignored while __sessionTransitioning is true', () => {
+  it('patchMessageUuid is ignored while the tab transition guard is active', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 

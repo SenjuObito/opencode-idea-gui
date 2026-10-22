@@ -50,6 +50,17 @@ public final class HostCommand {
      * @throws Invalid when the envelope is malformed or names another command
      */
     public static HostCommand parse(String content, String expectedType) throws Invalid {
+        return parse(content, expectedType, true);
+    }
+
+    /**
+     * Parse a command.
+     *
+     * @param tabIdRequired when false, a command may name only the session —
+     *                      the prompt replies do: the host resolves the tab
+     *                      from the session the prompt belongs to.
+     */
+    public static HostCommand parse(String content, String expectedType, boolean tabIdRequired) throws Invalid {
         if (content == null || content.isBlank()) {
             throw new Invalid("BAD_ENVELOPE", "empty command");
         }
@@ -74,8 +85,13 @@ public final class HostCommand {
         }
 
         String tabId = stringField(root, "tabId");
-        if (tabId == null) {
+        if (tabId == null && tabIdRequired) {
             throw new Invalid("MISSING_TAB_ID", "tabId is required");
+        }
+        String sessionId = stringField(root, "sessionId");
+        if (tabId == null && sessionId == null) {
+            throw new Invalid("MISSING_TAB_ID",
+                    "the command must name the tab or the session it belongs to");
         }
 
         String requestId = stringField(root, "requestId");
@@ -83,7 +99,6 @@ public final class HostCommand {
             throw new Invalid("MISSING_REQUEST_ID", "requestId is required");
         }
 
-        String sessionId = stringField(root, "sessionId");
         JsonObject payload = root.has("payload") && root.get("payload").isJsonObject()
                 ? root.getAsJsonObject("payload").deepCopy()
                 : new JsonObject();

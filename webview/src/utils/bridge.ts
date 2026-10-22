@@ -232,7 +232,10 @@ export const sendHostCommand = (
   payload: Record<string, unknown> = {},
   sessionId?: string | null,
 ): boolean => {
-  if (!tabId || !type) return false;
+  // A prompt reply may name only the session: the host resolves the tab from
+  // the session the prompt belongs to.
+  if ((!tabId && !sessionId) || !type) return false;
+
   const envelope: HostCommandEnvelope = {
     v: 2,
     type,

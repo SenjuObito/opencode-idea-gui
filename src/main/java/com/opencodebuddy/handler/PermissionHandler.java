@@ -200,6 +200,15 @@ public class PermissionHandler extends BaseMessageHandler {
 
     @Override
     public boolean handle(String type, String content) {
+        if ("permission.reply".equals(type)) {
+            return handleReplyCommand(content, "permission.reply");
+        }
+        if ("question.reply".equals(type)) {
+            return handleReplyCommand(content, "question.reply");
+        }
+        if ("plan.reply".equals(type)) {
+            return handleReplyCommand(content, "plan.reply");
+        }
         if ("permission_decision".equals(type)) {
             LOG.debug("[PERM_DEBUG][BRIDGE_RECV] Received permission_decision from JS");
             LOG.debug("[PERM_DEBUG][BRIDGE_RECV] payloadLength=" + payloadLength(content));
@@ -304,6 +313,52 @@ public class PermissionHandler extends BaseMessageHandler {
             }
             notifyPermissionDenied();
         }
+    }
+
+    /**
+     * A reply as a v2 command: {@code {v, type, requestId, tabId, sessionId, payload}}.
+     *
+     * <p>The command names the tab and the session it answers; the host checks
+     * them against the pending prompt before it applies the answer.</p>
+     */
+    private boolean handleReplyCommand(String content, String expectedType) {
+        com.opencodebuddy.handler.core.HostCommand command;
+        try {
+            // A prompt reply may name only the session: the host resolves the
+            // tab from the session the prompt belongs to.
+            command = com.opencodebuddy.handler.core.HostCommand.parse(content, expectedType, false);
+        } catch (com.opencodebuddy.handler.core.HostCommand.Invalid invalid) {
+            LOG.warn("[PROMPT_REPLY] refused a malformed command: " + invalid.getMessage());
+            publishRejection(null, null, invalid.getCode(), invalid.getMessage());
+            return true;
+        }
+        String payloadJson = command.getPayloadJson();
+        switch (expectedType) {
+            case "permission.reply":
+                handlePermissionDecision(payloadJson);
+                return true;
+            case "question.reply":
+                handleAskUserQuestionResponse(payloadJson);
+                return true;
+            case "plan.reply":
+                handlePlanApprovalResponse(payloadJson);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Tell the webview that a command was refused.
+     */
+    private void publishRejection(String tabId, String requestId, String code, String message) {
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("command.rejected")
+                .tab(tabId)
+                .field("tabId", tabId != null ? tabId : "")
+                .field("requestId", requestId != null ? requestId : "")
+                .field("code", code)
+                .field("message", message)
+                .build());
     }
 
     /**

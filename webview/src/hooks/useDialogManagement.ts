@@ -4,7 +4,7 @@ import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
-import { sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { sendHostCommand, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
 
 interface UseDialogManagementOptions {
@@ -314,14 +314,12 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceClosePermissionDialog(channelId);
       return;
     }
-    sendBridgeEvent('permission_decision', JSON.stringify({
+    sendPermissionReply({
       channelId,
-      sessionId: currentPermissionRequestRef.current?.sessionId,
-      tabId: currentPermissionRequestRef.current?.tabId,
       allow: true,
       remember: false,
       rejectMessage: null,
-    }));
+    });
     closePermissionCurrent();
   }, [closePermissionCurrent, forceClosePermissionDialog]);
 
@@ -330,14 +328,12 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceClosePermissionDialog(channelId);
       return;
     }
-    sendBridgeEvent('permission_decision', JSON.stringify({
+    sendPermissionReply({
       channelId,
-      sessionId: currentPermissionRequestRef.current?.sessionId,
-      tabId: currentPermissionRequestRef.current?.tabId,
       allow: true,
       remember: true,
       rejectMessage: null,
-    }));
+    });
     closePermissionCurrent();
   }, [closePermissionCurrent, forceClosePermissionDialog]);
 
@@ -346,14 +342,12 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceClosePermissionDialog(channelId);
       return;
     }
-    sendBridgeEvent('permission_decision', JSON.stringify({
+    sendPermissionReply({
       channelId,
-      sessionId: currentPermissionRequestRef.current?.sessionId,
-      tabId: currentPermissionRequestRef.current?.tabId,
       allow: false,
       remember: false,
       rejectMessage: t('permission.userDenied'),
-    }));
+    });
     closePermissionCurrent();
   }, [closePermissionCurrent, t, forceClosePermissionDialog]);
 
@@ -365,14 +359,14 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       return;
     }
     const sessionId = activeReq.sessionId;
-    sendBridgeEvent('permission_decision', JSON.stringify({
+    sendPermissionReply({
       channelId,
       sessionId,
       tabId: activeReq.tabId,
       allow: false,
       remember: false,
       rejectMessage: t('permission.timedOut', { defaultValue: '请求超时，已停止会话' }),
-    }));
+    });
     sendInterrupt({ sessionId });
     closePermissionCurrent();
   }, [closePermissionCurrent, t, forceClosePermissionDialog]);
@@ -385,12 +379,9 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceCloseAskUserQuestionDialog(requestId);
       return;
     }
-    sendBridgeEvent('ask_user_question_response', JSON.stringify({
-      requestId,
-      answers,
-      sessionId: currentAskUserQuestionRequestRef.current?.sessionId,
-      tabId: currentAskUserQuestionRequestRef.current?.tabId,
-    }));
+    sendPromptReply('question.reply', requestId, { answers },
+      currentAskUserQuestionRequestRef.current?.sessionId,
+      currentAskUserQuestionRequestRef.current?.tabId);
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 
@@ -400,11 +391,9 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceCloseAskUserQuestionDialog(requestId);
       return;
     }
-    sendBridgeEvent('ask_user_question_reject', JSON.stringify({
-      requestId,
-      sessionId: currentAskUserQuestionRequestRef.current?.sessionId,
-      tabId: currentAskUserQuestionRequestRef.current?.tabId,
-    }));
+    sendPromptReply('question.reply', requestId, { rejected: true },
+      currentAskUserQuestionRequestRef.current?.sessionId,
+      currentAskUserQuestionRequestRef.current?.tabId);
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 
@@ -416,11 +405,9 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       return;
     }
     const sessionId = activeReq.sessionId;
-    sendBridgeEvent('ask_user_question_reject', JSON.stringify({
-      requestId,
-      sessionId: currentAskUserQuestionRequestRef.current?.sessionId,
-      tabId: currentAskUserQuestionRequestRef.current?.tabId,
-    }));
+    sendPromptReply('question.reply', requestId, { rejected: true },
+      currentAskUserQuestionRequestRef.current?.sessionId,
+      currentAskUserQuestionRequestRef.current?.tabId);
     sendInterrupt({ sessionId });
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
@@ -469,16 +456,58 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     }
   }, [askUserQuestionDialogOpen, currentAskUserQuestionRequest, pendingAskUserQuestionRequests]);
 
+  /**
+   * Answer a prompt.
+   *
+   * <p>The reply is a v2 command: it names the tab and the session it
+   * answers, and the host checks them against the pending prompt before it
+   * applies it. A reply that does not match is refused.</p>
+   */
+  const sendPromptReply = (
+    type: 'question.reply' | 'plan.reply',
+    requestId: string,
+    payload: Record<string, unknown>,
+    sessionId?: string,
+    tabId?: string,
+  ) => {
+    const ownerTabId = tabId ?? window.__sessionTabsStore?.getTabIdForSession?.(sessionId) ?? '';
+    if (!ownerTabId && !sessionId) {
+      cardDebugLog(`[Prompt][webview] dropping a ${type} without a tab or a session`);
+      return;
+    }
+    sendHostCommand(ownerTabId, type, { requestId, ...payload }, sessionId);
+  };
+
+  /** Answer a permission prompt. */
+  const sendPermissionReply = (options: {
+    channelId: string;
+    sessionId?: string;
+    tabId?: string;
+    allow: boolean;
+    remember: boolean;
+    rejectMessage?: string | null;
+  }) => {
+    const active = currentPermissionRequestRef.current;
+    const sessionId = options.sessionId ?? active?.sessionId;
+    const ownerTabId = options.tabId ?? active?.tabId
+      ?? window.__sessionTabsStore?.getTabIdForSession?.(sessionId) ?? '';
+    if (!ownerTabId && !sessionId) {
+      cardDebugLog('[PCard][webview] dropping a permission reply without a tab or a session');
+      return;
+    }
+    sendHostCommand(ownerTabId, 'permission.reply', {
+      channelId: options.channelId,
+      allow: options.allow,
+      remember: options.remember,
+      rejectMessage: options.rejectMessage ?? null,
+    }, sessionId);
+  };
+
   // PlanApproval handlers
   const handlePlanApprovalApprove = useCallback((requestId: string, targetMode: string) => {
-    const payload = JSON.stringify({
-      requestId,
-      approved: true,
-      targetMode,
-      sessionId: currentPlanApprovalRequestRef.current?.sessionId,
-      tabId: currentPlanApprovalRequestRef.current?.tabId,
-    });
-    sendBridgeEvent('plan_approval_response', payload);
+    sendPromptReply('plan.reply', requestId, { approved: true, targetMode },
+      currentPlanApprovalRequestRef.current?.sessionId,
+      currentPlanApprovalRequestRef.current?.tabId);
     planApprovalDialogOpenRef.current = false;
     currentPlanApprovalRequestRef.current = null;
     setPlanApprovalDialogOpen(false);
@@ -486,14 +515,9 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   }, []);
 
   const handlePlanApprovalReject = useCallback((requestId: string) => {
-    const payload = JSON.stringify({
-      requestId,
-      approved: false,
-      targetMode: 'default',
-      sessionId: currentPlanApprovalRequestRef.current?.sessionId,
-      tabId: currentPlanApprovalRequestRef.current?.tabId,
-    });
-    sendBridgeEvent('plan_approval_response', payload);
+    sendPromptReply('plan.reply', requestId, { approved: false, targetMode: 'default' },
+      currentPlanApprovalRequestRef.current?.sessionId,
+      currentPlanApprovalRequestRef.current?.tabId);
     planApprovalDialogOpenRef.current = false;
     currentPlanApprovalRequestRef.current = null;
     setPlanApprovalDialogOpen(false);

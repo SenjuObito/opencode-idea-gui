@@ -2,7 +2,7 @@ import { memo, useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ClaudeContentBlock, ToolResultBlock } from '../../types';
 import { normalizeToolName } from '../../utils/toolConstants';
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendSessionCommand } from '../../utils/bridge';
 import { getPersistedExpanded, setPersistedExpanded } from '../../utils/expandedState';
 import {
   extractResultText,
@@ -126,14 +126,14 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
 
   useEffect(() => {
     if (!expanded || !currentSessionId || !toolId || history) return;
-    sendBridgeEvent('load_subagent_session', JSON.stringify({
+    sendSessionCommand('subagent.history', currentSessionId, {
       sessionId: currentSessionId,
       provider: currentProvider,
       agentId,
       agentPath,
       description: typeof summary === 'string' ? summary : undefined,
       toolUseId: toolId,
-    }));
+    });
   }, [agentId, agentPath, currentProvider, currentSessionId, summary, expanded, history, toolId]);
 
   useEffect(() => {
@@ -149,7 +149,7 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
     // Only start a new timer if one doesn't exist
     if (pollingTimerRef.current === null) {
       pollingTimerRef.current = window.setInterval(() => {
-        sendBridgeEvent('load_subagent_session', JSON.stringify({
+        sendSessionCommand('subagent.history', currentSessionId, {
           sessionId: currentSessionId,
           provider: currentProvider,
           agentId,
@@ -159,7 +159,7 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
           // 轮询标记：宿主按 tail 窗口解析（运行中的 task 结果总在 transcript
           // 尾部），避免每 2s 全量拉取+转换整段会话。
           poll: true,
-        }));
+        });
       }, SUBAGENT_POLL_INTERVAL_MS);
     }
 

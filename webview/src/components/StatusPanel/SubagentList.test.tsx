@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SubagentInfo } from '../../types';
 import SubagentList from './SubagentList';
 
-const sendBridgeEventMock = vi.hoisted(() => vi.fn());
+const sendSessionCommandMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../utils/bridge', () => ({ sendBridgeEvent: sendBridgeEventMock }));
+vi.mock('../../utils/bridge', () => ({ sendSessionCommand: sendSessionCommandMock }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -33,15 +33,17 @@ describe('SubagentList', () => {
 
     fireEvent.click(screen.getByRole('button'));
 
-    await waitFor(() => expect(sendBridgeEventMock).toHaveBeenCalledWith(
-      'load_subagent_session',
-      JSON.stringify({
+    await waitFor(() => expect(sendSessionCommandMock).toHaveBeenCalledWith(
+      'subagent.history',
+      'session-1',
+      {
         sessionId: 'session-1',
         provider: 'codex',
+        agentId: undefined,
         agentPath: 'audit_ui',
         description: 'Review anchors',
         toolUseId: 'call-spawn',
-      }),
+      },
     ));
   });
 });

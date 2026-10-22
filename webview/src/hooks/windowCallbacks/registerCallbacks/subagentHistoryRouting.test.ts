@@ -75,6 +75,14 @@ describe('StatusPanel subagent history routing', () => {
     expect(tab.subagentHistories['tool-bg'].sessionId).toBe('ses_bg');
   });
 
+  it('accepts the named subagent.history payload', () => {
+    window.onSubagentHistoryLoaded?.({ history: JSON.parse(payload('ses_active')) });
+
+    expect(setSubagentHistories).toHaveBeenCalledTimes(1);
+    const updater = setSubagentHistories.mock.calls[0][0] as (prev: Record<string, any>) => Record<string, any>;
+    expect(updater({})['tool-1'].sessionId).toBe('ses_active');
+  });
+
   it('drops a transcript whose session has no tab instead of leaking it', () => {
     window.onSubagentHistoryLoaded?.(payload('ses_unknown', 'tool-unknown'));
 

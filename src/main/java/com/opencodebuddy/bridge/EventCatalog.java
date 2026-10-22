@@ -80,6 +80,7 @@ public final class EventCatalog {
         // ── status panel ───────────────────────────────────────────────────
         byType.put("todos.updated", "onTodoUpdated");
         byType.put("task.event", "onTaskEvent");
+        byType.put("subagent.history", "onSubagentHistoryLoaded");
         byType.put("revert.changed", "onRevertStateUpdate");
 
         Map<String, String> byFunction = new LinkedHashMap<>();

@@ -149,9 +149,10 @@ interface Window {
   __historySurfaceRefreshEpoch?: number;
 
   /**
-   * Subagent sidechain history callback.
+   * Subagent transcript callback. The host sends a named `subagent.history`
+   * event (`{ history: ... }`); older callers send the JSON string directly.
    */
-  onSubagentHistoryLoaded?: (json: string) => void;
+  onSubagentHistoryLoaded?: (payload: string | { history?: import('./types/subagent').SubagentHistoryResponse }) => void;
 
   /**
    * task_* SDK system event callback (async subagent lifecycle).

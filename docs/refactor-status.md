@@ -10,8 +10,8 @@
 
 | 状态 | 条目数 | 占比 |
 |---|---:|---:|
-| 已完成 | 11 | 69% |
-| 部分完成 | 3 | 19% |
+| 已完成 | 12 | 75% |
+| 部分完成 | 2 | 13% |
 | 未开始 | 1 | 6% |
 | 待环境 | 1 | 6% |
 | 合计 | 16 | 100% |
@@ -25,7 +25,7 @@ cd webview && npx vitest run
 ./gradlew checkLegacyPatterns -PstrictLegacy=true
 ```
 
-当前基线：gradle `BUILD SUCCESSFUL`、tsc 通过、vitest `173 文件 / 1511 测试`
+当前基线：gradle `BUILD SUCCESSFUL`、tsc 通过、vitest `173 文件 / 1512 测试`
 全通过、`checkLegacyPatterns` 0 forbidden / 0 debt。
 
 ## 二、条目明细
@@ -33,7 +33,7 @@ cd webview && npx vitest run
 | 条目 | 内容 | 状态 | 证据 / 提交 |
 |---|---|---|---|
 | A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload |
-| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 主路径与生命周期事件已统一；仅剩 5 处 `load_subagent_session` 旧调用，需 core 暴露子会话定位/读取后迁入信封 |
+| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 已完成 | 5 处 `load_subagent_session` 已迁为 `subagent.history`；宿主从父会话工具元数据解析子会话并读取 transcript，Core 只补 `parentID` 查询 |
 | A3 | 路由表已权威（31 个事件）；约 96 个 `window.*` 全局仍在 | 部分完成 | 路由层已落地；已删除无运行时使用的 `__sessionTransitioning` 测试残留，其余全局清理待做 |
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |
@@ -53,21 +53,20 @@ cd webview && npx vitest run
 
 | 剩余项 | 性质 | 估算 |
 |---|---|---|
-| A2 剩余：5 处 `load_subagent_session` 需 core 子会话读取接口 | 依赖 core | 0.5–1 天（含 core） |
+| A2 剩余：无（子会话历史已迁入 `subagent.history`） | 已完成 | 0 |
 | A3 剩余：摘除约 96 个 `window.*` 全局，只保留路由表分发 | 机械、量大 | 0.5–1 天 |
 | C7 剩余：无（`TabStreamRouter` 已持有 adapter/coalescer） | 已完成 | 0 |
 | C9：拆 `useSessionTabs.ts`、删 `sessionTransition.ts`、迁 `PermissionManager` | 结构性、高风险 | 2–3 天 |
 | E15：每 tab 消息单副本 | 结构性 | 2–3 天 |
 | §13：JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工执行） |
 
-合计约 **8–12 个工作日**。按当前节奏（每次一个可提交的块 + 四项验证全绿再提交），
-约 **10–14 个推进轮次**。
+合计约 **5–8 个工作日**。按当前节奏（每次一个可提交的块 + 四项验证全绿再提交），
+约 **7–10 个推进轮次**。
 
 ## 四、结论
 
-- 命名事件主路径（A1）与会话命令主路径已经收口；A2 只剩 5 处子会话历史
-  调用，等 core 提供子会话定位/读取后迁入信封，其余旧 `sendBridgeEvent`
-  功能入口已随宿主未实现路径删除。
+- 命名事件主路径（A1）与会话命令主路径已经收口；A2 的子会话历史也已迁入
+  `subagent.history`，webview 不再直接发送 `load_subagent_session`。
 - 附件链路（C8 附件部分 / D10）已经完整，且不依赖 core 改动。
 - 新会话引导（C7 的 `PendingSend` / `TabSnapshot`）已落地；core 现在先播报
   `[SESSION_ID]` 再绑定身份，v1/v2 共用。

@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { SubagentHistoryResponse, SubagentInfo } from '../../types';
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendSessionCommand } from '../../utils/bridge';
 import { subagentStatusIconMap } from './types';
 import SubagentProcessDetails from './SubagentProcessDetails';
 
@@ -79,14 +79,14 @@ const SubagentList = memo(({ subagents, histories = {}, currentSessionId, curren
 
   const requestHistory = useCallback((subagent: SubagentInfo) => {
     if (!currentSessionId) return;
-    sendBridgeEvent('load_subagent_session', JSON.stringify({
+    sendSessionCommand('subagent.history', currentSessionId, {
       sessionId: currentSessionId,
       provider: currentProvider,
       agentId: subagent.agentId,
       agentPath: subagent.agentPath,
       description: subagent.description,
       toolUseId: subagent.id,
-    }));
+    });
   }, [currentProvider, currentSessionId]);
 
   // Track the expanded row's status so the polling effect re-runs (and clears

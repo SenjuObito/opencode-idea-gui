@@ -1,7 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react';
 import TaskExecutionBlock from './TaskExecutionBlock';
 
-const mockSendBridgeEvent = vi.fn();
+const mockSendSessionCommand = vi.fn();
 let mockHistories: Record<string, unknown> = {};
 const mockUseSessionId = vi.fn<() => string | null>();
 const mockUseSessionProvider = vi.fn<() => string>();
@@ -15,7 +15,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('../../utils/bridge', () => ({
-  sendBridgeEvent: (...args: unknown[]) => mockSendBridgeEvent(...args),
+  sendSessionCommand: (...args: unknown[]) => mockSendSessionCommand(...args),
 }));
 
 vi.mock('../../contexts/SubagentContext', () => ({
@@ -29,7 +29,7 @@ vi.mock('../../contexts/SubagentContext', () => ({
 describe('TaskExecutionBlock polling', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mockSendBridgeEvent.mockReset();
+    mockSendSessionCommand.mockReset();
     mockGetToolResultRaw.mockReset();
     mockUseSessionId.mockReset();
     mockUseSessionProvider.mockReset();
@@ -107,9 +107,10 @@ describe('TaskExecutionBlock polling', () => {
       vi.advanceTimersByTime(2_000);
     });
 
-    expect(mockSendBridgeEvent).toHaveBeenCalledWith(
-      'load_subagent_session',
-      expect.stringContaining('"toolUseId":"task-1"'),
+    expect(mockSendSessionCommand).toHaveBeenCalledWith(
+      'subagent.history',
+      'session-1',
+      expect.objectContaining({ toolUseId: 'task-1' }),
     );
 
     rerender(
@@ -127,12 +128,12 @@ describe('TaskExecutionBlock polling', () => {
 
     expect(clearIntervalSpy).toHaveBeenCalled();
 
-    mockSendBridgeEvent.mockClear();
+    mockSendSessionCommand.mockClear();
     act(() => {
       vi.advanceTimersByTime(4_000);
     });
 
-    expect(mockSendBridgeEvent).not.toHaveBeenCalled();
+    expect(mockSendSessionCommand).not.toHaveBeenCalled();
   });
 
   it('keeps an async agent pending until its task_notification lands', () => {
@@ -298,9 +299,10 @@ describe('TaskExecutionBlock polling', () => {
       vi.advanceTimersByTime(2_000);
     });
 
-    expect(mockSendBridgeEvent).toHaveBeenCalledWith(
-      'load_subagent_session',
-      expect.stringContaining('"toolUseId":"agent-poll-fail"'),
+    expect(mockSendSessionCommand).toHaveBeenCalledWith(
+      'subagent.history',
+      'session-1',
+      expect.objectContaining({ toolUseId: 'agent-poll-fail' }),
     );
 
     // A failure notification arrives - the card must stop polling.
@@ -324,12 +326,12 @@ describe('TaskExecutionBlock polling', () => {
 
     expect(clearIntervalSpy).toHaveBeenCalled();
 
-    mockSendBridgeEvent.mockClear();
+    mockSendSessionCommand.mockClear();
     act(() => {
       vi.advanceTimersByTime(4_000);
     });
 
-    expect(mockSendBridgeEvent).not.toHaveBeenCalled();
+    expect(mockSendSessionCommand).not.toHaveBeenCalled();
   });
 
   it('renders task_event usage in SubagentProcessDetails for a completed async agent', () => {
@@ -409,14 +411,17 @@ describe('TaskExecutionBlock polling', () => {
 
     fireEvent.click(container.querySelector('.task-header') as HTMLElement);
 
-    expect(mockSendBridgeEvent).toHaveBeenCalledWith(
-      'load_subagent_session',
-      JSON.stringify({
+    expect(mockSendSessionCommand).toHaveBeenCalledWith(
+      'subagent.history',
+      'session-1',
+      {
         sessionId: 'session-1',
         provider: 'codex',
+        agentId: undefined,
         agentPath: '/root/reviewer',
+        description: undefined,
         toolUseId: 'call-1',
-      }),
+      },
     );
     expect(container.querySelector('.tool-status-indicator')?.className).toContain('pending');
   });

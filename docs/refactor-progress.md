@@ -547,3 +547,22 @@
   只在测试里赋值，不参与任何判断。
 - 删除四处测试赋值，测试名与注释改为 tab 级 transition，避免继续误导。
 
+
+## 第四轮补 13：子代理历史迁入信封
+
+- webview 的 5 处 `load_subagent_session` 全部改为 `sendSessionCommand('subagent.history', ...)`；
+  命令由宿主按当前 session 解析所属 tab，不再走裸事件。
+- 新增 `SubagentHistoryService`：读取父会话 transcript，按 `toolUseId` 找到
+  `subagent` / `task` 工具块，从 `state.metadata.sessionID`（旧构建回退解析
+  `<subagent sessionID="...">`）拿到子会话 id；仍在启动中的子代理用
+  `parentID` 查询子会话列表并按 description/title 匹配。
+- 子会话 transcript 转成 `SubagentHistoryResponse.messages`（thinking / text /
+  tool_use），状态优先取工具块状态，轮询只读尾部 200 条，展开时读全量。
+- 新增 `subagent.history` 语义事件，宿主与 webview 事件表同步；结果按
+  `sessionId` 路由到所属 tab，后台 tab 不会污染当前 tab。
+- Core 仅补 `listSessions(..., parentID)` 与 `listMessages(..., {limit})` 两个薄封装，
+  不承担子代理业务判断。
+- 新增 `SubagentHistoryServiceTest`，覆盖元数据定位、文本回退、子会话匹配、
+  thinking/tool 转换；vitest 增加命名 payload 路由测试。
+- 验证：gradle 全绿、tsc 通过、vitest `173 文件 / 1512 测试`、
+  `checkLegacyPatterns` 0 forbidden / 0 debt。

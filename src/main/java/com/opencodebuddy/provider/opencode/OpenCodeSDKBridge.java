@@ -366,9 +366,21 @@ public class OpenCodeSDKBridge {
     }
 
     public CompletableFuture<JsonElement> listMessages(String sessionId, String cwd) {
+        return listMessages(sessionId, cwd, 0);
+    }
+
+    /**
+     * @param limit newest N messages, or 0 for the whole transcript. A polling
+     *              subagent uses a tail window so a long transcript is not
+     *              re-read and re-converted every two seconds.
+     */
+    public CompletableFuture<JsonElement> listMessages(String sessionId, String cwd, int limit) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
         params.addProperty("directory", cwd != null ? cwd : "");
+        if (limit > 0) {
+            params.addProperty("limit", limit);
+        }
         JsonArray entries = new JsonArray();
         // daemon 在第一条数据行之前会广播 {messagesStart:true,count:N}。这是唯一
         // 能区分「这个会话真的没有消息」和「消息发了却没被收到」的信号——
@@ -484,6 +496,19 @@ public class OpenCodeSDKBridge {
         if (limit > 0) {
             params.addProperty("limit", limit);
         }
+        return requestJson("opencode.listSessions", params);
+    }
+
+    /**
+     * Sessions spawned by {@code parentSessionId}. Used only for subagent
+     * transcripts: the parent tool part carries the child id once it settles,
+     * and this query covers the window while it is still running.
+     */
+    public CompletableFuture<JsonElement> listChildSessions(String parentSessionId, String cwd) {
+        JsonObject params = new JsonObject();
+        params.addProperty("directory", cwd != null ? cwd : "");
+        params.addProperty("parentID", parentSessionId != null ? parentSessionId : "");
+        params.addProperty("limit", 200);
         return requestJson("opencode.listSessions", params);
     }
 

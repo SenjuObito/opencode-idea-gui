@@ -59,6 +59,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   // ── status panel ───────────────────────────────────────────────────
   'todos.updated': 'onTodoUpdated',
   'task.event': 'onTaskEvent',
+  'subagent.history': 'onSubagentHistoryLoaded',
   'revert.changed': 'onRevertStateUpdate',
 };
 

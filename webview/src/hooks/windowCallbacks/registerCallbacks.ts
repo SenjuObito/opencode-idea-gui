@@ -162,14 +162,16 @@ export function registerWindowCallbacks(
 
   window.onSubagentHistoryChunk = appendSubagentHistoryChunk;
 
-  window.onSubagentHistoryLoaded = (json: string) => {
+  window.onSubagentHistoryLoaded = (payload: string | { history?: SubagentHistoryResponse }) => {
     // 子代理 transcript 属于发起它的 tab，而不是当前窗口。后台 Agent 的
     // 2 秒轮询结果如果直接写进 active state，会把 A tab 的子代理 transcript
     // 显示到 B tab。先按 payload.sessionId 解析目标 tab；解析不到就丢弃，
     // 绝不回落到 active tab。
     try {
       if (!options.setSubagentHistories) return;
-      const result = JSON.parse(json) as SubagentHistoryResponse;
+      const raw = typeof payload === 'string' ? payload : payload?.history;
+      if (!raw) return;
+      const result = (typeof raw === 'string' ? JSON.parse(raw) : raw) as SubagentHistoryResponse;
       const key = result.toolUseId || result.agentId;
       if (!key) return;
 

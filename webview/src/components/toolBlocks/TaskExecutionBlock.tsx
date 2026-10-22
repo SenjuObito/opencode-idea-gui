@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ToolInput, ToolResultBlock } from '../../types';
 import { AGENT_TOOL_NAMES, isToolName, normalizeToolName } from '../../utils/toolConstants';
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendSessionCommand } from '../../utils/bridge';
 import {
   extractResultText,
   isAsyncAgentInput,
@@ -125,14 +125,14 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
 
   useEffect(() => {
     if (!input || !expanded || !isAgentTool || !currentSessionId || !toolId || history) return;
-    sendBridgeEvent('load_subagent_session', JSON.stringify({
+    sendSessionCommand('subagent.history', currentSessionId, {
       sessionId: currentSessionId,
       provider: currentProvider,
       agentId,
       agentPath,
       description: typeof description === 'string' ? description : undefined,
       toolUseId: toolId,
-    }));
+    });
   }, [input, agentId, agentPath, currentProvider, currentSessionId, description, expanded, history, isAgentTool, toolId]);
 
   // Poll while an expanded async Agent is unresolved, including after a main
@@ -150,7 +150,7 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
   useEffect(() => {
     if (!input || !shouldPollHistory || !currentSessionId || !toolId) return;
     const timer = window.setInterval(() => {
-      sendBridgeEvent('load_subagent_session', JSON.stringify({
+      sendSessionCommand('subagent.history', currentSessionId, {
         sessionId: currentSessionId,
         provider: currentProvider,
         agentId,
@@ -159,7 +159,7 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
         toolUseId: toolId,
         // 轮询标记：宿主按 tail 窗口解析，避免每 2s 全量拉取+转换整段会话。
         poll: true,
-      }));
+      });
     }, 2_000);
     return () => window.clearInterval(timer);
   }, [input, agentId, agentPath, currentProvider, currentSessionId, description, shouldPollHistory, toolId]);

@@ -230,6 +230,12 @@ public class PermissionHandler extends BaseMessageHandler {
             if (sessionId != null) {
                 requestData.addProperty("sessionId", sessionId);
                 prompts.permissionSessions.put(request.getChannelId(), sessionId);
+                // The tab is the identity the webview routes by; the session id
+                // alone only says which conversation the prompt belongs to.
+                String tabId = context.getTabIdForSession(sessionId);
+                if (tabId != null) {
+                    requestData.addProperty("tabId", tabId);
+                }
             }
 
             JsonObject inputsJson = request.getInputs() != null
@@ -502,6 +508,10 @@ public class PermissionHandler extends BaseMessageHandler {
             requestData.addProperty("requestId", requestId);
             if (sessionId != null) {
                 requestData.addProperty("sessionId", sessionId);
+                String tabId = context.getTabIdForSession(sessionId);
+                if (tabId != null) {
+                    requestData.addProperty("tabId", tabId);
+                }
             }
             if (toolName != null) {
                 requestData.addProperty("toolName", toolName);
@@ -813,6 +823,12 @@ public class PermissionHandler extends BaseMessageHandler {
 
         try {
             Gson gson = new Gson();
+            if (planSessionId != null && !planSessionId.isBlank()) {
+                String tabId = context.getTabIdForSession(planSessionId);
+                if (tabId != null && !planData.has("tabId")) {
+                    planData.addProperty("tabId", tabId);
+                }
+            }
             String requestJson = gson.toJson(planData);
             String escapedJson = escapeJs(requestJson);
 

@@ -1564,6 +1564,20 @@ public class OpencodeBuddyChatWindow {
         return payload.toString();
     }
 
+    /**
+     * The tab that owns a canonical session id.
+     *
+     * <p>Per-tab events (prompts, status) need the tab as well as the session:
+     * the tab is what the webview routes by.</p>
+     */
+    public String findTabIdForSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        TabRecord record = tabRegistry.findBySession(sessionId);
+        return record != null ? record.getTabId().value() : null;
+    }
+
     public String getSessionId() {
         OpencodeSession active = getSession();
         return active != null ? active.getSessionId() : null;
@@ -3956,6 +3970,11 @@ public class OpencodeBuddyChatWindow {
             @Override
             public String buildTabResyncPayload() {
                 return OpencodeBuddyChatWindow.this.buildTabResyncPayload();
+            }
+
+            @Override
+            public String findTabIdForSession(String sessionId) {
+                return OpencodeBuddyChatWindow.this.findTabIdForSession(sessionId);
             }
 
             @Override

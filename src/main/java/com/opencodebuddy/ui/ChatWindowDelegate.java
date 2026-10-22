@@ -109,6 +109,9 @@ public class ChatWindowDelegate {
          */
         String buildTabResyncPayload();
 
+        /** The tab that owns a canonical session id (null when unknown). */
+        String findTabIdForSession(String sessionId);
+
         /**
          * Soft-reload the currently active session's transcript without interrupting
          * any in-flight turn.
@@ -214,6 +217,10 @@ public class ChatWindowDelegate {
             @Override
             public String escapeJs(String str) {
                 return JsUtils.escapeJs(str);
+            }
+            @Override
+            public String getTabIdForSession(String sessionId) {
+                return host.findTabIdForSession(sessionId);
             }
         };
 

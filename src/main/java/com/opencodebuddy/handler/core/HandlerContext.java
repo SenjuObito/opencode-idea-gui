@@ -39,6 +39,18 @@ public class HandlerContext {
 
         default void executeJavaScript(String jsCode) {
         }
+
+        /**
+         * The tab that owns a canonical session id.
+         *
+         * <p>Prompts and other per-tab events need the tab, not only the
+         * session: the tab is the identity the webview routes by. A host that
+         * does not know the mapping returns {@code null} and the caller keeps
+         * the session-level behaviour.</p>
+         */
+        default String getTabIdForSession(String sessionId) {
+            return null;
+        }
     }
 
     public HandlerContext(
@@ -119,6 +131,17 @@ public class HandlerContext {
     @Deprecated
     public OpencodeSession getSession() {
         return getActiveTabSession();
+    }
+
+    /**
+     * The tab that owns a canonical session id, or {@code null} when the host
+     * cannot resolve it.
+     */
+    public String getTabIdForSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        return jsCallback.getTabIdForSession(sessionId);
     }
 
     /**

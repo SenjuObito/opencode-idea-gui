@@ -107,6 +107,16 @@
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵
   （1000 次切 tab、50 次 reload、100 次权限请求）。需要 IDE 运行时，
   当前环境无法启动 JCEF；步骤、记录表和预算见 `docs/jcef-benchmark.md`。
+- 前端运行态所有权仍在 store 与"单份 ref 交换"之间：
+  `useSessionTabs.ts` 切 tab 时用 `capture/restoreStreamingRuntime` 搬运运行态，
+  `__sessionTransitioning` 全局锁仍在（`checkLegacyPatterns` 债务清单）。
+- 其余会话级事件（delta / usage / status / title）尚未携带 tabId。
+- 权限体系尚未收口到 `com.opencodebuddy.prompt`（`PromptBroker` 仍在
+  `handler` 包内，`PermissionManager` 仍与它双轨）；计划审批弹窗没有
+  per-tab 队列。
+- fork 仍是旧路径：没有预建目标 tab、没有 `session.fork` 命令；
+  附件仍是内联 base64，没有 `TabAttachmentStore` / `attachment.prepare`。
+- 没有 fake daemon 集成测试，只有针对单个组件的隔离测试。
 
 ## 第二轮收口：协议 v2 与身份收口
 
@@ -149,6 +159,15 @@
 - `StreamMessageCoalescer` 现在同时持有 tabId 与 sessionId，
   `updateMessages` 推送时附带 tabId。
 - webview 收到带 tabId 的快照时直接写那一个 tab，不再用 sessionId 反查 tab。
+
+### 弹窗按 tab 归属（§10.1 / §10.3）
+
+- 宿主新增 `sessionId → tabId` 反查（`OpencodeBuddyChatWindow.findTabIdForSession`，
+  经 `HandlerContext.getTabIdForSession` 暴露）。
+- 权限 / 提问 / 计划弹窗的 payload 现在带 `tabId`。
+- webview 收到带 tabId 的弹窗时直接写那一个 tab 的待办队列，不再用
+  sessionId 谓词反查。
+- 计划审批弹窗目前仍然直接弹出（没有 per-tab 队列），见"未完成"。
 
 ### 其他
 

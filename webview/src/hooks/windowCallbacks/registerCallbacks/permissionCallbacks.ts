@@ -58,11 +58,27 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showPermissionDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      cardDebugLog(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId}`);
+      cardDebugLog(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId} tabId=${request.tabId}`);
       const targetSessionId = request.sessionId;
       const tabsStore = window.__sessionTabsStore;
+      // The host stamps the owning tab: routing by tab id is exact, routing by
+      // session id only finds the tab when it happens to be bound already.
+      const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
 
-      if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
+      if (targetTabId && tabsStore && tabsStore.isActiveTab && !tabsStore.isActiveTab(targetTabId)) {
+        const stored = tabsStore.updateTab?.(targetTabId, (t: any) => {
+          const list = t.pendingPermissions || [];
+          if (!list.some((r: any) => r.channelId === request.channelId)) {
+            t.pendingPermissions = [...list, request];
+          }
+        });
+        if (stored) {
+          return;
+        }
+        cardDebugLog(
+          `[PCard][webview] no tab ${targetTabId}; showing permission prompt in the active window instead of dropping it`
+        );
+      } else if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
         const stored = tabsStore.updateBackgroundTab(
           (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
           (t) => {
@@ -141,11 +157,25 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showAskUserQuestionDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} sessionId=${request.sessionId}`);
+      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} sessionId=${request.sessionId} tabId=${request.tabId}`);
       const targetSessionId = request.sessionId;
       const tabsStore = window.__sessionTabsStore;
+      const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
 
-      if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
+      if (targetTabId && tabsStore && tabsStore.isActiveTab && !tabsStore.isActiveTab(targetTabId)) {
+        const stored = tabsStore.updateTab?.(targetTabId, (t: any) => {
+          const list = t.pendingQuestions || [];
+          if (!list.some((r: any) => r.requestId === request.requestId)) {
+            t.pendingQuestions = [...list, request];
+          }
+        });
+        if (stored) {
+          return;
+        }
+        cardDebugLog(
+          `[QCard][webview] no tab ${targetTabId}; showing question prompt in the active window instead of dropping it`
+        );
+      } else if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
         const stored = tabsStore.updateBackgroundTab(
           (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
           (t) => {

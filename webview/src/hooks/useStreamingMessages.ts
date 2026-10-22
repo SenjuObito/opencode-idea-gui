@@ -49,6 +49,14 @@ interface UseStreamingMessagesReturn {
 
   // Reset function
   resetStreamingState: () => void;
+
+  // Per-tab runtime ownership
+  /** Drop a tab's runtime entirely (the tab was closed). */
+  deleteRuntimeForTab: (tabId: string) => void;
+  /** Apply a streaming hint to a tab that is not on screen. */
+  setRuntimeStreamingForTab: (tabId: string, streaming: boolean) => void;
+  /** Reset a tab's runtime to its default (a new session took over the tab). */
+  resetRuntimeForTab: (tabId: string) => void;
 }
 
 interface StreamingRuntime {
@@ -115,6 +123,36 @@ export function useStreamingMessages(): UseStreamingMessagesReturn {
     return runtime;
   };
   const activeRuntime = (): StreamingRuntime => runtimeFor(activeTabKey());
+
+  /**
+   * Drop a tab's runtime.
+   *
+   * <p>The runtime map is the owner of every tab's streaming state, so a closed
+   * tab simply loses its entry. A tab id that is reused later starts from a
+   * clean runtime and can never inherit a dead turn's accumulator.</p>
+   */
+  const deleteRuntimeForTab = (tabId: string): void => {
+    if (!tabId) return;
+    runtimes.current.delete(tabId);
+  };
+
+  /**
+   * Mark a tab as streaming (or not) without touching the active view.
+   *
+   * <p>A background tab that starts streaming has no active pipeline, so the
+   * flag has to be recorded on the tab itself; when the user switches to it,
+   * the first delta does not have to rebuild the state.</p>
+   */
+  const setRuntimeStreamingForTab = (tabId: string, streaming: boolean): void => {
+    if (!tabId) return;
+    runtimeFor(tabId).streaming = streaming;
+  };
+
+  /** Reset a tab's runtime to its default. */
+  const resetRuntimeForTab = (tabId: string): void => {
+    if (!tabId) return;
+    runtimes.current.set(tabId, createRuntime());
+  };
 
   const streamingContentRef = createProxyRef(
     () => activeRuntime().content,
@@ -496,5 +534,10 @@ export function useStreamingMessages(): UseStreamingMessagesReturn {
 
     // Reset function
     resetStreamingState,
+
+    // Per-tab runtime ownership
+    deleteRuntimeForTab,
+    setRuntimeStreamingForTab,
+    resetRuntimeForTab,
   };
 }

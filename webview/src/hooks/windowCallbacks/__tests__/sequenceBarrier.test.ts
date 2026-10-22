@@ -7,6 +7,7 @@ import {
   clearSessionSequenceBarrier,
 } from '../sequenceBarrier';
 import { useWindowCallbacks } from '../../useWindowCallbacks';
+import { beginTransition, endTransition, isTabTransitioning } from '../tabTransition';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 
@@ -82,9 +83,7 @@ const createOptions = (overrides?: Partial<UseWindowCallbacksOptions>): UseWindo
 
 describe('sequenceBarrier - Per-Session Isolation', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
-    window.__sessionTransitionToken = null;
-    window.__sessionTransitionTargetSessionId = null;
+    endTransition('tab-active');
     window.__minAcceptedUpdateSequence = 0;
     delete window.__sessionMinAcceptedUpdateSequence;
   });
@@ -124,9 +123,7 @@ describe('sequenceBarrier - Per-Session Isolation', () => {
 
 describe('useWindowCallbacks - Cross-Session History Loading Regression', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
-    window.__sessionTransitionToken = null;
-    window.__sessionTransitionTargetSessionId = null;
+    endTransition('tab-active');
     window.__minAcceptedUpdateSequence = 0;
     delete window.__sessionMinAcceptedUpdateSequence;
     window.sendToJava = vi.fn();
@@ -144,6 +141,13 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
       currentSessionIdRef,
     });
 
+    // The transition guard belongs to a tab, so the webview needs one.
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => 'tab-active',
+      getTabIdForSession: () => 'tab-active',
+      isActiveSession: () => true,
+    } as any;
+
     renderHook(() => useWindowCallbacks(opts));
 
     // 1. In session-active, conversation occurs and sequence reaches 60
@@ -159,8 +163,7 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
 
     // 2. User navigates to history drawer and opens session-history
     currentSessionIdRef.current = 'session-history';
-    window.__sessionTransitionTargetSessionId = 'session-history';
-    window.__sessionTransitioning = true;
+    beginTransition('tab-active', 'session-history', 'transition-history');
 
     // Backend resets stream state and calls clearMessages for session-history with barrier=1
     act(() => {
@@ -189,6 +192,6 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
     act(() => {
       window.historyLoadComplete!('session-history', 2);
     });
-    expect(window.__sessionTransitioning).toBe(false);
+    expect(isTabTransitioning('tab-active')).toBe(false);
   });
 });

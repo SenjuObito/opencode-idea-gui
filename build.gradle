@@ -847,15 +847,23 @@ tasks.register('checkLegacyPatterns') {
     }
 
     def forbidden = [
-        'legacy-session-identity': ~/claimUnboundTab|switch_session|permissionServiceKey|__pendingSessionId|getHostedSessionIds/,
+        'legacy-session-identity': [files: javaSources.plus(webviewSources), pattern: ~/claimUnboundTab|switch_session|permissionServiceKey|__pendingSessionId|getHostedSessionIds/],
         // A bare "current session" accessor is the ambiguity the cutover
         // removes: window-level code must ask for the active tab by name.
-        'active-session-fallback': ~/context\.getSession\(\)/,
+        'active-session-fallback': [files: javaSources, pattern: ~/context\.getSession\(\)/],
+        // The streaming runtime belongs to a tab; it is never copied into
+        // another tab's slot.
+        'single-runtime-swap':     [files: webviewSources, pattern: ~/captureStreamingRuntime|restoreStreamingRuntime/],
+        // The transition guard is per tab, never a window-wide flag.
+        'global-transition-lock':  [files: webviewSources, pattern: ~/__sessionTransitioning/],
     ]
     def debt = [
-        'window-session-lookup':   [files: webviewSources, pattern: ~/currentSessionIdRef\.current/],
-        'single-runtime-swap':     [files: webviewSources, pattern: ~/captureStreamingRuntime|restoreStreamingRuntime/],
-        'global-transition-lock':  [files: webviewSources, pattern: ~/__sessionTransitioning/],
+        // The event handlers must not route by "the session on screen": a
+        // background tab's event has to reach its own tab.
+        'window-session-lookup':   [files: fileTree('webview/src/hooks/windowCallbacks') {
+            include '**/*.ts'
+            exclude '**/*.test.ts'
+        }, pattern: ~/currentSessionIdRef\.current/],
     ]
     def strict = project.hasProperty('strictLegacy') && project.property('strictLegacy').toString() == 'true'
 
@@ -863,10 +871,10 @@ tasks.register('checkLegacyPatterns') {
         def violations = []
         def debtCounts = [:]
 
-        forbidden.each { name, pattern ->
-            javaSources.plus(webviewSources).each { file ->
+        forbidden.each { name, rule ->
+            rule.files.each { file ->
                 file.eachLine { line, number ->
-                    if ((line =~ pattern).find() && !line.contains('legacy-allow:')) {
+                    if ((line =~ rule.pattern).find() && !line.contains('legacy-allow:')) {
                         violations << "${name}: ${project.relativePath(file)}:${number}"
                     }
                 }
@@ -876,13 +884,18 @@ tasks.register('checkLegacyPatterns') {
         debt.each { name, rule ->
             int count = 0
             rule.files.each { file ->
+                // An exception may sit on the line itself or on the line above
+                // it (a comment that explains the exception).
+                String previousLine = ''
                 file.eachLine { line, number ->
-                    if ((line =~ rule.pattern).find() && !line.contains('legacy-allow:')) {
+                    boolean excused = line.contains('legacy-allow:') || previousLine.contains('legacy-allow:')
+                    if ((line =~ rule.pattern).find() && !excused) {
                         count++
                         if (count <= 5) {
                             println "  [debt:${name}] ${project.relativePath(file)}:${number}"
                         }
                     }
+                    previousLine = line
                 }
             }
             debtCounts[name] = count

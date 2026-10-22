@@ -894,20 +894,9 @@ interface Window {
    */
   __deniedToolIds?: Set<string>;
 
-  /**
-   * Session transition suppression flag.
-   * Set to true during new session creation to prevent stale callbacks from writing old messages via updateMessages.
-   */
-  __sessionTransitioning?: boolean;
-  __sessionTransitionTargetSessionId?: string | null;
-
-  /**
-   * Session transition token (debug/logging only).
-   * Regenerated for each logical transition so callbacks can identify the active transition
-   * generation in logs. NOT used for guard logic — the boolean __sessionTransitioning flag
-   * is the actual guard.
-   */
-  __sessionTransitionToken?: string | null;
+  // The session transition guard is per tab and lives in
+  // `hooks/windowCallbacks/tabTransition.ts`; there is no window-wide flag any
+  // more — a background tab's events are never silenced by another tab's switch.
 
   /**
    * In-flight dedup guard for the same-session soft reload issued by
@@ -1238,14 +1227,23 @@ interface Window {
     updateTabSessionId: (tabId: string, sessionId: string) => void;
     updateTabTitle: (sessionId: string, newTitle: string) => void;
     closeTabBySessionId?: (sessionId: string) => void;
-    /**
-     * Archive the active tab's live streaming runtime before a session
-     * transition wipes it. The outgoing turn may still be running in the
-     * background and needs its accumulator when the user returns.
-     */
-    archiveActiveStreamingRuntime?: () => void;
-    /** Drop the archived runtime belonging to this session (called on stream end). */
+    /** Drop the runtime belonging to this session (called on stream end). */
     clearStreamingRuntimeFor?: (sessionId: string) => void;
+    /** Is the tab switching sessions right now? */
+    isTabTransitioning?: (tabId: string | null | undefined) => boolean;
+    /** The session the tab is switching to, or null. */
+    getTabTransitionTarget?: (tabId: string | null | undefined) => string | null;
+    /** The token of the tab's current transition, or null. */
+    getTabTransitionToken?: (tabId: string | null | undefined) => string | null;
+    /** Start a transition for a tab. */
+    beginTabTransition?: (tabId: string, targetSessionId: string | null, token: string | null) => void;
+    /**
+     * End a tab's transition.
+     * @param token when given, only a transition with that token is ended
+     */
+    endTabTransition?: (tabId: string | null | undefined, token?: string | null) => boolean;
+    /** True while any tab is transitioning (diagnostics only). */
+    isAnyTabTransitioning?: () => boolean;
   };
 
   /**

@@ -9,6 +9,7 @@ import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { downloadJSON } from '../../../utils/exportMarkdown';
 import { releaseSessionTransition } from '../sessionTransition';
+import { isTabTransitioning, transitionTargetFor } from '../tabTransition';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
@@ -30,8 +31,8 @@ export function registerSessionCallbacks(
 
   window.setSessionId = (sessionId: string, previousSessionId?: string, tabId?: string) => {
     if (!sessionId) return;
-    const oldId = currentSessionIdRef.current;
-    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
+    const oldId = currentSessionIdRef.current; // legacy-allow: the view's own session, not an event attribution
+    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', isTabTransitioning(window.__sessionTabsStore?.getActiveTabId?.()));
 
     const tabsStore = window.__sessionTabsStore;
     const tabs = tabsStore?.getTabs?.() || [];
@@ -92,14 +93,17 @@ export function registerSessionCallbacks(
       return;
     }
 
-    currentSessionIdRef.current = sessionId;
+    currentSessionIdRef.current = sessionId; // legacy-allow: the view's session, set when the tab binds
     setCurrentSessionId(sessionId);
     syncTitle();
     // Release a pending session transition only when this is NOT a history
     // load (those carry a transition target and must wait for
     // historyLoadComplete). The new-session flow has no target and relies on
     // this release so the first deltas are accepted.
-    if (!window.__sessionTransitionTargetSessionId) {
+    const ownerTabId = targetTab
+      ? targetTab.id
+      : (window.__sessionTabsStore?.getTabIdForSession?.(sessionId) ?? null);
+    if (!transitionTargetFor(ownerTabId)) {
       releaseSessionTransition();
     }
   };
@@ -160,7 +164,7 @@ export function registerSessionCallbacks(
     // Only the session that is actually on screen may drive the header title.
     // An empty currentSessionId means the visible tab is still unbound (a new
     // draft tab) and must not inherit a title generated for another session.
-    if (currentSessionIdRef.current === sessionId) {
+    if (currentSessionIdRef.current === sessionId) { // legacy-allow: foreground check for the header title, not routing
       setCustomSessionTitle(cleanTitle);
     }
     window.__sessionTabsStore?.updateTabTitle?.(sessionId, cleanTitle);

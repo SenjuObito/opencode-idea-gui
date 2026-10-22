@@ -11,6 +11,7 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import type { ContextUsageData } from '../../../components/ContextUsageDialog';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { isSessionTransitioning, transitionTargetOfSession } from '../tabTransition';
 import { debugError } from '../../../utils/debug';
 import { resolveSessionId } from '../../../utils/sessionIdentity';
 import {
@@ -181,7 +182,7 @@ export function registerMessageCallbacks(
     baseIndexArg?: string | number | null,
     targetSessionId?: string | null,
   ) => {
-    cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length, 'transitioning:', window.__sessionTransitioning);
+    cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length, 'transitioning:', isSessionTransitioning(targetSessionId ?? null));
     // Re-check the session-transition guard inside processUpdateMessages so the
     // rAF-deferred path (window.updateMessages → setTimeout → processUpdateMessages)
     // cannot resurrect cleared messages when a transition starts between the
@@ -189,16 +190,16 @@ export function registerMessageCallbacks(
     // callers that bypass the entry point — addHistoryMessage / addUserMessage
     // already guard, but processUpdateMessages is the canonical setter and
     // should be self-defending.
-    if (window.__sessionTransitioning) {
-      const activeSessionId = window.__sessionTransitionTargetSessionId
-        || options.currentSessionIdRef?.current
-        || window.__sessionTabsStore?.getActiveSessionId?.();
-      const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
+    if (isSessionTransitioning(targetSessionId)) {
+      // The tab is switching sessions: only the session it is switching *to*
+      // may write. Events of the outgoing session are dropped.
+      const transitionTarget = transitionTargetOfSession(targetSessionId);
+      const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
       if (!isTargetActiveSession) {
-        cardDebugLog('[processUpdateMessages] BLOCKED: sessionTransitioning');
+        cardDebugLog('[processUpdateMessages] BLOCKED: tab is transitioning');
         return;
       }
-      cardDebugLog('[processUpdateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
+      cardDebugLog('[processUpdateMessages] ALLOWED during transition for targetSessionId:', targetSessionId);
     }
     // A frame deferred 16ms during streaming can outlive a tab switch. If the
     // session is no longer the one on screen, applying it here would write one
@@ -465,9 +466,9 @@ export function registerMessageCallbacks(
     sequenceArg?: string | number,
     targetSessionId?: string | null,
   ) => {
-    if (window.__sessionTransitioning) {
-      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
-      const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
+    if (isSessionTransitioning(targetSessionId)) {
+      const transitionTarget = transitionTargetOfSession(targetSessionId);
+      const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
       if (!isTargetActiveSession) return;
     }
     // Same deferred-frame guard as processUpdateMessages: a tail pushed for a
@@ -581,7 +582,7 @@ export function registerMessageCallbacks(
     }
 
     const isForegroundSession = !targetSessionId
-      || (targetSessionId === (window.__sessionTransitionTargetSessionId || options.currentSessionIdRef?.current))
+      || (targetSessionId === options.currentSessionIdRef?.current)
       || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
 
     if (!isForegroundSession && targetSessionId && window.__sessionTabsStore) {
@@ -619,17 +620,15 @@ export function registerMessageCallbacks(
 
     // During session transition, ignore message updates from stale session
     // callbacks to prevent cleared messages from being restored
-    cardDebugLog('[updateMessages] called, transitioning:', window.__sessionTransitioning, 'seq:', sequenceArg, 'jsonLen:', json?.length);
-    if (window.__sessionTransitioning) {
-      const activeSessionId = window.__sessionTransitionTargetSessionId
-        || options.currentSessionIdRef?.current
-        || window.__sessionTabsStore?.getActiveSessionId?.();
-      const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
+    cardDebugLog('[updateMessages] called, transitioning:', isSessionTransitioning(targetSessionId), 'seq:', sequenceArg, 'jsonLen:', json?.length);
+    if (isSessionTransitioning(targetSessionId)) {
+      const transitionTarget = transitionTargetOfSession(targetSessionId);
+      const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
       if (!isTargetActiveSession) {
-        cardDebugLog('[updateMessages] BLOCKED by sessionTransitioning');
+        cardDebugLog('[updateMessages] BLOCKED: tab is transitioning');
         return;
       }
-      cardDebugLog('[updateMessages] ALLOWED during sessionTransitioning for active targetSessionId:', targetSessionId);
+      cardDebugLog('[updateMessages] ALLOWED during transition for targetSessionId:', targetSessionId);
     }
     const effectiveSessionId = targetSessionId ?? null;
     const sequence = parseSequence(sequenceArg);
@@ -678,9 +677,9 @@ export function registerMessageCallbacks(
           // stale snapshot deferred during the outgoing session's streaming
           // would run down the non-streaming path (isStreamingRef was cleared
           // by beginSessionTransition) and resurrect the cleared messages.
-          if (window.__sessionTransitioning) {
-            const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
-            const isTargetActiveSession = Boolean(targetSessionId && activeSessionId && targetSessionId === activeSessionId);
+          if (isSessionTransitioning(targetSessionId)) {
+            const transitionTarget = transitionTargetOfSession(targetSessionId);
+            const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
             if (!isTargetActiveSession) return;
           }
           if (latestJson) {
@@ -753,7 +752,7 @@ export function registerMessageCallbacks(
   // __prependedHistoryMessageCount 同步累加：基址不变的同代快照走 legacy
   // 合并路径时，靠它保留已前插的页（Codex 既有机制）。
   window.updateMessagesPrepend = (json, pageStartArg) => {
-    if (window.__sessionTransitioning) return;
+    if (isSessionTransitioning(null)) return;
     if (isStreamingRef.current) return;
     let parsed: ClaudeMessage[];
     try {
@@ -795,7 +794,7 @@ export function registerMessageCallbacks(
       Math.max(0, (typeof prevPrepended === 'number' ? prevPrepended : 0) + parsed.length - drop);
     if (drop > 0) {
       sendBridgeEvent('set_earlier_cursor', JSON.stringify({
-        sessionId: currentSessionIdRef.current,
+        sessionId: currentSessionIdRef.current, // legacy-allow: the session on screen, not an event attribution
         cursor: newStart,
       }));
     }
@@ -1059,7 +1058,7 @@ export function registerMessageCallbacks(
       return;
     }
 
-    if (window.__sessionTransitioning) return;
+    if (isSessionTransitioning(null)) return;
     setMessages((prev) => patchUuidInList(prev, content, uuid));
   };
 
@@ -1080,12 +1079,12 @@ export function registerMessageCallbacks(
       return;
     }
 
-    cardDebugLog('[clearMessages] called, transitioning:', window.__sessionTransitioning, 'barrierSeq:', barrierSequenceArg);
+    cardDebugLog('[clearMessages] called, transitioning:', isSessionTransitioning(targetSessionId), 'barrierSeq:', barrierSequenceArg);
     cardDebugLog('[clearMessages] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
     // Advance the sequence barrier so any updateMessages still in flight from
     // the previous session are rejected. Such a snapshot may already have been
     // dispatched to JS and be sitting in the JCEF IPC channel, so neither the
-    // backend's post-reset sequence check nor the __sessionTransitioning
+    // backend's post-reset sequence check nor the tab transition guard
     // time-window guard can stop it once that guard is released. The barrier is
     // the backend coalescer's post-reset updateSequence; stale snapshots carry a
     // strictly smaller sequence. Closes the "new session does not clear" race.
@@ -1147,7 +1146,7 @@ export function registerMessageCallbacks(
   };
 
   window.addHistoryMessage = (message: ClaudeMessage) => {
-    if (window.__sessionTransitioning) return;
+    if (isSessionTransitioning(null)) return;
     setMessages((prev) => [...prev, message]);
   };
 
@@ -1189,7 +1188,7 @@ export function registerMessageCallbacks(
       : (typeof arg0 === 'string' && isNaN(Number(arg0)) ? [arg0, undefined] : [null, arg0]);
 
     const isForeground = !targetSessionId
-      || (targetSessionId === (window.__sessionTransitionTargetSessionId || options.currentSessionIdRef?.current))
+      || (targetSessionId === options.currentSessionIdRef?.current)
       || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
 
     if (!isForeground && targetSessionId && window.__sessionTabsStore) {
@@ -1200,19 +1199,21 @@ export function registerMessageCallbacks(
           t.streamingActive = false;
         }
       );
-      // If foreground active tab is currently transitioning targeting this session, ensure guard is released
-      if (window.__sessionTransitionTargetSessionId === targetSessionId) {
-        releaseSessionTransition();
+      // If the tab that owns this session is transitioning toward it, the
+      // guard is released now that the history has arrived.
+      const ownerTabId = window.__sessionTabsStore?.getTabIdForSession?.(targetSessionId) ?? null;
+      if (window.__sessionTabsStore?.getTabTransitionTarget?.(ownerTabId) === targetSessionId) {
+        window.__sessionTabsStore?.endTabTransition?.(ownerTabId);
       }
       // If the foreground active tab is not currently loading, ensure front-end loading bar is not stranded
       options.setSessionLoading(false);
       return;
     }
 
-    cardDebugLog('[HistoryLoadComplete] called, transitioning BEFORE release:', window.__sessionTransitioning, 'expectedMsgCount:', expectedMessageCountArg);
+    cardDebugLog('[HistoryLoadComplete] called, transitioning BEFORE release:', isSessionTransitioning(targetSessionId), 'expectedMsgCount:', expectedMessageCountArg);
     cardDebugLog('[HistoryLoadComplete] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
     releaseSessionTransition();
-    cardDebugLog('[HistoryLoadComplete] transitioning AFTER release:', window.__sessionTransitioning);
+    cardDebugLog('[HistoryLoadComplete] transitioning AFTER release:', isSessionTransitioning(targetSessionId));
     // Immediately release sessionLoading flag
     options.setSessionLoading(false);
     // 同会话软刷新已完成，释放 loadHistorySession 的去抖守卫
@@ -1316,8 +1317,12 @@ export function registerMessageCallbacks(
       codexPageBuffer.delete(pageId);
       if (!buffered) return;
 
-      // Ignore if session changed during transfer
-      if (currentSessionIdRef.current !== sessionId) return;
+      // Ignore if the session changed during the transfer. The tab strip knows
+      // which session is on screen; the ref is only the fallback.
+      const stillCurrent = window.__sessionTabsStore
+        ? window.__sessionTabsStore.isActiveSession(sessionId)
+        : currentSessionIdRef.current === sessionId; // legacy-allow: fallback when no tab strip exists
+      if (!stillCurrent) return;
 
       // Contiguity check: for prepend mode, the new page's toTurn must match
       // the existing page's fromTurn. If there's a gap, reject and show error.
@@ -1361,7 +1366,7 @@ export function registerMessageCallbacks(
   };
 
   window.addUserMessage = (content: string) => {
-    if (window.__sessionTransitioning) return;
+    if (isSessionTransitioning(null)) return;
     const userMessage: ClaudeMessage = {
       type: 'user',
       content: content || '',

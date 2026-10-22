@@ -1,6 +1,7 @@
 import { createElement, useState } from 'react';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { useWindowCallbacks } from './useWindowCallbacks.js';
+import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor } from './windowCallbacks/tabTransition';
 import type { UseWindowCallbacksOptions } from './useWindowCallbacks.js';
 import type { ClaudeMessage } from '../types/index.js';
 
@@ -95,8 +96,8 @@ describe('useWindowCallbacks integration', () => {
   });
 
   beforeEach(() => {
-    window.__sessionTransitioning = false;
-    window.__sessionTransitionToken = null;
+    endTransition('tab-active');
+    endTransition('tab-new');
     window.__minAcceptedUpdateSequence = 0;
     // Per-session barriers are the authoritative ones now, and — unlike the
     // global baseline — they are NOT reset by the production code, so a value
@@ -274,37 +275,50 @@ describe('useWindowCallbacks integration', () => {
     return { opts, buffer };
   };
 
-  // ===== historyLoadComplete releases transition guard =====
+  // A tab id is needed to place a transition: the guard belongs to a tab.
+  const withActiveTab = (tabId = 'tab-active') => {
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => tabId,
+      getActiveSessionId: () => 'session-active',
+      getTabs: () => [{ id: tabId, sessionId: 'session-active' }],
+      isActiveSession: (sid: string | null | undefined) => sid === 'session-active',
+      updateTabSessionId: vi.fn(),
+      updateTabTitle: vi.fn(),
+      updateBackgroundTab: vi.fn(),
+    } as any;
+  };
+
+  // ===== historyLoadComplete releases transition guard ========
 
   it('historyLoadComplete releases __sessionTransitioning guard', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
+    withActiveTab();
     // Simulate: beginSessionTransition sets guard
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'transition-1';
+    beginTransition('tab-active', 'hist-1', 'transition-1');
 
     // Simulate: Java calls historyLoadComplete on success
     act(() => {
       window.historyLoadComplete!();
     });
 
-    expect(window.__sessionTransitioning).toBe(false);
-    expect(window.__sessionTransitionToken).toBeNull();
+    expect(isTabTransitioning('tab-active')).toBe(false);
+    expect(transitionTokenFor('tab-active')).toBeNull();
   });
 
   it('older Codex page rendering does not release the session transition guard', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'newer-transition';
+    withActiveTab();
+    beginTransition('tab-active', 'hist-1', 'newer-transition');
 
     act(() => {
       window.codexHistoryPageRenderComplete!();
     });
 
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBe('newer-transition');
+    expect(isTabTransitioning('tab-active')).toBe(true);
+    expect(transitionTokenFor('tab-active')).toBe('newer-transition');
   });
 
   it('historyLoadComplete shows pending session transition toast', () => {
@@ -382,15 +396,15 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'transition-2';
+    // The new-session flow: a transition without a target session.
+    beginTransition('tab-new', null, 'transition-2');
 
     act(() => {
       window.setSessionId!('new-session-123', 'tab-new');
     });
 
-    expect(window.__sessionTransitioning).toBe(false);
-    expect(window.__sessionTransitionToken).toBeNull();
+    expect(isTabTransitioning('tab-new')).toBe(false);
+    expect(transitionTokenFor('tab-new')).toBeNull();
     expect(opts.setCurrentSessionId).toHaveBeenCalledWith('new-session-123');
   });
 
@@ -471,7 +485,7 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions({ currentSessionIdRef: activeRef });
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
+    beginTransition('tab-active', 'sess-target', 'transition-unknown');
     act(() => {
       window.setSessionId!('sess-unknown', 'sess-other');
     });
@@ -480,7 +494,7 @@ describe('useWindowCallbacks integration', () => {
     expect(activeRef.current).toBe('sess-active');
     expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
     // An unattributable identity notification must not release the guard.
-    expect(window.__sessionTransitioning).toBe(true);
+    expect(isTabTransitioning('tab-active')).toBe(true);
   });
 
   // ===== AI title path uses applyHistoryTitleLocal (no backend round-trip) =====
@@ -599,7 +613,8 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
+    withActiveTab();
+    beginTransition('tab-active', 'ses_target', 'transition-stale');
 
     const staleMessages: ClaudeMessage[] = [
       { type: 'assistant', content: 'stale content', timestamp: new Date().toISOString() },
@@ -618,7 +633,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     // Guard is NOT set
-    expect(window.__sessionTransitioning).toBe(false);
+    expect(isTabTransitioning('tab-active')).toBe(false);
 
     const freshMessages: ClaudeMessage[] = [
       { type: 'user', content: 'hello', timestamp: new Date().toISOString() },
@@ -638,7 +653,7 @@ describe('useWindowCallbacks integration', () => {
     });
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
+    beginTransition('tab-active', 'ses_target_123', 'transition-target');
 
     const freshMessages: ClaudeMessage[] = [
       { type: 'user', content: 'historical message', timestamp: new Date().toISOString() },
@@ -1181,7 +1196,8 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
+    withActiveTab();
+    beginTransition('tab-active', 'ses_target', 'transition-uuid');
 
     act(() => {
       window.patchMessageUuid?.('sess-123', 'hello', 'uuid-guarded');
@@ -1194,15 +1210,15 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'transition-status';
+    withActiveTab();
+    beginTransition('tab-active', 'ses_target', 'transition-status');
 
     act(() => {
       window.updateStatus!('warming runtime');
     });
 
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBe('transition-status');
+    expect(isTabTransitioning('tab-active')).toBe(true);
+    expect(transitionTokenFor('tab-active')).toBe('transition-status');
     expect(opts.setStatus).toHaveBeenCalledWith('warming runtime');
   });
 
@@ -1377,7 +1393,8 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     // Step 1: Frontend begins session transition
-    window.__sessionTransitioning = true;
+    withActiveTab();
+    beginTransition('tab-active', 'ses_target', 'transition-flow');
 
     // Step 2: During transition, stale messages are blocked
     act(() => {
@@ -1389,7 +1406,7 @@ describe('useWindowCallbacks integration', () => {
     act(() => {
       window.historyLoadComplete!();
     });
-    expect(window.__sessionTransitioning).toBe(false);
+    expect(isTabTransitioning('tab-active')).toBe(false);
 
     // Step 4: Java calls addErrorMessage
     act(() => {

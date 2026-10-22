@@ -6,7 +6,6 @@ import type { TabScrollState } from './useScrollBehavior';
 import type { SessionTabData } from '../components/ChatHeader/types';
 import type { TabType } from '../components/StatusPanel/types';
 import { TabStore, createTabId } from '../store/tabStore';
-import { TabRuntimeStore } from '../store/tabRuntimeStore';
 import { TabDraftStore } from '../store/tabDraftStore';
 import { TabStatusStore, statusSnapshotOf } from '../store/tabStatusStore';
 import { TabPromptStore } from '../store/tabPromptStore';
@@ -15,14 +14,7 @@ import { getFirstPreferredModelId, resolveSessionModel } from '../components/Cha
 import { sendBridgeEvent, sendInterrupt, sendTabCommand, cardDebugLog } from '../utils/bridge';
 import { observeHostEpoch, resetHostDispatcherEpochs } from '../utils/hostDispatcher';
 import { clearSessionSequenceBarrier } from './windowCallbacks/sequenceBarrier';
-import { releaseSessionTransition } from './windowCallbacks/sessionTransition';
-import {
-  DEFAULT_STREAMING_RUNTIME,
-  captureStreamingRuntime,
-  clearStreamingRuntime,
-  restoreStreamingRuntime,
-  type StreamingRuntimeRefs,
-} from '../utils/streamingRuntime';
+import { clearTransition, endTransition, transitionTargetFor } from './windowCallbacks/tabTransition';
 
 interface UseSessionTabsOptions {
   currentSessionId: string | null;
@@ -86,12 +78,12 @@ interface UseSessionTabsOptions {
   loadHistorySession: (sessionId: string) => void;
   currentSessionIdRef?: React.RefObject<string | null>;
   /**
-   * The live streaming refs. Supplying them enables per-tab runtime exchange:
-   * leaving a session archives the accumulator / turnId / index, entering one
-   * loads it back. Without them a session that keeps running in the background
-   * would leak its text into whichever session is activated next.
+   * Per-tab runtime ownership (see `useStreamingMessages`). The tab hook only
+   * needs to tell the owner when a tab disappears or when a background turn
+   * starts; it never touches the runtime of another tab.
    */
-  streamingRuntimeRefs?: StreamingRuntimeRefs;
+  deleteTabRuntime?: (tabId: string) => void;
+  setTabRuntimeStreaming?: (tabId: string, streaming: boolean) => void;
   /**
    * Scroll isolation hooks. `captureScrollState` snapshots the outgoing tab's
    * reader position before the transcript swap; `restoreScrollState` queues the
@@ -159,7 +151,8 @@ export function useSessionTabs({
   defaultAutoOpenFileEnabled,
   forceCreateNewSession: _forceCreateNewSession,
   loadHistorySession,
-  streamingRuntimeRefs,
+  deleteTabRuntime,
+  setTabRuntimeStreaming,
   captureScrollState,
   restoreScrollState,
   t,
@@ -221,7 +214,6 @@ export function useSessionTabs({
    * tab object (`{...tab}`), so embedding a 10-field snapshot there would make
    * that hot path copy it on every delta.
    */
-  const [runtimeStore] = useState(() => new TabRuntimeStore());
   const [draftStore] = useState(() => new TabDraftStore());
   const [statusStore] = useState(() => new TabStatusStore());
   const [promptStore] = useState(() => new TabPromptStore());
@@ -546,7 +538,6 @@ export function useSessionTabs({
       updateTabSessionId,
       updateTabTitle,
       closeTabBySessionId,
-      archiveActiveStreamingRuntime,
       clearStreamingRuntimeFor,
     };
     return () => {
@@ -557,54 +548,16 @@ export function useSessionTabs({
   // Helper: Save current active tab snapshot using real-time runtimeStateRef
   // The ref bag is passed in as a plain object, so pin it in a ref to keep the
   // capture/archive helpers dependency-free (stable identities for callbacks).
-  const streamingRuntimeRefsRef = useRef(streamingRuntimeRefs);
-  useEffect(() => {
-    streamingRuntimeRefsRef.current = streamingRuntimeRefs;
-  }, [streamingRuntimeRefs]);
-
-  /** Archive the live streaming runtime under the tab that is leaving the view. */
-  const archiveStreamingRuntime = useCallback((tabId: string) => {
-    const refs = streamingRuntimeRefsRef.current;
-    if (!refs) return;
-    runtimeStore.set(tabId, captureStreamingRuntime(refs));
-  }, [runtimeStore]);
-
-  /** Load the tab's archived runtime, or the default if it never streamed. */
-  const restoreStreamingRuntimeFor = useCallback((tabId: string, streamingHint?: boolean) => {
-    const refs = streamingRuntimeRefsRef.current;
-    if (!refs) return;
-    const snapshot = runtimeStore.get(tabId);
-    if (snapshot) {
-      restoreStreamingRuntime(refs, snapshot);
-      return;
-    }
-    restoreStreamingRuntime(refs, DEFAULT_STREAMING_RUNTIME);
-    // A tab that started streaming while in the background has tab-level flags
-    // but no runtime of its own — `onStreamStart` returns early for inactive
-    // sessions. Adopt the hint so the first delta does not have to rebuild it.
-    if (streamingHint) {
-      refs.isStreamingRef.current = true;
-    }
-  }, [runtimeStore]);
-
   /**
-   * Exposed so `beginSessionTransition` can archive before it wipes the refs.
+   * Drop the runtime of whichever tab owns this session (the turn ended).
    *
-   * "Loading a different session into this tab" does not go through
-   * `selectTab`, so without this hook the outgoing session's accumulator would
-   * be destroyed by `__resetTransientUiState` while its turn is still running
-   * in the background.
+   * <p>The runtime map is the owner, so ending a turn means the tab's runtime
+   * goes away; a later turn in the same tab starts from a clean accumulator.</p>
    */
-  const archiveActiveStreamingRuntime = useCallback(() => {
-    archiveStreamingRuntime(activeTabIdRef.current);
-  }, [archiveStreamingRuntime]);
-
-  /** Drop the archived runtime of whichever tab owns this session (stream ended). */
   const clearStreamingRuntimeFor = useCallback((sessionId: string) => {
-    if (!sessionId) return;
-    const owner = tabsRef.current.find((tab) => tab.sessionId === sessionId);
-    if (owner) runtimeStore.delete(owner.id);
-  }, [runtimeStore]);
+    const owner = getTabIdForSession(sessionId);
+    if (owner) deleteTabRuntime?.(owner);
+  }, [getTabIdForSession, deleteTabRuntime]);
 
   /**
    * Point the host at a tab's session. Must run BEFORE any per-session bridge
@@ -723,7 +676,7 @@ export function useSessionTabs({
       const liveIds = new Set(nextTabs.map((tab) => tab.id));
       for (const previousId of previousById.keys()) {
         if (liveIds.has(previousId)) continue;
-        runtimeStore.delete(previousId);
+        deleteTabRuntime?.(previousId);
         draftStore.delete(previousId);
         statusStore.delete(previousId);
         promptStore.delete(previousId);
@@ -747,7 +700,7 @@ export function useSessionTabs({
     return () => {
       delete window.onTabResync;
     };
-  }, [setCurrentSessionId, setCustomSessionTitle, t, runtimeStore, draftStore, statusStore, promptStore]);
+  }, [setCurrentSessionId, setCustomSessionTitle, t, deleteTabRuntime, draftStore, statusStore, promptStore]);
 
   const saveCurrentTabSnapshot = useCallback(() => {
     const currentActive = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
@@ -820,11 +773,11 @@ export function useSessionTabs({
         currentActive.pendingQuestions = dialogSnap.questions;
       }
 
-      // The tab is leaving the viewport: freeze its streaming runtime so a
-      // background turn keeps accumulating into this tab, not into the next one.
-      archiveStreamingRuntime(currentActive.id);
+      // The tab is leaving the viewport. Its runtime stays with it: the
+      // accumulator belongs to the tab, not to the view, so a background turn
+      // keeps filling this tab's own runtime.
     }
-  }, [chatInputRef, archiveStreamingRuntime, captureScrollState, draftStore, statusStore, promptStore]);
+  }, [chatInputRef, captureScrollState, draftStore, statusStore, promptStore]);
 
   // Select tab (pure view switch: preserves background generation, never interrupts)
   const selectTab = useCallback(
@@ -844,17 +797,16 @@ export function useSessionTabs({
       setActiveTabId(targetTabId);
 
       // A transition toward *another* session may still be in flight (its
-      // history is loading). The guard is global, and the streaming paths bail
-      // out on `__sessionTransitioning` unconditionally — so leaving it set
-      // while the user looks at a different tab would silently drop every delta
-      // that arrives for the tab now on screen. Abandon the transition instead.
-      const pendingTransitionTarget = window.__sessionTransitionTargetSessionId ?? null;
+      // history is loading). The guard belongs to the tab that started it, so
+      // switching to a different tab does not silence this one — but a tab
+      // that is asked to show a session other than the one it is switching to
+      // abandons its own transition.
+      const pendingTransitionTarget = transitionTargetFor(targetTabId);
       if (
-        window.__sessionTransitioning
-        && pendingTransitionTarget
+        pendingTransitionTarget
         && pendingTransitionTarget !== targetTab.sessionId
       ) {
-        releaseSessionTransition();
+        endTransition(targetTabId);
       }
 
       // Activate the target tab first so window-level host notifications see
@@ -874,11 +826,13 @@ export function useSessionTabs({
       // useScrollBehavior applies it after this commit and skips auto-follow,
       // so the outgoing tab's "at bottom" state cannot drag this reader down.
       restoreScrollState?.(targetTab.scrollState ?? null);
-      // Exchange the streaming runtime immediately after the transcript swap:
-      // the next delta must see this tab's accumulator, and the message index is
-      // intentionally reset so the live assistant is re-located in the new array.
+      // The target tab's runtime is already its own — nothing is copied here.
+      // A tab that started streaming in the background has no live accumulator
+      // yet, so its streaming flag is recorded on the tab itself.
       const targetStatus = statusStore.get(targetTab.id);
-      restoreStreamingRuntimeFor(targetTab.id, targetStatus?.streamingActive ?? targetTab.streamingActive);
+      if (targetStatus?.streamingActive ?? targetTab.streamingActive) {
+        setTabRuntimeStreaming?.(targetTab.id, true);
+      }
       setLoading?.(targetStatus?.loading ?? targetTab.loading ?? false);
       setStreamingActive?.(targetStatus?.streamingActive ?? targetTab.streamingActive ?? false);
       setIsThinking?.(targetStatus?.isThinking ?? targetTab.isThinking ?? false);
@@ -963,7 +917,7 @@ export function useSessionTabs({
     },
     [
       saveCurrentTabSnapshot,
-      restoreStreamingRuntimeFor,
+      setTabRuntimeStreaming,
       restoreScrollState,
       syncHostActiveTabTo,
       syncPermissionModeTo,
@@ -1353,9 +1307,10 @@ export function useSessionTabs({
       }
       // One command closes the tab whether or not it ever got a session.
       sendTabCommand(tabId, 'tab.close');
-      // Drop the archived runtime with the tab; a recycled tab id must never
-      // inherit a dead session's accumulator.
-      runtimeStore.delete(tabId);
+      // The tab loses its runtime; a recycled tab id must never inherit a dead
+      // session's accumulator.
+      deleteTabRuntime?.(tabId);
+      clearTransition(tabId);
       draftStore.delete(tabId);
       statusStore.delete(tabId);
       promptStore.delete(tabId);
@@ -1409,11 +1364,10 @@ export function useSessionTabs({
           setUsageUsedTokens?.(undefined);
           setUsageMaxTokens?.(undefined);
           setSessionLoading?.(false);
-          // Last tab closed: the fresh tab must not inherit the dead session's
-          // accumulator / turnId / message index.
-          if (streamingRuntimeRefsRef.current) {
-            clearStreamingRuntime(streamingRuntimeRefsRef.current);
-          }
+          // Last tab closed: the dead tab's runtime goes with it, and the fresh
+          // tab starts from a clean runtime instead of inheriting the dead
+          // session's accumulator / turnId / message index.
+          deleteTabRuntime?.(tabId);
           return [freshTab];
         }
 
@@ -1442,7 +1396,9 @@ export function useSessionTabs({
               questions: nextActive.pendingQuestions ?? [],
             });
             const nextStatus = statusStore.get(nextActive.id);
-            restoreStreamingRuntimeFor(nextActive.id, nextStatus?.streamingActive ?? nextActive.streamingActive);
+            if (nextStatus?.streamingActive ?? nextActive.streamingActive) {
+              setTabRuntimeStreaming?.(nextActive.id, true);
+            }
             setLoading?.(nextStatus?.loading ?? nextActive.loading ?? false);
             setStreamingActive?.(nextStatus?.streamingActive ?? nextActive.streamingActive ?? false);
             setIsThinking?.(nextStatus?.isThinking ?? nextActive.isThinking ?? false);
@@ -1527,11 +1483,11 @@ export function useSessionTabs({
       setUsageUsedTokens,
       setUsageMaxTokens,
       setSessionLoading,
-      runtimeStore,
+      deleteTabRuntime,
       draftStore,
       statusStore,
       promptStore,
-      restoreStreamingRuntimeFor,
+      setTabRuntimeStreaming,
     ]
   );
 

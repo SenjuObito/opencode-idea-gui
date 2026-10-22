@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import { useSessionManagement } from './useSessionManagement.js';
+import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor } from './windowCallbacks/tabTransition';
 import type { HistoryData } from '../types/index.js';
 
 describe('useSessionManagement', () => {
@@ -43,8 +44,8 @@ describe('useSessionManagement', () => {
   };
 
   beforeEach(() => {
-    window.__sessionTransitioning = false;
-    window.__sessionTransitionToken = null;
+    endTransition('tab-1');
+    endTransition('tab-active');
     window.__pendingSessionTransitionToast = undefined;
     window.sendToJava = vi.fn();
     window.__openNewSessionTab = vi.fn();
@@ -324,7 +325,7 @@ describe('useSessionManagement', () => {
 
     // Interrupt dialog must appear; no silent transition.
     expect(result.current.showInterruptConfirm).toBe(true);
-    expect(window.__sessionTransitioning).toBe(false);
+    expect(isTabTransitioning('tab-1')).toBe(false);
     expect(mocks.setMessages).not.toHaveBeenCalled();
     expect(window.__openNewSessionTab).not.toHaveBeenCalled();
   });
@@ -425,6 +426,7 @@ describe('useSessionManagement', () => {
       })
     );
 
+    withActiveTab();
     act(() => {
       result.current.loadHistorySession('hist-2');
     });
@@ -433,12 +435,12 @@ describe('useSessionManagement', () => {
     const calls = (window.sendToJava as any).mock.calls.map((c: any) => c[0]);
     expect(calls.filter((c) => c.startsWith('interrupt_session:'))).toHaveLength(0);
     expect(calls).toContain(
-      'load_session:{"sessionId":"hist-2"}',
+      'load_session:{"sessionId":"hist-2","tabId":"tab-1"}',
     );
 
     // But should still set transition guard
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
+    expect(isTabTransitioning('tab-1')).toBe(true);
+    expect(transitionTokenFor('tab-1')).toBeTruthy();
     expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
     expect(mocks.setMessages).toHaveBeenCalledWith([]);
     expect(mocks.setCurrentSessionId).toHaveBeenCalledWith('hist-2');
@@ -586,19 +588,17 @@ describe('useSessionManagement', () => {
 
   it('historyLoadComplete releases transition guard', () => {
     // Simulate what happens when Java calls historyLoadComplete after successful load
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'transition-test';
+    beginTransition('tab-1', 'hist-1', 'transition-test');
 
     // historyLoadComplete is defined in useWindowCallbacks, but we can test
     // that the guard release mechanism works by direct simulation
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBe('transition-test');
+    expect(isTabTransitioning('tab-1')).toBe(true);
+    expect(transitionTokenFor('tab-1')).toBe('transition-test');
 
     // Simulate historyLoadComplete behavior
-    window.__sessionTransitioning = false;
-    window.__sessionTransitionToken = null;
-    expect(window.__sessionTransitioning).toBe(false);
-    expect(window.__sessionTransitionToken).toBeNull();
+    endTransition('tab-1');
+    expect(isTabTransitioning('tab-1')).toBe(false);
+    expect(transitionTokenFor('tab-1')).toBeNull();
   });
 
   it('loadHistorySession sets transition guard that blocks updateMessages', () => {
@@ -630,33 +630,31 @@ describe('useSessionManagement', () => {
       })
     );
 
+    withActiveTab();
     act(() => {
       result.current.loadHistorySession('hist-3');
     });
 
     // Guard is set, blocking stale updateMessages
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
+    expect(isTabTransitioning('tab-1')).toBe(true);
+    expect(transitionTokenFor('tab-1')).toBeTruthy();
 
     // Simulate historyLoadComplete (success path releases guard)
     act(() => {
-      window.__sessionTransitioning = false;
-      window.__sessionTransitionToken = null;
+      endTransition('tab-1');
     });
-    expect(window.__sessionTransitioning).toBe(false);
-    expect(window.__sessionTransitionToken).toBeNull();
+    expect(isTabTransitioning('tab-1')).toBe(false);
+    expect(transitionTokenFor('tab-1')).toBeNull();
 
     // Simulate failure path: guard must also be released
     act(() => {
-      window.__sessionTransitioning = true; // re-arm
-      window.__sessionTransitionToken = 'transition-rearm';
+      beginTransition('tab-1', 'hist-3', 'transition-rearm'); // re-arm
     });
     // Java exceptionally block calls historyLoadComplete before addErrorMessage
     act(() => {
-      window.__sessionTransitioning = false;
-      window.__sessionTransitionToken = null;
+      endTransition('tab-1');
     });
-    expect(window.__sessionTransitioning).toBe(false);
-    expect(window.__sessionTransitionToken).toBeNull();
+    expect(isTabTransitioning('tab-1')).toBe(false);
+    expect(transitionTokenFor('tab-1')).toBeNull();
   });
 });

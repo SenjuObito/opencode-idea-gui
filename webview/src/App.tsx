@@ -160,38 +160,11 @@ const App = () => {
     streamingContentRef, streamingThinkingRef, isStreamingRef, useBackendStreamingRenderRef,
     streamingMessageIndexRef, contentUpdateTimeoutRef, thinkingUpdateTimeoutRef,
     lastContentUpdateRef, lastThinkingUpdateRef, autoExpandedThinkingKeysRef,
-    trailingStructuralTextBoundaryRef,
     streamingTurnIdRef, turnIdCounterRef,
     findLastAssistantIndex, extractRawBlocks,
     getOrCreateStreamingAssistantIndex, patchAssistantForStreaming,
+    deleteRuntimeForTab, setRuntimeStreamingForTab,
   } = useStreamingMessages();
-
-  // Per-session streaming runtime exchange: these single-instance refs are
-  // saved/restored as a unit when the active session changes, so a background
-  // turn cannot leak its accumulator into whichever session is opened next.
-  const streamingRuntimeRefs = useMemo(() => ({
-    isStreamingRef,
-    streamingContentRef,
-    streamingThinkingRef,
-    useBackendStreamingRenderRef,
-    streamingMessageIndexRef,
-    streamingTurnIdRef,
-    lastContentUpdateRef,
-    lastThinkingUpdateRef,
-    autoExpandedThinkingKeysRef,
-    trailingStructuralTextBoundaryRef,
-  }), [
-    isStreamingRef,
-    streamingContentRef,
-    streamingThinkingRef,
-    useBackendStreamingRenderRef,
-    streamingMessageIndexRef,
-    streamingTurnIdRef,
-    lastContentUpdateRef,
-    lastThinkingUpdateRef,
-    autoExpandedThinkingKeysRef,
-    trailingStructuralTextBoundaryRef,
-  ]);
 
   // (Toast helpers moved to UIStateContext)
 
@@ -1180,7 +1153,8 @@ const App = () => {
     defaultAutoOpenFileEnabled: autoOpenFileEnabled,
     forceCreateNewSession,
     loadHistorySession,
-    streamingRuntimeRefs,
+    deleteTabRuntime: deleteRuntimeForTab,
+    setTabRuntimeStreaming: setRuntimeStreamingForTab,
     captureScrollState,
     restoreScrollState,
     t,

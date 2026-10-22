@@ -9,6 +9,7 @@ import { startTransition } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { isSessionTransitioning } from '../tabTransition';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
 import { parseSequence, advanceMinAcceptedSequence } from '../sequenceBarrier';
 import { getStreamEndHandlingMode } from '../messageSync';
@@ -279,7 +280,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       return;
     }
 
-    if (window.__sessionTransitioning) return;
+    // A tab that is switching sessions ignores the events of the session it is
+    // leaving. Other tabs are unaffected: the guard is per tab.
+    if (isSessionTransitioning(targetSessionId)) return;
     const isReplayStart = mode === 'replay' || mode === true;
     // Clear any stale pending updateMessages from previous turn.
     // This prevents onStreamEnd from using outdated snapshot data.
@@ -541,7 +544,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       return;
     }
 
-    if (window.__sessionTransitioning) return;
+    if (isSessionTransitioning(targetSessionId)) return;
     ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
     streamingContentRef.current += delta;
@@ -568,7 +571,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       return;
     }
 
-    if (window.__sessionTransitioning) return;
+    if (isSessionTransitioning(targetSessionId)) return;
     ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
     streamingThinkingRef.current += delta;
@@ -602,17 +605,17 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   /**
    * Re-dispatch a terminal that arrived while the UI was mid session-switch.
    *
-   * The old code did `if (window.__sessionTransitioning) return;` — a terminal
+   * The old code did `if (transitioning) return;` — a terminal
    * arriving during a switch was swallowed outright, which is one way a tab kept
    * showing a spinner long after its turn had ended. A terminal is never safe to
    * drop, so it is retried until the transition completes (bounded, so a stuck
    * transition flag cannot spin forever).
    */
   const TRANSITION_DEFER_MAX_MS = 5000;
-  const deferUntilTransitionComplete = (retry: () => void): void => {
+  const deferUntilTransitionComplete = (sessionId: string | null, retry: () => void): void => {
     const startedAt = Date.now();
     const tick = (): void => {
-      if (!window.__sessionTransitioning || Date.now() - startedAt > TRANSITION_DEFER_MAX_MS) {
+      if (!isSessionTransitioning(sessionId) || Date.now() - startedAt > TRANSITION_DEFER_MAX_MS) {
         retry();
         return;
       }
@@ -677,8 +680,8 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       return;
     }
 
-    if (window.__sessionTransitioning) {
-      deferUntilTransitionComplete(() => {
+    if (isSessionTransitioning(targetSessionId)) {
+      deferUntilTransitionComplete(targetSessionId, () => {
         window.onStreamEnd?.(arg0 as string | number | undefined, arg1 as string | number | undefined);
       });
       return;

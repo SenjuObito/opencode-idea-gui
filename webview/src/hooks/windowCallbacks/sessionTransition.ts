@@ -9,6 +9,7 @@
 import type { MutableRefObject } from 'react';
 import { cardDebugLog } from '../../utils/bridge';
 import { forceWebviewRepaint } from '../../utils/forceWebviewRepaint';
+import { activeTabId, endTransition, isTabTransitioning } from './tabTransition';
 
 export interface ResetTransientUiStateOptions {
   clearToasts: () => void;
@@ -37,11 +38,8 @@ export interface ResetTransientUiStateOptions {
   /**
    * Called immediately BEFORE the streaming refs below are wiped.
    *
-   * Leaving a session does not mean the session stopped running — a background
-   * turn keeps pushing deltas into its own tab. Archiving the live streaming
-   * runtime here is what lets the user switch back and continue seamlessly
-   * instead of inheriting an empty accumulator that would render the *previous*
-   * session's text into this one.
+   * The streaming runtime belongs to the tab, so wiping the refs only clears
+   * the tab that is on screen; a background tab keeps its own accumulator.
    */
   onBeforeResetTransientState?: () => void;
 }
@@ -58,8 +56,11 @@ export interface ResetTransientUiStateOptions {
  */
 export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) => {
   return (skipSessionLoading?: boolean) => {
-    const shouldSkipSS = skipSessionLoading || window.__sessionTransitioning;
-    cardDebugLog('[resetTransientUiState] skipSessionLoading:', skipSessionLoading, 'transitioning:', window.__sessionTransitioning, '→ skip:', shouldSkipSS);
+    // The transition guard belongs to the tab that is switching, so the active
+    // tab's own state decides whether the loading indicator is kept.
+    const transitioning = isTabTransitioning(activeTabId());
+    const shouldSkipSS = skipSessionLoading || transitioning;
+    cardDebugLog('[resetTransientUiState] skipSessionLoading:', skipSessionLoading, 'transitioning:', transitioning, '→ skip:', shouldSkipSS);
     cardDebugLog('[resetTransientUiState] BEFORE: sessionLoading will', shouldSkipSS ? 'BE KEPT' : 'be SET TO false');
     opts.clearToasts();
     opts.setStatus('');
@@ -69,7 +70,7 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     opts.setStreamingActive(false);
     opts.setIsCompacting?.(false);
     opts.setCompactingStartTime?.(null);
-    const shouldSkip = skipSessionLoading || window.__sessionTransitioning;
+    const shouldSkip = skipSessionLoading || transitioning;
     if (!shouldSkip) {
       cardDebugLog('[resetTransientUiState] EXECUTING: setSessionLoading(false)');
       opts.setSessionLoading(false);
@@ -132,9 +133,5 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
  * So there is nothing to flush here.
  */
 export const releaseSessionTransition = (): void => {
-  if (window.__sessionTransitioning) {
-    window.__sessionTransitioning = false;
-  }
-  window.__sessionTransitionToken = null;
-  window.__sessionTransitionTargetSessionId = null;
+  endTransition(activeTabId());
 };

@@ -8,6 +8,7 @@
  */
 
 import { parseSequence } from './parseSequence';
+import { transitionTargetOfSession } from './tabTransition';
 
 export { parseSequence };
 
@@ -42,7 +43,9 @@ export const getMinAcceptedSequence = (sessionId?: string | null): number => {
  */
 const isForegroundSession = (sessionId?: string | null): boolean => {
   if (!sessionId) return false;
-  if (sessionId === window.__sessionTransitionTargetSessionId) return true;
+  // A tab that is switching to this session is the foreground, even before the
+  // switch has completed.
+  if (transitionTargetOfSession(sessionId) === sessionId) return true;
   if (window.__sessionTabsStore?.isActiveSession(sessionId)) return true;
   return false;
 };

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
 import { sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
 type ViewMode = 'chat' | 'history' | 'settings';
@@ -114,9 +115,11 @@ export function useSessionManagement({
   }, [addToast, t]);
 
   const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null) => {
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = createSessionTransitionToken();
-    window.__sessionTransitionTargetSessionId = nextSessionId;
+    // The guard belongs to the tab that is switching. Other tabs keep their
+    // own events flowing while this one loads its history.
+    const transitionTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+    const transitionToken = createSessionTransitionToken();
+    beginTransition(transitionTabId, nextSessionId, transitionToken);
     // 完整会话切换会取代任何在途的同会话软刷新，释放其去抖守卫。
     if (softReloadTimeoutRef.current !== null) {
       clearTimeout(softReloadTimeoutRef.current);
@@ -176,20 +179,18 @@ export function useSessionManagement({
     // FIX: Safety timeout to auto-release the session transition guard.
     // If the backend's historyLoadComplete signal is lost (e.g., JCEF IPC failure
     // during webview reload, or a backend error that prevents the callback),
-    // __sessionTransitioning would remain true permanently, silently dropping ALL
+    // the tab's transition would remain active, silently dropping ALL
     // message callbacks (updateMessages, onContentDelta, onStreamStart, etc.).
     // This makes the webview appear "dead" while the backend continues working.
     if (transitionTimeoutRef.current !== null) {
       clearTimeout(transitionTimeoutRef.current);
     }
-    const token = window.__sessionTransitionToken;
+    const token = transitionToken;
     transitionTimeoutRef.current = setTimeout(() => {
       transitionTimeoutRef.current = null;
-      if (window.__sessionTransitioning && window.__sessionTransitionToken === token) {
+      const ended = endTransition(transitionTabId, token);
+      if (ended) {
         cardDebugLog('[SessionManagement] Transition guard timed out — auto-releasing');
-        window.__sessionTransitioning = false;
-        window.__sessionTransitionToken = null;
-        window.__sessionTransitionTargetSessionId = null;
         setSessionLoading(false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
@@ -279,15 +280,15 @@ export function useSessionManagement({
         return;
       }
       cardDebugLog('[SessionManagement] same session soft reload, sending load_session');
-      cardDebugLog('[SessionManagement] BEFORE: __sessionTransitioning=', window.__sessionTransitioning, 'softReload=', window.__softSessionReloadInFlight);
+      cardDebugLog('[SessionManagement] BEFORE: tab transition=', window.__sessionTabsStore?.isTabTransitioning?.(window.__sessionTabsStore?.getActiveTabId?.()), 'softReload=', window.__softSessionReloadInFlight);
       // Set transition guard so backend's clearMessages (from restoreMessages)
       // won't reset sessionLoading to false before messages arrive — prevents
-      // the empty-state flash that occurs when __sessionTransitioning is false.
-      window.__sessionTransitioning = true;
-      window.__sessionTransitionToken = createSessionTransitionToken();
-      window.__sessionTransitionTargetSessionId = sessionId;
+      // the empty-state flash that occurs when the tab is not transitioning.
+      const softReloadTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+      const softReloadToken = createSessionTransitionToken();
+      beginTransition(softReloadTabId, sessionId, softReloadToken);
       window.__softSessionReloadInFlight = sessionId;
-      cardDebugLog('[SessionManagement] AFTER: __sessionTransitioning=', window.__sessionTransitioning, 'token set');
+      cardDebugLog('[SessionManagement] AFTER: tab transition started, token set');
       if (softReloadTimeoutRef.current !== null) {
         clearTimeout(softReloadTimeoutRef.current);
       }
@@ -297,11 +298,8 @@ export function useSessionManagement({
           window.__softSessionReloadInFlight = null;
         }
         // Safety: release transition guard if historyLoadComplete never arrived
-        if (window.__sessionTransitioning) {
+        if (endTransition(softReloadTabId, softReloadToken)) {
           cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
-          window.__sessionTransitioning = false;
-          window.__sessionTransitionToken = null;
-          window.__sessionTransitionTargetSessionId = null;
         }
       }, 5_000);
       sendBridgeEvent('load_session', JSON.stringify({ sessionId, tabId: window.__sessionTabsStore?.getActiveTabId?.() }));

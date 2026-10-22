@@ -124,13 +124,9 @@ export function registerWindowCallbacks(
     contentUpdateTimeoutRef: options.contentUpdateTimeoutRef,
     thinkingUpdateTimeoutRef: options.thinkingUpdateTimeoutRef,
     streamingTurnIdRef: options.streamingTurnIdRef,
-    // Leaving a session does not stop its turn. Archive the live streaming
-    // runtime before the refs below are wiped, otherwise a session that keeps
-    // running in the background loses its accumulator / turnId and the next
-    // activation renders the previous session's text into the new one.
-    onBeforeResetTransientState: () => {
-      window.__sessionTabsStore?.archiveActiveStreamingRuntime?.();
-    },
+    // Nothing has to be archived any more: the streaming runtime belongs to
+    // the tab, and the refs below are the active tab's view onto it. Wiping
+    // them therefore only clears the tab the user is looking at.
   });
 
   // Expose as single entry point for session transition cleanup.
@@ -313,8 +309,11 @@ export function registerWindowCallbacks(
         return;
       }
 
-      if (effectiveSessionId && options.currentSessionIdRef.current && effectiveSessionId !== options.currentSessionIdRef.current) {
-        cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch, effective:', effectiveSessionId, 'current:', options.currentSessionIdRef.current);
+      if (effectiveSessionId && !window.__sessionTabsStore
+          && options.currentSessionIdRef.current // legacy-allow: fallback when no tab strip exists
+          && effectiveSessionId !== options.currentSessionIdRef.current) {
+        // No tab strip to route by: fall back to the session on screen.
+        cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch, effective:', effectiveSessionId, 'current:', options.currentSessionIdRef.current); // legacy-allow: fallback when no tab strip exists
         return;
       }
       if (options.setSseTodos) {

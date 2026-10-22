@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { registerMessageCallbacks } from './messageCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
+import { beginTransition, endTransition, isTabTransitioning } from '../tabTransition';
 
 type Ref<T> = { current: T };
 const ref = <T>(value: T): Ref<T> => ({ current: value });
@@ -31,6 +32,12 @@ interface FakeTab {
 
 function createTabsStore(tabs: FakeTab[], activeTabId: string, activeSessionId: string | null) {
   return {
+    getActiveTabId: () => activeTabId,
+    getTabIdForSession: (sessionId: string | null | undefined): string | null => {
+      if (!sessionId) return null;
+      const owner = tabs.find((t) => t.sessionId === sessionId);
+      return owner ? owner.id : null;
+    },
     getActiveSessionId: () => activeSessionId,
     isActiveSession: (sessionId: string | null | undefined): boolean => {
       if (!sessionId) return false;
@@ -114,9 +121,8 @@ const historySnapshot = (): ClaudeMessage[] => [
 
 describe('history load routing — background session', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
+    endTransition('tab-fg');
     delete window.__sessionTabsStore;
-    delete window.__sessionTransitionTargetSessionId;
     delete window.__pendingHistoryRefreshMessageCount;
     delete window.__lastAcceptedMessageCount;
     delete window.__minAcceptedUpdateSequence;
@@ -124,7 +130,7 @@ describe('history load routing — background session', () => {
 
   afterEach(() => {
     delete window.__sessionTabsStore;
-    window.__sessionTransitioning = false;
+    endTransition('tab-fg');
   });
 
   it('writes a background session snapshot onto ITS tab and leaves the foreground alone', () => {
@@ -166,12 +172,12 @@ describe('history load routing — background session', () => {
     ];
     const h = createHarness('ses_fg');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
-    window.__sessionTransitioning = true;
+    beginTransition('tab-fg', 'ses_fg', 'transition-bg');
 
     window.historyLoadComplete!('ses_bg', '2');
 
     // 前台还在切换中：守卫必须留着，否则前台会被旧会话的帧污染
-    expect(window.__sessionTransitioning).toBe(true);
+    expect(isTabTransitioning('tab-fg')).toBe(true);
     expect(tabs[1].loading).toBe(false);
     // 前台的 loading 条不被后台会话的完成信号解除
     expect(h.setSessionLoading).not.toHaveBeenCalledWith(true);
@@ -195,9 +201,8 @@ describe('history load routing — background session', () => {
 
 describe('history load routing — foreground session', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
+    endTransition('tab-fg');
     delete window.__sessionTabsStore;
-    delete window.__sessionTransitionTargetSessionId;
     delete window.__pendingHistoryRefreshMessageCount;
     delete window.__lastAcceptedMessageCount;
     delete window.__minAcceptedUpdateSequence;
@@ -205,12 +210,14 @@ describe('history load routing — foreground session', () => {
 
   afterEach(() => {
     delete window.__sessionTabsStore;
-    window.__sessionTransitioning = false;
+    endTransition('tab-fg');
   });
 
   it('runs the full load sequence: clear → snapshot → complete', () => {
     const h = createHarness('ses_fg');
-    window.__sessionTransitioning = true;
+    const tabs: FakeTab[] = [{ id: 'tab-fg', sessionId: 'ses_fg', messages: [] }];
+    window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
+    beginTransition('tab-fg', 'ses_fg', 'transition-fg');
 
     window.clearMessages!('ses_fg', '7');
     expect(h.setMessages).toHaveBeenLastCalledWith([]);
@@ -221,7 +228,7 @@ describe('history load routing — foreground session', () => {
     window.historyLoadComplete!('ses_fg', '2');
 
     // 切换守卫被正确释放，且历史表面刷新被请求一次
-    expect(window.__sessionTransitioning).toBe(false);
+    expect(isTabTransitioning('tab-fg')).toBe(false);
     expect(h.requestHistoryRenderCommit).toHaveBeenCalledTimes(1);
     expect(h.setSessionLoading).toHaveBeenCalledWith(false);
     expect(h.getMessages()).toHaveLength(2);
@@ -255,16 +262,15 @@ describe('history load routing — foreground session', () => {
 
 describe('patchMessageUuid — 会话归属与签名', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
+    endTransition('tab-fg');
     delete window.__sessionTabsStore;
-    delete window.__sessionTransitionTargetSessionId;
     delete window.__lastAcceptedMessageCount;
     delete window.__minAcceptedUpdateSequence;
   });
 
   afterEach(() => {
     delete window.__sessionTabsStore;
-    window.__sessionTransitioning = false;
+    endTransition('tab-fg');
   });
 
   it('follows the host 3-arg convention (sessionId, content, uuid)', () => {

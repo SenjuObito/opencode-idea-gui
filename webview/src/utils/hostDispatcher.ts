@@ -10,6 +10,8 @@
  * call remains the fallback for older hosts and for raw scripts.
  */
 
+import { handlerForSemanticType } from './semanticEvents';
+
 interface PendingHostEvent {
   type: string;
   args: unknown[];
@@ -32,8 +34,7 @@ const pending: PendingHostEvent[] = [];
 const lastEpochByTab = new Map<string, number>();
 let flushTimer: number | null = null;
 
-function resolveHandler(type: string): ((...args: unknown[]) => void) | null {
-  const path = type.startsWith('window.') ? type.slice('window.'.length) : type;
+function resolveWindowFunction(path: string): ((...args: unknown[]) => void) | null {
   if (!path) return null;
   let target: unknown = window;
   for (const part of path.split('.')) {
@@ -44,6 +45,20 @@ function resolveHandler(type: string): ((...args: unknown[]) => void) | null {
   return typeof target === 'function'
     ? (target as (...args: unknown[]) => void)
     : null;
+}
+
+function resolveHandler(type: string): ((...args: unknown[]) => void) | null {
+  if (!type) return null;
+  // A semantic event name (content.delta, message.snapshot, …) is the
+  // protocol; the catalog says which handler answers it.
+  const semantic = handlerForSemanticType(type);
+  if (semantic) {
+    const handler = resolveWindowFunction(semantic);
+    if (handler) return handler;
+  }
+  // Fallback: the legacy function name, which is also what the host sends
+  // next to the semantic type.
+  return resolveWindowFunction(type.startsWith('window.') ? type.slice('window.'.length) : type);
 }
 
 function scheduleFlush(): void {

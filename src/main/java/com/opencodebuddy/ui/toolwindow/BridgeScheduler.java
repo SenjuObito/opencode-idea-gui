@@ -1,5 +1,6 @@
 package com.opencodebuddy.ui.toolwindow;
 
+import com.opencodebuddy.bridge.EventCatalog;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -400,12 +401,22 @@ class BridgeScheduler<T> {
     private static JsonObject envelope(JsCall<?> call) {
         JsonObject envelope = new JsonObject();
         envelope.addProperty("v", 2);
-        envelope.addProperty("type", call.functionName);
+        // The event's semantic name is the protocol; the legacy function name
+        // travels next to it so the webview can still resolve handlers it has
+        // not moved to the catalog yet.
+        envelope.addProperty("type", EventCatalog.semanticType(call.functionName));
+        envelope.addProperty("fn", call.functionName);
         if (call.laneId != null && !GLOBAL_LANE.equals(call.laneId)) {
             envelope.addProperty("tabId", call.laneId);
         }
         if (call.epoch != null && call.epoch > 0) {
             envelope.addProperty("epoch", call.epoch);
+        }
+        // The session a session-level event belongs to. The first argument of
+        // such an event is the session id.
+        if (call.args != null && call.args.length > 0 && call.args[0] != null
+                && call.args[0].startsWith("ses_")) {
+            envelope.addProperty("sessionId", call.args[0]);
         }
         JsonObject payload = new JsonObject();
         JsonArray args = new JsonArray();

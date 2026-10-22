@@ -41,6 +41,14 @@ public class WindowEventHandler extends BaseMessageHandler {
         void onSurfaceDamageApplied(String token, String phase, boolean applied);
         void onRefreshSlashCommands();
         default void onRefreshEditorContext(boolean enabled) {}
+        /**
+         * A fork produced a new session: bind it to the target tab the webview
+         * asked for, so the fork lands in its own tab.
+         *
+         * @param targetTabId the tab the webview reserved for the fork
+         * @param sessionId   the canonical id the daemon created
+         */
+        default void onForkBound(String targetTabId, String sessionId) {}
     }
 
     private final Callback callback;
@@ -103,6 +111,9 @@ public class WindowEventHandler extends BaseMessageHandler {
                 return true;
             case "refresh_editor_context":
                 handleRefreshEditorContext(content);
+                return true;
+            case "session.fork":
+                handleSessionFork(content);
                 return true;
             default:
                 return false;
@@ -209,6 +220,17 @@ public class WindowEventHandler extends BaseMessageHandler {
     }
 
     private void requestFork(String sessionId, String messageID) {
+        requestFork(sessionId, messageID, null);
+    }
+
+    /**
+     * Fork a session.
+     *
+     * @param targetTabId when set, the forked session is bound to that tab and
+     *                    the webview is told about the binding; the source tab
+     *                    is never touched
+     */
+    private void requestFork(String sessionId, String messageID, String targetTabId) {
         String cwd = context.resolveEffectiveWorkingDirectory();
         com.google.gson.JsonObject params = new com.google.gson.JsonObject();
         params.addProperty("sessionId", sessionId);
@@ -235,14 +257,75 @@ public class WindowEventHandler extends BaseMessageHandler {
                 }
                 String newSessionId = extractStringField(chunks, "newSessionId");
                 LOG.info("[fork] newSessionId=\"" + newSessionId + "\"");
-                if (!newSessionId.isEmpty()) {
-                    registerForkedSession(newSessionId);
-                    callJavaScript("onForkSuccess", "{\"sessionId\":\"" + newSessionId + "\"}");
-                } else {
+                if (newSessionId.isEmpty()) {
                     callJavaScript("onForkError", "");
+                    return;
                 }
+                registerForkedSession(newSessionId);
+                if (targetTabId != null && !targetTabId.isBlank()) {
+                    // The fork lands in its own tab: bind it there and let the
+                    // webview activate that tab.
+                    callback.onForkBound(targetTabId, newSessionId);
+                    callJavaScript("onForkBound", escapeJs(targetTabId), escapeJs(newSessionId));
+                    return;
+                }
+                callJavaScript("onForkSuccess", "{\"sessionId\":\"" + newSessionId + "\"}");
             }
         });
+    }
+
+    /**
+     * The v2 fork command: {@code {sourceTabId, targetTabId, messageId?}}.
+     *
+     * <p>Both ends are named: the source tab says what is forked, the target
+     * tab says where the fork lands. A fork never touches the source tab.</p>
+     */
+    private void handleSessionFork(String content) {
+        String sourceTabId = null;
+        String targetTabId = null;
+        String messageId = null;
+        try {
+            if (content != null && content.trim().startsWith("{")) {
+                com.google.gson.JsonObject payload =
+                        com.google.gson.JsonParser.parseString(content).getAsJsonObject();
+                if (payload.has("sourceTabId") && !payload.get("sourceTabId").isJsonNull()) {
+                    sourceTabId = payload.get("sourceTabId").getAsString();
+                }
+                if (payload.has("targetTabId") && !payload.get("targetTabId").isJsonNull()) {
+                    targetTabId = payload.get("targetTabId").getAsString();
+                }
+                if (payload.has("messageId") && !payload.get("messageId").isJsonNull()) {
+                    messageId = payload.get("messageId").getAsString();
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("[fork] malformed session.fork payload: " + e.getMessage());
+        }
+
+        if (sourceTabId == null || sourceTabId.isBlank()
+                || targetTabId == null || targetTabId.isBlank()) {
+            LOG.warn("[fork] session.fork without source/target tab");
+            callJavaScript("onForkError", "the fork must name its source and target tab");
+            return;
+        }
+
+        com.opencodebuddy.session.OpencodeSession source = context.getSession(sourceTabId);
+        if (source == null || source.getSessionId() == null || source.getSessionId().isBlank()) {
+            LOG.warn("[fork] source tab has no session: " + sourceTabId);
+            callJavaScript("onForkError", "the source tab has no session to fork");
+            return;
+        }
+
+        final String sourceSessionId = source.getSessionId();
+        final String forkTargetTabId = targetTabId;
+        final String forkMessageId = messageId;
+        if (forkMessageId != null && !forkMessageId.isBlank() && !"latest".equals(forkMessageId)) {
+            withMessageId(sourceSessionId, forkMessageId, "fork",
+                    resolvedId -> requestFork(sourceSessionId, resolvedId, forkTargetTabId),
+                    err -> callJavaScript("onForkError", err != null ? err : ""));
+            return;
+        }
+        requestFork(sourceSessionId, null, forkTargetTabId);
     }
 
     private void registerForkedSession(String newSessionId) {

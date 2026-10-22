@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
 import { sendBridgeEvent } from './utils/bridge';
+import { createTabId } from './store/tabStore';
 import { copyViaHost } from './utils/copyUtils';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
 import {
@@ -131,7 +132,8 @@ const App = () => {
     title?: string,
     historyModel?: string,
     historyMode?: string,
-    historyEffort?: string
+    historyEffort?: string,
+    reservedTabId?: string
   ) => void>(() => {});
   const appTabsRef = useRef<any[]>([]);
 
@@ -497,12 +499,13 @@ const App = () => {
     const sourceTabId = window.__sessionTabsStore?.getTabIdForSession?.(sid)
       ?? window.__sessionTabsStore?.getActiveTabId?.()
       ?? '';
+    const targetTabId = createTabId();
     if (!id) {
       console.warn('[App] fork: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, tabId: sourceTabId, messageId: 'latest' }));
+      sendBridgeEvent('session.fork', JSON.stringify({ sourceTabId, targetTabId, messageId: 'latest' }));
       return;
     }
-    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, tabId: sourceTabId, messageId: id }));
+    sendBridgeEvent('session.fork', JSON.stringify({ sourceTabId, targetTabId, messageId: id }));
   }, [streamingActive, addToast, t, getMessageId]);
 
   /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
@@ -515,7 +518,8 @@ const App = () => {
     const sourceTabId = window.__sessionTabsStore?.getTabIdForSession?.(sid)
       ?? window.__sessionTabsStore?.getActiveTabId?.()
       ?? '';
-    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, tabId: sourceTabId, type: 'full' }));
+    const targetTabId = createTabId();
+    sendBridgeEvent('session.fork', JSON.stringify({ sourceTabId, targetTabId }));
   }, [streamingActive, addToast, t]);
 
   // Latest user message id, used by the builtin /undo slash command.
@@ -531,7 +535,25 @@ const App = () => {
 
   // Register bridge callbacks for share / fork / revert / compact results
   useEffect(() => {
-    window.onForkSuccess = (json: string) => {
+    /**
+   * A fork that the host bound to a reserved tab.
+   *
+   * <p>The webview reserved the tab before the daemon answered, so the fork
+   * lands in exactly that tab and the source tab stays untouched.</p>
+   */
+  window.onForkBound = (targetTabId: string, sessionId: string) => {
+    try {
+      if (!targetTabId || !sessionId) return;
+      const sourceTab = appTabsRef.current?.find((t) => t.id !== targetTabId);
+      const forkedTitle = sourceTab ? `${sourceTab.title} (Fork)` : `${sessionTitle || 'Session'} (Fork)`;
+      openSessionInTabRef.current(sessionId, forkedTitle, undefined, undefined, undefined, targetTabId);
+      addToast(t('chat.forkCreatedToast', { defaultValue: '会话已成功 Fork 并打开新标签页' }), 'success');
+    } catch (error) {
+      console.error('[App] onForkBound failed', error);
+    }
+  };
+
+  window.onForkSuccess = (json: string) => {
       try {
         const payload = JSON.parse(json) as { sessionId?: string; sourceSessionId?: string };
         console.debug('[App] onForkSuccess', payload);
@@ -763,6 +785,7 @@ const App = () => {
     };
     return () => {
       delete window.onForkSuccess;
+      delete window.onForkBound;
       delete window.onForkError;
       delete window.onShareSuccess;
       delete window.onShareError;

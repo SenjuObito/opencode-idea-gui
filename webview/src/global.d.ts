@@ -798,6 +798,11 @@ interface Window {
    * Fork session success callback - receives JSON `{ sessionId: <new session id> }`
    */
   onForkSuccess?: (json: string) => void;
+  /**
+   * A fork the host bound to a reserved tab.
+   * @param targetTabId the tab the webview reserved for the fork
+   */
+  onForkBound?: (targetTabId: string, sessionId: string) => void;
 
   /**
    * Fork session failure callback - receives optional error detail

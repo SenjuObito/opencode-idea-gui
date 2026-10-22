@@ -112,6 +112,9 @@ public class ChatWindowDelegate {
         /** The tab that owns a canonical session id (null when unknown). */
         String findTabIdForSession(String sessionId);
 
+        /** Bind a forked session to the tab the webview reserved for it. */
+        void bindForkedSession(String targetTabId, String sessionId);
+
         /**
          * Soft-reload the currently active session's transcript without interrupting
          * any in-flight turn.
@@ -321,6 +324,9 @@ public class ChatWindowDelegate {
             }
             @Override public void onRefreshEditorContext(boolean enabled) {
                 host.onRefreshEditorContext(enabled);
+            }
+            @Override public void onForkBound(String targetTabId, String sessionId) {
+                host.bindForkedSession(targetTabId, sessionId);
             }
         }));
 

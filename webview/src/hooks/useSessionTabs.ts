@@ -968,7 +968,13 @@ export function useSessionTabs({
       title?: string,
       historyModel?: string,
       historyMode?: string,
-      historyEffort?: string
+      historyEffort?: string,
+      /**
+       * A tab id the host already knows (the fork reserves one before the
+       * daemon answers). The tab is created with that id so the host's record
+       * and the webview's tab are the same tab.
+       */
+      reservedTabId?: string
     ) => {
       // 1. If this session is already open in a tab, jump to it!
       const existingTab = tabsRef.current.find((t) => t.sessionId === sessionId);
@@ -1028,7 +1034,7 @@ export function useSessionTabs({
         // Create new tab for this history session
         saveCurrentTabSnapshot();
 
-        const newId = createTabId();
+        const newId = reservedTabId ?? createTabId();
         sendTabCommand(newId, 'tab.create');
         const newTab: SessionTabData = {
           id: newId,

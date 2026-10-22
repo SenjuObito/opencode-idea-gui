@@ -1569,6 +1569,59 @@ public class OpencodeBuddyChatWindow {
     }
 
     /**
+     * Bind a forked session to the tab the webview reserved for it.
+     *
+     * <p>The fork lands in its own tab: the tab record is created, a session
+     * object is opened for the canonical id, and the registry binds the two.
+     * The source tab is not touched at all.</p>
+     */
+    public void bindForkedSession(String targetTabId, String canonicalSessionId) {
+        if (targetTabId == null || targetTabId.isBlank()
+                || canonicalSessionId == null || canonicalSessionId.isBlank()) {
+            LOG.warn("[Tab] cannot bind a fork without a target tab and a session id");
+            return;
+        }
+        TabId tab = TabId.of(targetTabId);
+        String cwd = project != null ? project.getBasePath() : null;
+        TabRecord record = tabRegistry.get(tab);
+        if (record == null || record.isClosed()) {
+            record = tabRegistry.create(tab, cwd);
+        }
+        if (record.getSessionId() != null) {
+            // The tab already has a session: a fork never replaces one.
+            LOG.info("[Tab] fork target " + targetTabId + " is already bound; ignoring");
+            return;
+        }
+
+        OpencodeSession session = new OpencodeSession(project, openCodeSDKBridge);
+        if (cwd != null && !cwd.isBlank()) {
+            session.setCwd(cwd);
+        }
+        // The canonical id is already known: recording it must not announce it
+        // as a new session, or the tab would be bound twice.
+        session.getState().setSessionId(canonicalSessionId);
+
+        StreamMessageCoalescer coalescer = record.getCoalescer() != null
+                ? record.getCoalescer()
+                : createStreamCoalescer(targetTabId);
+        SessionCallbackAdapter adapter = record.getAdapter() != null
+                ? record.getAdapter()
+                : createCallbackAdapter(targetTabId, coalescer);
+        if (adapter != null && coalescer != null) {
+            adapter.setTabId(targetTabId);
+            coalescer.setTabId(targetTabId);
+        }
+
+        tabSessionFactory.attach(tab, canonicalSessionId, session, adapter, coalescer, cwd);
+        registerSession(canonicalSessionId, session, adapter, coalescer);
+        if (handlerContext != null) {
+            handlerContext.registerSession(canonicalSessionId, session);
+        }
+        bindSessionSink(canonicalSessionId, session);
+        LOG.info("[Tab] fork bound " + targetTabId + " -> " + canonicalSessionId);
+    }
+
+    /**
      * The tab that owns a canonical session id.
      *
      * <p>Per-tab events (prompts, status) need the tab as well as the session:
@@ -4005,6 +4058,11 @@ public class OpencodeBuddyChatWindow {
             @Override
             public String findTabIdForSession(String sessionId) {
                 return OpencodeBuddyChatWindow.this.findTabIdForSession(sessionId);
+            }
+
+            @Override
+            public void bindForkedSession(String targetTabId, String sessionId) {
+                OpencodeBuddyChatWindow.this.bindForkedSession(targetTabId, sessionId);
             }
 
             @Override

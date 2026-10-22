@@ -11,6 +11,7 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import type { ContextUsageData } from '../../../components/ContextUsageDialog';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { isSessionTransitioning, transitionTargetOfSession } from '../tabTransition';
 import { debugError } from '../../../utils/debug';
 import { resolveSessionId } from '../../../utils/sessionIdentity';
@@ -1492,4 +1493,21 @@ export function registerMessageCallbacks(
     }
   };
 
+
+  // The semantic catalog is the routing table: the dispatcher looks the
+  // handler up here first, the window globals stay for the legacy path.
+  registerHostEvents({
+  'message.history': window.addHistoryMessage,
+  'message.added': window.addUserMessage,
+  'session.cleared': window.clearMessages,
+  'session.loaded': window.historyLoadComplete,
+  'message.uuid.patched': window.patchMessageUuid,
+  'session.loading': window.showLoading,
+  'session.summary': window.showSummary,
+  'thinking.status': window.showThinkingStatus,
+  'message.tail': window.updateMessageTail,
+  'message.snapshot': window.updateMessages,
+  'message.prepended': window.updateMessagesPrepend,
+  'status.updated': window.updateStatus,
+  });
 }

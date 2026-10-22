@@ -12,6 +12,7 @@ import type { PermissionMode, ReasoningEffort } from '../../../components/ChatIn
 import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBootstrap';
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
 import { cardDebugLog } from '../../../utils/bridge';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { resolveSessionIdWithLegacyFallback } from '../../../utils/sessionIdentity';
 
 export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): void {
@@ -241,4 +242,11 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   drainPendingSettings();
   // Kick off initial settings requests
   startInitialSettingsRequest();
+
+  // The semantic catalog is the routing table: the dispatcher looks the
+  // handler up here first, the window globals stay for the legacy path.
+  registerHostEvents({
+  'settings.mode': window.onModeChanged,
+  'usage.updated': window.onUsageUpdate,
+  });
 }

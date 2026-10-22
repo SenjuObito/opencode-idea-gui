@@ -8,6 +8,7 @@
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { cardDebugLog } from '../../../utils/bridge';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { setQuestionAnswer, removeQuestionAnswerByRequestId } from '../../../store/questionAnswerStore';
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
@@ -243,4 +244,15 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       window.showPlanApprovalDialog?.(payload);
     }
   }
+
+  // The semantic catalog is the routing table: the dispatcher looks the
+  // handler up here first, the window globals stay for the legacy path.
+  registerHostEvents({
+  'prompt.question.closed': window.forceCloseAskUserQuestionDialog,
+  'prompt.closed': window.forceClosePermissionDialog,
+  'prompt.plan.closed': window.forceClosePlanApprovalDialog,
+  'question.requested': window.showAskUserQuestionDialog,
+  'permission.requested': window.showPermissionDialog,
+  'plan.requested': window.showPlanApprovalDialog,
+  });
 }

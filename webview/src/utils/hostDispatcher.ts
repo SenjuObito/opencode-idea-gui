@@ -11,6 +11,7 @@
  */
 
 import { handlerForSemanticType } from './semanticEvents';
+import { hostEventHandler } from './hostEventRegistry';
 
 interface PendingHostEvent {
   type: string;
@@ -49,6 +50,10 @@ function resolveWindowFunction(path: string): ((...args: unknown[]) => void) | n
 
 function resolveHandler(type: string): ((...args: unknown[]) => void) | null {
   if (!type) return null;
+  // The registry is the routing table: the handler of a semantic event is
+  // registered under its semantic name.
+  const registered = hostEventHandler(type);
+  if (registered) return registered;
   // A semantic event name (content.delta, message.snapshot, …) is the
   // protocol; the catalog says which handler answers it.
   const semantic = handlerForSemanticType(type);

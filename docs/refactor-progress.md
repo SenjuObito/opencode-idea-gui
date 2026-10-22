@@ -198,6 +198,14 @@
 - `docs/functional-matrix.md`：方案 §13.3 的功能矩阵，改写成"操作 / 看什么 /
   通过标准"的可执行清单（22 项）。
 
+### 事件路由表（§6.1 的终态）
+
+- 新增 `webview/src/utils/hostEventRegistry.ts`：语义事件 → 处理器的路由表。
+- dispatcher 先查路由表，再查语义目录，最后才回落到旧的 `window.<fn>` 查找；
+  路由表里登记过的处理器，window 全局只是兼容面。
+- 各回调模块在注册时把处理器登记进路由表（`registerHostEvents`），
+  共 29 个语义事件完成登记。
+
 ## 未完成
 
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵

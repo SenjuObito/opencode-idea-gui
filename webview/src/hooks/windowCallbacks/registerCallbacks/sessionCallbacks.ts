@@ -11,6 +11,7 @@ import { downloadJSON } from '../../../utils/exportMarkdown';
 import { releaseSessionTransition } from '../sessionTransition';
 import { isTabTransitioning, transitionTargetFor } from '../tabTransition';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
 const CUSTOM_TITLE_MAX_LENGTH = 50;
@@ -212,4 +213,12 @@ export function registerSessionCallbacks(
       reloadHistory();
     }
   };
+
+  // The semantic catalog is the routing table: the dispatcher looks the
+  // handler up here first, the window globals stay for the legacy path.
+  registerHostEvents({
+  'command.rejected': window.commandRejected,
+  'session.bound': window.setSessionId,
+  'tab.title.changed': window.updateSessionTitle,
+  });
 }

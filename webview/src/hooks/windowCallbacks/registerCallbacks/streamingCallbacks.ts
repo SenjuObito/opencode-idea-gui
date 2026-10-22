@@ -9,6 +9,7 @@ import { startTransition } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { isSessionTransitioning } from '../tabTransition';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
 import { parseSequence, advanceMinAcceptedSequence } from '../sequenceBarrier';
@@ -1245,4 +1246,15 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // A turn that ended without its tool_result never gets one now.
     finalizeUnresolvedToolUses();
   };
+
+  // The semantic catalog is the routing table: the dispatcher looks the
+  // handler up here first, the window globals stay for the legacy path.
+  registerHostEvents({
+  'message.block.reset': window.onBlockReset,
+  'content.delta': window.onContentDelta,
+  'turn.ended': window.onStreamEnd,
+  'turn.started': window.onStreamStart,
+  'thinking.delta': window.onThinkingDelta,
+  'turn.settled': window.onTurnEnd,
+  });
 }

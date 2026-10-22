@@ -18,6 +18,12 @@ JCEF 只负责执行它们。
 .\gradlew.bat test -x buildWebview --tests "com.opencodebuddy.ui.toolwindow.BridgeSchedulerTest"
 ```
 
+或者直接跑脚本（它会打印基准数字与预算对照）：
+
+```bash
+scripts/bridge-benchmark.sh
+```
+
 最近一次结果（Windows 11、JDK 21、i7 级别机器，仅作基线）：
 
 ```

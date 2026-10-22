@@ -179,6 +179,25 @@
 - webview 发送时带上附件 id，宿主据此归属。
 - 说明：daemon 协议仍然收 base64（core 侧协议不变），本轮落地的是归属与生命周期。
 
+## 第五轮收口：视图订阅与验收工具
+
+### 视图直接读 tab store（§6.4 / 决策基线 4）
+
+- `TabStore` 成为 tab 集合与 transcript 的唯一 owner（模块级单例，生命周期
+  等于 webview，而不是一次 React 挂载）。
+- `MessagesContext` 的 `messages` 不再是独立 state：用 `useSyncExternalStore`
+  订阅 store，读的是"活动 tab 的 transcript"；`setMessages` 变成写入该 tab。
+- `useSessionTabs` 不再把 transcript 从活动态拷进 tab，也不再在切 tab 时把
+  目标 tab 的 transcript 拷回活动态——切 tab 只换 `activeTabId`。
+- 没有 tab 时（strip 还在建）transcript 暂存在 store 里，owner 仍然唯一。
+
+### 验收工具
+
+- `scripts/bridge-benchmark.sh`：宿主侧性能基准（6 tab / 3 流 / 10k 消息），
+  打印脚本数、字节数与耗时，并附 §12.1 的预算对照。
+- `docs/functional-matrix.md`：方案 §13.3 的功能矩阵，改写成"操作 / 看什么 /
+  通过标准"的可执行清单（22 项）。
+
 ## 未完成
 
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵

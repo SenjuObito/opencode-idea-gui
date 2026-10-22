@@ -25,7 +25,7 @@ cd webview && npx vitest run
 ./gradlew checkLegacyPatterns -PstrictLegacy=true
 ```
 
-当前基线：gradle `BUILD SUCCESSFUL`、tsc 通过、vitest `173 文件 / 1516 测试`
+当前基线：gradle `BUILD SUCCESSFUL`、tsc 通过、vitest `173 文件 / 1511 测试`
 全通过、`checkLegacyPatterns` 0 forbidden / 0 debt。
 
 ## 二、条目明细

@@ -9,6 +9,7 @@ import { TabStore, createTabId } from '../store/tabStore';
 import { TabDraftStore } from '../store/tabDraftStore';
 import { TabStatusStore, statusSnapshotOf } from '../store/tabStatusStore';
 import { TabPromptStore } from '../store/tabPromptStore';
+import { TabMessageStore } from '../store/tabMessageStore';
 import type { ModelInfo, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { getFirstPreferredModelId, resolveSessionModel } from '../components/ChatInputBox/modelSelectUtils';
 import { sendBridgeEvent, sendInterrupt, sendTabCommand, cardDebugLog } from '../utils/bridge';
@@ -161,6 +162,7 @@ export function useSessionTabs({
     {
       id: 'tab-1',
       sessionId: null,
+      messageStore: new TabMessageStore(),
       title: t('common.newSession', { defaultValue: '新会话' }),
       messages: [],
       isShared: false,
@@ -662,6 +664,7 @@ export function useSessionTabs({
           id: entry.tabId!,
           sessionId,
           title,
+          messageStore: new TabMessageStore(),
           messages: [],
           isShared: false,
           loading,
@@ -1030,6 +1033,7 @@ export function useSessionTabs({
         const newTab: SessionTabData = {
           id: newId,
           sessionId,
+          messageStore: new TabMessageStore(),
           title: resolvedTitle,
           messages: [],
           isShared: false,
@@ -1180,6 +1184,7 @@ export function useSessionTabs({
     const newTab: SessionTabData = {
       id: newId,
       sessionId: null,
+      messageStore: new TabMessageStore(),
       title: t('common.newSession', { defaultValue: '新会话' }),
       messages: [],
       messageBaseIndex: 0,
@@ -1329,6 +1334,7 @@ export function useSessionTabs({
           const freshTab: SessionTabData = {
             id: createTabId(),
             sessionId: null,
+            messageStore: new TabMessageStore(),
             title: t('common.newSession', { defaultValue: '新会话' }),
             messages: [],
             isShared: false,

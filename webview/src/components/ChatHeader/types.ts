@@ -9,6 +9,7 @@ import type { ContextInfo } from '../../hooks';
 import type { TabScrollState } from '../../hooks/useScrollBehavior';
 import type { PermissionMode, ReasoningEffort } from '../ChatInputBox/types';
 import type { TabType } from '../StatusPanel/types';
+import type { TabMessageStore } from '../../store/tabMessageStore';
 
 export interface SessionTabData {
   id: string;
@@ -53,4 +54,12 @@ export interface SessionTabData {
   prependedHistoryMessageCount?: number;
   /** Per-tab reader position, restored when this tab is selected again. */
   scrollState?: TabScrollState;
+  /**
+   * The tab's transcript, reconciled by message id.
+   *
+   * <p>The store is shared by reference: the tab object is cloned on every
+   * update, the store is not, so the transcript survives those clones and
+   * keeps the identity of its messages.</p>
+   */
+  messageStore?: TabMessageStore;
 }

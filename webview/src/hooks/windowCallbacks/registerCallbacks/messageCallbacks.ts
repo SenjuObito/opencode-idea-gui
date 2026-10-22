@@ -34,6 +34,7 @@ import {
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { collectUnresolvedToolUseIds } from './streamingCallbacks';
 import i18n from '../../../i18n/config';
+import type { TabMessageStore } from '../../../store/tabMessageStore';
 
 const isTruthy = (v: unknown) => v === true || v === 'true';
 
@@ -590,7 +591,10 @@ export function registerMessageCallbacks(
         try {
           const raw = JSON.parse(json);
           if (Array.isArray(raw)) {
-            t.messages = raw;
+            // The tab owns its transcript: the snapshot is reconciled by
+            // message id, so a message keeps its identity across snapshots.
+            const store = t.messageStore as TabMessageStore | undefined;
+            t.messages = store ? store.applySnapshot(raw) : raw;
           }
         } catch (e) {
           console.error('[MultiSession] Failed to parse background updateMessages', e);

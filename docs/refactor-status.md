@@ -11,8 +11,8 @@
 | 状态 | 条目数 | 占比 |
 |---|---:|---:|
 | 已完成 | 8 | 50% |
-| 部分完成 | 3 | 19% |
-| 未开始 | 5 | 31% |
+| 部分完成 | 4 | 25% |
+| 未开始 | 4 | 25% |
 | 合计 | 16 | 100% |
 
 四项验证（每一轮都必须全绿才提交）：
@@ -39,7 +39,7 @@ cd webview && npx vitest run
 | B6 | daemon 重启：给所有 STREAMING tab 发 `turn.ended reason=daemon_restart` | 已完成 | `9e191cc` |
 | C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 已完成 | `d3c0542` 落地三件套；本轮 `TabStreamRouter` 成为 adapter/coalescer 的唯一持有者，换 session 时旧输出随旧 session 释放，adapter 按 tab 产出命名事件 |
 | C8 | `TabRecord` 字段：附件归属已完成；router 已收口；eventSink / prompts 由 per-tab adapter 与 `PromptBroker` 承担，TabDraft 只在 webview | 部分完成 | `17ada18`（附件）、`dc1b76a`（分块上传）、本轮（router） |
-| C9 | 删除清单：`useSessionTabs.ts`（1641 行）、`sessionTransition.ts`、`PermissionManager` | 未开始 | 风险最高，需分两步：先搬家后删旧 |
+| C9 | 删除清单：`useSessionTabs.ts`（1641 行）、`sessionTransition.ts`、`PermissionManager` | 部分完成 | `PermissionManager` 及本地权限回退已删除（opencode 权限只走服务端 `per_*` + 注册表）；`useSessionTabs` 拆分与 `sessionTransition` 清理待做 |
 | D10 | 附件传输：分块上传，发送只带引用 | 已完成 | `dc1b76a` |
 | D12 | opencode 命令按 tab 寻址 | 已完成 | `99bd04c`（`commands.refresh` 按 tab）；本轮 `commands.list/read/save/delete` 按 tab cwd 解析，列表按 scope+cwd 缓存 2s，写删后失效 |
 | E13 | 每帧参数预算 32KB（单事件超预算单独成帧） | 已完成 | `17ada18` |

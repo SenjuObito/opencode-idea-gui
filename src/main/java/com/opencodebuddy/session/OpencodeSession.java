@@ -1,6 +1,5 @@
 package com.opencodebuddy.session;
 
-import com.opencodebuddy.permission.PermissionManager;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.tab.TabStreamRouter;
@@ -63,9 +62,6 @@ public class OpencodeSession {
 
     // SDK bridge
     private final OpenCodeSDKBridge openCodeSDKBridge;
-
-    // Permission manager
-    private final PermissionManager permissionManager = new PermissionManager();
 
     /**
      * Represents a single message in the conversation.
@@ -282,11 +278,6 @@ public class OpencodeSession {
                     }
                 }
         );
-
-        // Set up permission manager callback
-        permissionManager.setOnPermissionRequestedCallback(request -> {
-            callbackFacade.notifyPermissionRequested(request);
-        });
     }
 
     public void setCallback(SessionCallback callback) {
@@ -834,41 +825,11 @@ public class OpencodeSession {
     }
 
     /**
-     * Get the permission manager.
-     */
-    public PermissionManager getPermissionManager() {
-        return permissionManager;
-    }
-
-    /**
      * Set the permission mode.
-     * Maps frontend permission mode strings to PermissionManager enum values.
      */
     public void setPermissionMode(String mode) {
         state.setPermissionMode(mode);
-
-        // Sync PermissionManager mode with frontend mode:
-        // - "default" -> DEFAULT (ask every time)
-        // - "acceptEdits"/"autoEdit" -> ACCEPT_EDITS (agent mode, auto-accept file edits)
-        // - "bypassPermissions" -> ALLOW_ALL (auto mode, bypass all permission checks)
-        // - "plan" -> DENY_ALL (plan mode, not yet supported)
-        PermissionManager.PermissionMode pmMode;
-        if ("bypassPermissions".equals(mode)) {
-            pmMode = PermissionManager.PermissionMode.ALLOW_ALL;
-            LOG.info("Permission mode set to ALLOW_ALL for mode: " + mode);
-        } else if ("acceptEdits".equals(mode) || "autoEdit".equals(mode)) {
-            pmMode = PermissionManager.PermissionMode.ACCEPT_EDITS;
-            LOG.info("Permission mode set to ACCEPT_EDITS for mode: " + mode);
-        } else if ("plan".equals(mode)) {
-            pmMode = PermissionManager.PermissionMode.DENY_ALL;
-            LOG.info("Permission mode set to DENY_ALL for mode: " + mode);
-        } else {
-            // "default" or other unknown modes
-            pmMode = PermissionManager.PermissionMode.DEFAULT;
-            LOG.info("Permission mode set to DEFAULT for mode: " + mode);
-        }
-
-        permissionManager.setPermissionMode(pmMode);
+        LOG.info("Permission mode set to " + mode);
     }
 
     /**
@@ -971,13 +932,6 @@ public class OpencodeSession {
 
 
     /**
-     * Create a permission request (called by the SDK).
-     */
-    public PermissionRequest createPermissionRequest(String toolName, Map<String, Object> inputs, JsonObject suggestions, Project project) {
-        return permissionManager.createRequest(state.getChannelId(), toolName, inputs, suggestions, project);
-    }
-
-    /**
      * Handle a permission decision.
      */
     public void handlePermissionDecision(String channelId, boolean allow, boolean remember, String rejectMessage) {
@@ -985,7 +939,7 @@ public class OpencodeSession {
             replyOpencodePermission(channelId, allow, remember, rejectMessage);
             return;
         }
-        permissionManager.handlePermissionDecision(channelId, allow, remember, rejectMessage);
+        LOG.warn("[OpenCode] dropping decision for unknown permission id " + channelId);
     }
 
     /**
@@ -996,15 +950,15 @@ public class OpencodeSession {
             replyOpencodePermission(channelId, allow, true, null);
             return;
         }
-        permissionManager.handlePermissionDecisionAlways(channelId, allow);
+        LOG.warn("[OpenCode] dropping always-decision for unknown permission id " + channelId);
     }
 
     /**
      * Forward an opencode permission-dialog decision to the server.
      *
-     * <p>opencode permission requests ({@code per_...} ids) bypass the local
-     * PermissionManager: the server holds the pending request and the turn
-     * blocks until it is answered. Without this reply the model stream spins
+     * <p>opencode permission requests ({@code per_...} ids) are held by the
+     * server: the pending request blocks the turn until it is answered.
+     * Without this reply the model stream spins
      * forever ("asking permission, clicked allow, still running"). The reply
      * goes through the daemon's {@code opencode.replyPermission} command with
      * the session/directory captured when the request arrived, since the

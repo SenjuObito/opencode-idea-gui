@@ -482,3 +482,13 @@
   无 tab 才退回窗口级命令。
 - 新增 `CommandsHandlerTest` 覆盖「从 tab cwd 读取项目命令」。
 
+## 第四轮补 6：删除本地 PermissionManager 回退
+
+- `PermissionManager` 只服务旧的 Claude 风格本地权限请求：`createRequest`
+  已无调用方，前端模式也不再由它执行；opencode 权限一律由服务端持有，
+  经 `OpencodePermissionRegistry` 回复。
+- 删除 `PermissionManager` 与 `OpencodeSession` 中的字段、回调和
+  `createPermissionRequest`；`setPermissionMode` 只更新会话状态。
+- 对未知权限 id 的迟到决策改为记录并丢弃，不再回退到本地 future。
+- `PermissionRequest` 本身保留，它是权限弹窗与回调的传输对象。
+

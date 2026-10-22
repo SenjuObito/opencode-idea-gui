@@ -133,6 +133,9 @@ public class ChatWindowDelegate {
         /** Publish a named event to the webview (the window's own entry point). */
         void publishTabEvent(com.opencodebuddy.tab.TabEvent event);
 
+        /** Settle every streaming tab after the daemon died. */
+        void settleStreamingTabsOnDaemonRestart();
+
         /**
          * Soft-reload the currently active session's transcript without interrupting
          * any in-flight turn.
@@ -314,6 +317,9 @@ public class ChatWindowDelegate {
             @Override
             public void onDaemonDied() {
                 daemonStatusHandler.onDaemonDied();
+                // The daemon's turns cannot finish: end them explicitly so no
+                // tab keeps spinning until the window is reloaded.
+                host.settleStreamingTabsOnDaemonRestart();
             }
         });
         messageDispatcher.registerHandler(new CliStatusHandler(handlerContext));

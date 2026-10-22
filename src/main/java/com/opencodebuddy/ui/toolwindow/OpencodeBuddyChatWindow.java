@@ -1668,6 +1668,35 @@ public class OpencodeBuddyChatWindow {
     }
 
     /**
+     * Settle every streaming tab after the daemon died.
+     *
+     * <p>The daemon is gone: its turns cannot finish, so the host ends them
+     * with an explicit terminal. Without it a tab keeps spinning until the
+     * user reloads the window.</p>
+     */
+    public void settleStreamingTabsOnDaemonRestart() {
+        for (TabRecord record : tabRegistry.liveTabs()) {
+            if (!record.isStreaming()) {
+                continue;
+            }
+            String sessionId = record.getSessionIdString();
+            String tabId = record.getTabId().value();
+            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("turn.ended")
+                    .session(sessionId)
+                    .tab(tabId)
+                    .field("reason", "daemon_restart")
+                    .build());
+            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loading")
+                    .session(sessionId)
+                    .tab(tabId)
+                    .field("loading", false)
+                    .build());
+            tabRegistry.markStreaming(TabId.of(tabId), false);
+            LOG.info("[Tab] settled the streaming turn of " + tabId + " (daemon restart)");
+        }
+    }
+
+    /**
      * Publish one named event to the webview.
      *
      * <p>Every session-level event leaves the host through here: the event
@@ -3981,6 +4010,11 @@ public class OpencodeBuddyChatWindow {
 
     private ChatWindowDelegate.DelegateHost createDelegateHost() {
         return new ChatWindowDelegate.DelegateHost() {
+            @Override
+            public void settleStreamingTabsOnDaemonRestart() {
+                OpencodeBuddyChatWindow.this.settleStreamingTabsOnDaemonRestart();
+            }
+
             @Override
             public Project getProject() {
                 return project;

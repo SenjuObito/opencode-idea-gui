@@ -218,6 +218,19 @@
   提供类型与 `readJson` 兼容读取。
 - 新增静态门禁 `positional-event-calls`：目录里的事件不得再以位置参数调用。
 
+### 提示回复三重校验与计划审批队列（§10.2.6 / §10.3）
+
+- 权限 / 提问 / 计划的回复带 tabId + sessionId + requestId，宿主校验三者与
+  待答提示的归属一致；不一致的回复被拒绝并记录。
+- 计划审批进入 per-tab 队列（`pendingPlans`）：后台 tab 的计划审批留在自己的
+  tab 里，切回去再显示。
+
+### daemon 重启主动收尾（§11.3）
+
+- daemon 死亡时，宿主给每个 STREAMING tab 发
+  `turn.ended {reason: daemon_restart}` 与 `session.loading {loading:false}`，
+  并把 tab 的状态落回 BOUND——不再等到用户重载窗口。
+
 ## 未完成
 
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵

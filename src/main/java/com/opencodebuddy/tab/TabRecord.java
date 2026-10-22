@@ -31,6 +31,7 @@ public final class TabRecord {
 
     private final TabId tabId;
     private final String cwd;
+    private final TabEventSink eventSink;
     private final TabSettings settings = new TabSettings();
     /** The attachments this tab staged; released with the tab. */
     private final TabAttachmentStore attachments;
@@ -48,8 +49,13 @@ public final class TabRecord {
     private volatile long lastTurnDurationMs;
 
     public TabRecord(TabId tabId, String cwd) {
+        this(tabId, cwd, event -> { });
+    }
+
+    public TabRecord(TabId tabId, String cwd, TabEventSink eventSink) {
         this.tabId = Objects.requireNonNull(tabId, "tabId");
         this.cwd = cwd;
+        this.eventSink = eventSink != null ? eventSink : event -> { };
         this.actor = new TabSessionActor(tabId);
         this.attachments = new TabAttachmentStore(
                 TabAttachmentStore.defaultRoot().resolve(sanitizeForPath(this.tabId.value())));
@@ -57,6 +63,11 @@ public final class TabRecord {
 
     public TabId getTabId() {
         return tabId;
+    }
+
+    /** The tab's own event outlet; every adapter and coalescer publishes here. */
+    public TabEventSink getEventSink() {
+        return eventSink;
     }
 
     /** The tab's serial mutation queue. Closed with the tab. */

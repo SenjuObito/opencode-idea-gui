@@ -2,6 +2,9 @@ package com.opencodebuddy.tab;
 
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -12,6 +15,16 @@ public class TabRecordTest {
 
     private static TabRecord record() {
         return new TabRecord(TabId.of("tab-a"), "/repo");
+    }
+
+    @Test
+    public void eventSinkBelongsToTheRecord() {
+        List<TabEvent> published = new ArrayList<>();
+        TabRecord record = new TabRecord(TabId.of("tab-a"), "/repo", published::add);
+
+        record.getEventSink().publish(TabEvent.of("turn.started").tab("tab-a").build());
+
+        assertEquals(1, published.size());
     }
 
     @Test

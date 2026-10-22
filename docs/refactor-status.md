@@ -38,7 +38,7 @@ cd webview && npx vitest run
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |
 | B6 | daemon 重启：给所有 STREAMING tab 发 `turn.ended reason=daemon_restart` | 已完成 | `9e191cc` |
 | C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 已完成 | `d3c0542` 落地三件套；本轮 `TabStreamRouter` 成为 adapter/coalescer 的唯一持有者，换 session 时旧输出随旧 session 释放，adapter 按 tab 产出命名事件 |
-| C8 | `TabRecord` 字段：附件归属已完成；router 已收口；eventSink / prompts 由 per-tab adapter 与 `PromptBroker` 承担，TabDraft 只在 webview | 部分完成 | `17ada18`（附件）、`dc1b76a`（分块上传）、本轮（router） |
+| C8 | `TabRecord` 字段：附件归属已完成；router 与 eventSink 已收口；prompts 由 `PromptBroker` 按 tab 键持有，TabDraft 只在 webview | 部分完成 | `17ada18`（附件）、`dc1b76a`（分块上传）、本轮（router + eventSink） |
 | C9 | 删除清单：`useSessionTabs.ts`（1641 行）、`sessionTransition.ts`、`PermissionManager` | 部分完成 | `PermissionManager` 及本地权限回退已删除（opencode 权限只走服务端 `per_*` + 注册表）；`useSessionTabs` 拆分与 `sessionTransition` 清理待做 |
 | D10 | 附件传输：分块上传，发送只带引用 | 已完成 | `dc1b76a` |
 | D12 | opencode 命令按 tab 寻址 | 已完成 | `99bd04c`（`commands.refresh` 按 tab）；本轮 `commands.list/read/save/delete` 按 tab cwd 解析，列表按 scope+cwd 缓存 2s，写删后失效 |
@@ -54,7 +54,7 @@ cd webview && npx vitest run
 |---|---|---|
 | A2 剩余：约 70 处 `sendBridgeEvent` 迁入命令信封并删除旧入口 | 机械、量大 | 1–2 天 |
 | A3 剩余：摘除约 96 个 `window.*` 全局，只保留路由表分发 | 机械、量大 | 0.5–1 天 |
-| C8 剩余：`TabRecord` 的 eventSink / prompts / TabDraft | 结构性 | 0.5 天 |
+| C8 剩余：`TabRecord` 的 prompts / TabDraft | 结构性 | 0.25 天 |
 | C7 剩余：无（`TabStreamRouter` 已持有 adapter/coalescer） | 已完成 | 0 |
 | C9：拆 `useSessionTabs.ts`、删 `sessionTransition.ts`、迁 `PermissionManager` | 结构性、高风险 | 2–3 天 |
 | E14 / E15：渲染窗口化与缓存、消息单副本 | 结构性 | 2–4 天 |

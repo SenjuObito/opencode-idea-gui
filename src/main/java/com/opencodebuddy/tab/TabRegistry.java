@@ -29,6 +29,12 @@ public final class TabRegistry {
     private final Map<TabId, TabRecord> tabs = new LinkedHashMap<>();
     private final Map<SessionId, TabId> sessionIndex = new LinkedHashMap<>();
     private TabId activeTabId;
+    private volatile TabEventSink eventSink = event -> { };
+
+    /** The window's event outlet; every tab created afterwards inherits it. */
+    public void setEventSink(TabEventSink sink) {
+        this.eventSink = sink != null ? sink : event -> { };
+    }
 
     public synchronized TabRecord create(TabId tabId, String cwd) {
         TabRecord existing = tabs.get(tabId);
@@ -38,7 +44,7 @@ public final class TabRegistry {
             }
             return existing;
         }
-        TabRecord record = new TabRecord(tabId, cwd);
+        TabRecord record = new TabRecord(tabId, cwd, eventSink);
         tabs.put(tabId, record);
         if (activeTabId == null) {
             activeTabId = tabId;

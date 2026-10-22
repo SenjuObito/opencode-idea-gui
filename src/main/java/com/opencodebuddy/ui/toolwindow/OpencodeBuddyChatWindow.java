@@ -241,6 +241,7 @@ public class OpencodeBuddyChatWindow {
         });
         this.webviewEventQueue.setSnapshotRequiredListener(this::onBridgeSnapshotRequired);
         this.tabEventBus = new com.opencodebuddy.tab.TabEventBus(event -> this.webviewEventQueue.enqueue(event));
+        this.tabRegistry.setEventSink(this::publishTabEvent);
 
         this.tabSessionFactory = new TabSessionFactory(tabRegistry, new TabSessionFactory.Host() {
             @Override
@@ -1966,10 +1967,16 @@ public class OpencodeBuddyChatWindow {
                 ? targetSessionId : null;
         String initialIdentity = com.opencodebuddy.tab.SessionId.tryParse(targetSessionId) != null
                 ? targetSessionId : null;
+        com.opencodebuddy.tab.TabRecord owner = tabRefId != null
+                ? tabRegistry.get(TabId.of(tabRefId))
+                : tabRegistry.findBySession(targetSessionId);
+        com.opencodebuddy.tab.TabEventSink eventSink = owner != null
+                ? owner.getEventSink()
+                : OpencodeBuddyChatWindow.this::publishTabEvent;
         SessionCallbackAdapter newAdapter = new SessionCallbackAdapter(
                 initialIdentity,
                 effectiveCoalescer,
-                OpencodeBuddyChatWindow.this::publishTabEvent,
+                eventSink,
                 permissionHandler,
                 () -> slashCommandsFetched,
                 () -> onStreamEnded(targetSessionId),

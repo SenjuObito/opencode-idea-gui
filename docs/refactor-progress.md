@@ -503,3 +503,13 @@
   `turnMs` 和队列快照；日志不再只指向“当前会话”。
 - 新增 `BridgeSchedulerMetricsTest` 覆盖队列深度、下发成帧、delta 合并和丢弃计数。
 
+## 第四轮补 8：事件出口归 TabRecord 所有
+
+- `TabRecord` 新增 `TabEventSink` 字段与 `getEventSink()`，默认 sink 为 no-op，
+  测试可直接注入收集器。
+- `TabRegistry.setEventSink` 在窗口构造时注入；之后创建的每个 tab 都带自己的
+  事件出口，不再由 adapter 直接抓窗口方法。
+- `createCallbackAdapter` 优先使用所属 tab 的 sink；只有纯 session 的旧路径
+  才回退窗口 sink。
+- 新增 `TabRecordTest.eventSinkBelongsToTheRecord`。
+

@@ -91,7 +91,11 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
           ? [currentAskUserQuestionRequestRef.current, ...pendingAskUserQuestionRequestsRef.current]
           : [...pendingAskUserQuestionRequestsRef.current],
       }),
-      restore: (permissions: PermissionRequest[], questions: AskUserQuestionRequest[]) => {
+      restore: (
+        permissions: PermissionRequest[],
+        questions: AskUserQuestionRequest[],
+        plans: PlanApprovalRequest[] = [],
+      ) => {
         if (permissions && permissions.length > 0) {
           currentPermissionRequestRef.current = permissions[0];
           setCurrentPermissionRequest(permissions[0]);
@@ -106,6 +110,18 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
           setPendingPermissionRequests([]);
           permissionDialogOpenRef.current = false;
           setPermissionDialogOpen(false);
+        }
+
+        if (plans && plans.length > 0) {
+          currentPlanApprovalRequestRef.current = plans[0];
+          setCurrentPlanApprovalRequest(plans[0]);
+          planApprovalDialogOpenRef.current = true;
+          setPlanApprovalDialogOpen(true);
+        } else {
+          currentPlanApprovalRequestRef.current = null;
+          setCurrentPlanApprovalRequest(null);
+          planApprovalDialogOpenRef.current = false;
+          setPlanApprovalDialogOpen(false);
         }
 
         if (questions && questions.length > 0) {
@@ -301,6 +317,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     sendBridgeEvent('permission_decision', JSON.stringify({
       channelId,
       sessionId: currentPermissionRequestRef.current?.sessionId,
+      tabId: currentPermissionRequestRef.current?.tabId,
       allow: true,
       remember: false,
       rejectMessage: null,
@@ -316,6 +333,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     sendBridgeEvent('permission_decision', JSON.stringify({
       channelId,
       sessionId: currentPermissionRequestRef.current?.sessionId,
+      tabId: currentPermissionRequestRef.current?.tabId,
       allow: true,
       remember: true,
       rejectMessage: null,
@@ -331,6 +349,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     sendBridgeEvent('permission_decision', JSON.stringify({
       channelId,
       sessionId: currentPermissionRequestRef.current?.sessionId,
+      tabId: currentPermissionRequestRef.current?.tabId,
       allow: false,
       remember: false,
       rejectMessage: t('permission.userDenied'),
@@ -349,6 +368,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     sendBridgeEvent('permission_decision', JSON.stringify({
       channelId,
       sessionId,
+      tabId: activeReq.tabId,
       allow: false,
       remember: false,
       rejectMessage: t('permission.timedOut', { defaultValue: '请求超时，已停止会话' }),
@@ -365,7 +385,12 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceCloseAskUserQuestionDialog(requestId);
       return;
     }
-    sendBridgeEvent('ask_user_question_response', JSON.stringify({ requestId, answers }));
+    sendBridgeEvent('ask_user_question_response', JSON.stringify({
+      requestId,
+      answers,
+      sessionId: currentAskUserQuestionRequestRef.current?.sessionId,
+      tabId: currentAskUserQuestionRequestRef.current?.tabId,
+    }));
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 
@@ -375,7 +400,11 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceCloseAskUserQuestionDialog(requestId);
       return;
     }
-    sendBridgeEvent('ask_user_question_reject', JSON.stringify({ requestId }));
+    sendBridgeEvent('ask_user_question_reject', JSON.stringify({
+      requestId,
+      sessionId: currentAskUserQuestionRequestRef.current?.sessionId,
+      tabId: currentAskUserQuestionRequestRef.current?.tabId,
+    }));
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 
@@ -387,7 +416,11 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       return;
     }
     const sessionId = activeReq.sessionId;
-    sendBridgeEvent('ask_user_question_reject', JSON.stringify({ requestId }));
+    sendBridgeEvent('ask_user_question_reject', JSON.stringify({
+      requestId,
+      sessionId: currentAskUserQuestionRequestRef.current?.sessionId,
+      tabId: currentAskUserQuestionRequestRef.current?.tabId,
+    }));
     sendInterrupt({ sessionId });
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
@@ -442,6 +475,8 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       requestId,
       approved: true,
       targetMode,
+      sessionId: currentPlanApprovalRequestRef.current?.sessionId,
+      tabId: currentPlanApprovalRequestRef.current?.tabId,
     });
     sendBridgeEvent('plan_approval_response', payload);
     planApprovalDialogOpenRef.current = false;
@@ -455,6 +490,8 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       requestId,
       approved: false,
       targetMode: 'default',
+      sessionId: currentPlanApprovalRequestRef.current?.sessionId,
+      tabId: currentPlanApprovalRequestRef.current?.tabId,
     });
     sendBridgeEvent('plan_approval_response', payload);
     planApprovalDialogOpenRef.current = false;

@@ -21,6 +21,8 @@ export interface AskUserQuestionRequest {
   }[];
   provider?: 'opencode' | 'codex';
   sessionId?: string;
+  /** The tab that owns the prompt: a reply must name it. */
+  tabId?: string;
 }
 
 interface AskUserQuestionDialogProps {

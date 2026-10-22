@@ -307,6 +307,33 @@ public class PermissionHandler extends BaseMessageHandler {
     }
 
     /**
+     * Verify that a reply answers the prompt it claims to answer.
+     *
+     * <p>The plan requires three identities to agree: the tab that owns the
+     * prompt, the session it belongs to, and the request id. A reply that
+     * does not match is refused — it is either a stale dialog or a reply that
+     * was routed to the wrong tab.</p>
+     *
+     * @return true when the reply may be applied
+     */
+    private boolean replyMatchesOwner(String requestId, String replySessionId, String replyTabId,
+                                      String ownerSessionId, String ownerTabId) {
+        if (ownerSessionId != null && replySessionId != null && !ownerSessionId.isBlank()
+                && !ownerSessionId.equals(replySessionId)) {
+            LOG.warn("[PROMPT_REPLY] refused: session mismatch for " + requestId
+                    + " (reply=" + replySessionId + " owner=" + ownerSessionId + ")");
+            return false;
+        }
+        if (ownerTabId != null && replyTabId != null && !replyTabId.isBlank()
+                && !ownerTabId.equals(replyTabId)) {
+            LOG.warn("[PROMPT_REPLY] refused: tab mismatch for " + requestId
+                    + " (reply=" + replyTabId + " owner=" + ownerTabId + ")");
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Handle permission decision messages from JavaScript.
      */
     private void handlePermissionDecision(String jsonContent) {
@@ -319,6 +346,13 @@ public class PermissionHandler extends BaseMessageHandler {
             String channelId = decision.get("channelId").getAsString();
             String decisionSessionId = decision.has("sessionId") && !decision.get("sessionId").isJsonNull()
                     ? decision.get("sessionId").getAsString() : null;
+            String decisionTabId = decision.has("tabId") && !decision.get("tabId").isJsonNull()
+                    ? decision.get("tabId").getAsString() : null;
+            if (!replyMatchesOwner(channelId, decisionSessionId, decisionTabId,
+                    prompts.permissionSessions.get(channelId),
+                    prompts.permissionTabs.get(channelId))) {
+                return;
+            }
             boolean allow = decision.get("allow").getAsBoolean();
             boolean remember = decision.get("remember").getAsBoolean();
             String rejectMessage = "";
@@ -732,6 +766,13 @@ public class PermissionHandler extends BaseMessageHandler {
             }
 
             String requestId = stringOrNull(response, "requestId");
+            String replySessionId = stringOrNull(response, "sessionId");
+            String replyTabId = stringOrNull(response, "tabId");
+            if (!replyMatchesOwner(requestId, replySessionId, replyTabId,
+                    prompts.askSessions.get(requestId),
+                    prompts.askTabs.get(requestId))) {
+                return;
+            }
             JsonObject answers = response.has("answers") && !response.get("answers").isJsonNull()
                 ? response.get("answers").getAsJsonObject()
                 : new JsonObject();
@@ -936,6 +977,13 @@ public class PermissionHandler extends BaseMessageHandler {
             JsonObject response = gson.fromJson(jsonContent, JsonObject.class);
 
             String requestId = response.get("requestId").getAsString();
+            if (!replyMatchesOwner(requestId,
+                    stringOrNull(response, "sessionId"),
+                    stringOrNull(response, "tabId"),
+                    prompts.planSessions.get(requestId),
+                    prompts.planTabs.get(requestId))) {
+                return;
+            }
             boolean approved = response.has("approved") && response.get("approved").getAsBoolean();
             String targetMode = response.has("targetMode") ? response.get("targetMode").getAsString() : "default";
 

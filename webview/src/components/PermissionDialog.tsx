@@ -14,6 +14,8 @@ export interface PermissionRequest {
   inputs: Record<string, unknown>;
   suggestions?: string[];
   sessionId?: string;
+  /** The tab that owns the prompt: a reply must name it. */
+  tabId?: string;
 }
 
 interface PermissionDialogProps {

@@ -779,6 +779,7 @@ export function useSessionTabs({
         promptStore.set(tab.id, {
           permissions: tab.pendingPermissions ?? [],
           questions: tab.pendingQuestions ?? [],
+          plans: tab.pendingPlans ?? [],
         });
       }
       if (window.__dialogStore) {
@@ -786,6 +787,7 @@ export function useSessionTabs({
         promptStore.set(currentActive.id, {
           permissions: dialogSnap.permissions,
           questions: dialogSnap.questions,
+          plans: currentActive.pendingPlans ?? [],
         });
         currentActive.pendingPermissions = dialogSnap.permissions;
         currentActive.pendingQuestions = dialogSnap.questions;
@@ -922,7 +924,8 @@ export function useSessionTabs({
         const targetPrompts = promptStore.get(targetTab.id);
         window.__dialogStore.restore(
           targetPrompts?.permissions ?? targetTab.pendingPermissions ?? [],
-          targetPrompts?.questions ?? targetTab.pendingQuestions ?? []
+          targetPrompts?.questions ?? targetTab.pendingQuestions ?? [],
+          targetPrompts?.plans ?? targetTab.pendingPlans ?? [],
         );
       }
 
@@ -1421,6 +1424,7 @@ export function useSessionTabs({
             promptStore.set(nextActive.id, {
               permissions: nextActive.pendingPermissions ?? [],
               questions: nextActive.pendingQuestions ?? [],
+              plans: nextActive.pendingPlans ?? [],
             });
             const nextStatus = statusStore.get(nextActive.id);
             if (nextStatus?.streamingActive ?? nextActive.streamingActive) {
@@ -1473,7 +1477,8 @@ export function useSessionTabs({
               const nextPrompts = promptStore.get(nextActive.id);
               window.__dialogStore.restore(
                 nextPrompts?.permissions ?? nextActive.pendingPermissions ?? [],
-                nextPrompts?.questions ?? nextActive.pendingQuestions ?? []
+                nextPrompts?.questions ?? nextActive.pendingQuestions ?? [],
+                nextPrompts?.plans ?? nextActive.pendingPlans ?? [],
               );
             }
           }

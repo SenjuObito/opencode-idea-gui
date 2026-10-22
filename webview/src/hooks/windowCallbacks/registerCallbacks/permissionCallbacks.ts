@@ -261,6 +261,26 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showPlanApprovalDialog = (payload: HostEventPayload) => {
     try {
       const request = payload as any;
+      if (!request || !request.requestId) {
+        cardDebugLog('[PlanApproval][webview] dropping a plan approval without an id');
+        return;
+      }
+      const targetTabId = typeof request.tabId === 'string' ? request.tabId : null;
+      const tabsStore = window.__sessionTabsStore;
+      if (targetTabId && tabsStore?.isActiveTab && !tabsStore.isActiveTab(targetTabId)) {
+        // A background tab's plan approval waits in that tab's queue instead of
+        // stealing the foreground.
+        const stored = tabsStore.updateTab?.(targetTabId, (t: any) => {
+          const list = t.pendingPlans || [];
+          if (!list.some((r: any) => r.requestId === request.requestId)) {
+            t.pendingPlans = [...list, request];
+          }
+        });
+        if (stored) {
+          cardDebugLog('[PlanApproval][webview] queued the approval in tab', targetTabId);
+          return;
+        }
+      }
       openPlanApprovalDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse plan approval request:', error);

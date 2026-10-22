@@ -262,7 +262,7 @@ describe('useSessionTabs - multi-session attribution', () => {
 
     expect(setLoading).toHaveBeenLastCalledWith(true);
     expect(setStatus).toHaveBeenLastCalledWith('running');
-    expect(restore).toHaveBeenCalledWith([{ channelId: 'per-bg' }], []);
+    expect(restore).toHaveBeenCalledWith([{ channelId: 'per-bg' }], [], []);
   });
 });
 

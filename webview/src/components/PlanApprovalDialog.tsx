@@ -19,6 +19,9 @@ export interface PlanApprovalRequest {
   plan?: string;
   allowedPrompts?: AllowedPrompt[];
   timestamp?: string;
+  sessionId?: string;
+  /** The tab that owns the prompt: a reply must name it. */
+  tabId?: string;
 }
 
 interface PlanApprovalDialogProps {

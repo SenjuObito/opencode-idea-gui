@@ -45,6 +45,8 @@ export interface SessionTabData {
   selectedLines?: string;
   pendingPermissions?: any[];
   pendingQuestions?: any[];
+  /** Plan approvals waiting for an answer in this tab. */
+  pendingPlans?: any[];
   turnStartedAt?: number | null;
   usagePercentage?: number;
   usageUsedTokens?: number;

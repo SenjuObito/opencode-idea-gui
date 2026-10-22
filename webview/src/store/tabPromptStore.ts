@@ -8,6 +8,8 @@
 export interface TabPromptSnapshot {
   permissions: any[];
   questions: any[];
+  /** Plan approvals waiting for an answer. */
+  plans?: any[];
 }
 
 export class TabPromptStore {

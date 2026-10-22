@@ -1255,7 +1255,11 @@ interface Window {
    */
   __dialogStore?: {
     getSnapshot: () => { permissions: any[]; questions: any[] };
-    restore: (permissions: any[], questions: any[]) => void;
+    restore: (
+      permissions: any[],
+      questions: any[],
+      plans?: any[],
+    ) => void;
     clearActive: () => void;
   };
 }

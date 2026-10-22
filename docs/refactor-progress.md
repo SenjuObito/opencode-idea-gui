@@ -231,6 +231,19 @@
   `turn.ended {reason: daemon_restart}` 与 `session.loading {loading:false}`，
   并把 tab 的状态落回 BOUND——不再等到用户重载窗口。
 
+### 提示回复与 daemon 收尾（§10.2.6 / §10.3 / §11.3）
+
+- 权限 / 提问 / 计划的回复走 v2 命令（`permission.reply` / `question.reply` /
+  `plan.reply`），信封带 tabId + sessionId + requestId，宿主校验三者一致。
+- 计划审批进入 per-tab 队列（`pendingPlans`），后台 tab 的审批不再抢前台。
+- daemon 死亡时，宿主给每个 STREAMING tab 发 `turn.ended {reason: daemon_restart}`
+  与 `session.loading {loading:false}`。
+
+### 附件按 tab 归属 + 预算回调（§5.1 / §9.9 / §12.2）
+
+- `TabRecord` 自己拥有 `TabAttachmentStore`：另一个 tab 看不到，tab 关闭即释放。
+- 每帧参数预算从 256KB 回到方案要求的 32KB。
+
 ## 未完成
 
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵

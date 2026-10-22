@@ -74,7 +74,11 @@ interface Window {
   /**
    * Update status message
    */
-  updateStatus?: (arg0: string, arg1?: string) => void;
+  /**
+   * Status line update.
+   * @param arg2 the tab that owns the session (empty when the host cannot say)
+   */
+  updateStatus?: (arg0: string, arg1?: string, arg2?: string) => void;
 
   /**
    * Report a server-side retry (rate limit / quota) for the running turn.
@@ -85,7 +89,8 @@ interface Window {
   /**
    * Show loading indicator
    */
-  showLoading?: (arg0: string | boolean, arg1?: string | boolean) => void;
+  /** @param arg2 the tab that owns the session (empty when the host cannot say) */
+  showLoading?: (arg0: string | boolean, arg1?: string | boolean, arg2?: string) => void;
 
   /**
    * Show thinking status
@@ -223,7 +228,8 @@ interface Window {
   /**
    * Usage statistics update callback (supports (json) or (sessionId, json))
    */
-  onUsageUpdate?: (arg0: string, arg1?: string) => void;
+  /** @param arg2 the tab that owns the session (empty when the host cannot say) */
+  onUsageUpdate?: (arg0: string, arg1?: string, arg2?: string) => void;
 
   /** Buffers the latest usage update received before React callbacks mount. */
   __pendingUsageUpdate?: unknown;
@@ -700,7 +706,8 @@ interface Window {
    * @param sessionId - The session ID the title belongs to
    * @param title - The generated title text
    */
-  updateSessionTitle?: (sessionId: string, title: string) => void;
+  /** @param tabId the tab that owns the session (empty when the host cannot say) */
+  updateSessionTitle?: (sessionId: string, title: string, tabId?: string) => void;
 
   /**
    * Editor font config received callback - receives IDEA editor font configuration
@@ -844,17 +851,20 @@ interface Window {
   /**
    * Stream start callback - called when streaming begins
    */
+  /** @param arg1 the tab that owns the session (empty when the host cannot say) */
   onStreamStart?: (arg0?: string | boolean, arg1?: string | boolean) => void;
 
   /**
    * Content delta callback - called when a content delta is received
    */
-  onContentDelta?: (arg0: string, arg1?: string) => void;
+  /** @param arg2 the tab that owns the session (empty when the host cannot say) */
+  onContentDelta?: (arg0: string, arg1?: string, arg2?: string) => void;
 
   /**
    * Thinking delta callback - called when a thinking delta is received
    */
-  onThinkingDelta?: (arg0: string, arg1?: string) => void;
+  /** @param arg2 the tab that owns the session (empty when the host cannot say) */
+  onThinkingDelta?: (arg0: string, arg1?: string, arg2?: string) => void;
 
   /**
    * Block reset callback - called when a new assistant message starts within
@@ -865,7 +875,8 @@ interface Window {
   /**
    * Stream end callback - called when streaming ends
    */
-  onStreamEnd?: (arg0?: string | number, arg1?: string | number) => void;
+  /** @param arg2 the tab that owns the session (empty when the host cannot say) */
+  onStreamEnd?: (arg0?: string | number, arg1?: string | number, arg2?: string) => void;
   /**
    * Daemon's authoritative per-session turn terminal.
    *
@@ -875,7 +886,7 @@ interface Window {
    * serve process exited — the cases where `onStreamEnd` never arrived and a tab
    * kept spinning.
    */
-  onTurnEnd?: (targetSessionId: string, json?: string) => void;
+  onTurnEnd?: (sessionId: string, json?: string, tabId?: string) => void;
 
   /**
    * Streaming heartbeat callback
@@ -1225,7 +1236,8 @@ interface Window {
       updater: (tab: any) => void
     ) => boolean;
     updateTabSessionId: (tabId: string, sessionId: string) => void;
-    updateTabTitle: (sessionId: string, newTitle: string) => void;
+    /** @param tabId the owning tab, when the host names it */
+    updateTabTitle: (sessionId: string, newTitle: string, tabId?: string | null) => void;
     closeTabBySessionId?: (sessionId: string) => void;
     /** Drop the runtime belonging to this session (called on stream end). */
     clearStreamingRuntimeFor?: (sessionId: string) => void;

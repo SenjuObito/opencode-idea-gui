@@ -30,7 +30,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     currentProviderRef,
   } = options;
 
-  window.onUsageUpdate = (arg0: string, arg1?: string) => {
+  window.onUsageUpdate = (arg0: string, arg1?: string, arg2?: string) => {
     // Usage is per-session state. An update without a session id is
     // unattributable: guessing "the active tab" is exactly what copied the
     // previous session's tokens onto a freshly created one. resolveSessionId
@@ -70,16 +70,25 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
 
         const safePercentage = Math.max(0, Math.min(100, data.percentage));
 
-        // If targetSessionId belongs to a background tab, update that tab's
-        // data directly. Never touch the active view from a background update.
+        // The host names the owning tab: routing by tab id is exact.
+        const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+        const applyUsage = (tab: any) => {
+          tab.usagePercentage = safePercentage;
+          tab.usageUsedTokens = used;
+          tab.usageMaxTokens = max;
+        };
+
+        // If the update belongs to a background tab, update that tab's data
+        // directly. Never touch the active view from a background update.
+        if (targetTabId && window.__sessionTabsStore?.isActiveTab
+            && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
+          window.__sessionTabsStore.updateTab?.(targetTabId, applyUsage);
+          return;
+        }
         if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
           window.__sessionTabsStore.updateBackgroundTab(
             (t) => t.sessionId === targetSessionId,
-            (tab) => {
-              tab.usagePercentage = safePercentage;
-              tab.usageUsedTokens = used;
-              tab.usageMaxTokens = max;
-            }
+            applyUsage
           );
           return;
         }
@@ -94,11 +103,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         if (window.__sessionTabsStore) {
           window.__sessionTabsStore.updateBackgroundTab(
             (t) => t.sessionId === targetSessionId,
-            (tab) => {
-              tab.usagePercentage = safePercentage;
-              tab.usageUsedTokens = used;
-              tab.usageMaxTokens = max;
-            }
+            applyUsage
           );
         }
       }

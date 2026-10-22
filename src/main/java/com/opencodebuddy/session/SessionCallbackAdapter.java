@@ -40,8 +40,15 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     private final Alarm streamEndFallbackAlarm;
     private volatile boolean active = true;
     private volatile String sessionId;
-    /** Stable UI tab that owns this adapter. Empty for legacy/session-only paths. */
-    private final String tabId;
+    /**
+     * Stable UI tab that owns this adapter.
+     *
+     * <p>Every session-level event carries it, so the webview routes the event
+     * to exactly one tab instead of looking the owner up by session id. It is
+     * set when the adapter is created for a tab and filled in later when a
+     * history session is attached to a tab.</p>
+     */
+    private volatile String tabId;
     /** Lock making deactivate() atomic with onMessageUpdate()'s active-check-then-enqueue. */
     private final Object lifecycleLock = new Object();
     /** Guards against duplicate onStreamEnd delivery from dual-path dispatch. */
@@ -101,7 +108,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                             warnUnattributedOnce("content delta");
                             return;
                         }
-                        jsTarget.callJavaScript("onContentDelta", getTargetSessionId(), JsUtils.escapeJs(delta));
+                        jsTarget.callJavaScript("onContentDelta", getTargetSessionId(), JsUtils.escapeJs(delta), tabIdArg());
                     }
                 }
         );
@@ -113,7 +120,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                             warnUnattributedOnce("thinking delta");
                             return;
                         }
-                        jsTarget.callJavaScript("onThinkingDelta", getTargetSessionId(), JsUtils.escapeJs(delta));
+                        jsTarget.callJavaScript("onThinkingDelta", getTargetSessionId(), JsUtils.escapeJs(delta), tabIdArg());
                     }
                 }
         );
@@ -122,6 +129,30 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
 
     public String getSessionId() {
         return sessionId;
+    }
+
+    /**
+     * Record the tab that owns this adapter.
+     *
+     * <p>Called when a session is bound to a tab: after that, every event this
+     * adapter pushes names the tab it belongs to.</p>
+     */
+    public void setTabId(String tabId) {
+        this.tabId = tabId;
+    }
+
+    public String getTabId() {
+        return tabId;
+    }
+
+    /**
+     * The tab id as a bridge argument.
+     *
+     * <p>Empty when the adapter does not belong to a tab (legacy/session-only
+     * paths); the webview then falls back to its session-based routing.</p>
+     */
+    private String tabIdArg() {
+        return tabId != null ? tabId : "";
     }
 
     public void setSessionId(String sessionId) {
@@ -216,7 +247,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 warnUnattributedOnce("loading state");
                 return;
             }
-            jsTarget.callJavaScript("showLoading", getTargetSessionId(), String.valueOf(loading));
+            jsTarget.callJavaScript("showLoading", getTargetSessionId(), String.valueOf(loading), tabIdArg());
             // The primary error display is the ERROR message in chat list and StatusNoticeBar banner.
             // Do not call updateStatus here to avoid redundant notifications/toasts.
             if (!busy && !loading) {
@@ -237,7 +268,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 }
                 return;
             }
-            jsTarget.callJavaScript("updateStatus", getTargetSessionId(), JsUtils.escapeJs(message));
+            jsTarget.callJavaScript("updateStatus", getTargetSessionId(), JsUtils.escapeJs(message), tabIdArg());
         });
     }
 
@@ -290,7 +321,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("updateSessionTitle", JsUtils.escapeJs(sessionId), JsUtils.escapeJs(title));
+            jsTarget.callJavaScript("updateSessionTitle", JsUtils.escapeJs(sessionId), JsUtils.escapeJs(title), tabIdArg());
         });
     }
 
@@ -327,7 +358,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 }
                 return;
             }
-            jsTarget.callJavaScript("showThinkingStatus", getTargetSessionId(), String.valueOf(isThinking));
+            jsTarget.callJavaScript("showThinkingStatus", getTargetSessionId(), String.valueOf(isThinking), tabIdArg());
             LOG.debug("Thinking status changed: " + isThinking);
         });
     }
@@ -360,7 +391,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 }
                 return;
             }
-            jsTarget.callJavaScript("showSummary", getTargetSessionId(), JsUtils.escapeJs(summary));
+            jsTarget.callJavaScript("showSummary", getTargetSessionId(), JsUtils.escapeJs(summary), tabIdArg());
         });
     }
 
@@ -389,8 +420,8 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 }
                 return;
             }
-            jsTarget.callJavaScript("showLoading", getTargetSessionId(), "true");
-            jsTarget.callJavaScript("onStreamStart", getTargetSessionId());
+            jsTarget.callJavaScript("showLoading", getTargetSessionId(), "true", tabIdArg());
+            jsTarget.callJavaScript("onStreamStart", getTargetSessionId(), tabIdArg());
             LOG.debug("Stream started - notified frontend with loading=true");
         });
     }
@@ -469,9 +500,9 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             return;
         }
         safeRun("callJavaScript(onStreamEnd)", () ->
-                jsTarget.callJavaScript("onStreamEnd", getTargetSessionId(), String.valueOf(sequence)));
+                jsTarget.callJavaScript("onStreamEnd", getTargetSessionId(), String.valueOf(sequence), tabIdArg()));
         safeRun("callJavaScript(showLoading, false)", () ->
-                jsTarget.callJavaScript("showLoading", getTargetSessionId(), "false"));
+                jsTarget.callJavaScript("showLoading", getTargetSessionId(), "false", tabIdArg()));
         if (streamEndCallback != null) {
             safeRun("streamEndCallback", streamEndCallback);
         }
@@ -509,7 +540,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("onTurnEnd", targetSessionId, JsUtils.escapeJs(jsonContent));
+            jsTarget.callJavaScript("onTurnEnd", targetSessionId, JsUtils.escapeJs(jsonContent), tabIdArg());
         });
     }
 
@@ -546,7 +577,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("onBlockReset", getTargetSessionId());
+            jsTarget.callJavaScript("onBlockReset", getTargetSessionId(), tabIdArg());
             LOG.debug("Block reset sent to frontend - streaming refs cleared");
         });
     }
@@ -576,7 +607,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             payload.addProperty("usedTokens", safeUsedTokens);
             payload.addProperty("maxTokens", safeMaxTokens);
             String json = payload.toString();
-            jsTarget.callJavaScript("onUsageUpdate", getTargetSessionId(), JsUtils.escapeJs(json));
+            jsTarget.callJavaScript("onUsageUpdate", getTargetSessionId(), JsUtils.escapeJs(json), tabIdArg());
             LOG.debug("Usage update sent to frontend: " + safeUsedTokens + "/" + safeMaxTokens);
         });
     }
@@ -606,7 +637,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         if (isInactive()) {
             return;
         }
-        jsTarget.callJavaScript("patchMessageUuid", getTargetSessionId(), JsUtils.escapeJs(content), JsUtils.escapeJs(uuid));
+        jsTarget.callJavaScript("patchMessageUuid", getTargetSessionId(), JsUtils.escapeJs(content), JsUtils.escapeJs(uuid), tabIdArg());
     }
 
     @Override
@@ -618,7 +649,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("onTaskEvent", getTargetSessionId(), JsUtils.escapeJs(eventJson));
+            jsTarget.callJavaScript("onTaskEvent", getTargetSessionId(), JsUtils.escapeJs(eventJson), tabIdArg());
         });
     }
 
@@ -631,7 +662,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("onTodoUpdated", getTargetSessionId(), JsUtils.escapeJs(jsonContent));
+            jsTarget.callJavaScript("onTodoUpdated", getTargetSessionId(), JsUtils.escapeJs(jsonContent), tabIdArg());
         });
     }
 
@@ -678,7 +709,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("onRevertStateUpdate", getTargetSessionId(), jsonStr);
+            jsTarget.callJavaScript("onRevertStateUpdate", getTargetSessionId(), jsonStr, tabIdArg());
         });
     }
 
@@ -710,7 +741,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("onMessagesRemoved", getTargetSessionId(), jsonStr);
+            jsTarget.callJavaScript("onMessagesRemoved", getTargetSessionId(), jsonStr, tabIdArg());
         });
     }
 

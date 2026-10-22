@@ -256,27 +256,44 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   window.onStreamStart = (arg0?: string | boolean, arg1?: string | boolean) => {
     let targetSessionId: string | null = null;
     let mode: string | boolean | undefined;
+    // The host names the owning tab as the second argument; the legacy
+    // `replay` marker is the only other string that can appear there.
+    let targetTabId: string | null = null;
 
     if (typeof arg1 !== 'undefined') {
       targetSessionId = typeof arg0 === 'string' ? arg0 : null;
-      mode = arg1;
+      if (arg1 === 'replay' || arg1 === true || arg1 === false) {
+        mode = arg1;
+      } else {
+        targetTabId = arg1;
+      }
     } else if (typeof arg0 === 'boolean' || arg0 === 'replay') {
       mode = arg0;
     } else if (typeof arg0 === 'string') {
       targetSessionId = arg0;
     }
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    const isBackground = targetTabId
+      ? (window.__sessionTabsStore?.isActiveTab ? !window.__sessionTabsStore.isActiveTab(targetTabId) : false)
+      : Boolean(targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+    if (isBackground) {
       const now = Date.now();
-      sessionTurnStartTimes.set(targetSessionId, now);
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.streamingActive = true;
-          t.loading = true;
-          t.turnStartedAt = now;
-        }
-      );
+      if (targetSessionId) {
+        sessionTurnStartTimes.set(targetSessionId, now);
+      }
+      const markStarted = (t: any) => {
+        t.streamingActive = true;
+        t.loading = true;
+        t.turnStartedAt = now;
+      };
+      if (targetTabId) {
+        window.__sessionTabsStore?.updateTab?.(targetTabId, markStarted);
+      } else if (targetSessionId) {
+        window.__sessionTabsStore?.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          markStarted
+        );
+      }
       return;
     }
 
@@ -467,7 +484,61 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     startStallWatchdog();
   };
 
-  window.onContentDelta = (arg0: string, arg1?: string) => {
+  /**
+   * Append a content delta to a tab's transcript.
+   *
+   * <p>Copy-on-write: the tab object is cloned but its messages array is
+   * shared with whatever the active view may already hold. Mutating in place
+   * would let React skip a re-render after the user switches to this tab (the
+   * array reference never changed), silently dropping the deltas that arrived
+   * in between.</p>
+   */
+  const appendDeltaToTab = (t: any, delta: string): void => {
+    t.streamingActive = true;
+    t.loading = true;
+    const messages = t.messages;
+    const lastIndex = messages && messages.length > 0 ? messages.length - 1 : -1;
+    const last = lastIndex >= 0 ? messages[lastIndex] : undefined;
+    if (last && last.type === 'assistant') {
+      const next = messages.slice();
+      const updatedContent = (last.content || '') + delta;
+      let updatedRaw = last.raw;
+      if (updatedRaw && typeof updatedRaw === 'object') {
+        const rawObj = { ...(updatedRaw as Record<string, unknown>) } as any;
+        const msgObj = rawObj.message ? { ...rawObj.message } : { content: [] };
+        const contentBlocks = Array.isArray(msgObj.content) ? [...msgObj.content] : [];
+        const lastBlockIdx = contentBlocks.length - 1;
+        if (lastBlockIdx >= 0 && contentBlocks[lastBlockIdx]?.type === 'text') {
+          contentBlocks[lastBlockIdx] = {
+            ...contentBlocks[lastBlockIdx],
+            text: (contentBlocks[lastBlockIdx].text || '') + delta,
+          };
+        } else {
+          contentBlocks.push({ type: 'text', text: delta });
+        }
+        msgObj.content = contentBlocks;
+        rawObj.message = msgObj;
+        updatedRaw = rawObj;
+      }
+      next[lastIndex] = { ...last, content: updatedContent, raw: updatedRaw };
+      t.messages = next;
+    } else {
+      const initialRaw = {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: delta }] },
+      };
+      const newMessage = {
+        type: 'assistant',
+        content: delta,
+        raw: initialRaw as any,
+        isStreaming: true,
+        timestamp: new Date().toISOString(),
+      };
+      t.messages = messages ? [...messages, newMessage] : [newMessage];
+    }
+  };
+
+  window.onContentDelta = (arg0: string, arg1?: string, arg2?: string) => {
     const delta = typeof arg1 !== 'undefined' ? arg1 : arg0;
     // An empty id is NOT "the active session". Routing a delta there is exactly
     // how two concurrently-streaming sessions swapped text.
@@ -476,70 +547,19 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       'onContentDelta',
     );
     if (targetSessionId === null) return;
+    // The host names the owning tab: routing by tab id is exact.
+    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+
+    if (targetTabId && window.__sessionTabsStore?.isActiveTab
+        && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
+      window.__sessionTabsStore.updateTab?.(targetTabId, (t: any) => appendDeltaToTab(t, delta));
+      return;
+    }
 
     if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.streamingActive = true;
-          t.loading = true;
-          // Copy-on-write: `updateBackgroundTab` clones the tab object but shares
-          // the messages array with whatever the active view may already hold.
-          // Mutating in place would let React skip a re-render after the user
-          // switches to this tab (the array reference never changed), silently
-          // dropping the deltas that arrived in between.
-          const messages = t.messages;
-          const lastIndex = messages && messages.length > 0 ? messages.length - 1 : -1;
-          const last = lastIndex >= 0 ? messages[lastIndex] : undefined;
-          if (last && last.type === 'assistant') {
-            const next = messages.slice();
-            const updatedContent = (last.content || '') + delta;
-            let updatedRaw = last.raw;
-            if (updatedRaw && typeof updatedRaw === 'object') {
-              const rawObj = { ...(updatedRaw as Record<string, unknown>) } as any;
-              const msgObj = rawObj.message ? { ...rawObj.message } : { content: [] };
-              const contentBlocks = Array.isArray(msgObj.content) ? [...msgObj.content] : [];
-              const lastBlockIdx = contentBlocks.length - 1;
-              if (lastBlockIdx >= 0 && contentBlocks[lastBlockIdx]?.type === 'text') {
-                contentBlocks[lastBlockIdx] = {
-                  ...contentBlocks[lastBlockIdx],
-                  text: (contentBlocks[lastBlockIdx].text || '') + delta,
-                };
-              } else {
-                contentBlocks.push({ type: 'text', text: delta });
-              }
-              msgObj.content = contentBlocks;
-              rawObj.message = msgObj;
-              updatedRaw = rawObj;
-            }
-            next[lastIndex] = { ...last, content: updatedContent, raw: updatedRaw };
-            t.messages = next;
-          } else if (messages) {
-            const initialRaw = {
-              type: 'assistant',
-              message: { content: [{ type: 'text', text: delta }] },
-            };
-            t.messages = [...messages, {
-              type: 'assistant',
-              content: delta,
-              raw: initialRaw as any,
-              isStreaming: true,
-              timestamp: new Date().toISOString(),
-            }];
-          } else {
-            const initialRaw = {
-              type: 'assistant',
-              message: { content: [{ type: 'text', text: delta }] },
-            };
-            t.messages = [{
-              type: 'assistant',
-              content: delta,
-              raw: initialRaw as any,
-              isStreaming: true,
-              timestamp: new Date().toISOString(),
-            }];
-          }
-        }
+        (t) => appendDeltaToTab(t, delta)
       );
       return;
     }
@@ -551,22 +571,32 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     scheduleContentRaf();
   };
 
-  window.onThinkingDelta = (arg0: string, arg1?: string) => {
+  window.onThinkingDelta = (arg0: string, arg1?: string, arg2?: string) => {
     const delta = typeof arg1 !== 'undefined' ? arg1 : arg0;
     const targetSessionId = resolveSessionId(
       typeof arg1 !== 'undefined' ? arg0 : null,
       'onThinkingDelta',
     );
     if (targetSessionId === null) return;
+    // The host names the owning tab: routing by tab id is exact.
+    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+
+    const markThinking = (t: any) => {
+      t.streamingActive = true;
+      t.loading = true;
+      t.isThinking = true;
+    };
+
+    if (targetTabId && window.__sessionTabsStore?.isActiveTab
+        && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
+      window.__sessionTabsStore.updateTab?.(targetTabId, markThinking);
+      return;
+    }
 
     if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.streamingActive = true;
-          t.loading = true;
-          t.isThinking = true;
-        }
+        markThinking
       );
       return;
     }
@@ -624,9 +654,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     setTimeout(tick, 50);
   };
 
-  window.onStreamEnd = (arg0?: string | number, arg1?: string | number) => {
+  window.onStreamEnd = (arg0?: string | number, arg1?: string | number, arg2?: string) => {
     let targetSessionId: string | null = null;
     let sequence: string | number | undefined;
+    // The host names the owning tab: routing by tab id is exact.
+    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
 
     if (typeof arg1 !== 'undefined') {
       targetSessionId = typeof arg0 === 'string' ? arg0 : null;
@@ -643,38 +675,48 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     targetSessionId = resolveSessionId(targetSessionId, 'onStreamEnd');
     if (targetSessionId === null) return;
 
-    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    const finishTurn = (t: any, calculatedDurationMs?: number) => {
+      t.streamingActive = false;
+      t.loading = false;
+      const streamEndedAt = Date.now();
+      const durMs = calculatedDurationMs ?? (t.turnStartedAt ? streamEndedAt - t.turnStartedAt : undefined);
+      t.turnStartedAt = null;
+
+      if (t.messages && t.messages.length > 0) {
+        for (let i = t.messages.length - 1; i >= 0; i--) {
+          const msg = t.messages[i];
+          if (msg && msg.type === 'assistant') {
+            msg.isStreaming = false;
+            if (durMs != null && msg.durationMs == null) {
+              msg.durationMs = durMs;
+            }
+            break;
+          }
+        }
+        // Reconstruct turn metadata for background tab so turnUsage and duration are solidified
+        t.messages = reconstructTurnMetadata(t.messages);
+      }
+    };
+
+    const isBackground = targetTabId
+      ? (window.__sessionTabsStore?.isActiveTab ? !window.__sessionTabsStore.isActiveTab(targetTabId) : false)
+      : Boolean(targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+    if (isBackground) {
       const turnStartedAt = sessionTurnStartTimes.get(targetSessionId);
       sessionTurnStartTimes.delete(targetSessionId);
       const streamEndedAt = Date.now();
       const calculatedDurationMs = turnStartedAt ? streamEndedAt - turnStartedAt : undefined;
 
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.streamingActive = false;
-          t.loading = false;
-          const durMs = calculatedDurationMs ?? (t.turnStartedAt ? streamEndedAt - t.turnStartedAt : undefined);
-          t.turnStartedAt = null;
-
-          if (t.messages && t.messages.length > 0) {
-            for (let i = t.messages.length - 1; i >= 0; i--) {
-              const msg = t.messages[i];
-              if (msg && msg.type === 'assistant') {
-                msg.isStreaming = false;
-                if (durMs != null && msg.durationMs == null) {
-                  msg.durationMs = durMs;
-                }
-                break;
-              }
-            }
-            // Reconstruct turn metadata for background tab so turnUsage and duration are solidified
-            t.messages = reconstructTurnMetadata(t.messages);
-          }
-        }
-      );
-      // The turn is over: drop the archived streaming runtime. Keeping it would
-      // make the tab restore `isStreaming=true` the next time it is activated,
+      if (targetTabId) {
+        window.__sessionTabsStore?.updateTab?.(targetTabId, (t: any) => finishTurn(t, calculatedDurationMs));
+      } else if (targetSessionId) {
+        window.__sessionTabsStore?.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          (t) => finishTurn(t, calculatedDurationMs)
+        );
+      }
+      // The turn is over: drop the runtime of that tab. Keeping it would make
+      // the tab restore `isStreaming=true` the next time it is activated,
       // leaving its spinner stuck forever.
       window.__sessionTabsStore?.clearStreamingRuntimeFor?.(targetSessionId);
       return;
@@ -1153,7 +1195,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // arrive alongside — or instead of — onStreamEnd.
   const processedTurnEndKeys = new Set<string>();
 
-  window.onTurnEnd = (targetSessionId: string, json?: string) => {
+  window.onTurnEnd = (targetSessionId: string, json?: string, tabId?: string) => {
     const sessionId = resolveSessionId(targetSessionId, 'onTurnEnd');
     if (sessionId === null) return;
 
@@ -1176,14 +1218,21 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     }
 
     const tabsStore = window.__sessionTabsStore;
+    // The host names the owning tab: routing by tab id is exact.
+    const targetTabId = typeof tabId === 'string' && tabId.length > 0 ? tabId : null;
+    const settleTurn = (t: any) => {
+      t.streamingActive = false;
+      t.loading = false;
+      t.isThinking = false;
+    };
+    if (targetTabId && tabsStore?.isActiveTab && !tabsStore.isActiveTab(targetTabId)) {
+      tabsStore.updateTab?.(targetTabId, settleTurn);
+      return;
+    }
     if (tabsStore && !tabsStore.isActiveSession(sessionId)) {
       tabsStore.updateBackgroundTab(
         (t) => t.sessionId === sessionId,
-        (t) => {
-          t.streamingActive = false;
-          t.loading = false;
-          t.isThinking = false;
-        }
+        settleTurn
       );
       return;
     }

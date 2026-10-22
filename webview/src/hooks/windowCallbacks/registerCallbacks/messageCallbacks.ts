@@ -833,8 +833,18 @@ export function registerMessageCallbacks(
     window.updateMessages(payload.json, payload.sequence ?? undefined);
   }
 
-  window.updateStatus = (arg0, arg1) => {
+  window.updateStatus = (arg0, arg1, arg2) => {
     const [targetSessionId, text] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+    // The host names the owning tab: routing by tab id is exact.
+    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+
+    if (targetTabId && window.__sessionTabsStore && window.__sessionTabsStore.isActiveTab
+        && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
+      window.__sessionTabsStore.updateTab?.(targetTabId, (t: any) => {
+        t.status = text;
+      });
+      return;
+    }
 
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
@@ -869,7 +879,7 @@ export function registerMessageCallbacks(
     addToast(message);
   };
 
-  window.showLoading = (arg0, arg1) => {
+  window.showLoading = (arg0, arg1, arg2) => {
     const value = typeof arg1 !== 'undefined' ? arg1 : arg0;
     const targetSessionId = resolveSessionId(
       typeof arg1 !== 'undefined' ? arg0 : null,
@@ -877,6 +887,16 @@ export function registerMessageCallbacks(
     );
     const isLoading = isTruthy(value);
     if (targetSessionId === null) return;
+    // The host names the owning tab: routing by tab id is exact.
+    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+
+    if (targetTabId && window.__sessionTabsStore && window.__sessionTabsStore.isActiveTab
+        && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
+      window.__sessionTabsStore.updateTab?.(targetTabId, (t: any) => {
+        t.loading = isLoading;
+      });
+      return;
+    }
 
     if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(

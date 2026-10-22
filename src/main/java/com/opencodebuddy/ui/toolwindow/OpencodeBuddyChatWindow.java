@@ -1928,6 +1928,9 @@ public class OpencodeBuddyChatWindow {
             // snapshots it pushes are routed by tab, not by session lookup.
             effectiveCoalescer.setTabId(stableTabId.value());
         }
+        if (effectiveAdapter != null) {
+            effectiveAdapter.setTabId(stableTabId.value());
+        }
         registerSession(canonicalSessionId, session, effectiveAdapter, effectiveCoalescer);
         if (handlerContext != null) {
             handlerContext.removeSession(tabId);
@@ -1955,6 +1958,9 @@ public class OpencodeBuddyChatWindow {
 
         if (boundAdapter != null) {
             boundAdapter.setSessionId(canonicalSessionId);
+            // From now on every event of this session names the tab it belongs
+            // to, so the webview routes it without a session lookup.
+            boundAdapter.setTabId(stableTabId.value());
         }
         if (boundCoalescer != null) {
             boundCoalescer.setSessionId(canonicalSessionId);
@@ -1994,6 +2000,11 @@ public class OpencodeBuddyChatWindow {
         if (s != null) {
             TabRecord record = tabRegistry.findBySession(targetSessionId);
             if (record != null) {
+                if (adapter != null) {
+                    // The tab that owns this session is known: stamp it so the
+                    // adapter's events carry the tab id.
+                    adapter.setTabId(record.getTabId().value());
+                }
                 record.setSessionResources(
                         com.opencodebuddy.tab.SessionId.of(targetSessionId),
                         s,

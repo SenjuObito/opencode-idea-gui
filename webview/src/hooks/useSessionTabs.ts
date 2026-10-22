@@ -482,17 +482,22 @@ export function useSessionTabs({
   }, [setCurrentSessionId]);
 
   const updateTabTitle = useCallback(
-    (sessionId: string, newTitle: string) => {
+    (sessionId: string, newTitle: string, tabId?: string | null) => {
       const trimmed = newTitle?.trim();
       if (!trimmed || !sessionId) return;
-      // Strict match: a title belongs only to the tab bound to that session.
-      // In particular, never route a background session's title to an unbound
-      // draft tab — that made a newly created session inherit the previous
-      // session's AI-generated title.
-      const target = tabsRef.current.find((t) => t.sessionId === sessionId);
+      // The host names the owning tab: routing by tab id is exact. The session
+      // lookup stays as the fallback for hosts that do not stamp it.
+      //
+      // Strict match otherwise: a title belongs only to the tab bound to that
+      // session. In particular, never route a background session's title to an
+      // unbound draft tab — that made a newly created session inherit the
+      // previous session's AI-generated title.
+      const target = tabId
+        ? tabsRef.current.find((t) => t.id === tabId)
+        : tabsRef.current.find((t) => t.sessionId === sessionId);
       if (!target) return;
       setTabs((prev) =>
-        prev.map((tab) => (tab.sessionId === sessionId ? { ...tab, title: trimmed } : tab))
+        prev.map((tab) => (tab.id === target.id ? { ...tab, title: trimmed } : tab))
       );
       target.title = trimmed;
       if (target.id === activeTabIdRef.current) {

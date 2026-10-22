@@ -158,7 +158,7 @@ export function registerSessionCallbacks(
   // AI Title Callback
   // =========================================================================
 
-  window.updateSessionTitle = (sessionId: string, title: string) => {
+  window.updateSessionTitle = (sessionId: string, title: string, tabId?: string) => {
     if (!title || !title.trim() || !sessionId) return;
     const cleanTitle = title.trim();
     // Only the session that is actually on screen may drive the header title.
@@ -167,7 +167,7 @@ export function registerSessionCallbacks(
     if (currentSessionIdRef.current === sessionId) { // legacy-allow: foreground check for the header title, not routing
       setCustomSessionTitle(cleanTitle);
     }
-    window.__sessionTabsStore?.updateTabTitle?.(sessionId, cleanTitle);
+    window.__sessionTabsStore?.updateTabTitle?.(sessionId, cleanTitle, tabId);
     applyHistoryTitleLocal(sessionId, cleanTitle);
   };
 

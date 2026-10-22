@@ -218,8 +218,11 @@ public class SessionCallbackAdapterStreamEndTest {
         ApplicationManager.setApplication(invokeLaterInlineApplication());
         adapter.onBlockReset();
 
-        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("onContentDelta:") && c.endsWith("text-tail")));
-        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("onThinkingDelta:") && c.endsWith("thinking-tail")));
+        // Every session-level event names its tab as the last argument; an
+        // adapter without a tab sends an empty one and the webview falls back
+        // to its session-based routing.
+        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("onContentDelta:") && c.contains("text-tail")));
+        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("onThinkingDelta:") && c.contains("thinking-tail")));
         adapter.deactivate();
     }
 

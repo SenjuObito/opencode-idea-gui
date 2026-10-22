@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { sendWindowCommand } from '../../../utils/bridge';
+import { sendHostCommand, sendWindowCommand } from '../../../utils/bridge';
+import { getTabStore } from '../../../store/tabStore';
 import styles from './style.module.less';
 
 /**
@@ -126,6 +127,19 @@ const AreaStyle: React.CSSProperties = {
   padding: 8, resize: 'vertical',
 };
 
+/**
+ * Project commands live under the active tab's cwd, so the command must name
+ * that tab. A window with no tab yet keeps the window-level form.
+ */
+const sendCommandsCommand = (type: string, payload: Record<string, unknown>) => {
+  const tabId = getTabStore().getActiveTabId();
+  if (tabId) {
+    sendHostCommand(tabId, type, payload);
+  } else {
+    sendWindowCommand(type, payload);
+  }
+};
+
 const PromptSection = () => {
   const { t } = useTranslation();
   const [scope, setScope] = useState<Scope>('global');
@@ -137,7 +151,7 @@ const PromptSection = () => {
   const [showLibrary, setShowLibrary] = useState(false);
 
   const refresh = useCallback((targetScope: Scope) => {
-    sendWindowCommand('commands.list', { scope: targetScope });
+    sendCommandsCommand('commands.list', { scope: targetScope });
   }, []);
 
   useEffect(() => {
@@ -161,17 +175,17 @@ const PromptSection = () => {
     const onSaved = (json: string) => {
       try {
         const data = JSON.parse(json);
-        sendWindowCommand('commands.list', { scope: data.scope || scope });
+        sendCommandsCommand('commands.list', { scope: data.scope || scope });
       } catch {
-        sendWindowCommand('commands.list', { scope });
+        sendCommandsCommand('commands.list', { scope });
       }
     };
     const onDeleted = (json: string) => {
       try {
         const data = JSON.parse(json);
-        sendWindowCommand('commands.list', { scope: data.scope || scope });
+        sendCommandsCommand('commands.list', { scope: data.scope || scope });
       } catch {
-        sendWindowCommand('commands.list', { scope });
+        sendCommandsCommand('commands.list', { scope });
       }
     };
 
@@ -209,11 +223,11 @@ const PromptSection = () => {
     };
     window.onCommandsRead = onRead;
     window.__onCommandsRead = onRead;
-    sendWindowCommand('commands.read', { scope, name });
+    sendCommandsCommand('commands.read', { scope, name });
   };
 
   const save = () => {
-    sendWindowCommand('commands.save', {
+    sendCommandsCommand('commands.save', {
       scope, name: editor.name, originalName: editor.original, content: editor.content,
     });
     setEditor({ open: false, name: '', original: '', content: '' });
@@ -223,7 +237,7 @@ const PromptSection = () => {
     if (!window.confirm(t('settings.commands.confirmDelete', { name }))) {
       return;
     }
-    sendWindowCommand('commands.delete', { scope, name });
+    sendCommandsCommand('commands.delete', { scope, name });
   };
 
   const importTemplate = (tpl: CommandTemplate) => {

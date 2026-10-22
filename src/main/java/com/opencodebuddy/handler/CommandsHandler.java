@@ -12,8 +12,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages opencode command markdown files ("prompts") in the official
@@ -32,6 +32,19 @@ public class CommandsHandler extends BaseMessageHandler {
     private static final String PROJECT_COMMAND_DIR = ".opencode/command";
 
     private final Gson gson = new Gson();
+    /** Lists are cheap to re-read but not free; two seconds keeps a tab switch instant. */
+    private static final long LIST_CACHE_TTL_MS = 2_000;
+    private final Map<String, CachedList> listCache = new ConcurrentHashMap<>();
+
+    private static final class CachedList {
+        final String json;
+        final long at;
+
+        CachedList(String json, long at) {
+            this.json = json;
+            this.at = at;
+        }
+    }
 
     public CommandsHandler(HandlerContext context) {
         super(context);
@@ -63,11 +76,33 @@ public class CommandsHandler extends BaseMessageHandler {
 
     private void handleList(JsonObject payload) throws IOException {
         String scope = scopeOf(payload);
+        File root = projectRoot(payload);
+        String key = scope + "|" + (root != null ? root.getAbsolutePath() : "");
+        long now = System.currentTimeMillis();
+        CachedList cached = listCache.get(key);
+        String json;
+        if (cached != null && now - cached.at <= LIST_CACHE_TTL_MS) {
+            json = cached.json;
+        } else {
+            json = gson.toJson(buildList(scope, root));
+            listCache.put(key, new CachedList(json, now));
+        }
+        callJavaScript("window.onCommandsList", json);
+    }
+
+    /**
+     * Read the commands of one scope from one project root.
+     *
+     * <p>Package-private and root-parameterised so the listing can be tested
+     * without a project, and so a tab's own cwd (not always the project root)
+     * decides where project commands live.</p>
+     */
+    static JsonObject buildList(String scope, File root) throws IOException {
         JsonObject result = baseResult(scope);
         JsonArray items = new JsonArray();
-        List<File> dirs = commandDirs(scope);
+        List<File> dirs = commandDirs(scope, root);
         Set<String> seenNames = new HashSet<>();
-        File primaryDir = commandDir(scope);
+        File primaryDir = dirs.isEmpty() ? null : dirs.get(0);
 
         for (File dir : dirs) {
             if (!dir.exists()) {
@@ -94,15 +129,16 @@ public class CommandsHandler extends BaseMessageHandler {
             }
         }
         result.add("commands", items);
-        result.addProperty("dir", primaryDir.getAbsolutePath());
-        result.addProperty("exists", primaryDir.exists());
-        callJavaScript("window.onCommandsList", gson.toJson(result));
+        result.addProperty("dir", primaryDir != null ? primaryDir.getAbsolutePath() : "");
+        result.addProperty("exists", primaryDir != null && primaryDir.exists());
+        return result;
     }
 
     private void handleRead(JsonObject payload) throws IOException {
         String scope = scopeOf(payload);
         String name = safeName(payload);
-        File file = commandFile(scope, name);
+        File root = projectRoot(payload);
+        File file = commandFile(scope, name, root);
         JsonObject result = baseResult(scope);
         result.addProperty("name", name);
         if (file != null && file.exists()) {
@@ -120,20 +156,22 @@ public class CommandsHandler extends BaseMessageHandler {
         String name = safeName(payload);
         String content = payload.has("content") && !payload.get("content").isJsonNull()
                 ? payload.get("content").getAsString() : "";
-        File dir = commandDir(scope);
+        File root = projectRoot(payload);
+        File dir = commandDir(scope, root);
         Files.createDirectories(dir.toPath());
         String original = payload.has("originalName") && !payload.get("originalName").isJsonNull()
                 ? safeName(payload.get("originalName").getAsString()) : null;
         File target = new File(dir, name + ".md");
         Files.writeString(target.toPath(), content, StandardCharsets.UTF_8);
         if (original != null && !original.equals(name)) {
-            for (File d : commandDirs(scope)) {
+            for (File d : commandDirs(scope, root)) {
                 File oldFile = new File(d, original + ".md");
                 if (oldFile.exists()) {
                     Files.deleteIfExists(oldFile.toPath());
                 }
             }
         }
+        listCache.clear();
         JsonObject result = baseResult(scope);
         result.addProperty("name", name);
         result.addProperty("path", target.getAbsolutePath());
@@ -143,13 +181,15 @@ public class CommandsHandler extends BaseMessageHandler {
     private void handleDelete(JsonObject payload) throws IOException {
         String scope = scopeOf(payload);
         String name = safeName(payload);
+        File root = projectRoot(payload);
         boolean deleted = false;
-        for (File dir : commandDirs(scope)) {
+        for (File dir : commandDirs(scope, root)) {
             File file = new File(dir, name + ".md");
             if (file.exists() && Files.deleteIfExists(file.toPath())) {
                 deleted = true;
             }
         }
+        listCache.clear();
         JsonObject result = baseResult(scope);
         result.addProperty("name", name);
         result.addProperty("deleted", deleted);
@@ -158,14 +198,31 @@ public class CommandsHandler extends BaseMessageHandler {
 
     // ===== helpers =====
 
-    private List<File> commandDirs(String scope) {
+    /**
+     * The cwd of the tab that issued the command, falling back to the project.
+     * A tab may be pointed at a subdirectory of the project, and its project
+     * commands live next to that subdirectory, not next to the project root.
+     */
+    private File projectRoot(JsonObject payload) {
+        String tabId = payload.has("tabId") && !payload.get("tabId").isJsonNull()
+                ? payload.get("tabId").getAsString() : null;
+        if (tabId != null && !tabId.isBlank()) {
+            com.opencodebuddy.session.OpencodeSession session = context.getSessionForTab(tabId);
+            if (session != null && session.getCwd() != null && !session.getCwd().isBlank()) {
+                return new File(session.getCwd());
+            }
+        }
+        String base = context.getProject() != null ? context.getProject().getBasePath() : null;
+        return base != null && !base.isBlank() ? new File(base) : null;
+    }
+
+    private static List<File> commandDirs(String scope, File root) {
         List<File> list = new ArrayList<>();
         if ("project".equals(scope)) {
-            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
-            if (projectPath != null) {
-                list.add(Path.of(projectPath).resolve(".opencode/command").toFile());
-                list.add(Path.of(projectPath).resolve(".opencode/commands").toFile());
-                list.add(Path.of(projectPath).resolve(".claude/commands").toFile());
+            if (root != null) {
+                list.add(root.toPath().resolve(".opencode/command").toFile());
+                list.add(root.toPath().resolve(".opencode/commands").toFile());
+                list.add(root.toPath().resolve(".claude/commands").toFile());
             }
         } else {
             String home = com.opencodebuddy.util.PlatformUtils.getHomeDirectory();
@@ -178,13 +235,17 @@ public class CommandsHandler extends BaseMessageHandler {
         return list;
     }
 
-    private File commandDir(String scope) {
-        List<File> dirs = commandDirs(scope);
-        return dirs.isEmpty() ? Paths.get(com.opencodebuddy.util.PlatformUtils.getHomeDirectory()).resolve(GLOBAL_COMMAND_DIR).toFile() : dirs.get(0);
+    private static File commandDir(String scope, File root) {
+        List<File> dirs = commandDirs(scope, root);
+        if (!dirs.isEmpty()) {
+            return dirs.get(0);
+        }
+        return Paths.get(com.opencodebuddy.util.PlatformUtils.getHomeDirectory())
+                .resolve(GLOBAL_COMMAND_DIR).toFile();
     }
 
-    private File commandFile(String scope, String name) {
-        for (File dir : commandDirs(scope)) {
+    private static File commandFile(String scope, String name, File root) {
+        for (File dir : commandDirs(scope, root)) {
             File f = new File(dir, name + ".md");
             if (f.exists()) {
                 try {
@@ -194,7 +255,7 @@ public class CommandsHandler extends BaseMessageHandler {
                 } catch (IOException ignored) {}
             }
         }
-        File defaultDir = commandDir(scope);
+        File defaultDir = commandDir(scope, root);
         File f = new File(defaultDir, name + ".md");
         try {
             if (!f.getCanonicalPath().startsWith(defaultDir.getCanonicalPath() + File.separator)) {

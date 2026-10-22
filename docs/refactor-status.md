@@ -10,8 +10,8 @@
 
 | 状态 | 条目数 | 占比 |
 |---|---:|---:|
-| 已完成 | 7 | 44% |
-| 部分完成 | 4 | 25% |
+| 已完成 | 8 | 50% |
+| 部分完成 | 3 | 19% |
 | 未开始 | 5 | 31% |
 | 合计 | 16 | 100% |
 
@@ -41,7 +41,7 @@ cd webview && npx vitest run
 | C8 | `TabRecord` 字段：附件归属已完成；router 已收口；eventSink / prompts 由 per-tab adapter 与 `PromptBroker` 承担，TabDraft 只在 webview | 部分完成 | `17ada18`（附件）、`dc1b76a`（分块上传）、本轮（router） |
 | C9 | 删除清单：`useSessionTabs.ts`（1641 行）、`sessionTransition.ts`、`PermissionManager` | 未开始 | 风险最高，需分两步：先搬家后删旧 |
 | D10 | 附件传输：分块上传，发送只带引用 | 已完成 | `dc1b76a` |
-| D12 | opencode 命令按 tab 寻址 | 部分完成 | `99bd04c`：`commands.refresh` 带 tabId 并按 tab cwd 刷新；`commands.list` 仍是窗口级设置 |
+| D12 | opencode 命令按 tab 寻址 | 已完成 | `99bd04c`（`commands.refresh` 按 tab）；本轮 `commands.list/read/save/delete` 按 tab cwd 解析，列表按 scope+cwd 缓存 2s，写删后失效 |
 | E13 | 每帧参数预算 32KB（单事件超预算单独成帧） | 已完成 | `17ada18` |
 | E14 | 渲染：消息分页 / 窗口化、序列化缓存、Markdown 缓存、引用稳定 | 未开始 | — |
 | E15 | 内存：每 tab 消息单副本（宿主 + webview 镜像目前两份） | 未开始 | — |
@@ -57,7 +57,6 @@ cd webview && npx vitest run
 | C8 剩余：`TabRecord` 的 eventSink / prompts / TabDraft | 结构性 | 0.5 天 |
 | C7 剩余：无（`TabStreamRouter` 已持有 adapter/coalescer） | 已完成 | 0 |
 | C9：拆 `useSessionTabs.ts`、删 `sessionTransition.ts`、迁 `PermissionManager` | 结构性、高风险 | 2–3 天 |
-| D12 剩余：`commands.list` 按 tab cwd 返回并缓存 | 中等 | 0.5 天 |
 | E14 / E15 / E16：渲染窗口化与缓存、消息单副本、指标上报 | 结构性 | 2–4 天 |
 | §13：JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工执行） |
 

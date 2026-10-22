@@ -470,3 +470,15 @@
   释放语义不变。
 - 验证：gradle 852 测试、tsc、vitest 173 文件 / 1516 测试、
   `checkLegacyPatterns` 0 forbidden / 0 debt 全绿。
+
+## 第四轮补 5：命令管理按 tab cwd 读取并缓存
+
+- `commands.list/read/save/delete` 的项目作用域不再固定用 project base。
+  宿主从信封的 `tabId` 解析该 tab 当前 session 的 cwd，子目录 tab 看到的是
+  自己的 `.opencode/command`，没有 tab 时才回退 project root。
+- 列表按 `scope + cwd` 缓存 2 秒；保存/删除后立即失效，避免每次打开设置
+  都重读并解析全部 Markdown。
+- webview 的 PromptSection 有活动 tab 时发 `sendHostCommand(tabId, ...)`，
+  无 tab 才退回窗口级命令。
+- 新增 `CommandsHandlerTest` 覆盖「从 tab cwd 读取项目命令」。
+

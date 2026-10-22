@@ -11,6 +11,7 @@ import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { isSessionTransitioning } from '../tabTransition';
+import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../../utils/hostEventTypes';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
 import { parseSequence, advanceMinAcceptedSequence } from '../sequenceBarrier';
 import { getStreamEndHandlingMode } from '../messageSync';
@@ -254,25 +255,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     window.__lastStreamActivityAt = Date.now();
   };
 
-  window.onStreamStart = (arg0?: string | boolean, arg1?: string | boolean) => {
-    let targetSessionId: string | null = null;
-    let mode: string | boolean | undefined;
-    // The host names the owning tab as the second argument; the legacy
-    // `replay` marker is the only other string that can appear there.
-    let targetTabId: string | null = null;
-
-    if (typeof arg1 !== 'undefined') {
-      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
-      if (arg1 === 'replay' || arg1 === true || arg1 === false) {
-        mode = arg1;
-      } else {
-        targetTabId = arg1;
-      }
-    } else if (typeof arg0 === 'boolean' || arg0 === 'replay') {
-      mode = arg0;
-    } else if (typeof arg0 === 'string') {
-      targetSessionId = arg0;
-    }
+  window.onStreamStart = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    // The identity travels in the envelope, the content in the payload.
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    const targetTabId: string | null = env?.tabId ?? null;
+    const mode = payload?.mode as string | boolean | undefined;
 
     const isBackground = targetTabId
       ? (window.__sessionTabsStore?.isActiveTab ? !window.__sessionTabsStore.isActiveTab(targetTabId) : false)
@@ -539,17 +526,14 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  window.onContentDelta = (arg0: string, arg1?: string, arg2?: string) => {
-    const delta = typeof arg1 !== 'undefined' ? arg1 : arg0;
+  window.onContentDelta = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const delta = String(payload?.delta ?? '');
     // An empty id is NOT "the active session". Routing a delta there is exactly
     // how two concurrently-streaming sessions swapped text.
-    const targetSessionId = resolveSessionId(
-      typeof arg1 !== 'undefined' ? arg0 : null,
-      'onContentDelta',
-    );
+    const targetSessionId = resolveSessionId(env?.sessionId ?? null, 'onContentDelta');
     if (targetSessionId === null) return;
     // The host names the owning tab: routing by tab id is exact.
-    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+    const targetTabId = env?.tabId ?? null;
 
     if (targetTabId && window.__sessionTabsStore?.isActiveTab
         && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
@@ -572,15 +556,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     scheduleContentRaf();
   };
 
-  window.onThinkingDelta = (arg0: string, arg1?: string, arg2?: string) => {
-    const delta = typeof arg1 !== 'undefined' ? arg1 : arg0;
-    const targetSessionId = resolveSessionId(
-      typeof arg1 !== 'undefined' ? arg0 : null,
-      'onThinkingDelta',
-    );
+  window.onThinkingDelta = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const delta = String(payload?.delta ?? '');
+    const targetSessionId = resolveSessionId(env?.sessionId ?? null, 'onThinkingDelta');
     if (targetSessionId === null) return;
     // The host names the owning tab: routing by tab id is exact.
-    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+    const targetTabId = env?.tabId ?? null;
 
     const markThinking = (t: any) => {
       t.streamingActive = true;
@@ -655,20 +636,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     setTimeout(tick, 50);
   };
 
-  window.onStreamEnd = (arg0?: string | number, arg1?: string | number, arg2?: string) => {
-    let targetSessionId: string | null = null;
-    let sequence: string | number | undefined;
+  window.onStreamEnd = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    let targetSessionId: string | null = env?.sessionId ?? null;
+    const sequence = payload?.sequence as string | number | undefined;
     // The host names the owning tab: routing by tab id is exact.
-    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
-
-    if (typeof arg1 !== 'undefined') {
-      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
-      sequence = arg1;
-    } else if (typeof arg0 === 'number' || (typeof arg0 === 'string' && /^\d+$/.test(arg0))) {
-      sequence = arg0;
-    } else if (typeof arg0 === 'string') {
-      targetSessionId = arg0;
-    }
+    const targetTabId = env?.tabId ?? null;
 
     // A terminal with no identity is dropped rather than applied to the active
     // tab: applying it there is how stopping session B cleared session A's
@@ -725,7 +697,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
     if (isSessionTransitioning(targetSessionId)) {
       deferUntilTransitionComplete(targetSessionId, () => {
-        window.onStreamEnd?.(arg0 as string | number | undefined, arg1 as string | number | undefined);
+        window.onStreamEnd?.(payload, env);
       });
       return;
     }
@@ -1117,7 +1089,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   // Streaming heartbeat — lightweight signal from backend during tool execution
   // phases where no content deltas arrive.  Keeps the stall watchdog alive.
-  window.onStreamingHeartbeat = () => {
+  window.onStreamingHeartbeat = (_payload?: HostEventPayload, _env?: HostEventEnvelope) => {
     if (isStreamingRef.current && window.__lastStreamActivityAt !== undefined) {
       window.__lastStreamActivityAt = Date.now();
     }
@@ -1138,7 +1110,8 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // message starts within an ongoing stream (e.g., after tool_use loop iteration).
   // This prevents cross-turn content merging where new thinking/text deltas
   // would append to previous turn's buffered content.
-  window.onBlockReset = (targetSessionId?: string) => {
+  window.onBlockReset = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
+    const targetSessionId = env?.sessionId ?? null;
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       return;
     }
@@ -1174,7 +1147,8 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     autoExpandedThinkingKeysRef.current.clear();
   };
 
-  window.onStreamingHeartbeat = (targetSessionId?: string) => {
+  window.onStreamingHeartbeat = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
+    const targetSessionId = env?.sessionId ?? null;
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       return;
     }
@@ -1196,18 +1170,15 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // arrive alongside — or instead of — onStreamEnd.
   const processedTurnEndKeys = new Set<string>();
 
-  window.onTurnEnd = (targetSessionId: string, json?: string, tabId?: string) => {
-    const sessionId = resolveSessionId(targetSessionId, 'onTurnEnd');
+  window.onTurnEnd = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const sessionId = resolveSessionId(env?.sessionId ?? null, 'onTurnEnd');
     if (sessionId === null) return;
+    const json = readJson<{ turnId?: string | number }>(payload?.terminal);
+    const tabId = env?.tabId ?? null;
 
     let turnId: string | number | undefined;
-    if (typeof json === 'string' && json.length > 0) {
-      try {
-        const parsed = JSON.parse(json) as { turnId?: string | number };
-        turnId = parsed.turnId;
-      } catch {
-        // Payload is metadata only; identity is what matters here.
-      }
+    if (json && typeof json === 'object') {
+      turnId = json.turnId;
     }
 
     const key = `${sessionId}#${turnId ?? 'none'}`;

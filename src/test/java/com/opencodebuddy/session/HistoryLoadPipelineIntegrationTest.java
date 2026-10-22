@@ -95,11 +95,11 @@ public class HistoryLoadPipelineIntegrationTest {
         state.setCwd("/workspace");
 
         target = new RecordingTarget();
-        coalescer = new StreamMessageCoalescer(SESSION_ID, target);
+        coalescer = new StreamMessageCoalescer(SESSION_ID, sink, target);
         SessionCallbackAdapter adapter = new SessionCallbackAdapter(
                 SESSION_ID,
                 coalescer,
-                (functionName, args) -> target.record(functionName, args),
+                (event) -> target.recordEvent(event),
                 null,
                 () -> true,
                 () -> {
@@ -200,10 +200,10 @@ public class HistoryLoadPipelineIntegrationTest {
         assertTrue("flush callback never ran", flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
         assertFalse("nothing reached the webview — this is the empty-page bug",
-                target.updateCalls.isEmpty());
-        String push = target.updateCalls.get(target.updateCalls.size() - 1);
+                snapshotCalls().isEmpty());
+        String push = snapshotCalls().get(snapshotCalls().size() - 1);
         assertTrue("push was not stamped with the session id: " + push,
-                push.startsWith("updateMessages:" + SESSION_ID + ":["));
+                push.startsWith("message.snapshot:" + SESSION_ID + ":["));
         assertTrue("pushed payload lost the user text", push.contains("帮我看看这个 bug"));
         assertTrue("pushed payload lost the assistant text", push.contains("SessionSendService"));
     }
@@ -284,8 +284,8 @@ public class HistoryLoadPipelineIntegrationTest {
         CountDownLatch flushed = new CountDownLatch(1);
         coalescer.flush(seq -> flushed.countDown());
         assertTrue(flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS) || true);
-        String push = target.updateCalls.isEmpty() ? null
-                : target.updateCalls.get(target.updateCalls.size() - 1);
+        String push = snapshotCalls().isEmpty() ? null
+                : snapshotCalls().get(snapshotCalls().size() - 1);
         if (push != null) {
             assertTrue("an empty history must push an empty array, not a stale one",
                     push.endsWith(":[]") || push.contains("[]"));
@@ -327,7 +327,7 @@ public class HistoryLoadPipelineIntegrationTest {
                 + "turns a failed restore into a silent blank page", thrown);
         assertEquals("connection refused", state.getError());
         // 失败时不得推送任何快照
-        assertTrue(target.updateCalls.isEmpty());
+        assertTrue(snapshotCalls().isEmpty());
     }
 
     // ===== helpers =====
@@ -337,11 +337,15 @@ public class HistoryLoadPipelineIntegrationTest {
      * 含有冒号，按冒号切会切错，所以单独记录参数列表。
      */
     private String lastPushedPayload() {
-        String[] args = target.lastArgsFor("updateMessages");
-        assertNotNull("no updateMessages was pushed", args);
-        assertTrue("updateMessages must carry (sessionId, json, sequence)",
-                args.length >= 3);
-        return args[2];
+        // The snapshot is a named event now: its payload carries the messages.
+        for (com.opencodebuddy.tab.TabEvent event : sink.events) {
+            if ("message.snapshot".equals(event.getType())) {
+                Object messages = event.getPayload().get("messages");
+                assertNotNull("the snapshot carries no messages", messages);
+                return String.valueOf(messages);
+            }
+        }
+        throw new AssertionError("no message.snapshot was pushed");
     }
 
     private static JsonArray jsonArray(List<JsonObject> entries) {
@@ -468,6 +472,19 @@ public class HistoryLoadPipelineIntegrationTest {
                 });
     }
 
+    /** The named events the coalescer published. */
+    private final RecordingEventSink sink = new RecordingEventSink();
+
+    private List<String> snapshotCalls() {
+        List<String> calls = new java.util.ArrayList<>();
+        for (String call : sink.calls()) {
+            if (call.startsWith("message.snapshot:") || call.startsWith("message.tail:")) {
+                calls.add(call);
+            }
+        }
+        return calls;
+    }
+
     private static final class RecordingTarget implements StreamMessageCoalescer.JsCallbackTarget {
         private final List<String> calls = Collections.synchronizedList(new ArrayList<>());
         private final List<String> updateCalls = Collections.synchronizedList(new ArrayList<>());
@@ -505,6 +522,16 @@ public class HistoryLoadPipelineIntegrationTest {
 
         void record(String functionName, String... args) {
             callJavaScript(functionName, args);
+        }
+
+        /** The adapter publishes named events now. */
+        void recordEvent(com.opencodebuddy.tab.TabEvent event) {
+            StringBuilder sb = new StringBuilder(event.getType());
+            sb.append(':').append(event.getSessionId() == null ? "" : event.getSessionId());
+            for (Object value : event.getPayload().values()) {
+                sb.append(':').append(value);
+            }
+            calls.add(sb.toString());
         }
 
         @Override

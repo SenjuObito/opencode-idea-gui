@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { registerStreamingCallbacks } from './streamingCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
+import { sessionEvent } from '../../../utils/testEvents';
 
 type Ref<T> = { current: T };
 const ref = <T,>(value: T): Ref<T> => ({ current: value });
@@ -104,7 +105,7 @@ describe('onStreamStart bubble routing', () => {
       1,
     );
 
-    window.onStreamStart!('replay');
+    window.onStreamStart!(...sessionEvent(null, { mode: 'replay' }));
 
     const messages = getMessages();
     expect(messages).toHaveLength(2);
@@ -227,7 +228,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
     );
 
     // No onStreamStart happened; streaming refs are at their idle defaults.
-    window.onStreamEnd!('ses_test');
+    window.onStreamEnd!(...sessionEvent('ses_test', {}));
 
     expect(window.__deniedToolIds).toBeDefined();
     expect(window.__deniedToolIds!.has('tool-1')).toBe(true);
@@ -250,7 +251,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
     );
     const before = getMessages();
 
-    window.onStreamEnd!('ses_test');
+    window.onStreamEnd!(...sessionEvent('ses_test', {}));
 
     // Nothing dangling → no id denied, and the list reference is unchanged.
     expect(window.__deniedToolIds?.has('tool-2') ?? false).toBe(false);
@@ -292,7 +293,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
       },
     ]);
 
-    window.onStreamEnd!('ses_test', '99');
+    window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '99' }));
 
     const messages = getMessages();
     expect(messages).toHaveLength(3);

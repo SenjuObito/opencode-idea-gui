@@ -24,24 +24,10 @@ interface Window {
    * Update messages from backend.
    * Can be called with (json, sequence, baseIndex) or (sessionId, json, sequence, baseIndex).
    */
-  updateMessages?: (
-    arg0: string,
-    arg1?: string | number,
-    arg2?: string | number,
-    arg3?: string | number,
-    /**
-     * The tab that owns the snapshot. The host stamps it on every push so the
-     * webview routes the snapshot to exactly one tab.
-     */
-    arg4?: string
-  ) => void;
+  /** A named event: the payload carries the snapshot, the envelope the identity. */
+  updateMessages?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
-  updateMessageTail?: (
-    arg0: string,
-    arg1: string | number,
-    arg2?: string | number,
-    arg3?: string | number
-  ) => void;
+  updateMessageTail?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
   /**
    * Prepend an earlier history page (opencode restore paging / live window
    * recall) to the top of the message list, preserving scroll position.
@@ -69,7 +55,7 @@ interface Window {
   /**
    * Patch a single message UUID without re-sending the full message list.
    */
-  patchMessageUuid?: (arg0: string, arg1: string, arg2?: string) => void;
+  patchMessageUuid?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Update status message
@@ -78,29 +64,29 @@ interface Window {
    * Status line update.
    * @param arg2 the tab that owns the session (empty when the host cannot say)
    */
-  updateStatus?: (arg0: string, arg1?: string, arg2?: string) => void;
+  updateStatus?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Report a server-side retry (rate limit / quota) for the running turn.
    * Payload is a JSON object: { sessionID, type, message, attempt, next, action }.
    */
-  updateRetryStatus?: (arg0?: string, arg1?: string) => void;
+  updateRetryStatus?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Show loading indicator
    */
   /** @param arg2 the tab that owns the session (empty when the host cannot say) */
-  showLoading?: (arg0: string | boolean, arg1?: string | boolean, arg2?: string) => void;
+  showLoading?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Show thinking status
    */
-  showThinkingStatus?: (arg0: string | boolean, arg1?: string | boolean) => void;
+  showThinkingStatus?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Show conversation summary/compaction notice
    */
-  showSummary?: (arg0: string, arg1?: string) => void;
+  showSummary?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Set history data
@@ -115,7 +101,7 @@ interface Window {
   /**
    * Clear all messages.
    */
-  clearMessages?: (arg0?: string | number, arg1?: string | number) => void;
+  clearMessages?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Add error message
@@ -142,7 +128,7 @@ interface Window {
    * History load complete callback - invoked when history messages finish loading.
    * Triggers Markdown re-rendering to fix incorrect rendering on first history load.
    */
-  historyLoadComplete?: (arg0?: string | number, arg1?: string | number) => void;
+  historyLoadComplete?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
   /** Legacy Codex callback — kept as no-op. Does NOT release session transition guard. */
   codexHistoryPageRenderComplete?: () => void;
   /** Begin a Codex history page transfer (paginated history loading). */
@@ -170,12 +156,12 @@ interface Window {
   /**
    * task_* SDK system event callback (async subagent lifecycle).
    */
-  onTaskEvent?: (arg0: string, arg1?: string) => void;
+  onTaskEvent?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * opencode todo.updated SSE event callback.
    */
-  onTodoUpdated?: (arg0: string, arg1?: string) => void;
+  onTodoUpdated?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * SDK-to-CLI session conversion result callback.
@@ -195,13 +181,13 @@ interface Window {
   /**
    * Set current session ID (for rewind feature)
    */
-  setSessionId?: (sessionId: string, previousSessionId?: string, tabId?: string) => void;
+  setSessionId?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * The host refused a command. `tabId`/`requestId` name the rejected command,
    * `code` is the machine readable reason (e.g. `MISSING_TAB_ID`).
    */
-  commandRejected?: (tabId: string, requestId: string, code: string, message: string) => void;
+  commandRejected?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /** Rejections that arrived before the real handler was registered. */
   __pendingCommandRejections?: Array<{
@@ -229,7 +215,7 @@ interface Window {
    * Usage statistics update callback (supports (json) or (sessionId, json))
    */
   /** @param arg2 the tab that owns the session (empty when the host cannot say) */
-  onUsageUpdate?: (arg0: string, arg1?: string, arg2?: string) => void;
+  onUsageUpdate?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /** Buffers the latest usage update received before React callbacks mount. */
   __pendingUsageUpdate?: unknown;
@@ -293,7 +279,7 @@ interface Window {
   /**
    * Show permission dialog
    */
-  showPermissionDialog?: (json: string) => void;
+  showPermissionDialog?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Host-side failure notification (e.g. opencode.replyQuestion /
@@ -305,7 +291,7 @@ interface Window {
   /**
    * Show AskUserQuestion dialog
    */
-  showAskUserQuestionDialog?: (json: string) => void;
+  showAskUserQuestionDialog?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Host sends complete Q&A data after the user answers.
@@ -317,7 +303,7 @@ interface Window {
    * Revert state update callback - JSON `{ hasRevert: boolean, messageId?: string }`
    * where messageId is the opencode revert boundary (the undone user message).
    */
-  onRevertStateUpdate?: (...args: any[]) => void;
+  onRevertStateUpdate?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Authoritative server-side deletion — JSON array of opencode message ids.
@@ -329,12 +315,12 @@ interface Window {
    * already shrunk by the time the (also shorter) snapshot lands — otherwise the
    * shrink-protection path would restore the just-deleted messages.
    */
-  onMessagesRemoved?: (sessionIdOrJson: string, json?: string) => void;
+  onMessagesRemoved?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Show PlanApproval dialog
    */
-  showPlanApprovalDialog?: (json: string) => void;
+  showPlanApprovalDialog?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Force-close the open AskUserQuestion dialog matching the given requestId.
@@ -345,7 +331,7 @@ interface Window {
    * orphaned dialog (issue #1360). When requestId is null/empty, every open
    * dialog is closed.
    */
-  forceCloseAskUserQuestionDialog?: (requestId?: string | null) => void;
+  forceCloseAskUserQuestionDialog?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * A question reply failed server-side (e.g. "Question request not found").
@@ -364,13 +350,13 @@ interface Window {
    * every open dialog when channelId is null/empty. Same rationale as
    * forceCloseAskUserQuestionDialog.
    */
-  forceClosePermissionDialog?: (channelId?: string | null) => void;
+  forceClosePermissionDialog?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Force-close the open plan approval dialog matching the given requestId, or
    * every open dialog when requestId is null/empty.
    */
-  forceClosePlanApprovalDialog?: (requestId?: string | null) => void;
+  forceClosePlanApprovalDialog?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Add selection info (file and line numbers) - auto-tracked, only updates ContextBar
@@ -707,7 +693,7 @@ interface Window {
    * @param title - The generated title text
    */
   /** @param tabId the tab that owns the session (empty when the host cannot say) */
-  updateSessionTitle?: (sessionId: string, title: string, tabId?: string) => void;
+  updateSessionTitle?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Editor font config received callback - receives IDEA editor font configuration
@@ -857,31 +843,32 @@ interface Window {
    * Stream start callback - called when streaming begins
    */
   /** @param arg1 the tab that owns the session (empty when the host cannot say) */
-  onStreamStart?: (arg0?: string | boolean, arg1?: string | boolean) => void;
+  /** A named event: the payload carries the content, the envelope the identity. */
+  onStreamStart?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Content delta callback - called when a content delta is received
    */
   /** @param arg2 the tab that owns the session (empty when the host cannot say) */
-  onContentDelta?: (arg0: string, arg1?: string, arg2?: string) => void;
+  onContentDelta?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Thinking delta callback - called when a thinking delta is received
    */
   /** @param arg2 the tab that owns the session (empty when the host cannot say) */
-  onThinkingDelta?: (arg0: string, arg1?: string, arg2?: string) => void;
+  onThinkingDelta?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Block reset callback - called when a new assistant message starts within
    * an ongoing stream.
    */
-  onBlockReset?: (arg0?: string) => void;
+  onBlockReset?: (payload?: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Stream end callback - called when streaming ends
    */
   /** @param arg2 the tab that owns the session (empty when the host cannot say) */
-  onStreamEnd?: (arg0?: string | number, arg1?: string | number, arg2?: string) => void;
+  onStreamEnd?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
   /**
    * Daemon's authoritative per-session turn terminal.
    *
@@ -891,12 +878,12 @@ interface Window {
    * serve process exited — the cases where `onStreamEnd` never arrived and a tab
    * kept spinning.
    */
-  onTurnEnd?: (sessionId: string, json?: string, tabId?: string) => void;
+  onTurnEnd?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Streaming heartbeat callback
    */
-  onStreamingHeartbeat?: (arg0?: string) => void;
+  onStreamingHeartbeat?: (payload?: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
    * Permission denied callback - called when permission is denied.

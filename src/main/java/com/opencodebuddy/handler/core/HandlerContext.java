@@ -74,6 +74,16 @@ public class HandlerContext {
         /** Drop the attachments a tab staged. */
         default void releaseTabAttachments(String tabId) {
         }
+
+        /**
+         * Publish a named event to the webview.
+         *
+         * <p>Handlers that answer the user (a permission dialog, a question) do
+         * not know how the event reaches the renderer — they only know what it
+         * means. The host publishes it.</p>
+         */
+        default void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+        }
     }
 
     public HandlerContext(
@@ -192,6 +202,14 @@ public class HandlerContext {
             return;
         }
         jsCallback.releaseTabAttachments(tabId);
+    }
+
+    /** Publish a named event to the webview. */
+    public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+        if (event == null) {
+            return;
+        }
+        jsCallback.publishEvent(event);
     }
 
     /**

@@ -37,7 +37,8 @@ public class StreamMessageCoalescerStreamEndHookTest {
     @Test
     public void onStreamEndFiresHookAndClearsActive() {
         CountingTarget target = new CountingTarget();
-        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(target);
+        RecordingEventSink sink = new RecordingEventSink();
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(sink, target);
         try {
             coalescer.onStreamStart();
             assertTrue("stream active after start", coalescer.isStreamActive());
@@ -56,7 +57,8 @@ public class StreamMessageCoalescerStreamEndHookTest {
         // A long session fans out many turns; the deferred-reload drain must get
         // a signal at EACH turn boundary, not just the first.
         CountingTarget target = new CountingTarget();
-        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(target);
+        RecordingEventSink sink = new RecordingEventSink();
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(sink, target);
         try {
             for (int i = 0; i < 5; i++) {
                 coalescer.onStreamStart();
@@ -75,7 +77,8 @@ public class StreamMessageCoalescerStreamEndHookTest {
         // it is NOT a turn boundary — it must not fire the drain hook, or a reload
         // could run against a session the user just navigated away from.
         CountingTarget target = new CountingTarget();
-        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(target);
+        RecordingEventSink sink = new RecordingEventSink();
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(sink, target);
         try {
             coalescer.onStreamStart();
             assertTrue(coalescer.isStreamActive());

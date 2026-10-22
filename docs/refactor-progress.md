@@ -206,6 +206,18 @@
 - 各回调模块在注册时把处理器登记进路由表（`registerHostEvents`），
   共 29 个语义事件完成登记。
 
+## 第四轮收口：事件具名化（§7.2 的最后一半）
+
+- 新增 `com.opencodebuddy.tab.TabEvent` / `TabEventSink` / `TabEventBus`：
+  事件的身份（tab / session / turn / seq）与内容（具名 payload）分开携带。
+- 宿主全部会话级事件改为具名事件：delta、turn、loading、status、title、usage、
+  todo、task、revert、message removed、prompt 请求/关闭、history 加载/清空。
+- `BridgeScheduler` 的信封变成
+  `{v, type(语义名), tabId, sessionId, turnId, seq, epoch, payload(具名)}`。
+- webview 的处理器改为读具名 payload + 信封身份；`webview/src/utils/hostEventTypes.ts`
+  提供类型与 `readJson` 兼容读取。
+- 新增静态门禁 `positional-event-calls`：目录里的事件不得再以位置参数调用。
+
 ## 未完成
 
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵

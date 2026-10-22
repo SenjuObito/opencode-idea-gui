@@ -38,18 +38,38 @@ public class EventCatalogTest {
         Path adapter = projectFile("src/main/java/com/opencodebuddy/session/SessionCallbackAdapter.java");
         assertNotNull("the adapter source must be readable from the test", adapter);
 
-        Pattern call = Pattern.compile("callJavaScript\\(\"([A-Za-z0-9_.]+)\"");
-        Set<String> functions = new LinkedHashSet<>();
+        // The adapter publishes named events; every one of them has to be in
+        // the catalog, otherwise the webview has no handler for it.
+        Pattern call = Pattern.compile("publish\\(\"([a-z][a-z0-9.]*)\"");
+        Set<String> types = new LinkedHashSet<>();
         Matcher matcher = call.matcher(Files.readString(adapter, StandardCharsets.UTF_8));
         while (matcher.find()) {
-            functions.add(matcher.group(1));
+            types.add(matcher.group(1));
         }
-        assertFalse("the adapter pushes no event at all", functions.isEmpty());
+        assertFalse("the adapter pushes no event at all", types.isEmpty());
 
-        for (String function : functions) {
-            String type = EventCatalog.semanticType(function);
-            assertFalse("the event has no semantic name: " + function,
-                    type.equals(function) && !EventCatalog.catalog().containsValue(function));
+        for (String type : types) {
+            assertTrue("the event is not in the catalog: " + type,
+                    EventCatalog.catalog().containsKey(type));
+        }
+    }
+
+    @Test
+    public void everyEventTheCoalescerPushesHasASemanticName() throws IOException {
+        Path coalescer = projectFile("src/main/java/com/opencodebuddy/session/StreamMessageCoalescer.java");
+        assertNotNull("the coalescer source must be readable from the test", coalescer);
+
+        Pattern call = Pattern.compile("publish\\(\"([a-z][a-z0-9.]*)\"");
+        Set<String> types = new LinkedHashSet<>();
+        Matcher matcher = call.matcher(Files.readString(coalescer, StandardCharsets.UTF_8));
+        while (matcher.find()) {
+            types.add(matcher.group(1));
+        }
+        assertFalse("the coalescer pushes no event at all", types.isEmpty());
+
+        for (String type : types) {
+            assertTrue("the event is not in the catalog: " + type,
+                    EventCatalog.catalog().containsKey(type));
         }
     }
 

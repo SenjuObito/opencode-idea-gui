@@ -562,12 +562,11 @@ public class WindowEventHandler extends BaseMessageHandler {
         } else {
             out.add("messageId", com.google.gson.JsonNull.INSTANCE);
         }
-        if (sessionId != null && !sessionId.isBlank()) {
-            out.addProperty("sessionId", sessionId);
-            callJavaScript("onRevertStateUpdate", sessionId, out.toString());
-        } else {
-            callJavaScript("onRevertStateUpdate", out.toString());
-        }
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("revert.changed")
+                .session(sessionId)
+                .tab(context.getTabIdForSession(sessionId))
+                .json("state", out.toString())
+                .build());
     }
 
     private void withMessageId(String sessionId, String messageId, String label,

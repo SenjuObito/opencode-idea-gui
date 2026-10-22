@@ -858,6 +858,9 @@ tasks.register('checkLegacyPatterns') {
         'global-transition-lock':  [files: webviewSources, pattern: ~/__sessionTransitioning/],
         // A session map may only be keyed by a canonical session id.
         'mixed-session-map-keys':  [files: javaSources, pattern: /sessions\.put|sessionCoalescers\.keySet/],
+        // The catalog's events travel as named events; calling the legacy
+        // function names positionally would put the protocol back in the dark.
+        'positional-event-calls':  [files: javaSources, pattern: /callJavaScript\("(onContentDelta|onThinkingDelta|onStreamStart|onStreamEnd|onTurnEnd|onStreamingHeartbeat|onBlockReset|onUsageUpdate|onTodoUpdated|onTaskEvent|onRevertStateUpdate|onMessagesRemoved|updateMessages|updateMessageTail|updateStatus|updateSessionTitle|showLoading|showThinkingStatus|showSummary|updateRetryStatus|patchMessageUuid|setSessionId|historyLoadComplete|clearMessages|commandRejected|window\.showPermissionDialog|window\.showAskUserQuestionDialog|window\.showPlanApprovalDialog|window\.forceClose[A-Za-z]*)"/],
     ]
     def debt = [
         // The event handlers must not route by "the session on screen": a

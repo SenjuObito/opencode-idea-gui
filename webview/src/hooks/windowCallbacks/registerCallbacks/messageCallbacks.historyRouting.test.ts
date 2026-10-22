@@ -16,6 +16,7 @@ import { registerMessageCallbacks } from './messageCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import { beginTransition, endTransition, isTabTransitioning } from '../tabTransition';
+import { sessionEvent, snapshotEvent } from '../../../utils/testEvents';
 
 type Ref<T> = { current: T };
 const ref = <T>(value: T): Ref<T> => ({ current: value });
@@ -141,7 +142,7 @@ describe('history load routing — background session', () => {
     const h = createHarness('ses_fg');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
 
-    window.updateMessages!('ses_bg', JSON.stringify(historySnapshot()), '11');
+    window.updateMessages!(...snapshotEvent('ses_bg', JSON.stringify(historySnapshot()), '11'));
 
     expect(h.setMessages).not.toHaveBeenCalled();
     expect(tabs[1].messages).toHaveLength(2);
@@ -158,7 +159,7 @@ describe('history load routing — background session', () => {
     const h = createHarness('ses_fg');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
 
-    window.clearMessages!('ses_bg', '21');
+    window.clearMessages!(...sessionEvent('ses_bg', { sequence: '21' }));
 
     expect(tabs[1].messages).toEqual([]);
     expect(h.setMessages).not.toHaveBeenCalled();
@@ -174,7 +175,7 @@ describe('history load routing — background session', () => {
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
     beginTransition('tab-fg', 'ses_fg', 'transition-bg');
 
-    window.historyLoadComplete!('ses_bg', '2');
+    window.historyLoadComplete!(...sessionEvent('ses_bg', { messageCount: '2' }));
 
     // 前台还在切换中：守卫必须留着，否则前台会被旧会话的帧污染
     expect(isTabTransitioning('tab-fg')).toBe(true);
@@ -191,7 +192,7 @@ describe('history load routing — background session', () => {
     const h = createHarness('ses_fg');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
 
-    window.updateMessages!('ses_unbound', JSON.stringify(historySnapshot()), '31');
+    window.updateMessages!(...snapshotEvent('ses_unbound', JSON.stringify(historySnapshot()), '31'));
 
     expect(h.setMessages).not.toHaveBeenCalled();
     expect(h.getMessages()).toHaveLength(0);
@@ -219,13 +220,13 @@ describe('history load routing — foreground session', () => {
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
     beginTransition('tab-fg', 'ses_fg', 'transition-fg');
 
-    window.clearMessages!('ses_fg', '7');
+    window.clearMessages!(...sessionEvent('ses_fg', { sequence: '7' }));
     expect(h.setMessages).toHaveBeenLastCalledWith([]);
 
-    window.updateMessages!('ses_fg', JSON.stringify(historySnapshot()), '8');
+    window.updateMessages!(...snapshotEvent('ses_fg', JSON.stringify(historySnapshot()), '8'));
     expect(h.getMessages()).toHaveLength(2);
 
-    window.historyLoadComplete!('ses_fg', '2');
+    window.historyLoadComplete!(...sessionEvent('ses_fg', { messageCount: '2' }));
 
     // 切换守卫被正确释放，且历史表面刷新被请求一次
     expect(isTabTransitioning('tab-fg')).toBe(false);
@@ -238,11 +239,11 @@ describe('history load routing — foreground session', () => {
     // 旧会话的帧带着更小的 sequence，必须在守卫与序列屏障处被挡掉。
     const h = createHarness('ses_fg');
     window.__sessionTransitioning = true;
-    window.clearMessages!('ses_fg', '7');
+    window.clearMessages!(...sessionEvent('ses_fg', { sequence: '7' }));
 
-    window.updateMessages!('ses_fg', JSON.stringify([
+    window.updateMessages!(...snapshotEvent('ses_fg', JSON.stringify([
       { type: 'user', content: 'STALE from the old session', timestamp: '2025-01-01T00:00:00.000Z' },
-    ]), '3');
+    ]), '3'));
 
     expect(h.getMessages()).toEqual([]);
   });
@@ -253,7 +254,7 @@ describe('history load routing — foreground session', () => {
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
     window.__sessionTransitioning = true;
 
-    window.updateMessages!('ses_other', JSON.stringify(historySnapshot()), '9');
+    window.updateMessages!(...snapshotEvent('ses_other', JSON.stringify(historySnapshot()), '9'));
 
     expect(h.setMessages).not.toHaveBeenCalled();
     expect(tabs[0].messages).toEqual([]);
@@ -281,7 +282,7 @@ describe('patchMessageUuid — 会话归属与签名', () => {
       { type: 'user', content: '同一个问题', timestamp: '2026-01-01T00:00:00.000Z' },
     ] as ClaudeMessage[]);
 
-    window.patchMessageUuid!('ses_fg', '同一个问题', 'uuid-777');
+    window.patchMessageUuid!(...sessionEvent('ses_fg', { content: '同一个问题', uuid: 'uuid-777' }));
 
     expect(h.getMessages()[0]).toMatchObject({ raw: { uuid: 'uuid-777' } });
   });
@@ -294,7 +295,7 @@ describe('patchMessageUuid — 会话归属与签名', () => {
     const h = createHarness('ses_fg');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-fg', 'ses_fg') as unknown as typeof window.__sessionTabsStore;
 
-    window.patchMessageUuid!('ses_bg', '同一个问题', 'uuid-888');
+    window.patchMessageUuid!(...sessionEvent('ses_bg', { content: '同一个问题', uuid: 'uuid-888' }));
 
     expect(h.setMessages).not.toHaveBeenCalled();
     expect(tabs[1].messages![0]).toMatchObject({ raw: { uuid: 'uuid-888' } });
@@ -305,7 +306,7 @@ describe('patchMessageUuid — 会话归属与签名', () => {
     const h = createHarness('ses_fg');
     h.setMessages([{ type: 'user', content: '同一个问题' }] as ClaudeMessage[]);
 
-    window.patchMessageUuid!(undefined as unknown as string, '同一个问题', 'uuid-999');
+    window.patchMessageUuid!(...sessionEvent(null, { content: undefined as unknown as string, uuid: '同一个问题', value: 'uuid-999' }));
 
     expect(h.getMessages()[0]).not.toHaveProperty('raw.uuid');
   });

@@ -10,6 +10,7 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { downloadJSON } from '../../../utils/exportMarkdown';
 import { releaseSessionTransition } from '../sessionTransition';
 import { isTabTransitioning, transitionTargetFor } from '../tabTransition';
+import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 
@@ -30,8 +31,11 @@ export function registerSessionCallbacks(
     setCustomSessionTitle,
   } = options;
 
-  window.setSessionId = (sessionId: string, previousSessionId?: string, tabId?: string) => {
+  window.setSessionId = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const sessionId = String(payload?.sessionId ?? '');
     if (!sessionId) return;
+    const previousSessionId = payload?.previousSessionId as string | undefined;
+    const tabId = env?.tabId ?? (payload?.tabId as string | undefined);
     const oldId = currentSessionIdRef.current; // legacy-allow: the view's own session, not an event attribution
     cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', isTabTransitioning(window.__sessionTabsStore?.getActiveTabId?.()));
 
@@ -118,7 +122,11 @@ export function registerSessionCallbacks(
    * §7.1). The rejection is routed back to the tab that sent the command, so a
    * refused send is visible instead of silently swallowed.
    */
-  window.commandRejected = (tabId: string, requestId: string, code: string, message: string) => {
+  window.commandRejected = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const tabId = String(payload?.tabId ?? env?.tabId ?? '');
+    const requestId = String(payload?.requestId ?? '');
+    const code = String(payload?.code ?? '');
+    const message = String(payload?.message ?? '');
     cardDebugLog('[commandRejected] code:', code, 'tab:', tabId, 'request:', requestId, 'message:', message);
     const text = message || code;
     if (text) {
@@ -130,7 +138,7 @@ export function registerSessionCallbacks(
   const pendingRejections = window.__pendingCommandRejections ?? [];
   window.__pendingCommandRejections = [];
   for (const pending of pendingRejections) {
-    window.commandRejected?.(pending.tabId, pending.requestId, pending.code, pending.message);
+    window.commandRejected?.(pending, undefined);
   }
 
   window.onExportSessionData = (json) => {
@@ -159,7 +167,10 @@ export function registerSessionCallbacks(
   // AI Title Callback
   // =========================================================================
 
-  window.updateSessionTitle = (sessionId: string, title: string, tabId?: string) => {
+  window.updateSessionTitle = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const title = String(payload?.title ?? '');
+    const sessionId = env?.sessionId ?? '';
+    const tabId = env?.tabId ?? (payload?.tabId as string | undefined);
     if (!title || !title.trim() || !sessionId) return;
     const cleanTitle = title.trim();
     // Only the session that is actually on screen may drive the header title.

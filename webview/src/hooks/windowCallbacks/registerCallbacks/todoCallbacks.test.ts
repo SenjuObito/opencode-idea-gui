@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { registerWindowCallbacks } from '../registerCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { TodoItem } from '../../../types';
+import { sessionEvent } from '../../../utils/testEvents';
 
 type Ref<T> = { current: T };
 const ref = <T,>(value: T): Ref<T> => ({ current: value });
@@ -48,7 +49,7 @@ describe('window.onTodoUpdated', () => {
       ],
     });
 
-    window.onTodoUpdated!('ses_active', payload);
+    window.onTodoUpdated!(...sessionEvent('ses_active', { todos: payload }));
 
     expect(setSseTodos).toHaveBeenCalledTimes(1);
     const calledTodos: TodoItem[] = setSseTodos.mock.calls[0][0];
@@ -76,7 +77,7 @@ describe('window.onTodoUpdated', () => {
     });
     const doubleEncoded = JSON.stringify(innerJson);
 
-    window.onTodoUpdated!('ses_active', doubleEncoded);
+    window.onTodoUpdated!(...sessionEvent('ses_active', { todos: doubleEncoded }));
 
     expect(setSseTodos).toHaveBeenCalledTimes(1);
     const calledTodos: TodoItem[] = setSseTodos.mock.calls[0][0];
@@ -98,7 +99,7 @@ describe('window.onTodoUpdated', () => {
       todos: [{ id: '1', content: 'Bg Task', status: 'pending' }],
     });
 
-    window.onTodoUpdated!('ses_bg', payload);
+    window.onTodoUpdated!(...sessionEvent('ses_bg', { todos: payload }));
 
     expect(setSseTodos).not.toHaveBeenCalled();
     expect(updateBackgroundTab).toHaveBeenCalledTimes(1);
@@ -118,7 +119,7 @@ describe('window.onTodoUpdated', () => {
       todos: 'not-an-array',
     });
 
-    expect(() => window.onTodoUpdated!('ses_active', payload)).not.toThrow();
+    expect(() => window.onTodoUpdated!(...sessionEvent('ses_active', { todos: payload }))).not.toThrow();
     expect(setSseTodos).not.toHaveBeenCalled();
   });
 });

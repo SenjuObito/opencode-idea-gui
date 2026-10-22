@@ -37,6 +37,11 @@ public class SessionHandlerHostCommandTest {
                     public String escapeJs(String str) {
                         return str;
                     }
+
+                    @Override
+                    public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+                        jsCalls.add(new String[] {event.getType(), String.valueOf(event.getPayload().get("code"))});
+                    }
                 });
         return new SessionHandler(context);
     }
@@ -62,7 +67,7 @@ public class SessionHandlerHostCommandTest {
         assertTrue(handler.handle("session.send", "not json"));
 
         assertEquals(1, jsCalls.size());
-        assertEquals("commandRejected", jsCalls.get(0)[0]);
+        assertEquals("command.rejected", jsCalls.get(0)[0]);
         assertTrue(jsCalls.get(0)[1].contains("BAD_ENVELOPE"));
     }
 
@@ -73,7 +78,7 @@ public class SessionHandlerHostCommandTest {
         assertTrue(handler.handle("session.send", envelope(null, "req-1", null)));
 
         assertEquals(1, jsCalls.size());
-        assertEquals("commandRejected", jsCalls.get(0)[0]);
+        assertEquals("command.rejected", jsCalls.get(0)[0]);
         assertTrue(jsCalls.get(0)[1].contains("MISSING_TAB_ID"));
     }
 
@@ -84,7 +89,7 @@ public class SessionHandlerHostCommandTest {
         assertTrue(handler.handle("session.send", envelope("tab-1", null, null)));
 
         assertEquals(1, jsCalls.size());
-        assertEquals("commandRejected", jsCalls.get(0)[0]);
+        assertEquals("command.rejected", jsCalls.get(0)[0]);
         assertTrue(jsCalls.get(0)[1].contains("MISSING_REQUEST_ID"));
     }
 
@@ -95,7 +100,7 @@ public class SessionHandlerHostCommandTest {
         assertTrue(handler.handle("session.send", envelope("tab-1", "req-1", "1")));
 
         assertEquals(1, jsCalls.size());
-        assertEquals("commandRejected", jsCalls.get(0)[0]);
+        assertEquals("command.rejected", jsCalls.get(0)[0]);
         assertTrue(jsCalls.get(0)[1].contains("UNSUPPORTED_VERSION"));
     }
 

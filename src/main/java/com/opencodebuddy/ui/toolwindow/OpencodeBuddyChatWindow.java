@@ -301,7 +301,8 @@ public class OpencodeBuddyChatWindow {
         this.mainPanel.setBackground(com.opencodebuddy.util.ThemeConfigService.getBackgroundColor());
         this.mainPanel.addHierarchyListener(surfaceRefreshHierarchyListener);
 
-        this.streamCoalescer = new StreamMessageCoalescer(new StreamMessageCoalescer.JsCallbackTarget() {
+        this.streamCoalescer = new StreamMessageCoalescer(
+                OpencodeBuddyChatWindow.this::publishTabEvent, new StreamMessageCoalescer.JsCallbackTarget() {
             @Override
             public void callJavaScript(String functionName, String... args) {
                 OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
@@ -392,6 +393,16 @@ public class OpencodeBuddyChatWindow {
             @Override
             public OpencodeSession getSession(String targetSessionId) {
                 return OpencodeBuddyChatWindow.this.getSession(targetSessionId);
+            }
+
+            @Override
+            public void publishTabEvent(com.opencodebuddy.tab.TabEvent event) {
+                OpencodeBuddyChatWindow.this.publishTabEvent(event);
+            }
+
+            @Override
+            public String findTabIdForSession(String sessionId) {
+                return OpencodeBuddyChatWindow.this.findTabIdForSession(sessionId);
             }
 
             @Override
@@ -1657,6 +1668,20 @@ public class OpencodeBuddyChatWindow {
     }
 
     /**
+     * Publish one named event to the webview.
+     *
+     * <p>Every session-level event leaves the host through here: the event
+     * carries its tab, session and content by name, and the scheduler puts it
+     * in that tab's lane.</p>
+     */
+    public void publishTabEvent(com.opencodebuddy.tab.TabEvent event) {
+        if (event == null) {
+            return;
+        }
+        webviewEventQueue.enqueue(event);
+    }
+
+    /**
      * The tab that owns a canonical session id.
      *
      * <p>Per-tab events (prompts, status) need the tab as well as the session:
@@ -1818,7 +1843,8 @@ public class OpencodeBuddyChatWindow {
         // identity of the conversation this coalescer belongs to.
         String coalescerTabId = com.opencodebuddy.tab.SessionId.tryParse(targetSessionId) != null
                 ? null : targetSessionId;
-        StreamMessageCoalescer newCoalescer = new StreamMessageCoalescer(identity, coalescerTabId, new StreamMessageCoalescer.JsCallbackTarget() {
+        StreamMessageCoalescer newCoalescer = new StreamMessageCoalescer(identity, coalescerTabId,
+                OpencodeBuddyChatWindow.this::publishTabEvent, new StreamMessageCoalescer.JsCallbackTarget() {
             @Override
             public void callJavaScript(String functionName, String... args) {
                 OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
@@ -1866,12 +1892,7 @@ public class OpencodeBuddyChatWindow {
         SessionCallbackAdapter newAdapter = new SessionCallbackAdapter(
                 initialIdentity,
                 effectiveCoalescer,
-                new SessionCallbackAdapter.JsTarget() {
-                    @Override
-                    public void callJavaScript(String functionName, String... args) {
-                        OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
-                    }
-                },
+                OpencodeBuddyChatWindow.this::publishTabEvent,
                 permissionHandler,
                 () -> slashCommandsFetched,
                 () -> onStreamEnded(targetSessionId),
@@ -2328,7 +2349,12 @@ public class OpencodeBuddyChatWindow {
             return;
         }
         if (failure == null && !empty) {
-            callJavaScript("historyLoadComplete", String.valueOf(targetSession.getMessages().size()));
+            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                    .session(targetSession.getSessionId())
+                    .tab(targetSession.getSessionId() != null
+                            ? findTabIdForSession(targetSession.getSessionId()) : null)
+                    .field("messageCount", targetSession.getMessages().size())
+                    .build());
             return;
         }
 
@@ -2341,7 +2367,7 @@ public class OpencodeBuddyChatWindow {
 
         String detail = (failure != null && failure.getMessage() != null)
                 ? ": " + failure.getMessage() : "";
-        callJavaScript("historyLoadComplete");
+        publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded").build());
         callJavaScript("addErrorMessage", JsUtils.escapeJs(
                 "Failed to load session messages" + detail
                         + ". Starting a new session; the previous conversation is still available in History."));
@@ -3117,12 +3143,7 @@ public class OpencodeBuddyChatWindow {
         this.sessionCallbackAdapter = new SessionCallbackAdapter(
                 getSession() != null ? getSession().getSessionId() : null,
                 streamCoalescer,
-                new SessionCallbackAdapter.JsTarget() {
-                    @Override
-                    public void callJavaScript(String functionName, String... args) {
-                        OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
-                    }
-                },
+                OpencodeBuddyChatWindow.this::publishTabEvent,
                 permissionHandler,
                 () -> slashCommandsFetched,
                 this::onStreamEnded
@@ -3155,8 +3176,11 @@ public class OpencodeBuddyChatWindow {
                         ApplicationManager.getApplication().invokeLater(() -> {
                             if (!disposed) {
                                 updateTabTitle(title);
-                                callJavaScript("updateSessionTitle",
-                                        JsUtils.escapeJs(genSessionId), JsUtils.escapeJs(title));
+                                publishTabEvent(com.opencodebuddy.tab.TabEvent.of("tab.title.changed")
+                                        .session(genSessionId)
+                                        .tab(findTabIdForSession(genSessionId))
+                                        .field("title", title)
+                                        .build());
                             }
                         });
                     }
@@ -3573,8 +3597,16 @@ public class OpencodeBuddyChatWindow {
         final String sid = getSession() != null && getSession().getSessionId() != null ? getSession().getSessionId() : "";
         getSession().interrupt().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
             callJavaScript("onPermissionDenied");
-            callJavaScript("onStreamEnd", sid, "-1");
-            callJavaScript("showLoading", sid, "false");
+            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("turn.ended")
+                    .session(sid)
+                    .tab(findTabIdForSession(sid))
+                    .field("sequence", -1)
+                    .build());
+            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loading")
+                    .session(sid)
+                    .tab(findTabIdForSession(sid))
+                    .field("loading", false)
+                    .build());
             com.opencodebuddy.notifications.OpencodeNotifier.clearStatus(project);
         }));
     }
@@ -3858,12 +3890,16 @@ public class OpencodeBuddyChatWindow {
             }
             OpencodeSession current = getSession();
             if (current == null) {
-                callJavaScript("historyLoadComplete", "0");
+                publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                    .field("messageCount", 0)
+                    .build());
                 return;
             }
             String currentId = current.getSessionId();
             if (currentId == null) {
-                callJavaScript("historyLoadComplete", "0");
+                publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                    .field("messageCount", 0)
+                    .build());
                 return;
             }
             if (streamCoalescer != null && streamCoalescer.isStreamActive()) {
@@ -3873,7 +3909,10 @@ public class OpencodeBuddyChatWindow {
                 // Frontend may have begun a transition (cleared the list). Release the
                 // guard now so a later deferred reload can paint; if the list is empty
                 // the stream-end drain will repopulate it.
-                callJavaScript("historyLoadComplete", String.valueOf(current.getMessages().size()));
+                publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                    .session(current.getSessionId())
+                    .field("messageCount", current.getMessages().size())
+                    .build());
                 return;
             }
             LOG.info("[OpencodeBuddyChatWindow] Same-session resume soft reload (no interrupt), sessionId=" + currentId);
@@ -3882,7 +3921,9 @@ public class OpencodeBuddyChatWindow {
             OpencodeSession restoring = current;
             restoring.loadFromServer().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
                 if (disposed || getSession() != restoring) {
-                    callJavaScript("historyLoadComplete", "0");
+                    publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                    .field("messageCount", 0)
+                    .build());
                     return;
                 }
                 int count = restoring.getMessages().size();
@@ -3893,19 +3934,23 @@ public class OpencodeBuddyChatWindow {
                 if (targetCoalescer != null) {
                     targetCoalescer.flush(seq -> {
                         if (!disposed) {
-                            callJavaScript("historyLoadComplete", String.valueOf(count));
+                            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                        .field("messageCount", count)
+                        .build());
                             syncRevertStateToFrontend(restoring);
                         }
                     });
                 } else {
-                    callJavaScript("historyLoadComplete", String.valueOf(count));
+                    publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                        .field("messageCount", count)
+                        .build());
                     syncRevertStateToFrontend(restoring);
                 }
             })).exceptionally(ex -> {
                 LOG.warn("[OpencodeBuddyChatWindow] Same-session soft reload failed: " + ex.getMessage(), ex);
                 ApplicationManager.getApplication().invokeLater(() -> {
                     if (!disposed) {
-                        callJavaScript("historyLoadComplete");
+                        publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded").build());
                         callJavaScript("addErrorMessage",
                                 JsUtils.escapeJs("Failed to reload session: " + ex.getMessage()));
                     }
@@ -3927,7 +3972,11 @@ public class OpencodeBuddyChatWindow {
         } else {
             revertPayload.add("messageId", com.google.gson.JsonNull.INSTANCE);
         }
-        callJavaScript("onRevertStateUpdate", revertPayload.toString());
+        publishTabEvent(com.opencodebuddy.tab.TabEvent.of("revert.changed")
+                .session(getSession() != null ? getSession().getSessionId() : null)
+                .tab(findTabIdForSession(getSession() != null ? getSession().getSessionId() : null))
+                .json("state", revertPayload.toString())
+                .build());
     }
 
     private ChatWindowDelegate.DelegateHost createDelegateHost() {
@@ -4121,6 +4170,16 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void releaseTabAttachments(String tabId) {
                 OpencodeBuddyChatWindow.this.releaseTabAttachments(tabId);
+            }
+
+            @Override
+            public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+                OpencodeBuddyChatWindow.this.publishTabEvent(event);
+            }
+
+            @Override
+            public void publishTabEvent(com.opencodebuddy.tab.TabEvent event) {
+                OpencodeBuddyChatWindow.this.publishTabEvent(event);
             }
 
             @Override

@@ -25,14 +25,18 @@ public class SessionCallbackAdapterStreamEndTest {
     /**
      * Records callJavaScript invocations for assertion.
      */
-    private static final class RecordingJsTarget implements SessionCallbackAdapter.JsTarget {
+    /** Records the named events the adapter published. */
+    private static final class RecordingJsTarget implements com.opencodebuddy.tab.TabEventSink {
         final List<String> calls = new ArrayList<>();
 
         @Override
-        public void callJavaScript(String functionName, String... args) {
-            StringBuilder sb = new StringBuilder(functionName);
-            for (String arg : args) {
-                sb.append(':').append(arg);
+        public void publish(com.opencodebuddy.tab.TabEvent event) {
+            StringBuilder sb = new StringBuilder(event.getType());
+            if (event.getSessionId() != null) {
+                sb.append(':').append(event.getSessionId());
+            }
+            for (Object value : event.getPayload().values()) {
+                sb.append(':').append(value);
             }
             calls.add(sb.toString());
         }
@@ -57,8 +61,10 @@ public class SessionCallbackAdapterStreamEndTest {
                 return;
             }
             streamEndSignalSent = true;
-            jsTarget.callJavaScript("onStreamEnd", String.valueOf(sequence));
-            jsTarget.callJavaScript("showLoading", "false");
+            jsTarget.publish(com.opencodebuddy.tab.TabEvent.of("turn.ended")
+                    .field("sequence", sequence).build());
+            jsTarget.publish(com.opencodebuddy.tab.TabEvent.of("session.loading")
+                    .field("loading", false).build());
         }
 
         /** Simulate the fallback alarm path. */
@@ -67,8 +73,10 @@ public class SessionCallbackAdapterStreamEndTest {
                 return;
             }
             streamEndSignalSent = true;
-            jsTarget.callJavaScript("onStreamEnd", String.valueOf(-1));
-            jsTarget.callJavaScript("showLoading", "false");
+            jsTarget.publish(com.opencodebuddy.tab.TabEvent.of("turn.ended")
+                    .field("sequence", -1).build());
+            jsTarget.publish(com.opencodebuddy.tab.TabEvent.of("session.loading")
+                    .field("loading", false).build());
         }
 
         /** Reset for a new onStreamEnd call. */
@@ -91,8 +99,8 @@ public class SessionCallbackAdapterStreamEndTest {
 
         assertTrue(sim.isStreamEndSent());
         assertEquals(2, jsTarget.calls.size());
-        assertEquals("onStreamEnd:42", jsTarget.calls.get(0));
-        assertEquals("showLoading:false", jsTarget.calls.get(1));
+        assertEquals("turn.ended:42", jsTarget.calls.get(0));
+        assertEquals("session.loading:false", jsTarget.calls.get(1));
     }
 
     @Test
@@ -105,8 +113,8 @@ public class SessionCallbackAdapterStreamEndTest {
 
         assertTrue(sim.isStreamEndSent());
         assertEquals(2, jsTarget.calls.size());
-        assertEquals("onStreamEnd:-1", jsTarget.calls.get(0));
-        assertEquals("showLoading:false", jsTarget.calls.get(1));
+        assertEquals("turn.ended:-1", jsTarget.calls.get(0));
+        assertEquals("session.loading:false", jsTarget.calls.get(1));
     }
 
     @Test
@@ -121,7 +129,7 @@ public class SessionCallbackAdapterStreamEndTest {
         sim.simulateFallback();
 
         assertEquals(2, jsTarget.calls.size()); // Only primary's calls
-        assertEquals("onStreamEnd:42", jsTarget.calls.get(0));
+        assertEquals("turn.ended:42", jsTarget.calls.get(0));
     }
 
     @Test
@@ -136,7 +144,7 @@ public class SessionCallbackAdapterStreamEndTest {
         sim.simulateFlushCallback(42);
 
         assertEquals(2, jsTarget.calls.size()); // Only fallback's calls
-        assertEquals("onStreamEnd:-1", jsTarget.calls.get(0));
+        assertEquals("turn.ended:-1", jsTarget.calls.get(0));
     }
 
     @Test
@@ -154,7 +162,7 @@ public class SessionCallbackAdapterStreamEndTest {
         assertFalse(sim.isStreamEndSent());
         sim.simulateFlushCallback(20);
         assertEquals(4, jsTarget.calls.size());
-        assertEquals("onStreamEnd:20", jsTarget.calls.get(2));
+        assertEquals("turn.ended:20", jsTarget.calls.get(2));
     }
 
     /**
@@ -171,14 +179,15 @@ public class SessionCallbackAdapterStreamEndTest {
         final AtomicLong capturedSequence = new AtomicLong(-999);
         LongConsumer flushCallback = seq -> {
             capturedSequence.set(seq);
-            jsTarget.callJavaScript("onStreamEnd", String.valueOf(seq));
+            jsTarget.publish(com.opencodebuddy.tab.TabEvent.of("turn.ended")
+                    .field("sequence", seq).build());
         };
 
         flushCallback.accept(77);
 
         assertEquals(77, capturedSequence.get());
         assertEquals(1, jsTarget.calls.size());
-        assertEquals("onStreamEnd:77", jsTarget.calls.get(0));
+        assertEquals("turn.ended:77", jsTarget.calls.get(0));
     }
 
     /**
@@ -221,8 +230,8 @@ public class SessionCallbackAdapterStreamEndTest {
         // Every session-level event names its tab as the last argument; an
         // adapter without a tab sends an empty one and the webview falls back
         // to its session-based routing.
-        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("onContentDelta:") && c.contains("text-tail")));
-        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("onThinkingDelta:") && c.contains("thinking-tail")));
+        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("content.delta:") && c.contains("text-tail")));
+        assertTrue(jsTarget.calls.stream().anyMatch(c -> c.startsWith("thinking.delta:") && c.contains("thinking-tail")));
         adapter.deactivate();
     }
 

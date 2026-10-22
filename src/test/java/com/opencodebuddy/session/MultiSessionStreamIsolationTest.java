@@ -47,6 +47,17 @@ import static org.junit.Assert.assertTrue;
  */
 public class MultiSessionStreamIsolationTest {
 
+    /** The snapshot/tail pushes the coalescer published. */
+    private static List<String> snapshotCalls(RecordingEventSink sink) {
+        List<String> calls = new ArrayList<>();
+        for (String call : sink.calls()) {
+            if (call.startsWith("message.snapshot") || call.startsWith("message.tail")) {
+                calls.add(call);
+            }
+        }
+        return calls;
+    }
+
     private static final long AWAIT_SECONDS = 15;
 
     private static Application previousApplication;
@@ -115,9 +126,11 @@ public class MultiSessionStreamIsolationTest {
     @Test
     public void eachCoalescerStampsItsOwnSessionIdOnEverySnapshot() throws Exception {
         RecordingTarget targetA = new RecordingTarget();
-        StreamMessageCoalescer coalescerA = new StreamMessageCoalescer("ses_a", targetA);
+        RecordingEventSink sinkA = new RecordingEventSink();
+        StreamMessageCoalescer coalescerA = new StreamMessageCoalescer("ses_a", sinkA, targetA);
         RecordingTarget targetB = new RecordingTarget();
-        StreamMessageCoalescer coalescerB = new StreamMessageCoalescer("ses_b", targetB);
+        RecordingEventSink sinkB = new RecordingEventSink();
+        StreamMessageCoalescer coalescerB = new StreamMessageCoalescer("ses_b", sinkB, targetB);
         try {
             // 交替 enqueue：模拟两个会话同时流式输出。
             coalescerA.enqueue(List.of(message("A1")));
@@ -130,21 +143,23 @@ public class MultiSessionStreamIsolationTest {
             coalescerB.flush(seq -> flushed.countDown());
             assertTrue("flush callbacks never ran", flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-            assertFalse("session A produced no snapshot at all", targetA.updateCalls.isEmpty());
-            assertFalse("session B produced no snapshot at all", targetB.updateCalls.isEmpty());
-            for (String call : targetA.updateCalls) {
+            assertFalse("session A produced no snapshot at all", snapshotCalls(sinkA).isEmpty());
+            assertFalse("session B produced no snapshot at all", snapshotCalls(sinkB).isEmpty());
+            for (String call : snapshotCalls(sinkA)) {
                 assertTrue("A's push carried a foreign session id: " + call,
-                        call.startsWith("updateMessages:ses_a:["));
+                        call.startsWith("message.snapshot:ses_a:["));
             }
-            for (String call : targetB.updateCalls) {
+            for (String call : snapshotCalls(sinkB)) {
                 assertTrue("B's push carried a foreign session id: " + call,
-                        call.startsWith("updateMessages:ses_b:["));
+                        call.startsWith("message.snapshot:ses_b:["));
             }
             // 内容也不许串：A 的最后一个快照只有 A 的消息。
-            String lastA = targetA.updateCalls.get(targetA.updateCalls.size() - 1);
+            List<String> snapsA = snapshotCalls(sinkA);
+            String lastA = snapsA.get(snapsA.size() - 1);
             assertTrue("A's snapshot lost its own message: " + lastA, lastA.contains("A2"));
             assertFalse("A's snapshot contains session B's message: " + lastA, lastA.contains("B1"));
-            String lastB = targetB.updateCalls.get(targetB.updateCalls.size() - 1);
+            List<String> snapsB = snapshotCalls(sinkB);
+            String lastB = snapsB.get(snapsB.size() - 1);
             assertTrue("B's snapshot lost its own message: " + lastB, lastB.contains("B2"));
             assertFalse("B's snapshot contains session A's message: " + lastB, lastB.contains("A1"));
         } finally {
@@ -156,9 +171,11 @@ public class MultiSessionStreamIsolationTest {
     @Test
     public void everySnapshotCarriesTheOwningTabId() throws Exception {
         RecordingTarget targetA = new RecordingTarget();
-        StreamMessageCoalescer coalescerA = new StreamMessageCoalescer("ses_a", "tab-a", targetA);
+        RecordingEventSink sinkA = new RecordingEventSink();
+        StreamMessageCoalescer coalescerA = new StreamMessageCoalescer("ses_a", "tab-a", sinkA, targetA);
         RecordingTarget targetB = new RecordingTarget();
-        StreamMessageCoalescer coalescerB = new StreamMessageCoalescer("ses_b", "tab-b", targetB);
+        RecordingEventSink sinkB = new RecordingEventSink();
+        StreamMessageCoalescer coalescerB = new StreamMessageCoalescer("ses_b", "tab-b", sinkB, targetB);
         try {
             coalescerA.enqueue(List.of(message("A1")));
             coalescerB.enqueue(List.of(message("B1")));
@@ -168,15 +185,17 @@ public class MultiSessionStreamIsolationTest {
             coalescerB.flush(seq -> flushed.countDown());
             assertTrue("flush callbacks never ran", flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-            assertFalse("session A produced no snapshot at all", targetA.updateCalls.isEmpty());
-            assertFalse("session B produced no snapshot at all", targetB.updateCalls.isEmpty());
+            assertFalse("session A produced no snapshot at all", snapshotCalls(sinkA).isEmpty());
+            assertFalse("session B produced no snapshot at all", snapshotCalls(sinkB).isEmpty());
             // The tab id is what lets the webview route a snapshot to exactly one
             // tab; without it the frontend has to look the owner up by session.
-            for (String call : targetA.updateCalls) {
-                assertTrue("A's push lost its tab id: " + call, call.endsWith(":tab-a"));
+            for (com.opencodebuddy.tab.TabEvent event : sinkA.events) {
+                assertEquals("A's push lost its tab id: " + event, "tab-a", event.getTabId());
+                assertEquals("A's push lost its session id: " + event, "ses_a", event.getSessionId());
             }
-            for (String call : targetB.updateCalls) {
-                assertTrue("B's push lost its tab id: " + call, call.endsWith(":tab-b"));
+            for (com.opencodebuddy.tab.TabEvent event : sinkB.events) {
+                assertEquals("B's push lost its tab id: " + event, "tab-b", event.getTabId());
+                assertEquals("B's push lost its session id: " + event, "ses_b", event.getSessionId());
             }
         } finally {
             coalescerA.dispose();
@@ -187,6 +206,7 @@ public class MultiSessionStreamIsolationTest {
     @Test
     public void usageUpdateIsStampedWithTheStreamingSessionNotTheActiveOne() throws Exception {
         RecordingTarget target = new RecordingTarget();
+        RecordingEventSink sink = new RecordingEventSink();
         OpencodeSession owner = new OpencodeSession(null, null);
         owner.setProvider("opencode");
         owner.setModel("model-a[200k]");
@@ -202,7 +222,7 @@ public class MultiSessionStreamIsolationTest {
         target.getHandlerContext().setSession(active);
         target.getHandlerContext().setCurrentModel("model-b[100k]");
 
-        StreamMessageCoalescer coalescer = new StreamMessageCoalescer("ses_a", target);
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer("ses_a", sink, target);
         try {
             com.google.gson.JsonObject tokens = new com.google.gson.JsonObject();
             tokens.addProperty("input", 2_000);
@@ -238,9 +258,10 @@ public class MultiSessionStreamIsolationTest {
     @Test
     public void snapshotWithoutSessionIdentityIsDroppedButTerminalStillFires() throws Exception {
         RecordingTarget target = new RecordingTarget();
+        RecordingEventSink sink = new RecordingEventSink();
         // sessionId 未解析（null）：既不能猜「当前屏幕上的会话」，也不能把
         // 快照糊到前台去。
-        StreamMessageCoalescer coalescer = new StreamMessageCoalescer((String) null, target);
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer((String) null, sink, target);
         try {
             coalescer.enqueue(List.of(message("ghost")));
 
@@ -248,9 +269,9 @@ public class MultiSessionStreamIsolationTest {
             coalescer.flush(seq -> flushed.countDown());
             assertTrue("flush callback never ran", flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-            for (String call : target.calls) {
+            for (String call : sink.calls()) {
                 assertFalse("un-attributable snapshot reached the webview: " + call,
-                        call.startsWith("updateMessages") || call.startsWith("updateMessageTail"));
+                        call.startsWith("message.snapshot") || call.startsWith("message.tail"));
             }
         } finally {
             coalescer.dispose();
@@ -260,8 +281,9 @@ public class MultiSessionStreamIsolationTest {
     @Test
     public void blankSessionIdentityIsAlsoDropped() throws Exception {
         RecordingTarget target = new RecordingTarget();
+        RecordingEventSink sink = new RecordingEventSink();
         // 空串与 null 同义：前端把 '' 读成「当前会话」，所以同样必须丢。
-        StreamMessageCoalescer coalescer = new StreamMessageCoalescer("   ", target);
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer("   ", sink, target);
         try {
             coalescer.enqueue(List.of(message("ghost")));
             CountDownLatch flushed = new CountDownLatch(1);
@@ -270,7 +292,7 @@ public class MultiSessionStreamIsolationTest {
 
             for (String call : target.calls) {
                 assertFalse("blank session id reached the webview: " + call,
-                        call.startsWith("updateMessages") || call.startsWith("updateMessageTail"));
+                        call.startsWith("message.snapshot") || call.startsWith("message.tail"));
             }
         } finally {
             coalescer.dispose();
@@ -282,7 +304,8 @@ public class MultiSessionStreamIsolationTest {
         // 宿主在 registerSession 时回填 adapter.setSessionId → coalescer.setSessionId，
         // 之后同一实例的快照必须带上新身份。
         RecordingTarget target = new RecordingTarget();
-        StreamMessageCoalescer coalescer = new StreamMessageCoalescer((String) null, target);
+        RecordingEventSink sink = new RecordingEventSink();
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer((String) null, sink, target);
         try {
             coalescer.setSessionId("ses_late");
             coalescer.enqueue(List.of(message("late")));
@@ -290,9 +313,9 @@ public class MultiSessionStreamIsolationTest {
             coalescer.flush(seq -> flushed.countDown());
             assertTrue(flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-            assertFalse(target.updateCalls.isEmpty());
-            assertTrue(target.updateCalls.get(target.updateCalls.size() - 1)
-                    .startsWith("updateMessages:ses_late:["));
+            assertFalse(snapshotCalls(sink).isEmpty());
+            assertTrue(snapshotCalls(sink).get(snapshotCalls(sink).size() - 1)
+                    .startsWith("message.snapshot:ses_late:["));
         } finally {
             coalescer.dispose();
         }
@@ -456,7 +479,7 @@ public class MultiSessionStreamIsolationTest {
             }
             String call = sb.toString();
             calls.add(call);
-            if (call.startsWith("updateMessages") || call.startsWith("updateMessageTail")) {
+            if (call.startsWith("message.snapshot") || call.startsWith("message.tail")) {
                 updateCalls.add(call);
             }
         }

@@ -121,6 +121,23 @@ class BridgeScheduler<T> {
         enqueue(new JsCall<T>(browser, functionName, copyArgs(args), null));
     }
 
+    /**
+     * Enqueue one named event.
+     *
+     * <p>The event's identity (tab, session, turn, sequence) and its content
+     * travel in the envelope; nothing travels positionally. The lane is the
+     * event's tab, so two tabs never share a budget.</p>
+     */
+    void enqueue(com.opencodebuddy.tab.TabEvent event) {
+        T browser = currentBrowser();
+        if (browser == null || event == null) {
+            return;
+        }
+        JsCall<T> call = new JsCall<T>(browser, event.getType(), new String[0], null);
+        call.event = event;
+        enqueue(call);
+    }
+
     void enqueueRaw(String script) {
         if (script == null || script.isEmpty()) {
             return;
@@ -155,7 +172,17 @@ class BridgeScheduler<T> {
     }
 
     private void enqueue(JsCall<T> call) {
-        String laneId = call.rawScript != null ? GLOBAL_LANE : resolveLane(call.args);
+        String laneId;
+        if (call.rawScript != null) {
+            laneId = GLOBAL_LANE;
+        } else if (call.event != null && call.event.getTabId() != null) {
+            laneId = call.event.getTabId();
+        } else if (call.event != null && call.event.getSessionId() != null) {
+            // No tab yet: the lane resolver maps the session to its tab.
+            laneId = resolveLane(new String[] {call.event.getSessionId()});
+        } else {
+            laneId = resolveLane(call.args);
+        }
         call.laneId = laneId;
         call.epoch = call.rawScript != null ? null : epochResolver.apply(laneId);
         boolean scheduleDrain = false;
@@ -417,6 +444,25 @@ class BridgeScheduler<T> {
         if (call.args != null && call.args.length > 0 && call.args[0] != null
                 && call.args[0].startsWith("ses_")) {
             envelope.addProperty("sessionId", call.args[0]);
+        }
+        if (call.event != null) {
+            // A named event: its identity and content are the envelope.
+            JsonObject body = call.event.toJson();
+            envelope.addProperty("type", body.get("type").getAsString());
+            if (body.has("tabId")) {
+                envelope.addProperty("tabId", body.get("tabId").getAsString());
+            }
+            if (body.has("sessionId")) {
+                envelope.addProperty("sessionId", body.get("sessionId").getAsString());
+            }
+            if (body.has("turnId")) {
+                envelope.addProperty("turnId", body.get("turnId").getAsLong());
+            }
+            if (body.has("seq")) {
+                envelope.addProperty("seq", body.get("seq").getAsLong());
+            }
+            envelope.add("payload", body.getAsJsonObject("payload"));
+            return envelope;
         }
         JsonObject payload = new JsonObject();
         JsonArray args = new JsonArray();
@@ -692,6 +738,8 @@ class BridgeScheduler<T> {
         private final String rawScript;
         private String laneId;
         private Long epoch;
+        /** The named event this call carries (null for legacy positional calls). */
+        private com.opencodebuddy.tab.TabEvent event;
 
         JsCall(T browser, String functionName, String[] args, String rawScript) {
             this(browser, functionName, args, rawScript, null, null);

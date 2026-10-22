@@ -147,6 +147,13 @@ export function dispatchHostEnvelope(envelope: HostEnvelope): void {
   }
 
   const payload = envelope.payload;
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)
+      && !('args' in (payload as Record<string, unknown>))) {
+    // A named event: the handler reads the payload by field name and the
+    // envelope for the identity.
+    dispatchHostEvent(envelope.type, [payload, envelope]);
+    return;
+  }
   let args: unknown[] = [];
   if (Array.isArray(payload)) {
     args = payload;

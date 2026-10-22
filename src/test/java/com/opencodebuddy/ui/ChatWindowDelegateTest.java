@@ -67,7 +67,7 @@ public class ChatWindowDelegateTest {
         delegate.handleFrontendReady();
 
         assertFalse(javaScriptCalls.contains("window.applyBackendTabState"));
-        assertTrue(javaScriptCalls.contains("showLoading"));
+        assertTrue(javaScriptCalls.contains("session.loading"));
     }
 
     /**
@@ -82,7 +82,7 @@ public class ChatWindowDelegateTest {
         delegate.handleFrontendReady();
 
         int snapshotIndex = javaScriptCalls.indexOf("window.applyBackendTabState");
-        int replayIndex = javaScriptCalls.indexOf("showLoading");
+        int replayIndex = javaScriptCalls.indexOf("session.loading");
         assertEquals(1, Collections.frequency(javaScriptCalls, "window.applyBackendTabState"));
         assertTrue(snapshotIndex >= 0);
         assertTrue(replayIndex >= 0);
@@ -122,7 +122,7 @@ public class ChatWindowDelegateTest {
                         new Class<?>[]{StreamMessageCoalescer.JsCallbackTarget.class},
                         (proxy, method, args) -> defaultValue(method.getReturnType())
                 );
-        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(coalescerTarget);
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(new com.opencodebuddy.session.RecordingEventSink(), coalescerTarget);
 
         ChatWindowDelegate.DelegateHost host =
                 (ChatWindowDelegate.DelegateHost) Proxy.newProxyInstance(
@@ -142,6 +142,11 @@ public class ChatWindowDelegateTest {
                                     return runtimeRecovery;
                                 case "callJavaScript":
                                     javaScriptCalls.add((String) args[0]);
+                                    return null;
+                                case "publishTabEvent":
+                                case "publishEvent":
+                                    // The state replay travels as named events.
+                                    javaScriptCalls.add(((com.opencodebuddy.tab.TabEvent) args[0]).getType());
                                     return null;
                                 default:
                                     return defaultValue(method.getReturnType());

@@ -221,11 +221,13 @@ public class SessionHandler extends BaseMessageHandler {
     private void rejectCommand(String tabId, String requestId, String code, String message) {
         LOG.warn("[SessionHandler] command rejected (" + code + "): " + message
                 + (tabId != null ? " tab=" + tabId : ""));
-        callJavaScript("commandRejected",
-                escapeJs(tabId != null ? tabId : ""),
-                escapeJs(requestId != null ? requestId : ""),
-                escapeJs(code),
-                escapeJs(message));
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("command.rejected")
+                .tab(tabId)
+                .field("tabId", tabId != null ? tabId : "")
+                .field("requestId", requestId != null ? requestId : "")
+                .field("code", code)
+                .field("message", message)
+                .build());
     }
 
     private void handleSendMessage(String content) {
@@ -715,8 +717,15 @@ public class SessionHandler extends BaseMessageHandler {
                     + " tabId=" + tabId + "; releasing frontend state only");
             if (resolvedSessionId != null && !resolvedSessionId.isBlank()) {
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    context.callJavaScript("onStreamEnd", resolvedSessionId);
-                    context.callJavaScript("showLoading", resolvedSessionId, "false");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("turn.ended")
+                            .session(resolvedSessionId)
+                            .tab(context.getTabIdForSession(resolvedSessionId))
+                            .build());
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.loading")
+                            .session(resolvedSessionId)
+                            .tab(context.getTabIdForSession(resolvedSessionId))
+                            .field("loading", false)
+                            .build());
                 });
             }
             return;
@@ -726,8 +735,15 @@ public class SessionHandler extends BaseMessageHandler {
             ApplicationManager.getApplication().invokeLater(() -> {
                 // Authoritative terminal for this session: no empty-string identity,
                 // so the frontend can never mis-attribute it to the active tab.
-                context.callJavaScript("onStreamEnd", resolvedSessionId != null ? resolvedSessionId : "");
-                context.callJavaScript("showLoading", resolvedSessionId != null ? resolvedSessionId : "", "false");
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("turn.ended")
+                        .session(resolvedSessionId)
+                        .tab(context.getTabIdForSession(resolvedSessionId))
+                        .build());
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.loading")
+                        .session(resolvedSessionId)
+                        .tab(context.getTabIdForSession(resolvedSessionId))
+                        .field("loading", false)
+                        .build());
             });
         });
     }

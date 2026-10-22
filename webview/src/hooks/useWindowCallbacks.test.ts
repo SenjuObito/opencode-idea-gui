@@ -4,6 +4,7 @@ import { useWindowCallbacks } from './useWindowCallbacks.js';
 import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor } from './windowCallbacks/tabTransition';
 import type { UseWindowCallbacksOptions } from './useWindowCallbacks.js';
 import type { ClaudeMessage } from '../types/index.js';
+import { boundEvent, deltaEvent, sessionEvent, snapshotEvent, tailEvent } from '../utils/testEvents';
 
 /**
  * Integration tests for useWindowCallbacks — verifies the real window callback
@@ -181,12 +182,14 @@ describe('useWindowCallbacks integration', () => {
 
   it('drains the latest usage update buffered before React callback registration', () => {
     window.__pendingUsageUpdate = {
-      arg0: 'session-active',
-      arg1: JSON.stringify({
-        percentage: 19,
-        usedTokens: 49300,
-        maxTokens: 258400,
-      }),
+      payload: {
+        usage: JSON.stringify({
+          percentage: 19,
+          usedTokens: 49300,
+          maxTokens: 258400,
+        }),
+      },
+      env: { sessionId: 'session-active' },
     };
     const opts = createOptions();
 
@@ -217,11 +220,11 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.onUsageUpdate!('session-bg', JSON.stringify({
+      window.onUsageUpdate!(...sessionEvent('session-bg', { usage: JSON.stringify({
         percentage: 1,
         usedTokens: 2000,
         maxTokens: 200000,
-      }));
+      }) }));
     });
 
     expect(updateBackgroundTab).toHaveBeenCalledTimes(1);
@@ -237,11 +240,11 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.onUsageUpdate!(JSON.stringify({
+      window.onUsageUpdate!(...sessionEvent(null, { usage: JSON.stringify({
         percentage: 1,
         usedTokens: 2000,
         maxTokens: 200000,
-      }));
+      }) }));
     });
 
     expect(opts.setUsagePercentage).not.toHaveBeenCalled();
@@ -400,7 +403,7 @@ describe('useWindowCallbacks integration', () => {
     beginTransition('tab-new', null, 'transition-2');
 
     act(() => {
-      window.setSessionId!('new-session-123', 'tab-new');
+      window.setSessionId!(...boundEvent('new-session-123', undefined, 'tab-new'));
     });
 
     expect(isTabTransitioning('tab-new')).toBe(false);
@@ -423,7 +426,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!('sess-bg', 'tab-bg');
+      window.setSessionId!(...boundEvent('sess-bg', undefined, 'tab-bg'));
     });
 
     expect(updateTabSessionId).toHaveBeenCalledWith('tab-bg', 'sess-bg');
@@ -446,7 +449,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!('sess-bg', '', 'tab-bg');
+      window.setSessionId!(...boundEvent('sess-bg', undefined, 'tab-bg'));
     });
 
     expect(updateTabSessionId).toHaveBeenCalledWith('tab-bg', 'sess-bg');
@@ -466,7 +469,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!('sess-unknown', '', 'tab-missing');
+      window.setSessionId!(...boundEvent('sess-unknown', undefined, 'tab-missing'));
     });
 
     expect(updateTabSessionId).not.toHaveBeenCalled();
@@ -487,7 +490,7 @@ describe('useWindowCallbacks integration', () => {
 
     beginTransition('tab-active', 'sess-target', 'transition-unknown');
     act(() => {
-      window.setSessionId!('sess-unknown', 'sess-other');
+      window.setSessionId!(...boundEvent('sess-unknown', 'sess-other'));
     });
 
     expect(updateTabSessionId).not.toHaveBeenCalled();
@@ -508,7 +511,7 @@ describe('useWindowCallbacks integration', () => {
     const longAiTitle = 'A very long AI-generated session title that exceeds fifty characters easily';
 
     act(() => {
-      window.updateSessionTitle!('sess-123', longAiTitle);
+      window.updateSessionTitle!(...sessionEvent('sess-123', { title: longAiTitle }));
     });
 
     expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-123', longAiTitle);
@@ -523,7 +526,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateSessionTitle!('sess-stale', 'Stale AI title');
+      window.updateSessionTitle!(...sessionEvent('sess-stale', { title: 'Stale AI title' }));
     });
 
     // The history list entry is still synced so a background session shows its
@@ -540,7 +543,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateSessionTitle!('sess-running', 'Title from the previous session');
+      window.updateSessionTitle!(...sessionEvent('sess-running', { title: 'Title from the previous session' }));
     });
 
     // A newly created tab has no session yet; a title generated for the
@@ -556,7 +559,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateSessionTitle!('sess-123', '   ');
+      window.updateSessionTitle!(...sessionEvent('sess-123', { title: '   ' }));
     });
 
     expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
@@ -579,7 +582,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!('sess-new', 'tab-new');
+      window.setSessionId!(...boundEvent('sess-new', undefined, 'tab-new'));
     });
 
     expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-new', longTitle);
@@ -600,7 +603,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!('sess-new', 'tab-new');
+      window.setSessionId!(...boundEvent('sess-new', undefined, 'tab-new'));
     });
 
     expect(opts.updateHistoryTitle).toHaveBeenCalledWith('sess-new', shortTitle);
@@ -621,7 +624,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify(staleMessages));
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify(staleMessages)));
     });
 
     // setMessages should NOT be called because guard is active
@@ -640,7 +643,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify(freshMessages));
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify(freshMessages)));
     });
 
     // setMessages SHOULD be called
@@ -660,7 +663,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!('ses_target_123', JSON.stringify(freshMessages), '1');
+      window.updateMessages!(...snapshotEvent('ses_target_123', JSON.stringify(freshMessages), '1'));
     });
 
     expect(opts.setMessages).toHaveBeenCalled();
@@ -672,16 +675,16 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify([]), 1);
-      window.historyLoadComplete!('1');
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([]), 1));
+      window.historyLoadComplete!(...sessionEvent('ses_test', { messageCount: '1' }));
     });
 
     expect(window.__pendingHistoryRefreshMessageCount).toBe(1);
 
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify([
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'user', content: 'restored history' },
-      ]), 2);
+      ])));
     });
 
     expect(window.__pendingHistoryRefreshMessageCount).toBeUndefined();
@@ -689,9 +692,9 @@ describe('useWindowCallbacks integration', () => {
     expect(window.sendToJava).toHaveBeenCalledWith('history_dom_committed:1');
 
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify([
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'user', content: 'normal follow-up' },
-      ]), 3);
+      ])));
     });
 
     const historyRefreshCalls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls
@@ -752,12 +755,12 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify([
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'assistant', content: 'already restored' },
-      ]), 1);
+      ])));
     });
     act(() => {
-      window.historyLoadComplete!(1);
+      window.historyLoadComplete!(...sessionEvent('ses_test', { messageCount: 1 }));
     });
 
     expect(window.__pendingHistoryRefreshMessageCount).toBeUndefined();
@@ -775,18 +778,18 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.historyLoadComplete!(1);
-      window.updateMessages!('ses_test', JSON.stringify([
+      window.historyLoadComplete!(...sessionEvent('ses_test', { messageCount: 1 }));
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'assistant', content: 'stale history' },
-      ]), 4);
+      ]), 4));
     });
 
     expect(window.__pendingHistoryRefreshMessageCount).toBe(1);
 
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify([
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'assistant', content: 'current history' },
-      ]), 5);
+      ]), 6));
     });
 
     expect(window.__pendingHistoryRefreshMessageCount).toBeUndefined();
@@ -801,11 +804,11 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.historyLoadComplete!(1);
+      window.historyLoadComplete!(...sessionEvent('ses_test', { messageCount: 1 }));
       window.clearMessages!();
-      window.updateMessages!('ses_test', JSON.stringify([
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'assistant', content: 'new session' },
-      ]), 1);
+      ])));
     });
 
     act(() => vi.runAllTimers());
@@ -958,10 +961,10 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages(initial);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
+    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'new-398' },
       { type: 'assistant', content: 'new-399' },
-    ]), 398, 7));
+    ]), 398, 7)));
 
     expect(buffer.current).toHaveLength(400);
     expect(buffer.current[397]?.content).toBe('old-397');
@@ -999,10 +1002,10 @@ describe('useWindowCallbacks integration', () => {
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 100,
       }));
-      window.updateMessageTail!('ses_test', JSON.stringify([
+      window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
         { type: 'user', content: 'updated-398' },
         { type: 'assistant', content: 'updated-399' },
-      ]), 398, 7);
+      ]), 398));
     });
 
     expect(buffer.current).toHaveLength(500);
@@ -1039,11 +1042,11 @@ describe('useWindowCallbacks integration', () => {
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
       }));
-      window.updateMessages!('ses_test', JSON.stringify([
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'user', content: 'current-user' },
         { type: 'assistant', content: 'updated-answer' },
         { type: 'user', content: 'new-user' },
-      ]), 8);
+      ])));
     });
 
     expect(buffer.current.map(message => message.content)).toEqual([
@@ -1057,7 +1060,7 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
+    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
       {
         type: 'user',
         content: 'question',
@@ -1076,7 +1079,7 @@ describe('useWindowCallbacks integration', () => {
           },
         },
       },
-    ]), 0, 1));
+    ]), 0)));
 
     expect(buffer.current[1]?.durationMs).toBe(5_000);
     expect((buffer.current[1]?.raw as Record<string, unknown>)?.turnUsage).toEqual({
@@ -1091,24 +1094,24 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
+    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'message-220' },
       { type: 'assistant', content: 'message-221' },
-    ]), 220, 7));
+    ]), 220)));
     expect(buffer.current.map((message) => message.content)).toEqual(['message-220', 'message-221']);
     expect(window.__messageBaseIndex).toBe(220);
 
-    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
+    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'message-221' },
       { type: 'assistant', content: 'message-222' },
-    ]), 221, 8));
+    ]), 221)));
     expect(buffer.current.map((message) => message.content)).toEqual(['message-221', 'message-222']);
     expect(window.__messageBaseIndex).toBe(221);
 
-    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
+    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'compacted-170' },
       { type: 'assistant', content: 'compacted-171' },
-    ]), 170, 9));
+    ]), 170)));
     expect(buffer.current.map((message) => message.content)).toEqual(['compacted-170', 'compacted-171']);
     expect(window.__messageBaseIndex).toBe(170);
   });
@@ -1121,12 +1124,12 @@ describe('useWindowCallbacks integration', () => {
     window.__sessionMinAcceptedUpdateSequence = new Map([['ses_test', 8]]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
+    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
       { type: 'assistant', content: 'stale' },
-    ]), 1, 7));
-    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
+    ]), 1, 7)));
+    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
       { type: 'assistant', content: 'invalid-base' },
-    ]), '1oops', 9));
+    ]), '1oops', 9)));
 
     expect(buffer.current.map((message) => message.content)).toEqual(['current', 'answer']);
     expect((window.__sessionMinAcceptedUpdateSequence as Map<string, number>).get('ses_test')).toBe(8);
@@ -1135,14 +1138,14 @@ describe('useWindowCallbacks integration', () => {
   it('resets the tail base when a full snapshot arrives', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
-    act(() => window.updateMessageTail!('ses_test', JSON.stringify([
+    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
       { type: 'assistant', content: 'tail-only' },
-    ]), 220, 7));
+    ]), 220)));
 
-    act(() => window.updateMessages!('ses_test', JSON.stringify([
+    act(() => window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'full-user' },
       { type: 'assistant', content: 'full-answer' },
-    ]), 8));
+    ]))));
 
     expect(buffer.current.map((message) => message.content)).toEqual(['full-user', 'full-answer']);
     expect(window.__messageBaseIndex).toBe(0);
@@ -1159,7 +1162,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.patchMessageUuid?.('sess-123', 'Generated attachment summary', 'uuid-123');
+      window.patchMessageUuid?.(...sessionEvent('sess-123', { content: 'Generated attachment summary', uuid: 'uuid-123' }));
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1200,7 +1203,7 @@ describe('useWindowCallbacks integration', () => {
     beginTransition('tab-active', 'ses_target', 'transition-uuid');
 
     act(() => {
-      window.patchMessageUuid?.('sess-123', 'hello', 'uuid-guarded');
+      window.patchMessageUuid?.(...sessionEvent('sess-123', { content: 'hello', uuid: 'uuid-guarded' }));
     });
 
     expect(opts.setMessages).not.toHaveBeenCalled();
@@ -1214,7 +1217,7 @@ describe('useWindowCallbacks integration', () => {
     beginTransition('tab-active', 'ses_target', 'transition-status');
 
     act(() => {
-      window.updateStatus!('warming runtime');
+      window.updateStatus!(...sessionEvent(null, { status: 'warming runtime' }));
     });
 
     expect(isTabTransitioning('tab-active')).toBe(true);
@@ -1398,7 +1401,7 @@ describe('useWindowCallbacks integration', () => {
 
     // Step 2: During transition, stale messages are blocked
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify([{ type: 'assistant', content: 'stale' }]));
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'stale' }])));
     });
     expect(opts.setMessages).not.toHaveBeenCalled();
 
@@ -1416,9 +1419,7 @@ describe('useWindowCallbacks integration', () => {
 
     // Step 5: After guard release, new messages work
     act(() => {
-      window.updateMessages!('ses_test',
-        JSON.stringify([{ type: 'user', content: 'new message' }])
-      );
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'user', content: 'new message' }])));
     });
     expect(opts.setMessages).toHaveBeenCalled();
   });
@@ -1432,26 +1433,20 @@ describe('useWindowCallbacks integration', () => {
     });
 
     act(() => {
-      window.onStreamEnd?.('ses_test', '10');
+      window.onStreamEnd?.(...sessionEvent('ses_test', { sequence: '10' }));
     });
 
     opts.isStreamingRef.current = false;
     (opts.setMessages as any).mockClear();
 
     act(() => {
-      window.updateMessages!('ses_test',
-        JSON.stringify([{ type: 'assistant', content: 'stale backlog', timestamp: new Date().toISOString() }]),
-        '9',
-      );
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'stale backlog', timestamp: new Date().toISOString() }]), '9'));
     });
 
     expect(opts.setMessages).not.toHaveBeenCalled();
 
     act(() => {
-      window.updateMessages!('ses_test',
-        JSON.stringify([{ type: 'assistant', content: 'final snapshot', timestamp: new Date().toISOString() }]),
-        '10',
-      );
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'final snapshot', timestamp: new Date().toISOString() }])));
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1496,7 +1491,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!('ses_test', JSON.stringify([
+      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
         {
           type: 'assistant',
           content: 'Working',
@@ -1510,7 +1505,7 @@ describe('useWindowCallbacks integration', () => {
             },
           },
         },
-      ]));
+      ])));
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1532,7 +1527,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.onStreamStart?.('replay');
+      window.onStreamStart?.(...sessionEvent(null, { mode: 'replay' }));
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1674,7 +1669,7 @@ describe('useWindowCallbacks integration', () => {
 
       // First onStreamEnd — should process
       act(() => {
-        window.onStreamEnd!('ses_test', '10');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '10' }));
       });
       expect(window.__streamEndProcessedTurnId).toBe(turnId);
 
@@ -1683,7 +1678,7 @@ describe('useWindowCallbacks integration', () => {
 
       // Second onStreamEnd with same turn — should be no-op
       act(() => {
-        window.onStreamEnd!('ses_test', '10');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '10' }));
       });
 
       // setStreamingActive should not have been called again (idempotency)
@@ -1736,7 +1731,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!('ses_test', '5'); });
+      act(() => { window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '5' })); });
 
       expect(window.__deniedToolIds?.has('tool-1')).toBe(false);
       expect(window.__deniedToolIds?.has('tool-2')).toBe(true);
@@ -1766,7 +1761,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!('ses_test', '5'); });
+      act(() => { window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '5' })); });
 
       expect(window.__deniedToolIds?.has('tool-x')).toBe(false);
     });
@@ -1799,7 +1794,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!('ses_test', '5'); });
+      act(() => { window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '5' })); });
 
       expect(window.__deniedToolIds?.has('tool-1')).toBe(false);
       expect(window.__deniedToolIds?.has('tool-2')).toBe(false);
@@ -1889,7 +1884,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!('ses_test', '5'); });
+      act(() => { window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '5' })); });
 
       // last-B (most recent turn) is flagged; old-A (earlier turn) is intentionally NOT.
       expect(window.__deniedToolIds?.has('last-B')).toBe(true);
@@ -1975,7 +1970,7 @@ describe('useWindowCallbacks integration', () => {
       ];
 
       act(() => {
-        window.updateMessages!('ses_test', JSON.stringify(staleSnapshot));
+        window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify(staleSnapshot)));
       });
 
       // streamingMessageIndexRef must NOT be redirected to index 1 (assistant1)
@@ -2040,7 +2035,7 @@ describe('useWindowCallbacks integration', () => {
       ];
 
       act(() => {
-        window.updateMessages!('ses_test', JSON.stringify(staleSnapshot));
+        window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify(staleSnapshot)));
       });
 
       // streamingMessageIndexRef must NOT be redirected to index 1 (assistant1)
@@ -2064,8 +2059,8 @@ describe('useWindowCallbacks integration', () => {
       expect(opts.isStreamingRef.current).toBe(true);
 
       // Simulate first turn's thinking + content deltas
-      act(() => { window.onThinkingDelta!('ses_test', 'Turn1Thinking'); });
-      act(() => { window.onContentDelta!('ses_test', 'Turn1Content'); });
+      act(() => { window.onThinkingDelta!(...deltaEvent('ses_test', 'Turn1Thinking')); });
+      act(() => { window.onContentDelta!(...deltaEvent('ses_test', 'Turn1Content')); });
 
       // Block reset signal arrives (a new assistant turn within the same
       // stream). The Java layer keeps ONE assistant message for the whole
@@ -2080,10 +2075,10 @@ describe('useWindowCallbacks integration', () => {
       expect(opts.isStreamingRef.current).toBe(true);
 
       // Second turn's deltas append to the cumulative buffer.
-      act(() => { window.onThinkingDelta!('ses_test', 'Turn2Thinking'); });
+      act(() => { window.onThinkingDelta!(...deltaEvent('ses_test', 'Turn2Thinking')); });
       expect(opts.streamingThinkingRef.current).toBe('Turn1ThinkingTurn2Thinking');
 
-      act(() => { window.onContentDelta!('ses_test', 'Turn2Content'); });
+      act(() => { window.onContentDelta!(...deltaEvent('ses_test', 'Turn2Content')); });
       expect(opts.streamingContentRef.current).toBe('Turn1ContentTurn2Content');
 
       // Cross-turn separation is enforced downstream by the sync functions'
@@ -2133,7 +2128,7 @@ describe('useWindowCallbacks integration', () => {
     ): ((prev: ClaudeMessage[]) => ClaudeMessage[]) => {
       window.__pendingUpdateJson = JSON.stringify(pendingSnapshot);
       act(() => {
-        window.onStreamEnd!('ses_test', '10');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '10' }));
       });
       delete (window as unknown as Record<string, unknown>).__pendingUpdateJson;
       return (opts.setMessages as any).mock.calls[0][0];
@@ -2294,7 +2289,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!('ses_test', '20');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '20' }));
       });
 
       // The buffer holds the state React would have committed.
@@ -2367,7 +2362,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!('ses_test', '30');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '30' }));
       });
 
       const result = buffer.current;
@@ -2424,7 +2419,7 @@ describe('useWindowCallbacks integration', () => {
 
       act(() => {
         window.onStreamStart!();
-        window.onStreamEnd!('ses_test', '40');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '40' }));
       });
 
       // Verify: no tools should be marked as interrupted.
@@ -2489,7 +2484,7 @@ describe('useWindowCallbacks integration', () => {
       // in the same synchronous EDT block (same React batch).
       act(() => {
         window.onPermissionDenied!();
-        window.onStreamEnd!('ses_test', '50');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '50' }));
       });
 
       const result = buffer.current;
@@ -2600,7 +2595,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!('ses_test', '60');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '60' }));
       });
 
       const result = buffer.current;
@@ -2639,7 +2634,7 @@ describe('useWindowCallbacks integration', () => {
 
       expect(() => {
         act(() => {
-          window.onStreamEnd!('ses_test', '70');
+          window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '70' }));
         });
       }).not.toThrow();
 
@@ -2697,7 +2692,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!('ses_test', '80');
+        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '80' }));
       });
 
       const result = buffer.current;
@@ -2739,9 +2734,9 @@ describe('useWindowCallbacks integration', () => {
 
       // Background session receives tail update
       act(() => {
-        window.updateMessageTail!('session-bg', JSON.stringify([
+        window.updateMessageTail!(...tailEvent('session-bg', JSON.stringify([
           { type: 'user', content: 'bg-tail-30' },
-        ]), 30, 1);
+        ]), 30, 1));
       });
 
       // Active session baseIndex must NOT be polluted by background session
@@ -2749,10 +2744,10 @@ describe('useWindowCallbacks integration', () => {
 
       // Active session receives tail update at baseIndex 40
       act(() => {
-        window.updateMessageTail!('session-active', JSON.stringify([
+        window.updateMessageTail!(...tailEvent('session-active', JSON.stringify([
           { type: 'user', content: 'active-tail-40' },
           { type: 'assistant', content: 'active-tail-41' },
-        ]), 40, 2);
+        ]), 40, 2));
       });
 
       // Active session has full prefix (0..39) preserved + tail (40..41)
@@ -2776,7 +2771,7 @@ describe('useWindowCallbacks integration', () => {
 
       // Push an empty snapshot mid-stream (e.g. backend race)
       act(() => {
-        window.updateMessages!('ses_test', JSON.stringify([]), 5);
+        window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([]), 1));
       });
 
       // Conversation must NOT be wiped to empty []

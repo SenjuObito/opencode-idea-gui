@@ -91,6 +91,12 @@ public class SessionLifecycleManager {
 
         void callJavaScript(String functionName, String... args);
 
+        /** Publish a named event to the webview. */
+        void publishTabEvent(com.opencodebuddy.tab.TabEvent event);
+
+        /** The tab that owns a canonical session id (null when unknown). */
+        String findTabIdForSession(String sessionId);
+
         boolean isDisposed();
 
         JBCefBrowser getBrowser();
@@ -157,14 +163,21 @@ public class SessionLifecycleManager {
                 coalescer = host.getStreamCoalescer();
             }
             long clearBarrierSeq = (coalescer != null) ? coalescer.resetStreamState() : 0L;
-            host.callJavaScript("clearMessages", sessionId, String.valueOf(clearBarrierSeq));
+            host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.cleared")
+                    .session(sessionId)
+                    .tab(host.findTabIdForSession(sessionId))
+                    .field("sequence", clearBarrierSeq)
+                    .build());
 
             final StreamMessageCoalescer coalescerToFlush = coalescer;
             existingSession.loadFromServer().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
                 completeHistoryLoadAfterCoalescerFlush(sessionId, existingSession, coalescerToFlush);
             })).exceptionally(ex -> {
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    host.callJavaScript("historyLoadComplete", sessionId);
+                    host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                            .session(sessionId)
+                            .tab(host.findTabIdForSession(sessionId))
+                            .build());
                     host.callJavaScript("addErrorMessage", sessionId,
                             JsUtils.escapeJs("Failed to load session: " + ex.getMessage()));
                 });
@@ -225,7 +238,11 @@ public class SessionLifecycleManager {
         }
 
         long clearBarrierSeq = (newCoalescer != null) ? newCoalescer.resetStreamState() : 0L;
-        host.callJavaScript("clearMessages", sessionId, String.valueOf(clearBarrierSeq));
+        host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.cleared")
+                .session(sessionId)
+                .tab(host.findTabIdForSession(sessionId))
+                .field("sequence", clearBarrierSeq)
+                .build());
 
         // Prewarm the opencode daemon for the historical session so the
         // first message is fast (serve + SSE subscription + session resolve).
@@ -236,7 +253,10 @@ public class SessionLifecycleManager {
             completeHistoryLoadAfterCoalescerFlush(sessionId, newSession, coalescerToFlush);
         })).exceptionally(ex -> {
             ApplicationManager.getApplication().invokeLater(() -> {
-                host.callJavaScript("historyLoadComplete", sessionId);
+                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                        .session(sessionId)
+                        .tab(host.findTabIdForSession(sessionId))
+                        .build());
                 host.callJavaScript("addErrorMessage", sessionId,
                         JsUtils.escapeJs("Failed to load session: " + ex.getMessage()));
             });
@@ -255,14 +275,22 @@ public class SessionLifecycleManager {
         }
         int messageCount = loadedSession != null ? loadedSession.getMessages().size() : 0;
         if (coalescer == null) {
-            host.callJavaScript("historyLoadComplete", sessionId, String.valueOf(messageCount));
+            host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                    .session(sessionId)
+                    .tab(host.findTabIdForSession(sessionId))
+                    .field("messageCount", messageCount)
+                    .build());
             syncRevertState(sessionId, loadedSession);
             host.markHistoryLoaded(sessionId);
             return;
         }
         coalescer.flush(seq -> {
             if (!host.isDisposed()) {
-                host.callJavaScript("historyLoadComplete", sessionId, String.valueOf(messageCount));
+                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                        .session(sessionId)
+                        .tab(host.findTabIdForSession(sessionId))
+                        .field("messageCount", messageCount)
+                        .build());
                 syncRevertState(sessionId, loadedSession);
                 host.markHistoryLoaded(sessionId);
             }
@@ -281,7 +309,11 @@ public class SessionLifecycleManager {
         } else {
             revertPayload.add("messageId", com.google.gson.JsonNull.INSTANCE);
         }
-        host.callJavaScript("onRevertStateUpdate", sessionId, revertPayload.toString());
+        host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("revert.changed")
+                .session(sessionId)
+                .tab(host.findTabIdForSession(sessionId))
+                .json("state", revertPayload.toString())
+                .build());
     }
 
     /**

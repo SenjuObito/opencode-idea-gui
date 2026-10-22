@@ -33,6 +33,7 @@ import { registerSessionCallbacks } from './registerCallbacks/sessionCallbacks';
 import { registerUsageModeCallbacks } from './registerCallbacks/usageModeCallbacks';
 import { registerPermissionCallbacks } from './registerCallbacks/permissionCallbacks';
 import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCallbacks';
+import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../utils/hostEventTypes';
 
 function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, nextMessages: unknown[] | undefined): boolean {
   if (previousMessages === nextMessages) return true;
@@ -224,10 +225,10 @@ export function registerWindowCallbacks(
   //      session switch, so stale entries from the prior session cannot linger.
   //   3. tool_use_ids are globally unique, so even a delayed event can only
   //      update the agent it was emitted for, never mislabel another.
-  window.onTaskEvent = (arg0: string, arg1?: string) => {
-    const [targetSessionId, eventJson] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+  window.onTaskEvent = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
     try {
-      const taskEvent = parseTaskNotification(JSON.parse(eventJson));
+      const taskEvent = parseTaskNotification(readJson<any>(payload?.event));
       if (!taskEvent) return;
 
       if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
@@ -262,15 +263,15 @@ export function registerWindowCallbacks(
   };
 
   // opencode todo.updated SSE event — stores authoritative todo list
-  window.onTodoUpdated = (arg0: string, arg1?: string) => {
-    const [targetSessionId, payload] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
-    if (!payload) return;
+  window.onTodoUpdated = (eventPayload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    if (!eventPayload?.todos) return;
     try {
-      cardDebugLog('[onTodoUpdated] received payload length:', payload.length);
-      let parsed = JSON.parse(payload);
+      let parsed = readJson<any>(eventPayload.todos);
       if (typeof parsed === 'string') {
         parsed = JSON.parse(parsed);
       }
+      if (!parsed) return;
       const sessionID = parsed?.sessionID ?? parsed?.sessionId;
       const rawTodos = parsed?.todos;
       const effectiveSessionId = targetSessionId || sessionID;

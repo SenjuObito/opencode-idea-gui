@@ -127,6 +127,12 @@ public class ChatWindowDelegate {
         /** Drop the attachments a tab staged. */
         void releaseTabAttachments(String tabId);
 
+        /** Publish a named event to the webview. */
+        void publishEvent(com.opencodebuddy.tab.TabEvent event);
+
+        /** Publish a named event to the webview (the window's own entry point). */
+        void publishTabEvent(com.opencodebuddy.tab.TabEvent event);
+
         /**
          * Soft-reload the currently active session's transcript without interrupting
          * any in-flight turn.
@@ -250,6 +256,10 @@ public class ChatWindowDelegate {
             @Override
             public void releaseTabAttachments(String tabId) {
                 host.releaseTabAttachments(tabId);
+            }
+            @Override
+            public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+                host.publishTabEvent(event);
             }
         };
 
@@ -612,22 +622,43 @@ public class ChatWindowDelegate {
 
         try {
             String sessionId = session.getSessionId();
+            String tabId = host.findTabIdForSession(sessionId);
             if (sessionId != null && !sessionId.trim().isEmpty()) {
-                host.callJavaScript("setSessionId", JsUtils.escapeJs(sessionId));
+                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.bound")
+                        .session(sessionId)
+                        .tab(tabId)
+                        .field("sessionId", sessionId)
+                        .build());
             }
 
             List<OpencodeSession.Message> messages = session.getMessages();
             if (!messages.isEmpty()) {
                 String messagesJson = MessageJsonConverter.convertMessagesToJson(messages);
-                host.callJavaScript("updateMessages", JsUtils.escapeJs(messagesJson));
+                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("message.snapshot")
+                        .session(sessionId)
+                        .tab(tabId)
+                        .field("messages", messagesJson)
+                        .build());
             }
 
-            host.callJavaScript("showLoading", String.valueOf(session.isLoading()));
-            host.callJavaScript("showThinkingStatus", String.valueOf(false));
+            host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loading")
+                    .session(sessionId)
+                    .tab(tabId)
+                    .field("loading", session.isLoading())
+                    .build());
+            host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("thinking.status")
+                    .session(sessionId)
+                    .tab(tabId)
+                    .field("thinking", false)
+                    .build());
 
             String summary = session.getSummary();
             if (summary != null && !summary.trim().isEmpty()) {
-                host.callJavaScript("showSummary", JsUtils.escapeJs(summary));
+                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.summary")
+                        .session(sessionId)
+                        .tab(tabId)
+                        .field("summary", summary)
+                        .build());
             }
 
             // FIX: Restore streaming state after webview reload.
@@ -638,7 +669,11 @@ public class ChatWindowDelegate {
             boolean streamActive = host.getStreamCoalescer().isStreamActive();
             if (streamActive) {
                 LOG.debug("Replaying streaming state to frontend (session was actively streaming during reload)");
-                host.callJavaScript("onStreamStart", "replay");
+                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("turn.started")
+                        .session(sessionId)
+                        .tab(tabId)
+                        .field("mode", "replay")
+                        .build());
             }
 
             LOG.info("Replayed current session state to frontend: sessionId="

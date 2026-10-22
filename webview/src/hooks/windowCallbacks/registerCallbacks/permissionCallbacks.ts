@@ -10,6 +10,26 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { setQuestionAnswer, removeQuestionAnswerByRequestId } from '../../../store/questionAnswerStore';
+import type { HostEventPayload } from '../../../utils/hostEventTypes';
+
+/**
+ * The pre-mount queue holds what the host sent before React mounted: a JSON
+ * document. The handler takes the named payload, so the queue is parsed here.
+ */
+function parseQueuedPrompt(payload: unknown): HostEventPayload | undefined {
+  if (payload && typeof payload === 'object') {
+    return payload as HostEventPayload;
+  }
+  if (typeof payload === 'string') {
+    try {
+      const parsed = JSON.parse(payload);
+      return parsed && typeof parsed === 'object' ? parsed as HostEventPayload : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -56,9 +76,15 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     invalidatePermissionCard?.(channelId ?? '');
   };
 
-  window.showPermissionDialog = (json) => {
+  window.showPermissionDialog = (payload: HostEventPayload | undefined) => {
     try {
-      const request = JSON.parse(json);
+      const request = payload as any;
+      if (!request || !request.channelId) {
+        // A prompt without an identity cannot be answered: dropping it is the
+        // only behaviour that can neither mis-route nor corrupt.
+        cardDebugLog('[PCard][webview] dropping a permission prompt without an id');
+        return;
+      }
       cardDebugLog(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId} tabId=${request.tabId}`);
       const targetSessionId = request.sessionId;
       const tabsStore = window.__sessionTabsStore;
@@ -118,8 +144,9 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   // openRefs stay true, every subsequent show*Dialog enqueues silently behind
   // the orphaned dialog, and the user appears to "lose" all further prompts
   // until they reload the tab — see issue #1360.
-  window.forceClosePermissionDialog = (channelId) => {
-    forceClosePermissionDialog(channelId ?? null);
+  window.forceClosePermissionDialog = (payload: HostEventPayload) => {
+    const channelId = String(payload?.requestId ?? '');
+    forceClosePermissionDialog(channelId || null);
     if (channelId && window.__sessionTabsStore) {
       window.__sessionTabsStore.updateAllTabs?.((t) => {
         if (t.pendingPermissions) {
@@ -129,8 +156,9 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     }
   };
 
-  window.forceCloseAskUserQuestionDialog = (requestId) => {
-    forceCloseAskUserQuestionDialog(requestId ?? null);
+  window.forceCloseAskUserQuestionDialog = (payload: HostEventPayload) => {
+    const requestId = String(payload?.requestId ?? '');
+    forceCloseAskUserQuestionDialog(requestId || null);
     if (requestId && window.__sessionTabsStore) {
       window.__sessionTabsStore.updateAllTabs?.((t) => {
         if (t.pendingQuestions) {
@@ -140,8 +168,9 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     }
   };
 
-  window.forceClosePlanApprovalDialog = (requestId) => {
-    forceClosePlanApprovalDialog(requestId ?? null);
+  window.forceClosePlanApprovalDialog = (payload: HostEventPayload) => {
+    const requestId = String(payload?.requestId ?? '');
+    forceClosePlanApprovalDialog(requestId || null);
   };
 
   if (
@@ -151,13 +180,17 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     const pending = window.__pendingPermissionDialogRequests.slice();
     window.__pendingPermissionDialogRequests = [];
     for (const payload of pending) {
-      window.showPermissionDialog?.(payload);
+      window.showPermissionDialog?.(parseQueuedPrompt(payload));
     }
   }
 
-  window.showAskUserQuestionDialog = (json) => {
+  window.showAskUserQuestionDialog = (payload: HostEventPayload | undefined) => {
     try {
-      const request = JSON.parse(json);
+      const request = payload as any;
+      if (!request || !request.requestId) {
+        cardDebugLog('[QCard][webview] dropping a question without an id');
+        return;
+      }
       cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} sessionId=${request.sessionId} tabId=${request.tabId}`);
       const targetSessionId = request.sessionId;
       const tabsStore = window.__sessionTabsStore;
@@ -221,13 +254,13 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     const pending = window.__pendingAskUserQuestionDialogRequests.slice();
     window.__pendingAskUserQuestionDialogRequests = [];
     for (const payload of pending) {
-      window.showAskUserQuestionDialog?.(payload);
+      window.showAskUserQuestionDialog?.(parseQueuedPrompt(payload));
     }
   }
 
-  window.showPlanApprovalDialog = (json) => {
+  window.showPlanApprovalDialog = (payload: HostEventPayload) => {
     try {
-      const request = JSON.parse(json);
+      const request = payload as any;
       openPlanApprovalDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse plan approval request:', error);
@@ -241,7 +274,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     const pending = window.__pendingPlanApprovalDialogRequests.slice();
     window.__pendingPlanApprovalDialogRequests = [];
     for (const payload of pending) {
-      window.showPlanApprovalDialog?.(payload);
+      window.showPlanApprovalDialog?.(parseQueuedPrompt(payload));
     }
   }
 

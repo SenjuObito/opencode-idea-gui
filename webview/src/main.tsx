@@ -36,6 +36,7 @@ import {
   cancelSurfaceDamagePulse,
 } from './utils/surfaceDamagePulse';
 import { forceWebviewRepaint } from './utils/forceWebviewRepaint';
+import type { HostEventPayload } from './utils/hostEventTypes';
 
 // Silence noisy console output in production (including third-party libs).
 // console.error is preserved so ErrorBoundary and unhandled exceptions still
@@ -474,8 +475,8 @@ if (typeof window !== 'undefined' && !window.updateMessages) {
 // message count is distinguishable from no pending callback.
 if (typeof window !== 'undefined' && !window.historyLoadComplete) {
   debugLog('[Main] Pre-registering historyLoadComplete placeholder');
-  window.historyLoadComplete = (expectedMessageCount?: string | number) => {
-    window.__pendingHistoryLoadComplete = { expectedMessageCount };
+  window.historyLoadComplete = (payload: HostEventPayload | undefined) => {
+    window.__pendingHistoryLoadComplete = { expectedMessageCount: payload?.messageCount as string | number | undefined };
   };
 }
 
@@ -584,7 +585,11 @@ if (typeof window !== 'undefined' && !window.showToast) {
 // is not lost. The real handler drains the queue when it registers.
 if (typeof window !== 'undefined' && !window.commandRejected) {
   debugLog('[Main] Pre-registering commandRejected placeholder');
-  window.commandRejected = (tabId: string, requestId: string, code: string, message: string) => {
+  window.commandRejected = (payload: HostEventPayload) => {
+    const tabId = String(payload.tabId ?? '');
+    const requestId = String(payload.requestId ?? '');
+    const code = String(payload.code ?? '');
+    const message = String(payload.message ?? '');
     debugLog('[Main] Storing pending command rejection:', code, 'tab:', tabId);
     if (!window.__pendingCommandRejections) {
       window.__pendingCommandRejections = [];
@@ -605,9 +610,7 @@ if (typeof window !== 'undefined' && !window.onModeReceived) {
 // Java may refresh recovery usage immediately after frontend_ready, before
 // React's callback effect mounts. Retain the latest snapshot until registration.
 if (typeof window !== 'undefined' && !window.onUsageUpdate) {
-  window.onUsageUpdate = (arg0: string, arg1?: string) => {
-    window.__pendingUsageUpdate = { arg0, arg1 };
-  };
+  window.onUsageUpdate = (payload, env) => { window.__pendingUsageUpdate = { payload, env }; };
 }
 
 // Java can answer frontend_ready before React's callback effect mounts. Keep

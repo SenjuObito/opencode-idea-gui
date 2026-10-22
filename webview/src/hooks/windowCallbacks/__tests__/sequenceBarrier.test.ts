@@ -10,6 +10,7 @@ import { useWindowCallbacks } from '../../useWindowCallbacks';
 import { beginTransition, endTransition, isTabTransitioning } from '../tabTransition';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
+import { sessionEvent, snapshotEvent } from '../../../utils/testEvents';
 
 const createOptions = (overrides?: Partial<UseWindowCallbacksOptions>): UseWindowCallbacksOptions => ({
   addToast: vi.fn(),
@@ -152,11 +153,9 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
 
     // 1. In session-active, conversation occurs and sequence reaches 60
     act(() => {
-      window.updateMessages!(
-        'session-active',
-        JSON.stringify([{ type: 'assistant', content: 'Turn 1 in active session' }]),
-        60
-      );
+      window.updateMessages!(...snapshotEvent('session-active', JSON.stringify([
+        { type: 'assistant', content: 'Turn 1 in active session' },
+      ]), 60));
     });
     expect(currentMessages).toHaveLength(1);
     expect(currentMessages[0].content).toBe('Turn 1 in active session');
@@ -167,20 +166,16 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
 
     // Backend resets stream state and calls clearMessages for session-history with barrier=1
     act(() => {
-      window.clearMessages!('session-history', 1);
+      window.clearMessages!(...sessionEvent('session-history', { sequence: 1 }));
     });
     expect(currentMessages).toHaveLength(0);
 
     // Backend loads session-history messages from server and flushes sequence=2
     act(() => {
-      window.updateMessages!(
-        'session-history',
-        JSON.stringify([
-          { type: 'user', content: 'Historical question' },
-          { type: 'assistant', content: 'Historical answer' },
-        ]),
-        2
-      );
+      window.updateMessages!(...snapshotEvent('session-history', JSON.stringify([
+        { type: 'user', content: 'Historical question' },
+        { type: 'assistant', content: 'Historical answer' },
+      ]), 2));
     });
 
     // 3. VERIFY: History messages MUST NOT be blocked by session-active's sequence 60!
@@ -190,7 +185,7 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
 
     // Complete history load
     act(() => {
-      window.historyLoadComplete!('session-history', 2);
+      window.historyLoadComplete!(...sessionEvent('session-history', { messageCount: 2 }));
     });
     expect(isTabTransitioning('tab-active')).toBe(false);
   });

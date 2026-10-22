@@ -157,8 +157,36 @@ public class PermissionHandler extends BaseMessageHandler {
      */
     private void forceCloseFrontendDialog(String fnName, String targetId) {
         String safeId = targetId == null ? "" : targetId;
-        String escapedId = escapeJs(safeId);
-        callJavaScript("window." + fnName, escapedId);
+        String type = switch (fnName) {
+            case "forceCloseAskUserQuestionDialog" -> "prompt.question.closed";
+            case "forceClosePlanApprovalDialog" -> "prompt.plan.closed";
+            default -> "prompt.closed";
+        };
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of(type)
+                .field("requestId", safeId)
+                .build());
+    }
+
+    /**
+     * Publish a prompt event to the webview.
+     *
+     * <p>The request travels as named fields, and the prompt names the tab it
+     * belongs to: a background tab's prompt must not be answered in another
+     * tab.</p>
+     */
+    private void publishPrompt(String type, String sessionId, com.google.gson.JsonObject fields) {
+        com.opencodebuddy.tab.TabEvent.Builder builder =
+                com.opencodebuddy.tab.TabEvent.of(type).session(sessionId);
+        String tabId = context.getTabIdForSession(sessionId);
+        if (tabId != null) {
+            builder.tab(tabId);
+        }
+        if (fields != null) {
+            for (Map.Entry<String, com.google.gson.JsonElement> entry : fields.entrySet()) {
+                builder.field(entry.getKey(), entry.getValue());
+            }
+        }
+        context.publishEvent(builder.build());
     }
 
     public void setPermissionDeniedCallback(PermissionDeniedCallback callback) {
@@ -260,7 +288,8 @@ public class PermissionHandler extends BaseMessageHandler {
             } catch (Exception ignored) {
             }
 
-            callJavaScript("window.showPermissionDialog", escapedJson);
+            publishPrompt("permission.requested", sessionId, requestData);
+
 
         } catch (Exception e) {
             LOG.error("[PermissionHandler] 显示权限弹窗失败: errorClass=" + errorClass(e), e);
@@ -547,7 +576,7 @@ public class PermissionHandler extends BaseMessageHandler {
             String requestJson = gson.toJson(requestData);
             String escapedJson = escapeJs(requestJson);
 
-            callJavaScript("window.showAskUserQuestionDialog", escapedJson);
+            publishPrompt("question.requested", sessionId, requestData);
         } catch (Exception e) {
             LOG.error("[PermissionHandler] Failed to process onQuestionRequested: " + e.getMessage(), e);
         }
@@ -653,11 +682,18 @@ public class PermissionHandler extends BaseMessageHandler {
         }
 
         try {
-            Gson gson = new Gson();
-            String requestJson = gson.toJson(questionsData);
-            String escapedJson = escapeJs(requestJson);
-
-            callJavaScript("window.showAskUserQuestionDialog", escapedJson);
+            com.google.gson.JsonObject requestData = new com.google.gson.JsonObject();
+            requestData.addProperty("requestId", requestId);
+            if (dialogSessionId != null) {
+                requestData.addProperty("sessionId", dialogSessionId);
+            }
+            if (questionsData != null && questionsData.has("tool")) {
+                requestData.addProperty("toolName", questionsData.get("tool").getAsString());
+            }
+            if (questionsData != null && questionsData.has("questions")) {
+                requestData.add("questions", questionsData.get("questions"));
+            }
+            publishPrompt("question.requested", dialogSessionId, requestData);
 
             scheduleSafetyNet(future, () -> {
                 if (future.complete(new JsonObject())) {
@@ -861,7 +897,7 @@ public class PermissionHandler extends BaseMessageHandler {
             String requestJson = gson.toJson(planData);
             String escapedJson = escapeJs(requestJson);
 
-            callJavaScript("window.showPlanApprovalDialog", escapedJson);
+            publishPrompt("plan.requested", planSessionId, planData);
 
             scheduleSafetyNet(future, () -> {
                 JsonObject timeoutResponse = new JsonObject();

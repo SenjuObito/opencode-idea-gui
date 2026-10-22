@@ -13,7 +13,7 @@ import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBo
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
 import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
-import { resolveSessionIdWithLegacyFallback } from '../../../utils/sessionIdentity';
+import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 
 export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -31,21 +31,19 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     currentProviderRef,
   } = options;
 
-  window.onUsageUpdate = (arg0: string, arg1?: string, arg2?: string) => {
+  window.onUsageUpdate = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     // Usage is per-session state. An update without a session id is
     // unattributable: guessing "the active tab" is exactly what copied the
     // previous session's tokens onto a freshly created one. resolveSessionId
     // counts and drops it instead.
-    const { sessionId: targetSessionId, payload } = resolveSessionIdWithLegacyFallback(
-      arg0,
-      arg1,
-      'usage',
-    );
+    const targetSessionId = env?.sessionId ?? null;
     if (!targetSessionId) {
       return;
     }
 
-    const jsonStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const jsonStr = typeof payload?.usage === 'string'
+      ? payload?.usage
+      : JSON.stringify(payload?.usage ?? {});
 
     try {
       const data = JSON.parse(jsonStr);
@@ -72,7 +70,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         const safePercentage = Math.max(0, Math.min(100, data.percentage));
 
         // The host names the owning tab: routing by tab id is exact.
-        const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+        const targetTabId = env?.tabId ?? null;
         const applyUsage = (tab: any) => {
           tab.usagePercentage = safePercentage;
           tab.usageUsedTokens = used;
@@ -114,12 +112,12 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   if (window.__pendingUsageUpdate) {
-    const pending = window.__pendingUsageUpdate as { arg0: string; arg1?: string } | string;
+    const pending = window.__pendingUsageUpdate as
+      | { payload: HostEventPayload; env?: HostEventEnvelope }
+      | undefined;
     delete window.__pendingUsageUpdate;
-    if (typeof pending === 'object' && pending !== null && 'arg0' in pending) {
-      window.onUsageUpdate(pending.arg0, pending.arg1);
-    } else if (typeof pending === 'string') {
-      window.onUsageUpdate(pending);
+    if (pending && typeof pending === 'object' && 'payload' in pending) {
+      window.onUsageUpdate(pending.payload, pending.env);
     }
   }
 

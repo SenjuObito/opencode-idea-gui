@@ -13,6 +13,7 @@ import type { ContextUsageData } from '../../../components/ContextUsageDialog';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { isSessionTransitioning, transitionTargetOfSession } from '../tabTransition';
+import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 import { debugError } from '../../../utils/debug';
 import { resolveSessionId } from '../../../utils/sessionIdentity';
 import {
@@ -559,29 +560,13 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.updateMessages = (arg0, arg1, arg2, arg3, arg4) => {
-    let targetSessionId: string | null = null;
-    let json: string;
-    let sequenceArg: string | number | undefined;
-    let baseIndexArg: string | number | undefined;
-    // The host stamps the owning tab on every snapshot. When it is present the
-    // routing is exact; the session id is only used as a fallback for hosts
-    // that do not stamp it yet.
-    let targetTabId: string | null = null;
-
-    const isFirstArgJson = typeof arg0 === 'string' && (arg0.trimStart().startsWith('[') || arg0.trimStart().startsWith('{'));
-    if (!isFirstArgJson && typeof arg1 === 'string') {
-      targetSessionId = arg0;
-      json = arg1;
-      sequenceArg = arg2;
-      baseIndexArg = arg3;
-      targetTabId = typeof arg4 === 'string' && arg4.length > 0 ? arg4 : null;
-    } else {
-      targetSessionId = null;
-      json = arg0;
-      sequenceArg = arg1;
-      baseIndexArg = arg2;
-    }
+  window.updateMessages = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    // A named event: the content is in the payload, the identity in the envelope.
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    const json = String(payload?.messages ?? '[]');
+    const sequenceArg = payload?.sequence as string | number | undefined;
+    const baseIndexArg = payload?.baseIndex as string | number | undefined;
+    const targetTabId: string | null = env?.tabId ?? null;
 
     const isForegroundSession = !targetSessionId
       || (targetSessionId === options.currentSessionIdRef?.current)
@@ -700,24 +685,11 @@ export function registerMessageCallbacks(
     processUpdateMessages(json, sequence, baseIndexArg, targetSessionId);
   };
 
-  window.updateMessageTail = (arg0, arg1, arg2, arg3) => {
-    let targetSessionId: string | null = null;
-    let json: string;
-    let baseIndexArg: string | number;
-    let sequenceArg: string | number | undefined;
-
-    const isFirstArgJson = typeof arg0 === 'string' && (arg0.trimStart().startsWith('[') || arg0.trimStart().startsWith('{'));
-    if (!isFirstArgJson && typeof arg1 === 'string') {
-      targetSessionId = arg0;
-      json = arg1;
-      baseIndexArg = arg2 as any;
-      sequenceArg = arg3;
-    } else {
-      targetSessionId = null;
-      json = arg0;
-      baseIndexArg = arg1 as any;
-      sequenceArg = arg2;
-    }
+  window.updateMessageTail = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    const json = String(payload?.messages ?? '[]');
+    const baseIndexArg = payload?.baseIndex as string | number;
+    const sequenceArg = payload?.sequence as string | number | undefined;
 
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
@@ -827,21 +799,23 @@ export function registerMessageCallbacks(
   const pendingMessages = (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
   if (typeof pendingMessages === 'string' && pendingMessages.length > 0) {
     delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
-    window.updateMessages(pendingMessages);
+    window.updateMessages({ messages: pendingMessages });
   } else if (
     pendingMessages &&
     typeof pendingMessages === 'object' &&
     typeof (pendingMessages as { json?: unknown }).json === 'string'
   ) {
     delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
-    const payload = pendingMessages as { json: string; sequence?: number | null };
-    window.updateMessages(payload.json, payload.sequence ?? undefined);
+    const payload = pendingMessages as { json: string; sequence?: number | null; sessionId?: string };
+    window.updateMessages({ messages: payload.json, sequence: payload.sequence ?? undefined },
+      payload.sessionId ? { sessionId: payload.sessionId } : undefined);
   }
 
-  window.updateStatus = (arg0, arg1, arg2) => {
-    const [targetSessionId, text] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+  window.updateStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    const text = payload?.status as string;
     // The host names the owning tab: routing by tab id is exact.
-    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+    const targetTabId = env?.tabId ?? null;
 
     if (targetTabId && window.__sessionTabsStore && window.__sessionTabsStore.isActiveTab
         && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
@@ -884,16 +858,13 @@ export function registerMessageCallbacks(
     addToast(message);
   };
 
-  window.showLoading = (arg0, arg1, arg2) => {
-    const value = typeof arg1 !== 'undefined' ? arg1 : arg0;
-    const targetSessionId = resolveSessionId(
-      typeof arg1 !== 'undefined' ? arg0 : null,
-      'showLoading',
-    );
+  window.showLoading = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const value = payload?.loading;
+    const targetSessionId = resolveSessionId(env?.sessionId ?? null, 'showLoading');
     const isLoading = isTruthy(value);
     if (targetSessionId === null) return;
     // The host names the owning tab: routing by tab id is exact.
-    const targetTabId = typeof arg2 === 'string' && arg2.length > 0 ? arg2 : null;
+    const targetTabId = env?.tabId ?? null;
 
     if (targetTabId && window.__sessionTabsStore && window.__sessionTabsStore.isActiveTab
         && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
@@ -954,9 +925,9 @@ export function registerMessageCallbacks(
     });
   };
 
-  window.showThinkingStatus = (arg0, arg1) => {
-    const [targetSessionId, value] = typeof arg1 !== 'undefined' ? [typeof arg0 === 'string' ? arg0 : null, arg1] : [null, arg0];
-    const isThinkingVal = isTruthy(value);
+  window.showThinkingStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    const isThinkingVal = isTruthy(payload?.thinking);
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
@@ -969,8 +940,9 @@ export function registerMessageCallbacks(
     setIsThinking(isThinkingVal);
   };
 
-  window.showSummary = (arg0, arg1) => {
-    const [targetSessionId, summary] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+  window.showSummary = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    const summary = String(payload?.summary ?? '');
     if (!summary || !summary.trim()) return;
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
@@ -1063,10 +1035,10 @@ export function registerMessageCallbacks(
     return prev;
   };
 
-  window.patchMessageUuid = (arg0, arg1, arg2) => {
-    const targetSessionId = resolveSessionId(arg0, 'patchMessageUuid');
-    const content = arg1;
-    const uuid = arg2;
+  window.patchMessageUuid = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId = resolveSessionId(env?.sessionId ?? null, 'patchMessageUuid');
+    const content = payload?.content as string;
+    const uuid = payload?.uuid as string;
     if (!targetSessionId || !content || !uuid) return;
 
     if (
@@ -1087,10 +1059,9 @@ export function registerMessageCallbacks(
     setMessages((prev) => patchUuidInList(prev, content, uuid));
   };
 
-  window.clearMessages = (arg0, arg1) => {
-    const [targetSessionId, barrierSequenceArg] = typeof arg1 !== 'undefined'
-      ? [typeof arg0 === 'string' ? arg0 : null, arg1]
-      : (typeof arg0 === 'string' && isNaN(Number(arg0)) ? [arg0, undefined] : [null, arg0]);
+  window.clearMessages = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    const barrierSequenceArg = payload?.sequence as string | number | undefined;
 
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       window.__sessionTabsStore.updateBackgroundTab(
@@ -1207,10 +1178,9 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.historyLoadComplete = (arg0, arg1) => {
-    const [targetSessionId, expectedMessageCountArg] = typeof arg1 !== 'undefined'
-      ? [typeof arg0 === 'string' ? arg0 : null, arg1]
-      : (typeof arg0 === 'string' && isNaN(Number(arg0)) ? [arg0, undefined] : [null, arg0]);
+  window.historyLoadComplete = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    const expectedMessageCountArg = payload?.messageCount as string | number | undefined;
 
     const isForeground = !targetSessionId
       || (targetSessionId === options.currentSessionIdRef?.current)
@@ -1273,7 +1243,7 @@ export function registerMessageCallbacks(
   const pendingHistoryLoadComplete = window.__pendingHistoryLoadComplete;
   if (pendingHistoryLoadComplete) {
     window.__pendingHistoryLoadComplete = undefined;
-    window.historyLoadComplete(pendingHistoryLoadComplete.expectedMessageCount);
+    window.historyLoadComplete({ messageCount: pendingHistoryLoadComplete.expectedMessageCount });
   }
 
   // Legacy Codex callback — kept as no-op to avoid breaking older Java hosts.

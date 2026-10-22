@@ -5,6 +5,8 @@ import com.opencodebuddy.util.JsUtils;
 import com.opencodebuddy.util.MessageJsonConverter;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.opencodebuddy.tab.TabEvent;
+import com.opencodebuddy.tab.TabEventSink;
 import com.intellij.ui.jcef.JBCefBrowser;
 import com.intellij.util.Alarm;
 
@@ -80,6 +82,8 @@ public class StreamMessageCoalescer {
     private volatile List<OpencodeSession.Message> lastDeliveredSnapshot = null;
 
     private final JsCallbackTarget callbackTarget;
+    /** Where the coalescer's named events go. */
+    private final TabEventSink eventSink;
     private volatile String sessionId;
 
     /**
@@ -120,17 +124,23 @@ public class StreamMessageCoalescer {
             boolean tailUpdate
     ) {}
 
-    public StreamMessageCoalescer(JsCallbackTarget callbackTarget) {
-        this(null, callbackTarget);
+    public StreamMessageCoalescer(TabEventSink eventSink, JsCallbackTarget callbackTarget) {
+        this(null, null, eventSink, callbackTarget);
     }
 
-    public StreamMessageCoalescer(String sessionId, JsCallbackTarget callbackTarget) {
-        this(sessionId, null, callbackTarget);
+    public StreamMessageCoalescer(String sessionId, TabEventSink eventSink, JsCallbackTarget callbackTarget) {
+        this(sessionId, null, eventSink, callbackTarget);
     }
 
-    public StreamMessageCoalescer(String sessionId, String tabId, JsCallbackTarget callbackTarget) {
+    public StreamMessageCoalescer(
+            String sessionId,
+            String tabId,
+            TabEventSink eventSink,
+            JsCallbackTarget callbackTarget
+    ) {
         this.sessionId = sessionId;
         this.tabId = tabId;
+        this.eventSink = eventSink;
         this.callbackTarget = callbackTarget;
     }
 
@@ -156,6 +166,19 @@ public class StreamMessageCoalescer {
 
     public void setTabId(String tabId) {
         this.tabId = tabId;
+    }
+
+    /**
+     * Publish a named event to the webview.
+     *
+     * <p>The coalescer knows what the event means (a snapshot, a tail, a
+     * heartbeat); the sink knows where it goes.</p>
+     */
+    private void publish(String type, java.util.function.UnaryOperator<TabEvent.Builder> content) {
+        if (eventSink == null) {
+            return;
+        }
+        eventSink.publish(content.apply(TabEvent.of(type)).build());
     }
 
     /**
@@ -502,15 +525,18 @@ public class StreamMessageCoalescer {
                         return;
                     }
                     if (tailUpdate) {
-                        callbackTarget.callJavaScript(
-                                "updateMessageTail",
-                                getTargetSessionId(),
-                                escapedMessagesJson,
-                                String.valueOf(tailBaseIndex),
-                                String.valueOf(pushSequence));
+                        publish("message.tail", b -> b
+                                .session(getTargetSessionId())
+                                .tab(tabId)
+                                .field("messages", escapedMessagesJson)
+                                .field("baseIndex", tailBaseIndex)
+                                .field("sequence", pushSequence));
                     } else {
-                        callbackTarget.callJavaScript("updateMessages", getTargetSessionId(), escapedMessagesJson,
-                                String.valueOf(pushSequence), tabId);
+                        publish("message.snapshot", b -> b
+                                .session(getTargetSessionId())
+                                .tab(tabId)
+                                .field("messages", escapedMessagesJson)
+                                .field("sequence", pushSequence));
                     }
                     synchronized (lock) {
                         // Unconditional: this frame reached the webview, so it becomes the
@@ -596,7 +622,7 @@ public class StreamMessageCoalescer {
                 return;
             }
             try {
-                callbackTarget.callJavaScript("onStreamingHeartbeat", getTargetSessionId());
+                publish("turn.heartbeat", b -> b.session(getTargetSessionId()).tab(tabId));
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("[Heartbeat] Sent streaming heartbeat to frontend");
                 }

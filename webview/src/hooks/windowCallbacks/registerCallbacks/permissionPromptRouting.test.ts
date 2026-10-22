@@ -132,7 +132,7 @@ describe('showPermissionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showPermissionDialog!(permissionJson('per_b1', 'ses_b'));
+    window.showPermissionDialog!(JSON.parse(permissionJson('per_b1', 'ses_b')));
 
     expect(h.openPermissionDialog).not.toHaveBeenCalled();
     expect(tabs[1].pendingPermissions).toHaveLength(1);
@@ -146,8 +146,8 @@ describe('showPermissionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showPermissionDialog!(permissionJson('per_b1', 'ses_b'));
-    window.showPermissionDialog!(permissionJson('per_b1', 'ses_b'));
+    window.showPermissionDialog!(JSON.parse(permissionJson('per_b1', 'ses_b')));
+    window.showPermissionDialog!(JSON.parse(permissionJson('per_b1', 'ses_b')));
 
     expect(h.openPermissionDialog).not.toHaveBeenCalled();
     expect(tabs[0].pendingPermissions).toHaveLength(1);
@@ -158,7 +158,7 @@ describe('showPermissionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showPermissionDialog!(permissionJson('per_a1', 'ses_a'));
+    window.showPermissionDialog!(JSON.parse(permissionJson('per_a1', 'ses_a')));
 
     expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
     expect(h.openPermissionDialog.mock.calls[0][0].channelId).toBe('per_a1');
@@ -171,7 +171,7 @@ describe('showPermissionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showPermissionDialog!(permissionJson('per_x', 'ses_unbound'));
+    window.showPermissionDialog!(JSON.parse(permissionJson('per_x', 'ses_unbound')));
 
     expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
     expect(h.openPermissionDialog.mock.calls[0][0].sessionId).toBe('ses_unbound');
@@ -182,13 +182,15 @@ describe('showPermissionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    expect(() => window.showPermissionDialog!(permissionJson('per_anon', null))).not.toThrow();
+    expect(() => window.showPermissionDialog!(JSON.parse(permissionJson('per_anon', null)))).not.toThrow();
     expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
   });
 
   it('survives a malformed payload without throwing', () => {
     const h = createHarness([], 'tab-a');
-    expect(() => window.showPermissionDialog!('not-json')).not.toThrow();
+    // A payload without an identity is dropped: it cannot be answered, and
+    // guessing would put it in the wrong tab.
+    expect(() => window.showPermissionDialog!(undefined)).not.toThrow();
     expect(h.openPermissionDialog).not.toHaveBeenCalled();
   });
 
@@ -197,10 +199,10 @@ describe('showPermissionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showPermissionDialog!(permissionJson('per_b1', 'ses_b'));
+    window.showPermissionDialog!(JSON.parse(permissionJson('per_b1', 'ses_b')));
     expect(tabs[0].pendingPermissions).toHaveLength(1);
 
-    window.forceClosePermissionDialog!('per_b1');
+    window.forceClosePermissionDialog!({ requestId: 'per_b1' });
 
     expect(h.forceClosePermissionDialog).toHaveBeenCalledWith('per_b1');
     expect(tabs[0].pendingPermissions).toHaveLength(0);
@@ -238,7 +240,7 @@ describe('showAskUserQuestionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showAskUserQuestionDialog!(questionJson('q_b1', 'ses_b'));
+    window.showAskUserQuestionDialog!(JSON.parse(questionJson('q_b1', 'ses_b')));
 
     expect(h.openAskUserQuestionDialog).not.toHaveBeenCalled();
     expect(tabs[1].pendingQuestions).toHaveLength(1);
@@ -251,7 +253,7 @@ describe('showAskUserQuestionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showAskUserQuestionDialog!(questionJson('q_x', 'ses_unbound'));
+    window.showAskUserQuestionDialog!(JSON.parse(questionJson('q_x', 'ses_unbound')));
 
     expect(h.openAskUserQuestionDialog).toHaveBeenCalledTimes(1);
     expect(h.openAskUserQuestionDialog.mock.calls[0][0].sessionId).toBe('ses_unbound');
@@ -262,7 +264,7 @@ describe('showAskUserQuestionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showAskUserQuestionDialog!(questionJson('q_a1', 'ses_a'));
+    window.showAskUserQuestionDialog!(JSON.parse(questionJson('q_a1', 'ses_a')));
 
     expect(h.openAskUserQuestionDialog).toHaveBeenCalledTimes(1);
     expect(tabs[0].pendingQuestions).toHaveLength(0);
@@ -273,10 +275,10 @@ describe('showAskUserQuestionDialog — session routing', () => {
     const h = createHarness(tabs, 'tab-a');
     window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
 
-    window.showAskUserQuestionDialog!(questionJson('q_b1', 'ses_b'));
+    window.showAskUserQuestionDialog!(JSON.parse(questionJson('q_b1', 'ses_b')));
     expect(tabs[0].pendingQuestions).toHaveLength(1);
 
-    window.forceCloseAskUserQuestionDialog!('q_b1');
+    window.forceCloseAskUserQuestionDialog!({ requestId: 'q_b1' });
 
     expect(h.forceCloseAskUserQuestionDialog).toHaveBeenCalledWith('q_b1');
     expect(tabs[0].pendingQuestions).toHaveLength(0);

@@ -89,7 +89,11 @@ class HistoryMetadataService {
 
                 // Echo the persisted title back so the visible header switches over, then
                 // reload the history payload so the row reflects the server-side value.
-                context.callJavaScript("updateSessionTitle", JsUtils.escapeJs(sessionId), JsUtils.escapeJs(title));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("tab.title.changed")
+                        .session(sessionId)
+                        .tab(context.getTabIdForSession(sessionId))
+                        .field("title", title)
+                        .build());
                 historyLoadService.handleLoadHistoryData(provider);
 
             } catch (Exception e) {

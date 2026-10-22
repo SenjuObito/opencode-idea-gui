@@ -17,6 +17,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { registerStreamingCallbacks } from './streamingCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
+import { sessionEvent } from '../../../utils/testEvents';
 
 type Ref<T> = { current: T };
 const ref = <T,>(value: T): Ref<T> => ({ current: value });
@@ -76,7 +77,7 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
   it('clears loading and streaming for the session named on the wire', () => {
     const h = createHarness();
 
-    window.onTurnEnd!('ses_a', JSON.stringify({ turnId: 7, reason: 'idle' }));
+    window.onTurnEnd!(...sessionEvent('ses_a', { terminal: JSON.stringify({ turnId: 7, reason: 'idle' }) }));
 
     expect(h.setStreamingActive).toHaveBeenCalledWith(false);
     expect(h.setLoading).toHaveBeenCalledWith(false);
@@ -88,7 +89,7 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
     const h = createHarness();
 
     // An empty id must never be read as "whichever tab is on screen".
-    window.onTurnEnd!('', JSON.stringify({ turnId: 7 }));
+    window.onTurnEnd!(...sessionEvent(null, { value: '', value: JSON.stringify({ turnId: 7 }) }));
 
     expect(h.setLoading).not.toHaveBeenCalled();
   });
@@ -96,8 +97,8 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
   it('ignores a repeat of the same (sessionId, turnId)', () => {
     const h = createHarness();
 
-    window.onTurnEnd!('ses_a', JSON.stringify({ turnId: 7 }));
-    window.onTurnEnd!('ses_a', JSON.stringify({ turnId: 7 }));
+    window.onTurnEnd!(...sessionEvent('ses_a', { terminal: JSON.stringify({ turnId: 7 }) }));
+    window.onTurnEnd!(...sessionEvent('ses_a', { terminal: JSON.stringify({ turnId: 7 }) }));
 
     expect(h.setLoading).toHaveBeenCalledTimes(1);
   });
@@ -105,8 +106,8 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
   it('accepts a later turn of the same session', () => {
     const h = createHarness();
 
-    window.onTurnEnd!('ses_a', JSON.stringify({ turnId: 7 }));
-    window.onTurnEnd!('ses_a', JSON.stringify({ turnId: 8 }));
+    window.onTurnEnd!(...sessionEvent('ses_a', { terminal: JSON.stringify({ turnId: 7 }) }));
+    window.onTurnEnd!(...sessionEvent('ses_a', { terminal: JSON.stringify({ turnId: 8 }) }));
 
     expect(h.setLoading).toHaveBeenCalledTimes(2);
   });
@@ -114,8 +115,8 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
   it('does not confuse two sessions that use the same turnId', () => {
     const h = createHarness();
 
-    window.onTurnEnd!('ses_a', JSON.stringify({ turnId: 7 }));
-    window.onTurnEnd!('ses_b', JSON.stringify({ turnId: 7 }));
+    window.onTurnEnd!(...sessionEvent('ses_a', { terminal: JSON.stringify({ turnId: 7 }) }));
+    window.onTurnEnd!(...sessionEvent('ses_b', { terminal: JSON.stringify({ turnId: 7 }) }));
 
     expect(h.setLoading).toHaveBeenCalledTimes(2);
   });
@@ -128,7 +129,7 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
       updateBackgroundTab,
     } as unknown as typeof window.__sessionTabsStore;
 
-    window.onTurnEnd!('ses_bg', JSON.stringify({ turnId: 3 }));
+    window.onTurnEnd!(...sessionEvent('ses_bg', { terminal: JSON.stringify({ turnId: 3 }) }));
 
     expect(updateBackgroundTab).toHaveBeenCalledTimes(1);
     // And the active session's own state must be left alone.
@@ -138,7 +139,7 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
   it('survives a payload that is not JSON — identity is what matters', () => {
     const h = createHarness();
 
-    expect(() => window.onTurnEnd!('ses_a', 'not-json')).not.toThrow();
+    expect(() => window.onTurnEnd!(...sessionEvent('ses_a', { value: 'not-json' }))).not.toThrow();
     expect(h.setLoading).toHaveBeenCalledWith(false);
   });
 });

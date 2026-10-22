@@ -152,11 +152,11 @@ public class PermissionDialogIdentityTest {
     }
 
     private List<JsonObject> permissionPayloads() {
-        return js.payloadsFor("window.showPermissionDialog");
+        return js.payloadsFor("permission.requested");
     }
 
     private JsonObject lastQuestionPayload() {
-        List<JsonObject> payloads = js.payloadsFor("window.showAskUserQuestionDialog");
+        List<JsonObject> payloads = js.payloadsFor("question.requested");
         assertFalse("no question dialog was shown", payloads.isEmpty());
         return payloads.get(payloads.size() - 1);
     }
@@ -192,6 +192,11 @@ public class PermissionDialogIdentityTest {
                     public String escapeJs(String str) {
                         return str != null ? str : "";
                     }
+
+                    @Override
+                    public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+                        js.recordEvent(event);
+                    }
                 }
         );
     }
@@ -200,6 +205,12 @@ public class PermissionDialogIdentityTest {
     private static final class RecordingJsCallback {
         private final List<String> functions = new ArrayList<>();
         private final Map<String, List<JsonObject>> payloads = new HashMap<>();
+
+        /** The named events the handler published, by semantic type. */
+        void recordEvent(com.opencodebuddy.tab.TabEvent event) {
+            JsonObject payload = event.toJson().getAsJsonObject("payload");
+            payloads.computeIfAbsent(event.getType(), k -> new ArrayList<>()).add(payload);
+        }
 
         void record(String functionName, String... args) {
             functions.add(functionName);

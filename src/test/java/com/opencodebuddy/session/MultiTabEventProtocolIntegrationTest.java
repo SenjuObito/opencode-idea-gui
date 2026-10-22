@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -32,23 +33,15 @@ public class MultiTabEventProtocolIntegrationTest {
 
     private static Application previousApplication;
 
-    /** The calls one tab's adapter pushed, in order. */
-    private static final class RecordingTarget implements SessionCallbackAdapter.JsTarget {
-        private final List<String> calls = Collections.synchronizedList(new ArrayList<>());
-
-        private void record(String functionName, String... args) {
-            StringBuilder sb = new StringBuilder(functionName);
-            for (String arg : args) {
-                sb.append(':').append(arg);
-            }
-            calls.add(sb.toString());
-        }
+    /** The events one tab's adapter published, in order. */
+    private static final class RecordingTarget implements com.opencodebuddy.tab.TabEventSink {
+        private final List<com.opencodebuddy.tab.TabEvent> calls =
+                Collections.synchronizedList(new ArrayList<>());
 
         @Override
-        public void callJavaScript(String functionName, String... args) {
-            record(functionName, args);
+        public void publish(com.opencodebuddy.tab.TabEvent event) {
+            calls.add(event);
         }
-
     }
 
     @BeforeClass
@@ -119,15 +112,15 @@ public class MultiTabEventProtocolIntegrationTest {
             assertFalse("tab A produced no event at all", targetA.calls.isEmpty());
             assertFalse("tab B produced no event at all", targetB.calls.isEmpty());
 
-            for (String call : targetA.calls) {
-                assertTrue("A's event lost its tab id: " + call, call.contains(":tab-a"));
-                assertFalse("A's event names the other tab: " + call, call.contains(":tab-b"));
-                assertFalse("A's event names the other session: " + call, call.contains("ses_b"));
+            for (com.opencodebuddy.tab.TabEvent event : targetA.calls) {
+                assertEquals("A's event lost its tab id: " + event, "tab-a", event.getTabId());
+                assertFalse("A's event names the other tab: " + event, "tab-b".equals(event.getTabId()));
+                assertFalse("A's event names the other session: " + event, "ses_b".equals(event.getSessionId()));
             }
-            for (String call : targetB.calls) {
-                assertTrue("B's event lost its tab id: " + call, call.contains(":tab-b"));
-                assertFalse("B's event names the other tab: " + call, call.contains(":tab-a"));
-                assertFalse("B's event names the other session: " + call, call.contains("ses_a"));
+            for (com.opencodebuddy.tab.TabEvent event : targetB.calls) {
+                assertEquals("B's event lost its tab id: " + event, "tab-b", event.getTabId());
+                assertFalse("B's event names the other tab: " + event, "tab-a".equals(event.getTabId()));
+                assertFalse("B's event names the other session: " + event, "ses_a".equals(event.getSessionId()));
             }
         } finally {
             adapterA.deactivate();
@@ -152,9 +145,9 @@ public class MultiTabEventProtocolIntegrationTest {
             awaitCalls(target, 1);
 
             assertTrue(target.calls.size() >= 1);
-            String call = target.calls.get(0);
-            assertTrue("the event lost its session id: " + call, call.contains("ses_legacy"));
-            assertTrue("the event invented a tab id: " + call, call.endsWith(":"));
+            com.opencodebuddy.tab.TabEvent event = target.calls.get(0);
+            assertEquals("the event lost its session id: " + event, "ses_legacy", event.getSessionId());
+            assertTrue("the event invented a tab id: " + event, event.getTabId() == null);
         } finally {
             adapter.deactivate();
         }
@@ -169,8 +162,8 @@ public class MultiTabEventProtocolIntegrationTest {
             adapter.onContentDelta("after-bind");
             awaitCalls(target, 1);
 
-            String call = target.calls.get(0);
-            assertTrue("the event lost its tab id: " + call, call.contains(":tab-later"));
+            com.opencodebuddy.tab.TabEvent event = target.calls.get(0);
+            assertEquals("the event lost its tab id: " + event, "tab-later", event.getTabId());
         } finally {
             adapter.deactivate();
         }

@@ -206,6 +206,7 @@ public class OpencodeBuddyChatWindow {
     private HistoryHandler historyHandler;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final WebviewEventQueue<JBCefBrowser> webviewEventQueue;
+    private final com.opencodebuddy.tab.TabEventBus tabEventBus;
 
     // Delegates
     private WebviewInitializer webviewInitializer;
@@ -239,6 +240,7 @@ public class OpencodeBuddyChatWindow {
             return record != null ? record.getEpoch() : null;
         });
         this.webviewEventQueue.setSnapshotRequiredListener(this::onBridgeSnapshotRequired);
+        this.tabEventBus = new com.opencodebuddy.tab.TabEventBus(event -> this.webviewEventQueue.enqueue(event));
 
         this.tabSessionFactory = new TabSessionFactory(tabRegistry, new TabSessionFactory.Host() {
             @Override
@@ -1766,10 +1768,7 @@ public class OpencodeBuddyChatWindow {
      * in that tab's lane.</p>
      */
     public void publishTabEvent(com.opencodebuddy.tab.TabEvent event) {
-        if (event == null) {
-            return;
-        }
-        webviewEventQueue.enqueue(event);
+        tabEventBus.publish(event);
     }
 
     /**

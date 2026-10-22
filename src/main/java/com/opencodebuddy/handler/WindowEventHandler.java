@@ -21,7 +21,7 @@ public class WindowEventHandler extends BaseMessageHandler {
         "tab_activate", "close_session",
         "frontend_ready", "history_dom_committed",
         "history_render_complete", "surface_damage_applied",
-        "refresh_slash_commands",
+        "refresh_slash_commands", "commands.refresh",
         "session.fork", "share_session", "unshare_session",
         "session.revert", "session.unrevert", "session.compact",
         "context.refresh"
@@ -39,7 +39,7 @@ public class WindowEventHandler extends BaseMessageHandler {
         void onFrontendReady();
         void onHistoryRenderComplete(long commitEpoch);
         void onSurfaceDamageApplied(String token, String phase, boolean applied);
-        void onRefreshSlashCommands();
+        void onRefreshSlashCommands(String tabId);
         default void onRefreshEditorContext(boolean enabled) {}
         /**
          * A fork produced a new session: bind it to the target tab the webview
@@ -89,7 +89,8 @@ public class WindowEventHandler extends BaseMessageHandler {
                 handleSurfaceDamageApplied(content);
                 return true;
             case "refresh_slash_commands":
-                callback.onRefreshSlashCommands();
+            case "commands.refresh":
+                callback.onRefreshSlashCommands(parseSessionId(content));
                 return true;
             case "session.fork":
                 handleSessionFork(content);

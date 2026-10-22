@@ -71,6 +71,7 @@ public final class EventCatalog {
         // ── prompts ────────────────────────────────────────────────────────
         byType.put("permission.requested", "showPermissionDialog");
         byType.put("question.requested", "showAskUserQuestionDialog");
+        byType.put("question.answered", "onQuestionAnswered");
         byType.put("plan.requested", "showPlanApprovalDialog");
         byType.put("prompt.closed", "forceClosePermissionDialog");
         byType.put("prompt.question.closed", "forceCloseAskUserQuestionDialog");

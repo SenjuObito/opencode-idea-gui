@@ -9,6 +9,7 @@ import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.common.MessageCallback;
 import com.opencodebuddy.provider.common.SDKResult;
 import com.opencodebuddy.session.OpencodeSession;
+import com.opencodebuddy.tab.PendingSend;
 import com.opencodebuddy.utils.PluginFileLogger;
 import com.intellij.openapi.diagnostic.Logger;
 
@@ -221,7 +222,7 @@ public class OpenCodeSDKBridge {
 
         SDKResult result = new SDKResult();
         OpenCodeMarkerParser.StreamContext context = new OpenCodeMarkerParser.StreamContext();
-        return daemon.sendCommand("opencode.send", params, new DaemonBridge.DaemonOutputCallback() {
+        DaemonBridge.DaemonOutputCallback output = new DaemonBridge.DaemonOutputCallback() {
             @Override
             public void onLine(String line) {
                 markerParser.processOutputLine(line, callback, result, context);
@@ -246,6 +247,17 @@ public class OpenCodeSDKBridge {
                 result.success = success && !context.hadSendError.get();
                 result.messageCount = result.messages.size();
                 callback.onComplete(result);
+            }
+        };
+        AtomicReference<PendingSend> pending = new AtomicReference<>();
+        return daemon.sendCommand("opencode.send", params, output, requestId -> {
+            PendingSend send = new PendingSend(requestId, null, output::onLine);
+            pending.set(send);
+            daemon.registerPendingSend(send);
+        }).whenComplete((ok, err) -> {
+            PendingSend send = pending.get();
+            if (send != null) {
+                daemon.unregisterPendingSend(send);
             }
         }).thenApply(v -> result);
     }
@@ -281,7 +293,7 @@ public class OpenCodeSDKBridge {
 
         SDKResult result = new SDKResult();
         OpenCodeMarkerParser.StreamContext context = new OpenCodeMarkerParser.StreamContext();
-        return daemon.sendCommand("opencode.shell", params, new DaemonBridge.DaemonOutputCallback() {
+        DaemonBridge.DaemonOutputCallback output = new DaemonBridge.DaemonOutputCallback() {
             @Override
             public void onLine(String line) {
                 markerParser.processOutputLine(line, callback, result, context);
@@ -306,6 +318,17 @@ public class OpenCodeSDKBridge {
                 result.success = success && !context.hadSendError.get();
                 result.messageCount = result.messages.size();
                 callback.onComplete(result);
+            }
+        };
+        AtomicReference<PendingSend> pending = new AtomicReference<>();
+        return daemon.sendCommand("opencode.shell", params, output, requestId -> {
+            PendingSend send = new PendingSend(requestId, null, output::onLine);
+            pending.set(send);
+            daemon.registerPendingSend(send);
+        }).whenComplete((ok, err) -> {
+            PendingSend send = pending.get();
+            if (send != null) {
+                daemon.unregisterPendingSend(send);
             }
         }).thenApply(v -> result);
     }

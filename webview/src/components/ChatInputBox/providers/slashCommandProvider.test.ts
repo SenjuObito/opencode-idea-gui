@@ -14,6 +14,8 @@ vi.mock('../../../i18n/config', () => ({
 
 vi.mock('../../../utils/bridge', () => ({
   sendBridgeEvent: vi.fn(() => true),
+  sendHostCommand: vi.fn(() => true),
+  sendWindowCommand: vi.fn(() => true),
 }));
 
 describe('slashCommandProvider', () => {

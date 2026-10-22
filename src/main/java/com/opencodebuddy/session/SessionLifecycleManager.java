@@ -350,7 +350,19 @@ public class SessionLifecycleManager {
      * Merges built-in commands with local and dynamic OpenCode daemon commands.
      */
     public void fetchSlashCommandsOnStartup() {
-        OpencodeSession currentSession = host.getSession();
+        fetchSlashCommandsOnStartup(null);
+    }
+
+    /**
+     * Refresh the command palette for one tab. The tab may be unbound (no
+     * session yet), in which case the active session or project path supplies
+     * the cwd.
+     */
+    public void fetchSlashCommandsOnStartup(String tabId) {
+        OpencodeSession currentSession = tabId != null ? host.getSession(tabId) : null;
+        if (currentSession == null) {
+            currentSession = host.getSession();
+        }
         String cwd = currentSession != null ? currentSession.getCwd() : null;
         if (cwd == null) {
             cwd = host.getProject().getBasePath();

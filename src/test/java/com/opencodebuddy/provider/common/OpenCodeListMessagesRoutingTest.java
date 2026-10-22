@@ -323,6 +323,69 @@ public class OpenCodeListMessagesRoutingTest {
         }
     }
 
+    @Test
+    public void newSessionBootstrapWithoutASessionStampReplaysThroughPendingSend() throws Exception {
+        // core now emits [SESSION_ID] before bindSession, so the envelope has an
+        // id and no session (plan §8.2.1). The host must hold pre-bind content in
+        // the request's PendingSend, deliver the marker to the request, and replay
+        // the content into the sink once the tab binds it.
+        ScriptedProcess process = new ScriptedProcess();
+        process.emitReady();
+        DaemonBridge bridge = new DaemonBridge(
+                null, null, null, DaemonBridge.TimeSource.system(),
+                () -> process, DaemonBridge.DaemonLifecycleHooks.NO_OP);
+        assertTrue(bridge.start());
+        try {
+            RecordingSink requestLines = new RecordingSink();
+            java.util.concurrent.atomic.AtomicReference<com.opencodebuddy.tab.PendingSend> pending =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            bridge.sendCommand("opencode.send", new JsonObject(), new DaemonBridge.DaemonOutputCallback() {
+                @Override
+                public void onLine(String line) {
+                    requestLines.lines.add(line);
+                }
+
+                @Override
+                public void onStderr(String text) {
+                }
+
+                @Override
+                public void onError(String error) {
+                }
+
+                @Override
+                public void onComplete(boolean success) {
+                }
+            }, requestId -> {
+                com.opencodebuddy.tab.PendingSend send =
+                        new com.opencodebuddy.tab.PendingSend(requestId, null, requestLines.lines::add);
+                pending.set(send);
+                bridge.registerPendingSend(send);
+            });
+            String requestId = awaitRequestId(process);
+            assertNotNull("host never sent the send request", requestId);
+
+            process.emit(envelope(requestId, "[CONTENT_DELTA] \"before\""));
+            process.emit(envelope(requestId, "[SESSION_ID] ses_new"));
+            awaitLine(requestLines.lines, "[SESSION_ID] ses_new",
+                    "identity marker must reach the request that created the session");
+            assertFalse("pre-bind content stays out of the request collector",
+                    requestLines.lines.contains("[CONTENT_DELTA] \"before\""));
+
+            process.emit(envelope(requestId, "[CONTENT_DELTA] \"after\""));
+            RecordingSink sessionSink = new RecordingSink();
+            bridge.registerSessionSink("ses_new", sessionSink);
+
+            awaitLine(sessionSink.lines, "[CONTENT_DELTA] \"before\"",
+                    "pre-bind content must be replayed when the sink binds");
+            awaitLine(sessionSink.lines, "[CONTENT_DELTA] \"after\"",
+                    "post-marker content must reach the bound sink");
+        } finally {
+            closeQuietly(process);
+            bridge.stop();
+        }
+    }
+
     // ===== helpers =====
 
     private static void closeQuietly(ScriptedProcess process) {

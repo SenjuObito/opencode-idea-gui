@@ -298,7 +298,7 @@ interface Window {
    * Host sends complete Q&A data after the user answers.
    * JSON: { callId, requestId, questions, answers }
    */
-  onQuestionAnswered?: (json: string) => void;
+  onQuestionAnswered?: (json: HostEventPayload | string) => void;
 
   /**
    * Revert state update callback - JSON `{ hasRevert: boolean, messageId?: string }`

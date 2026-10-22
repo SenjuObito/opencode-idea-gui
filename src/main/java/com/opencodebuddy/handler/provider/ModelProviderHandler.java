@@ -111,7 +111,7 @@ public class ModelProviderHandler {
             }
 
             if (modelChanged && !silent) {
-                usagePushService.clearUsageDisplay();
+                usagePushService.clearUsageDisplay(targetSession);
             }
 
             if (!silent && context.getProject() != null) {
@@ -128,7 +128,7 @@ public class ModelProviderHandler {
                 context.callJavaScript("window.onModelConfirmed",
                         context.escapeJs(confirmedModel), context.escapeJs(confirmedProvider));
                 if (modelChanged) {
-                    usagePushService.pushUsageUpdateAfterModelChange(newMaxTokens);
+                    usagePushService.pushUsageUpdateAfterModelChange(targetSession, newMaxTokens);
                 }
             });
         } catch (Exception e) {

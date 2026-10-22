@@ -861,12 +861,14 @@ public class PermissionHandler extends BaseMessageHandler {
                                 forceCloseFrontendDialog("invalidateQuestionCard", requestId);
                             } else {
                                 // Emit complete Q&A data to webview only after successful reply
-                                JsonObject onQAData = new JsonObject();
-                                onQAData.addProperty("callId", pending.toolName != null ? pending.toolName : "");
-                                onQAData.addProperty("requestId", requestId);
-                                onQAData.add("questions", pending.questions);
-                                onQAData.add("answers", answers);
-                                callJavaScript("window.onQuestionAnswered", escapeJs(gson.toJson(onQAData)));
+                                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("question.answered")
+                                        .tab(context.getTabIdForSession(pending.sessionId))
+                                        .session(pending.sessionId)
+                                        .field("callId", pending.toolName != null ? pending.toolName : "")
+                                        .field("requestId", requestId)
+                                        .field("questions", pending.questions)
+                                        .field("answers", answers)
+                                        .build());
                             }
                         });
             } else {

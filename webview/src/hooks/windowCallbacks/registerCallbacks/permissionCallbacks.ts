@@ -238,7 +238,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   // Host sends complete Q&A data after the user answers.
   window.onQuestionAnswered = (json) => {
     try {
-      const data = JSON.parse(json);
+      const data = typeof json === 'string' ? JSON.parse(json) : json;
       cardDebugLog(`[PCard][webview] onQuestionAnswered callId="${data.callId}" requestId="${data.requestId}" questions=${data.questions?.length ?? 0} answers=`, data.answers);
       cardDebugLog(`[QCard][webview] onQuestionAnswered callId=${data.callId} requestId=${data.requestId}`);
       setQuestionAnswer(data);

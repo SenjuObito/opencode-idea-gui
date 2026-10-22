@@ -21,7 +21,7 @@ import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
-import { sendBridgeEvent, cardDebugLog } from './utils/bridge';
+import { sendBridgeEvent, sendHostCommand, sendWindowCommand, cardDebugLog } from './utils/bridge';
 import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
 import { installPinnedModelsBridge } from './components/ChatInputBox/modelSelectUtils';
 import { debugLog } from './utils/debug';
@@ -732,8 +732,13 @@ waitForBridge(() => {
   sendBridgeEvent('get_ui_font_config');
   sendBridgeEvent('get_code_font_config');
 
-  debugLog('[Main] Sending refresh_slash_commands request');
-  sendBridgeEvent('refresh_slash_commands');
+  debugLog('[Main] Sending commands.refresh request');
+  const refreshTabId = window.__sessionTabsStore?.getActiveTabId?.();
+  if (refreshTabId) {
+    sendHostCommand(refreshTabId, 'commands.refresh');
+  } else {
+    sendWindowCommand('commands.refresh');
+  }
 
   sendBridgeEvent('get_linkify_capabilities');
 });

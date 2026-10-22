@@ -207,6 +207,6 @@ public class WindowEventHandlerTest {
                 String phase,
                 boolean applied
         ) { }
-        @Override public void onRefreshSlashCommands() { }
+        @Override public void onRefreshSlashCommands(String tabId) { }
     }
 }

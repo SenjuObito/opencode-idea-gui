@@ -1,5 +1,5 @@
 import type { CommandItem, DropdownItemData } from '../types';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { sendHostCommand, sendWindowCommand } from '../../../utils/bridge';
 import i18n from '../../../i18n/config';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
 
@@ -267,7 +267,10 @@ function requestRefresh(): boolean {
   }
 
   const attempt = retryCount + 1;
-  const sent = sendBridgeEvent('refresh_slash_commands');
+  const activeTabId = window.__sessionTabsStore?.getActiveTabId?.();
+  const sent = activeTabId
+    ? sendHostCommand(activeTabId, 'commands.refresh')
+    : sendWindowCommand('commands.refresh');
   if (!sent) {
     debugLog('[SlashCommand] Bridge not available yet, refresh not sent');
     return false;

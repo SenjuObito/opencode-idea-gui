@@ -38,29 +38,33 @@ public class UsagePushService {
      * Recalculates percentage and maxTokens based on the new model's context limit.
      */
     public void pushUsageUpdateAfterModelChange(int newMaxTokens) {
+        pushUsageUpdateAfterModelChange(context.getActiveTabSession(), newMaxTokens);
+    }
+
+    public void pushUsageUpdateAfterModelChange(OpencodeSession target, int newMaxTokens) {
         try {
-            OpencodeSession session = context.getActiveTabSession();
+            OpencodeSession session = target != null ? target : context.getActiveTabSession();
             if (session == null) {
-                clearUsageDisplay();
+                clearUsageDisplay(null);
                 return;
             }
 
-            // Extract the latest usage information from the current session
+            // Extract the latest usage information from the addressed session.
             List<OpencodeSession.Message> messages = session.getMessages();
             JsonObject lastUsage = TokenUsageUtils.findLastUsageFromSessionMessages(
                     messages,
-                    context.getCurrentProvider()
+                    session.getProvider()
             );
             if (lastUsage == null) {
                 // No provider snapshot is available yet. Keep the context unknown
                 // instead of presenting a static capacity as session truth.
-                clearUsageDisplay();
+                clearUsageDisplay(session);
                 return;
             }
-            int usedTokens = TokenUsageUtils.extractContextTokens(lastUsage, context.getCurrentProvider());
+            int usedTokens = TokenUsageUtils.extractContextTokens(lastUsage, session.getProvider());
 
             // Send update
-            sendUsageUpdate(usedTokens, newMaxTokens);
+            sendUsageUpdate(session, usedTokens, newMaxTokens);
 
         } catch (Exception e) {
             LOG.error("[UsagePushService] Failed to push usage update after model change: " + e.getMessage(), e);
@@ -76,8 +80,12 @@ public class UsagePushService {
      * @return true when a trusted usage snapshot was scheduled for delivery
      */
     public boolean pushCurrentUsageIfAvailable(int fallbackMaxTokens) {
+        return pushCurrentUsageIfAvailable(context.getActiveTabSession(), fallbackMaxTokens);
+    }
+
+    public boolean pushCurrentUsageIfAvailable(OpencodeSession target, int fallbackMaxTokens) {
         try {
-            OpencodeSession session = context.getActiveTabSession();
+            OpencodeSession session = target != null ? target : context.getActiveTabSession();
             if (session == null) {
                 return false;
             }
@@ -91,7 +99,7 @@ public class UsagePushService {
 
             int usedTokens = TokenUsageUtils.extractContextTokens(lastUsage, provider);
             int maxTokens = TokenUsageUtils.extractMaxTokens(lastUsage, fallbackMaxTokens);
-            sendUsageUpdate(usedTokens, maxTokens);
+            sendUsageUpdate(session, usedTokens, maxTokens);
             return true;
         } catch (Exception e) {
             LOG.error("[UsagePushService] Failed to restore current usage: " + e.getMessage(), e);
@@ -103,6 +111,10 @@ public class UsagePushService {
      * Send usage update to the frontend.
      */
     public void sendUsageUpdate(int usedTokens, int maxTokens) {
+        sendUsageUpdate(context.getActiveTabSession(), usedTokens, maxTokens);
+    }
+
+    public void sendUsageUpdate(OpencodeSession session, int usedTokens, int maxTokens) {
         int percentage = Math.min(100, maxTokens > 0 ? (int) ((usedTokens * 100.0) / maxTokens) : 0);
 
         LOG.info("[UsagePushService] Sending usage update: usedTokens=" + usedTokens + ", maxTokens=" + maxTokens + ", percentage=" + percentage + "%");
@@ -115,7 +127,7 @@ public class UsagePushService {
         usageUpdate.addProperty("usedTokens", usedTokens);
         usageUpdate.addProperty("maxTokens", maxTokens);
 
-        sendUsagePayload(usageUpdate);
+        sendUsagePayload(usageUpdate, session);
     }
 
     /**
@@ -123,10 +135,18 @@ public class UsagePushService {
      * Omitting numerator and denominator also clears the frontend tooltip values.
      */
     public void clearUsageDisplay() {
-        clearStatusBarUsage();
+        clearUsageDisplay(context.getActiveTabSession());
+    }
+
+    public void clearUsageDisplay(OpencodeSession session) {
         JsonObject usageUpdate = new JsonObject();
         usageUpdate.addProperty("percentage", 0);
-        sendUsagePayload(usageUpdate);
+        if (session == null || session == context.getActiveTabSession()) {
+            clearStatusBarUsage();
+            sendUsagePayload(usageUpdate);
+        } else {
+            sendUsagePayload(usageUpdate, session);
+        }
     }
 
     void clearStatusBarUsage() {
@@ -136,8 +156,11 @@ public class UsagePushService {
     }
 
     void sendUsagePayload(JsonObject usageUpdate) {
+        sendUsagePayload(usageUpdate, context.getActiveTabSession());
+    }
+
+    void sendUsagePayload(JsonObject usageUpdate, OpencodeSession session) {
         String usageJson = gson.toJson(usageUpdate);
-        OpencodeSession session = context.getActiveTabSession();
         String sessionId = (session != null) ? session.getSessionId() : null;
         if (sessionId == null || sessionId.isEmpty()) {
             // Never send an un-attributable usage update: the webview used to read
@@ -147,7 +170,11 @@ public class UsagePushService {
             LOG.debug("[UsagePushService] Dropping usage payload without a session id");
             return;
         }
-        context.callJavaScript("window.onUsageUpdate", sessionId, context.escapeJs(usageJson));
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("usage.updated")
+                .tab(context.getTabIdForSession(sessionId))
+                .session(sessionId)
+                .json("usage", usageJson)
+                .build());
     }
 
     /**

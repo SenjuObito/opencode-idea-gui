@@ -58,10 +58,14 @@ public class OpenCodeSDKBridgeModelTest {
         public CompletableFuture<Boolean> sendCommand(
                 String method,
                 JsonObject params,
-                DaemonOutputCallback callback
+                DaemonOutputCallback callback,
+                java.util.function.Consumer<String> onRequestId
         ) {
             this.method = method;
             this.params = params;
+            if (onRequestId != null) {
+                onRequestId.accept("req-test");
+            }
             return CompletableFuture.completedFuture(true);
         }
     }

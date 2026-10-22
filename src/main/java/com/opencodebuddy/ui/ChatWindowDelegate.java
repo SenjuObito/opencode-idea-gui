@@ -415,8 +415,8 @@ public class ChatWindowDelegate {
             ) {
                 host.onSurfaceDamageApplied(token, phase, applied);
             }
-            @Override public void onRefreshSlashCommands() {
-                host.getSessionLifecycleManager().fetchSlashCommandsOnStartup();
+            @Override public void onRefreshSlashCommands(String tabId) {
+                host.getSessionLifecycleManager().fetchSlashCommandsOnStartup(tabId);
             }
             @Override public void onRefreshEditorContext(boolean enabled) {
                 host.onRefreshEditorContext(enabled);

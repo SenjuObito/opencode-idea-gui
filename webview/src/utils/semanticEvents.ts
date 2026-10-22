@@ -50,6 +50,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   // ── prompts ────────────────────────────────────────────────────────
   'permission.requested': 'showPermissionDialog',
   'question.requested': 'showAskUserQuestionDialog',
+  'question.answered': 'onQuestionAnswered',
   'plan.requested': 'showPlanApprovalDialog',
   'prompt.closed': 'forceClosePermissionDialog',
   'prompt.question.closed': 'forceCloseAskUserQuestionDialog',

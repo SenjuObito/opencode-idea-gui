@@ -5,6 +5,7 @@ import com.opencodebuddy.bridge.CliPathAutoFill;
 import com.opencodebuddy.bridge.CliSpecResolver;
 import com.opencodebuddy.bridge.EnvironmentConfigurator;
 import com.opencodebuddy.bridge.NodeDetector;
+import com.opencodebuddy.tab.PendingSend;
 import com.opencodebuddy.utils.PluginFileLogger;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -421,6 +422,9 @@ public class DaemonBridge {
         for (RequestHandler handler : context.drainRequests()) {
             handler.onError("Daemon stopped");
         }
+        pendingSends.values().forEach(PendingSend::complete);
+        pendingSends.clear();
+        pendingSendBySession.clear();
 
         // Send shutdown command before closing stdin (allows daemon to flush)
         try {
@@ -516,6 +520,9 @@ public class DaemonBridge {
             for (RequestHandler handler : context.drainRequests()) {
                 handler.onAbort();
             }
+            pendingSends.values().forEach(PendingSend::complete);
+            pendingSends.clear();
+            pendingSendBySession.clear();
         }
     }
 
@@ -576,6 +583,20 @@ public class DaemonBridge {
             JsonObject params,
             DaemonOutputCallback callback
     ) {
+        return sendCommand(method, params, callback, null);
+    }
+
+    /**
+     * Same as {@link #sendCommand(String, JsonObject, DaemonOutputCallback)}, but
+     * exposes the request id to the caller before the request is written. That is
+     * the identity a brand-new session's {@code PendingSend} is keyed by.
+     */
+    public CompletableFuture<Boolean> sendCommand(
+            String method,
+            JsonObject params,
+            DaemonOutputCallback callback,
+            Consumer<String> onRequestId
+    ) {
         if (!ensureRunning()) {
             CompletableFuture<Boolean> f = new CompletableFuture<>();
             f.completeExceptionally(new IOException("Daemon not running"));
@@ -600,6 +621,10 @@ public class DaemonBridge {
 
         // Ensure cleanup when future completes (e.g., via timeout or cancellation)
         future.whenComplete((result, ex) -> context.removeRequest(requestId));
+
+        if (onRequestId != null) {
+            onRequestId.accept(requestId);
+        }
 
         // Build request JSON
         JsonObject request = new JsonObject();
@@ -831,6 +856,14 @@ public class DaemonBridge {
                 }
                 handler.onComplete(success);
                 context.removeRequest(id);
+                PendingSend pending = pendingSends.remove(id);
+                if (pending != null) {
+                    String sessionId = pending.sessionId();
+                    if (sessionId != null) {
+                        pendingSendBySession.remove(sessionId, pending);
+                    }
+                    pending.complete();
+                }
                 return;
             }
 
@@ -890,17 +923,32 @@ public class DaemonBridge {
                 deliver(sink, line);
                 return;
             }
+            PendingSend pending = pendingSendBySession.get(session);
+            if (pending != null) {
+                pending.onLine(line);
+                return;
+            }
         }
-        // A named session that has no sink yet must be buffered for that
-        // session. Falling back to an id-matched request handler here would
-        // hand its line to whichever request happened to use the same id.
-        // The identity marker is the exception: the daemon stamps it with the
-        // brand-new session id, and it is the only way the host learns which
-        // sink to register. Buffering it strands the session (no id, no sink,
-        // every later line buffered forever).
-        if (id != null && (session == null || line.startsWith("[SESSION_ID]"))) {
+        // A brand-new session has no sink and no canonical id on the host yet.
+        // Its lines belong to the request that created it, so hold them in that
+        // request's PendingSend until [SESSION_ID] binds the tab. Falling back
+        // to "any id-matched request" for ordinary content would cross sessions.
+        if (id != null) {
+            PendingSend pending = pendingSends.get(id);
+            if (pending != null) {
+                String markerSession = PendingSend.sessionIdOf(line);
+                if (markerSession != null) {
+                    pendingSendBySession.put(markerSession, pending);
+                }
+                pending.onLine(line);
+                return;
+            }
+            // Request-scoped replies (history/model/session queries, preconnect)
+            // name no session and belong to the request that asked for them.
+            // Content already stamped with a session is not request-scoped: it
+            // waits for that session's sink instead of crossing to this request.
             RequestHandler handler = context.getRequestHandler(id);
-            if (handler != null) {
+            if (handler != null && (session == null || line.startsWith("[SESSION_ID]"))) {
                 handler.callback.onLine(line);
                 return;
             }
@@ -936,6 +984,10 @@ public class DaemonBridge {
 
     /** sessionId (opencode `ses_…`) → its data-plane sink. */
     private final ConcurrentHashMap<String, SessionLineSink> sessionSinks = new ConcurrentHashMap<>();
+    /** requestId → the send that is waiting for its brand-new session id. */
+    private final ConcurrentHashMap<String, PendingSend> pendingSends = new ConcurrentHashMap<>();
+    /** sessionId → the PendingSend that created it, until its sink is registered. */
+    private final ConcurrentHashMap<String, PendingSend> pendingSendBySession = new ConcurrentHashMap<>();
     /** Lines that arrived before their session's sink existed. */
     private final ConcurrentHashMap<String, OrphanSessionLines> sessionOrphans = new ConcurrentHashMap<>();
     /** Running count of unroutable/buffered lines — the "silent failure" metric. */
@@ -954,6 +1006,13 @@ public class DaemonBridge {
     public void registerSessionSink(String sessionId, SessionLineSink sink) {
         if (sessionId == null || sessionId.isBlank() || sink == null) { return; }
         sessionSinks.put(sessionId, sink);
+        PendingSend pendingSend = pendingSendBySession.remove(sessionId);
+        if (pendingSend != null) {
+            // Keep the request-keyed entry until the turn finishes: core stamps
+            // every later line with the session, but a query or a late
+            // pre-bind line may still name only the request.
+            pendingSend.attach(sink::onLine);
+        }
         OrphanSessionLines pending = sessionOrphans.remove(sessionId);
         if (pending == null) { return; }
         List<String> lines = pending.drain();
@@ -970,6 +1029,49 @@ public class DaemonBridge {
         if (sessionId == null) { return; }
         sessionSinks.remove(sessionId);
         sessionOrphans.remove(sessionId);
+        PendingSend pending = pendingSendBySession.remove(sessionId);
+        if (pending != null) {
+            pendingSends.remove(pending.requestId());
+            pending.complete();
+        }
+    }
+
+    /**
+     * Register the buffer for a send whose session id is not known yet.
+     * The 30 s timeout fails the request instead of leaving it waiting forever.
+     */
+    public void registerPendingSend(PendingSend pending) {
+        if (pending == null) { return; }
+        pendingSends.put(pending.requestId(), pending);
+        DaemonGenerationContext context = daemonContext;
+        pending.setTimeoutAction(() -> {
+            if (pendingSends.remove(pending.requestId()) == null) {
+                return;
+            }
+            String sessionId = pending.sessionId();
+            if (sessionId != null) {
+                pendingSendBySession.remove(sessionId, pending);
+            }
+            RequestHandler handler = context != null && context.isActive()
+                    ? context.getRequestHandler(pending.requestId()) : null;
+            if (handler != null) {
+                handler.onError("no [SESSION_ID] within "
+                        + PendingSend.BOOTSTRAP_TIMEOUT_SECONDS + "s");
+            }
+            LOG.warn("[DaemonBridge] Pending send " + pending.requestId()
+                    + " timed out before the daemon reported its session");
+        });
+    }
+
+    /** The request finished (done/error/abort) before the session bound. */
+    public void unregisterPendingSend(PendingSend pending) {
+        if (pending == null) { return; }
+        pendingSends.remove(pending.requestId());
+        String sessionId = pending.sessionId();
+        if (sessionId != null) {
+            pendingSendBySession.remove(sessionId, pending);
+        }
+        pending.complete();
     }
 
     /**

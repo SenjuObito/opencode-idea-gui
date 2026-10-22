@@ -45,7 +45,14 @@ class BridgeScheduler<T> {
     static final String GLOBAL_LANE = "__global";
     private static final int MAX_PENDING_EVENTS_PER_LANE = 256;
     private static final int MAX_BATCH_CALLS = 64;
-    private static final int MAX_BATCH_ARGUMENT_CHARS = 256_000;
+    /**
+     * The plan's budget: a frame carries at most 32KB of arguments (or 64
+     * events, whichever comes first).
+     *
+     * <p>A single event bigger than the budget is still sent — alone, in its
+     * own frame — because dropping it would lose a snapshot.</p>
+     */
+    private static final int MAX_BATCH_ARGUMENT_CHARS = 32_000;
     private static final int ACTIVE_LANE_WEIGHT = 3;
 
     private final Supplier<T> browserSupplier;

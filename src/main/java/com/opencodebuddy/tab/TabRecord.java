@@ -32,6 +32,8 @@ public final class TabRecord {
     private final TabId tabId;
     private final String cwd;
     private final TabSettings settings = new TabSettings();
+    /** The attachments this tab staged; released with the tab. */
+    private final TabAttachmentStore attachments;
     private final TabSessionActor actor;
     private final AtomicLong epoch = new AtomicLong(0);
     private final AtomicLong revision = new AtomicLong();
@@ -49,6 +51,8 @@ public final class TabRecord {
         this.tabId = Objects.requireNonNull(tabId, "tabId");
         this.cwd = cwd;
         this.actor = new TabSessionActor(tabId);
+        this.attachments = new TabAttachmentStore(
+                TabAttachmentStore.defaultRoot().resolve(sanitizeForPath(this.tabId.value())));
     }
 
     public TabId getTabId() {
@@ -94,6 +98,19 @@ public final class TabRecord {
 
     public TabSettings getSettings() {
         return settings;
+    }
+
+    /** The attachments this tab owns. */
+    public TabAttachmentStore getAttachments() {
+        return attachments;
+    }
+
+    /** Keep a path segment free of separators and traversal. */
+    private static String sanitizeForPath(String value) {
+        if (value == null || value.isBlank()) {
+            return "unnamed";
+        }
+        return value.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     public String getTitle() {
@@ -211,6 +228,8 @@ public final class TabRecord {
         clearSessionResources();
         settledTurns.clear();
         settledTurnOrder.clear();
+        // The bytes must not outlive the tab that owns them.
+        attachments.release();
         actor.close();
     }
 }

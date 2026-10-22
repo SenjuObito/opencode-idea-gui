@@ -1599,18 +1599,26 @@ public class OpencodeBuddyChatWindow {
         if (tabId == null || tabId.isBlank()) {
             return base64Data;
         }
-        com.opencodebuddy.tab.TabAttachmentStore.Staged staged = attachmentStore.stage(
-                tabId, attachmentId, fileName, mediaType, base64Data);
+        TabRecord record = tabRegistry.get(TabId.of(tabId));
+        if (record == null) {
+            return base64Data;
+        }
+        com.opencodebuddy.tab.TabAttachmentStore.Staged staged = record.getAttachments()
+                .stage(attachmentId, fileName, mediaType, base64Data);
         if (staged == null) {
             return base64Data;
         }
-        String data = attachmentStore.readData(tabId, attachmentId);
+        String data = record.getAttachments().readData(attachmentId);
         return data != null ? data : base64Data;
     }
 
     public void releaseTabAttachments(String tabId) {
-        if (tabId != null) {
-            attachmentStore.releaseTab(tabId);
+        if (tabId == null || tabId.isBlank()) {
+            return;
+        }
+        TabRecord record = tabRegistry.get(TabId.of(tabId));
+        if (record != null) {
+            record.getAttachments().release();
         }
     }
 
@@ -2226,10 +2234,6 @@ public class OpencodeBuddyChatWindow {
         String tabKey = record != null ? record.getTabId().value() : targetSessionId;
         SessionCallbackAdapter closedAdapter = record != null ? record.getAdapter() : null;
         StreamMessageCoalescer closedCoalescer = record != null ? record.getCoalescer() : null;
-        if (record != null) {
-            // The tab owns its attachments: the bytes go with it.
-            attachmentStore.releaseTab(record.getTabId().value());
-        }
         if (permissionHandler != null) {
             // The tab owns its prompts: reject exactly this tab's requests.
             permissionHandler.clearPendingRequestsForTab(record != null ? record.getTabId().value() : tabKey);
@@ -3724,7 +3728,9 @@ public class OpencodeBuddyChatWindow {
         }
         webviewWatchdog.stop();
         // The staged attachments belong to the tabs; the window is going away.
-        attachmentStore.clear();
+        for (TabRecord record : tabRegistry.liveTabs()) {
+            record.getAttachments().release();
+        }
 
         try {
             if (this.webviewInitializer != null) {

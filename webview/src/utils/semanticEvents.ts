@@ -17,6 +17,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   'session.loaded': 'historyLoadComplete',
   'session.cleared': 'clearMessages',
   'command.rejected': 'commandRejected',
+  'attachment.failed': 'onAttachmentFailed',
 
   // ── turn & message ─────────────────────────────────────────────────
   'turn.started': 'onStreamStart',

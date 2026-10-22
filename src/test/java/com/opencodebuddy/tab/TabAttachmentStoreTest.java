@@ -45,6 +45,77 @@ public class TabAttachmentStoreTest {
     }
 
     @Test
+    public void aChunkedUploadIsOnlyReadableWhenItIsComplete() throws Exception {
+        Path root = Files.createTempDirectory("attachments-test");
+        TabAttachmentStore store = new TabAttachmentStore(root.resolve("tab-a"));
+        try {
+            // "hello world" is 11 bytes; the webview announces that up front.
+            TabAttachmentStore.Staged prepared = store.prepare("att-2", "note.txt", "text/plain", 11);
+            assertNotNull(prepared);
+            assertEquals(0, prepared.size());
+            assertFalse(prepared.ready());
+            // A half-uploaded file must not be sendable as if it were whole.
+            assertNull(store.readData("att-2"));
+
+            assertNotNull(store.append("att-2", 0, base64("hello ")));
+            TabAttachmentStore.Staged afterSecond = store.append("att-2", 6, base64("world"));
+            assertNotNull(afterSecond);
+            assertEquals(11, afterSecond.size());
+
+            TabAttachmentStore.Staged done = store.complete("att-2");
+            assertNotNull(done);
+            assertTrue(done.ready());
+            assertEquals(base64("hello world"), store.readData("att-2"));
+        } finally {
+            store.release();
+        }
+    }
+
+    @Test
+    public void aChunkOutOfOrderIsRefusedInsteadOfCorruptingTheFile() throws Exception {
+        Path root = Files.createTempDirectory("attachments-test");
+        TabAttachmentStore store = new TabAttachmentStore(root.resolve("tab-a"));
+        try {
+            store.prepare("att-3", "note.txt", "text/plain", 10);
+            store.append("att-3", 0, base64("01234"));
+            // The bridge delivers in order; a gap means a lost frame.
+            assertNull(store.append("att-3", 7, base64("56789")));
+        } finally {
+            store.release();
+        }
+    }
+
+    @Test
+    public void anUploadThatNeverReachesItsAnnouncedSizeIsNotCompletable() throws Exception {
+        Path root = Files.createTempDirectory("attachments-test");
+        TabAttachmentStore store = new TabAttachmentStore(root.resolve("tab-a"));
+        try {
+            store.prepare("att-4", "note.txt", "text/plain", 20);
+            store.append("att-4", 0, base64("short"));
+            assertNull(store.complete("att-4"));
+            assertNull(store.readData("att-4"));
+        } finally {
+            store.release();
+        }
+    }
+
+    @Test
+    public void anAbortedUploadLeavesNoFileBehind() throws Exception {
+        Path root = Files.createTempDirectory("attachments-test");
+        TabAttachmentStore store = new TabAttachmentStore(root.resolve("tab-a"));
+        try {
+            TabAttachmentStore.Staged staged = store.prepare("att-5", "note.txt", "text/plain", 5);
+            assertNotNull(staged);
+            Path file = staged.path();
+            store.abort("att-5");
+            assertFalse(Files.exists(file));
+            assertNull(store.get("att-5"));
+        } finally {
+            store.release();
+        }
+    }
+
+    @Test
     public void tabsDoNotSeeEachOthersAttachments() throws Exception {
         Path root = Files.createTempDirectory("attachments-test");
         TabAttachmentStore storeA = new TabAttachmentStore(root.resolve("tab-a"));

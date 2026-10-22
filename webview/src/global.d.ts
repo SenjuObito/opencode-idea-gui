@@ -188,6 +188,7 @@ interface Window {
    * `code` is the machine readable reason (e.g. `MISSING_TAB_ID`).
    */
   commandRejected?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
+  onAttachmentFailed?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /** Rejections that arrived before the real handler was registered. */
   __pendingCommandRejections?: Array<{

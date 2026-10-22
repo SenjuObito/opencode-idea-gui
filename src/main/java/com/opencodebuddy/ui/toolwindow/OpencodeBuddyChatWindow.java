@@ -1615,6 +1615,57 @@ public class OpencodeBuddyChatWindow {
         return data != null ? data : base64Data;
     }
 
+    /** Open an upload in the tab's own directory; returns the file path. */
+    public String prepareAttachment(
+            String tabId,
+            String attachmentId,
+            String fileName,
+            String mediaType,
+            long expectedSize
+    ) {
+        TabRecord record = tabId == null ? null : tabRegistry.get(TabId.of(tabId));
+        if (record == null || record.isClosed()) {
+            return null;
+        }
+        com.opencodebuddy.tab.TabAttachmentStore.Staged staged = record.getAttachments()
+                .prepare(attachmentId, fileName, mediaType, expectedSize);
+        return staged != null ? staged.path().toString() : null;
+    }
+
+    /** Append a chunk; returns the bytes written so far, or -1. */
+    public long appendAttachment(String tabId, String attachmentId, long offset, String base64Chunk) {
+        TabRecord record = tabId == null ? null : tabRegistry.get(TabId.of(tabId));
+        if (record == null || record.isClosed()) {
+            return -1L;
+        }
+        com.opencodebuddy.tab.TabAttachmentStore.Staged staged = record.getAttachments()
+                .append(attachmentId, offset, base64Chunk);
+        return staged != null ? staged.size() : -1L;
+    }
+
+    /** Finish an upload. */
+    public boolean completeAttachment(String tabId, String attachmentId) {
+        TabRecord record = tabId == null ? null : tabRegistry.get(TabId.of(tabId));
+        if (record == null || record.isClosed()) {
+            return false;
+        }
+        return record.getAttachments().complete(attachmentId) != null;
+    }
+
+    /** Drop an unfinished upload. */
+    public void abortAttachment(String tabId, String attachmentId) {
+        TabRecord record = tabId == null ? null : tabRegistry.get(TabId.of(tabId));
+        if (record != null) {
+            record.getAttachments().abort(attachmentId);
+        }
+    }
+
+    /** The bytes of a finished upload, or null. */
+    public String readStagedAttachment(String tabId, String attachmentId) {
+        TabRecord record = tabId == null ? null : tabRegistry.get(TabId.of(tabId));
+        return record != null ? record.getAttachments().readData(attachmentId) : null;
+    }
+
     public void releaseTabAttachments(String tabId) {
         if (tabId == null || tabId.isBlank()) {
             return;
@@ -4270,6 +4321,44 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void releaseTabAttachments(String tabId) {
                 OpencodeBuddyChatWindow.this.releaseTabAttachments(tabId);
+            }
+
+            @Override
+            public String prepareAttachment(
+                    String tabId,
+                    String attachmentId,
+                    String fileName,
+                    String mediaType,
+                    long expectedSize
+            ) {
+                return OpencodeBuddyChatWindow.this.prepareAttachment(
+                        tabId, attachmentId, fileName, mediaType, expectedSize);
+            }
+
+            @Override
+            public long appendAttachment(
+                    String tabId,
+                    String attachmentId,
+                    long offset,
+                    String base64Chunk
+            ) {
+                return OpencodeBuddyChatWindow.this.appendAttachment(
+                        tabId, attachmentId, offset, base64Chunk);
+            }
+
+            @Override
+            public boolean completeAttachment(String tabId, String attachmentId) {
+                return OpencodeBuddyChatWindow.this.completeAttachment(tabId, attachmentId);
+            }
+
+            @Override
+            public void abortAttachment(String tabId, String attachmentId) {
+                OpencodeBuddyChatWindow.this.abortAttachment(tabId, attachmentId);
+            }
+
+            @Override
+            public String readStagedAttachment(String tabId, String attachmentId) {
+                return OpencodeBuddyChatWindow.this.readStagedAttachment(tabId, attachmentId);
             }
 
             @Override

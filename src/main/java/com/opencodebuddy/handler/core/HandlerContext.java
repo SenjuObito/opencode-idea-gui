@@ -76,6 +76,54 @@ public class HandlerContext {
         }
 
         /**
+         * Open an attachment upload for a tab.
+         *
+         * @return the file the chunks are written to, or {@code null} when the
+         *         host does not take uploads
+         */
+        default String prepareAttachment(
+                String tabId,
+                String attachmentId,
+                String fileName,
+                String mediaType,
+                long expectedSize
+        ) {
+            return null;
+        }
+
+        /**
+         * Append one chunk.
+         *
+         * @return the bytes written so far, or -1 when the chunk was refused
+         */
+        default long appendAttachment(
+                String tabId,
+                String attachmentId,
+                long offset,
+                String base64Chunk
+        ) {
+            return -1;
+        }
+
+        /** Finish an upload; false when the announced and written sizes differ. */
+        default boolean completeAttachment(String tabId, String attachmentId) {
+            return false;
+        }
+
+        /** Drop an unfinished upload. */
+        default void abortAttachment(String tabId, String attachmentId) {
+        }
+
+        /**
+         * The base64 bytes of an attachment this tab staged.
+         *
+         * @return the bytes, or {@code null} when nothing is staged under that id
+         */
+        default String readStagedAttachment(String tabId, String attachmentId) {
+            return null;
+        }
+
+        /**
          * Publish a named event to the webview.
          *
          * <p>Handlers that answer the user (a permission dialog, a question) do
@@ -194,6 +242,37 @@ public class HandlerContext {
         }
         String staged = jsCallback.stageAttachment(tabId, attachmentId, fileName, mediaType, base64Data);
         return staged != null ? staged : base64Data;
+    }
+
+    /** Open an attachment upload for a tab; returns the path or null. */
+    public String prepareAttachment(
+            String tabId,
+            String attachmentId,
+            String fileName,
+            String mediaType,
+            long expectedSize
+    ) {
+        return jsCallback.prepareAttachment(tabId, attachmentId, fileName, mediaType, expectedSize);
+    }
+
+    /** Append a chunk; returns the bytes written so far, or -1. */
+    public long appendAttachment(String tabId, String attachmentId, long offset, String base64Chunk) {
+        return jsCallback.appendAttachment(tabId, attachmentId, offset, base64Chunk);
+    }
+
+    /** Finish an upload; false when the sizes disagree. */
+    public boolean completeAttachment(String tabId, String attachmentId) {
+        return jsCallback.completeAttachment(tabId, attachmentId);
+    }
+
+    /** Drop an unfinished upload. */
+    public void abortAttachment(String tabId, String attachmentId) {
+        jsCallback.abortAttachment(tabId, attachmentId);
+    }
+
+    /** The base64 bytes of an attachment a tab staged, or null. */
+    public String readStagedAttachment(String tabId, String attachmentId) {
+        return jsCallback.readStagedAttachment(tabId, attachmentId);
     }
 
     /** Drop the attachments a tab staged. */

@@ -360,3 +360,19 @@
   （`{customTitle}` 在 payload，sessionId 在信封）。
 - 删除 `webview/src/types/protocol.ts` 与 `sendTypedBridgeEvent`：那份清单还在
   描述已删除的 `send_message` / `set_model` / `update_title`。
+
+### 附件分块上传（D10）
+
+- 大附件不再塞进 `session.send` 的一帧（32KB 预算下单帧会被整块穿过桥）。
+  改为 `attachment.prepare → attachment.chunk × N → attachment.complete`，
+  每块 ≤24KB base64（4 字符对齐，可独立解码）。
+- `TabAttachmentStore` 从"一次性写盘"扩展成"可续传"：
+  `prepare / append(offset) / complete / abort`；未完成的文件**读不出来**
+  （`readData` 只交付 complete 的），声明大小与实际大小不符则不可完成。
+- 偏移量严格校验：乱序/丢帧会被拒绝并 abort 整个上传，不产生静默损坏的文件。
+- 发送路径只带 `{attachmentId, fileName, mediaType}`；宿主把该 tab 目录里的
+  字节读回来交给 core，语义与之前完全一致（core 无需改动，v1/v2 都走这条）。
+- 缺失的附件不再被静默丢弃：整条 `session.send` 以 `ATTACHMENT_MISSING` 拒绝，
+  并回 `command.rejected`。
+- 失败只回一个事件 `attachment.failed`（`onAttachmentFailed` → toast），
+  成功路径不需要事件：命令本就是有序的。

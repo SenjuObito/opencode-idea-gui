@@ -472,6 +472,7 @@ public class SessionHandler extends BaseMessageHandler {
             }
 
             java.util.List<OpencodeSession.Attachment> atts = new java.util.ArrayList<>();
+            java.util.List<String> missingAttachments = new java.util.ArrayList<>();
             if (payload != null && payload.has("attachments") && payload.get("attachments").isJsonArray()) {
                 JsonArray arr = payload.getAsJsonArray("attachments");
                 for (int i = 0; i < arr.size(); i++) {
@@ -488,13 +489,34 @@ public class SessionHandler extends BaseMessageHandler {
                     String attachmentId = a.has("id") && !a.get("id").isJsonNull()
                                           ? a.get("id").getAsString()
                                           : (fileName + "-" + i);
-                    // The attachment belongs to the tab that picked it: the
-                    // host stages the bytes in the tab's own directory and
-                    // reads them back from there.
-                    String staged = context.stageAttachment(
-                            tabId, attachmentId, fileName, mediaType, data);
+                    // The attachment belongs to the tab that picked it. A
+                    // chunked upload already wrote the bytes into that tab's
+                    // directory, so the send only names it; an inline payload
+                    // (small attachment, older caller) is staged here.
+                    String staged;
+                    if (data.isEmpty()) {
+                        staged = context.readStagedAttachment(tabId, attachmentId);
+                        if (staged == null) {
+                            // Sending the message without the attachment would
+                            // silently lose what the user attached.
+                            missingAttachments.add(fileName);
+                            continue;
+                        }
+                    } else {
+                        staged = context.stageAttachment(
+                                tabId, attachmentId, fileName, mediaType, data);
+                    }
                     atts.add(new OpencodeSession.Attachment(fileName, mediaType, staged));
                 }
+            }
+
+            if (!missingAttachments.isEmpty()) {
+                String requestId = payload != null && payload.has("requestId")
+                        && !payload.get("requestId").isJsonNull()
+                        ? payload.get("requestId").getAsString() : null;
+                rejectCommand(tabId, requestId, "ATTACHMENT_MISSING",
+                        "the upload did not finish: " + String.join(", ", missingAttachments));
+                return;
             }
 
             // [FIX] Extract agent prompt from the payload for per-tab agent selection

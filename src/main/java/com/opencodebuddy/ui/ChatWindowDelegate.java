@@ -21,6 +21,7 @@ import com.opencodebuddy.handler.NodeProcessHandler;
 import com.opencodebuddy.handler.PermissionHandler;
 import com.opencodebuddy.handler.CommandsHandler;
 import com.opencodebuddy.handler.RewindHandler;
+import com.opencodebuddy.handler.AttachmentHandler;
 import com.opencodebuddy.handler.SessionHandler;
 import com.opencodebuddy.handler.SettingsHandler;
 import com.opencodebuddy.handler.provider.ModelProviderHandler;
@@ -126,6 +127,27 @@ public class ChatWindowDelegate {
 
         /** Drop the attachments a tab staged. */
         void releaseTabAttachments(String tabId);
+
+        /** Open an upload in the tab's directory; returns the path or null. */
+        String prepareAttachment(
+                String tabId,
+                String attachmentId,
+                String fileName,
+                String mediaType,
+                long expectedSize
+        );
+
+        /** Append a chunk; returns the bytes written so far, or -1. */
+        long appendAttachment(String tabId, String attachmentId, long offset, String base64Chunk);
+
+        /** Finish an upload. */
+        boolean completeAttachment(String tabId, String attachmentId);
+
+        /** Drop an unfinished upload. */
+        void abortAttachment(String tabId, String attachmentId);
+
+        /** The bytes of a finished upload, or null. */
+        String readStagedAttachment(String tabId, String attachmentId);
 
         /** Publish a named event to the webview. */
         void publishEvent(com.opencodebuddy.tab.TabEvent event);
@@ -261,6 +283,37 @@ public class ChatWindowDelegate {
                 host.releaseTabAttachments(tabId);
             }
             @Override
+            public String prepareAttachment(
+                    String tabId,
+                    String attachmentId,
+                    String fileName,
+                    String mediaType,
+                    long expectedSize
+            ) {
+                return host.prepareAttachment(tabId, attachmentId, fileName, mediaType, expectedSize);
+            }
+            @Override
+            public long appendAttachment(
+                    String tabId,
+                    String attachmentId,
+                    long offset,
+                    String base64Chunk
+            ) {
+                return host.appendAttachment(tabId, attachmentId, offset, base64Chunk);
+            }
+            @Override
+            public boolean completeAttachment(String tabId, String attachmentId) {
+                return host.completeAttachment(tabId, attachmentId);
+            }
+            @Override
+            public void abortAttachment(String tabId, String attachmentId) {
+                host.abortAttachment(tabId, attachmentId);
+            }
+            @Override
+            public String readStagedAttachment(String tabId, String attachmentId) {
+                return host.readStagedAttachment(tabId, attachmentId);
+            }
+            @Override
             public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
                 host.publishTabEvent(event);
             }
@@ -294,6 +347,7 @@ public class ChatWindowDelegate {
         messageDispatcher.registerHandler(new FileHandler(handlerContext));
         this.settingsHandler = new SettingsHandler(handlerContext);
         messageDispatcher.registerHandler(this.settingsHandler);
+        messageDispatcher.registerHandler(new AttachmentHandler(handlerContext));
         messageDispatcher.registerHandler(new SessionHandler(handlerContext));
         messageDispatcher.registerHandler(new ContextHandler(handlerContext));
         messageDispatcher.registerHandler(new FileExportHandler(handlerContext));

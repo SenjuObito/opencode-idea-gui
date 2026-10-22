@@ -38,6 +38,7 @@ public final class EventCatalog {
         byType.put("session.loaded", "historyLoadComplete");
         byType.put("session.cleared", "clearMessages");
         byType.put("command.rejected", "commandRejected");
+        byType.put("attachment.failed", "onAttachmentFailed");
 
         // ── turn & message ─────────────────────────────────────────────────
         byType.put("turn.started", "onStreamStart");

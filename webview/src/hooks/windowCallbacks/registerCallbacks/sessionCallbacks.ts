@@ -134,6 +134,22 @@ export function registerSessionCallbacks(
     }
   };
 
+  /**
+   * An attachment upload failed. The send that named it is rejected by the
+   * host, so this is the message the user acts on: the file they attached did
+   * not make it.
+   */
+  window.onAttachmentFailed = (payload: HostEventPayload | undefined) => {
+    const fileName = String(payload?.fileName ?? '');
+    const code = String(payload?.code ?? '');
+    const message = String(payload?.message ?? '');
+    cardDebugLog('[attachmentFailed] code:', code, 'file:', fileName, 'message:', message);
+    const text = message || code;
+    if (text) {
+      addToast(text, 'error');
+    }
+  };
+
   // Rejections that arrived before this handler existed are shown now.
   const pendingRejections = window.__pendingCommandRejections ?? [];
   window.__pendingCommandRejections = [];
@@ -229,6 +245,7 @@ export function registerSessionCallbacks(
   // handler up here first, the window globals stay for the legacy path.
   registerHostEvents({
   'command.rejected': window.commandRejected,
+  'attachment.failed': window.onAttachmentFailed,
   'session.bound': window.setSessionId,
   'tab.title.changed': window.updateSessionTitle,
   });

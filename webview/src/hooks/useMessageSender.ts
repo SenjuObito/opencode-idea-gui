@@ -4,6 +4,7 @@ import { sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
+import { uploadAttachments } from '../utils/attachmentTransport';
 
 /**
  * Command sets for local handling (shared with App.tsx to avoid duplication)
@@ -285,16 +286,12 @@ export function useMessageSender({
 
     if (hasAttachments) {
       try {
+        // The bytes travel ahead of the send, in chunks the frame budget can
+        // carry; the send itself only names them.
+        const uploaded = uploadAttachments(activeTabId, attachments);
         sendHostCommand(activeTabId, 'session.send', {
           text,
-          attachments: (attachments || []).map(a => ({
-            // The id lets the host stage the bytes for this tab: the
-            // attachment belongs to the tab that picked it.
-            id: a.id,
-            fileName: a.fileName,
-            mediaType: a.mediaType,
-            data: a.data,
-          })),
+          attachments: uploaded,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
           autoOpenFileEnabled: effectiveAutoOpenFileEnabled,

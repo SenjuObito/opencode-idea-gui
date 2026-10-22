@@ -28,8 +28,26 @@ public final class TabAttachmentStore {
     /** Refuse a single attachment larger than this (32 MiB of raw bytes). */
     public static final long MAX_ATTACHMENT_BYTES = 32L * 1024L * 1024L;
 
-    /** One staged attachment. */
-    public record Staged(String attachmentId, String fileName, String mediaType, Path path, long size) {
+    /**
+     * One staged attachment.
+     *
+     * @param size         the bytes written so far
+     * @param expectedSize the size the webview announced, or -1 when it did not
+     * @param complete     whether the upload finished
+     */
+    public record Staged(
+            String attachmentId,
+            String fileName,
+            String mediaType,
+            Path path,
+            long size,
+            long expectedSize,
+            boolean complete
+    ) {
+        /** A staged attachment that is ready to send. */
+        public boolean ready() {
+            return complete;
+        }
     }
 
     private final Path directory;
@@ -54,9 +72,6 @@ public final class TabAttachmentStore {
      *         be stored (too large, not base64, no disk)
      */
     public Staged stage(String attachmentId, String fileName, String mediaType, String base64Data) {
-        if (attachmentId == null || attachmentId.isBlank()) {
-            return null;
-        }
         if (base64Data == null || base64Data.isBlank()) {
             return null;
         }
@@ -66,18 +81,122 @@ public final class TabAttachmentStore {
         } catch (IllegalArgumentException e) {
             return null;
         }
-        if (bytes.length > MAX_ATTACHMENT_BYTES) {
+        Staged prepared = prepare(attachmentId, fileName, mediaType, bytes.length);
+        if (prepared == null) {
+            return null;
+        }
+        if (append(attachmentId, 0, base64Data) == null) {
+            abort(attachmentId);
+            return null;
+        }
+        Staged complete = complete(attachmentId);
+        if (complete == null) {
+            abort(attachmentId);
+        }
+        return complete;
+    }
+
+    /**
+     * Open an upload: create the file this attachment will be written to.
+     *
+     * <p>The webview announces the size first, so the host can refuse an
+     * oversized upload before a single byte crosses the bridge.</p>
+     *
+     * @param expectedSize the announced size in bytes, or -1 when unknown
+     * @return the empty attachment, or {@code null} when it cannot be created
+     */
+    public Staged prepare(
+            String attachmentId,
+            String fileName,
+            String mediaType,
+            long expectedSize
+    ) {
+        if (attachmentId == null || attachmentId.isBlank()) {
+            return null;
+        }
+        if (expectedSize > MAX_ATTACHMENT_BYTES) {
             return null;
         }
         try {
             Files.createDirectories(directory);
             Path file = directory.resolve(sanitize(attachmentId) + "-" + sanitize(fileName));
-            Files.write(file, bytes);
-            Staged result = new Staged(attachmentId, fileName, mediaType, file, bytes.length);
+            Files.write(file, new byte[0]);
+            Staged result = new Staged(attachmentId, fileName, mediaType, file, 0, expectedSize, false);
             staged.put(attachmentId, result);
             return result;
         } catch (IOException e) {
             return null;
+        }
+    }
+
+    /**
+     * Append one chunk of an upload.
+     *
+     * <p>The offset is the number of bytes already written. A chunk that does
+     * not continue the file exactly is refused: a lost or reordered chunk would
+     * otherwise produce a silently corrupt attachment.</p>
+     *
+     * @return the attachment as it stands, or {@code null} when the chunk does
+     *         not belong at that offset
+     */
+    public Staged append(String attachmentId, long offset, String base64Chunk) {
+        Staged current = staged.get(attachmentId);
+        if (current == null || base64Chunk == null) {
+            return null;
+        }
+        if (offset != current.size()) {
+            return null;
+        }
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(base64Chunk);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        if (current.size() + bytes.length > MAX_ATTACHMENT_BYTES) {
+            return null;
+        }
+        try {
+            Files.write(current.path(), bytes, java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            return null;
+        }
+        Staged next = new Staged(current.attachmentId(), current.fileName(), current.mediaType(),
+                current.path(), current.size() + bytes.length, current.expectedSize(), false);
+        staged.put(attachmentId, next);
+        return next;
+    }
+
+    /**
+     * Finish an upload.
+     *
+     * @return the complete attachment, or {@code null} when the announced size
+     *         and the written size disagree
+     */
+    public Staged complete(String attachmentId) {
+        Staged current = staged.get(attachmentId);
+        if (current == null) {
+            return null;
+        }
+        if (current.expectedSize() >= 0 && current.expectedSize() != current.size()) {
+            return null;
+        }
+        Staged done = new Staged(current.attachmentId(), current.fileName(), current.mediaType(),
+                current.path(), current.size(), current.expectedSize(), true);
+        staged.put(attachmentId, done);
+        return done;
+    }
+
+    /** Drop one upload and its file. */
+    public void abort(String attachmentId) {
+        Staged current = staged.remove(attachmentId);
+        if (current == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(current.path());
+        } catch (IOException ignored) {
+            // The directory is cleaned when the tab closes.
         }
     }
 
@@ -98,7 +217,8 @@ public final class TabAttachmentStore {
      */
     public String readData(String attachmentId) {
         Staged attachment = staged.get(attachmentId);
-        if (attachment == null) {
+        if (attachment == null || !attachment.ready()) {
+            // A half-uploaded file would be sent as if it were whole.
             return null;
         }
         try {

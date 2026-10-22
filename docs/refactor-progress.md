@@ -146,6 +146,39 @@
 - `PermissionManager` 保留：它是**会话级**状态（权限模式 + 工具记忆），不是
   prompt 登记表，合并进全局 broker 反而会让模式变成全局的。
 
+## 第四轮收口：语义协议、消息对账、fork、附件
+
+### 语义事件目录（§7.3）
+
+- 新增 `com.opencodebuddy.bridge.EventCatalog`：语义名 ↔ 旧函数名的唯一映射表。
+- 事件信封改为 `{v, type(语义名), fn(旧函数名), tabId, sessionId, epoch, payload}`。
+- webview 新增 `utils/semanticEvents.ts`，dispatcher 先按语义名解析，再回落旧的
+  `window.<fn>` 查找（可增量迁移）。
+- `EventCatalogTest` 交叉校验：Java 目录与 webview 目录必须完全一致，且
+  `SessionCallbackAdapter` 推送的每个事件都必须有语义名。
+
+### 消息按 id 对账（§6.5）
+
+- 新增 `webview/src/store/tabMessageStore.ts`：`order` + `byId` + 流式 assistant
+  标记；快照按 id 对账、tail 只替换尾部、按 id 删除。
+- tab 数据带上 `messageStore`（按引用共享，tab 对象克隆时转交不丢）。
+- 后台 tab 的快照经由 store 对账后写入。
+
+### fork 落到自己的 tab（§9.8）
+
+- 新增命令 `session.fork {sourceTabId, targetTabId, messageId?}`：宿主按源 tab 解析
+  会话、调用 daemon fork、把新会话绑定到目标 tab，再回 `onForkBound`；源 tab
+  完全不动。
+- webview fork 前先预留目标 tab id，收到 `onForkBound` 后用该 id 开 tab。
+
+### 附件归属 tab（§9.9）
+
+- 新增 `com.opencodebuddy.tab.TabAttachmentStore`：附件写进 tab 自己的目录，
+  跨 tab 不可见，tab 关闭即释放（窗口 dispose 时全部释放）。
+- 发送路径把附件交给 tab 的 store 暂存并读回；发送结束即释放暂存字节。
+- webview 发送时带上附件 id，宿主据此归属。
+- 说明：daemon 协议仍然收 base64（core 侧协议不变），本轮落地的是归属与生命周期。
+
 ## 未完成
 
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵

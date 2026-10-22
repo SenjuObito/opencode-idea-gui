@@ -115,6 +115,18 @@ public class ChatWindowDelegate {
         /** Bind a forked session to the tab the webview reserved for it. */
         void bindForkedSession(String targetTabId, String sessionId);
 
+        /** Hand an attachment to the tab that owns it; returns the bytes to send. */
+        String stageAttachment(
+                String tabId,
+                String attachmentId,
+                String fileName,
+                String mediaType,
+                String base64Data
+        );
+
+        /** Drop the attachments a tab staged. */
+        void releaseTabAttachments(String tabId);
+
         /**
          * Soft-reload the currently active session's transcript without interrupting
          * any in-flight turn.
@@ -224,6 +236,20 @@ public class ChatWindowDelegate {
             @Override
             public String getTabIdForSession(String sessionId) {
                 return host.findTabIdForSession(sessionId);
+            }
+            @Override
+            public String stageAttachment(
+                    String tabId,
+                    String attachmentId,
+                    String fileName,
+                    String mediaType,
+                    String base64Data
+            ) {
+                return host.stageAttachment(tabId, attachmentId, fileName, mediaType, base64Data);
+            }
+            @Override
+            public void releaseTabAttachments(String tabId) {
+                host.releaseTabAttachments(tabId);
             }
         };
 

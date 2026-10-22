@@ -288,6 +288,9 @@ export function useMessageSender({
         sendHostCommand(activeTabId, 'session.send', {
           text,
           attachments: (attachments || []).map(a => ({
+            // The id lets the host stage the bytes for this tab: the
+            // attachment belongs to the tab that picked it.
+            id: a.id,
             fileName: a.fileName,
             mediaType: a.mediaType,
             data: a.data,

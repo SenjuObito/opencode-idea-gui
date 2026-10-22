@@ -451,6 +451,16 @@ public class SessionHandler extends BaseMessageHandler {
                                   ? payload.get("text").getAsString()
                                   : "";
 
+            // The identity is read first: the attachments belong to this tab.
+            String targetSessionId = null;
+            if (payload != null && payload.has("sessionId") && !payload.get("sessionId").isJsonNull()) {
+                targetSessionId = payload.get("sessionId").getAsString();
+            }
+            String tabId = null;
+            if (payload != null && payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
+                tabId = payload.get("tabId").getAsString();
+            }
+
             java.util.List<OpencodeSession.Attachment> atts = new java.util.ArrayList<>();
             if (payload != null && payload.has("attachments") && payload.get("attachments").isJsonArray()) {
                 JsonArray arr = payload.getAsJsonArray("attachments");
@@ -465,7 +475,15 @@ public class SessionHandler extends BaseMessageHandler {
                     String data = a.has("data") && !a.get("data").isJsonNull()
                                           ? a.get("data").getAsString()
                                           : "";
-                    atts.add(new OpencodeSession.Attachment(fileName, mediaType, data));
+                    String attachmentId = a.has("id") && !a.get("id").isJsonNull()
+                                          ? a.get("id").getAsString()
+                                          : (fileName + "-" + i);
+                    // The attachment belongs to the tab that picked it: the
+                    // host stages the bytes in the tab's own directory and
+                    // reads them back from there.
+                    String staged = context.stageAttachment(
+                            tabId, attachmentId, fileName, mediaType, data);
+                    atts.add(new OpencodeSession.Attachment(fileName, mediaType, staged));
                 }
             }
 
@@ -525,14 +543,6 @@ public class SessionHandler extends BaseMessageHandler {
                 requestedAutoOpenFile = payload.get("autoOpenFileEnabled").getAsBoolean();
             }
 
-            String targetSessionId = null;
-            if (payload != null && payload.has("sessionId") && !payload.get("sessionId").isJsonNull()) {
-                targetSessionId = payload.get("sessionId").getAsString();
-            }
-            String tabId = null;
-            if (payload != null && payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
-                tabId = payload.get("tabId").getAsString();
-            }
 
             sendMessageWithAttachments(targetSessionId, tabId, text, atts, agentPrompt, fileTagPaths, requestedPermissionMode,
                     requestedReasoningEffort, requestedModel, requestedCodexFastMode, requestedDshPreset, requestedAutoOpenFile);
@@ -603,10 +613,12 @@ public class SessionHandler extends BaseMessageHandler {
         final String finalRequestedDshPreset = requestedDshPreset;
         final Boolean finalRequestedAutoOpenFile = requestedAutoOpenFile;
 
+        final String attachmentTabId = tabId;
         CompletableFuture.runAsync(() -> {
             if (targetSession == null) {
                 return;
             }
+            try {
             String currentWorkingDir = determineWorkingDirectory();
             String previousCwd = targetSession.getCwd();
             if (!currentWorkingDir.equals(previousCwd)) {
@@ -652,6 +664,11 @@ public class SessionHandler extends BaseMessageHandler {
                     });
                     return null;
                 });
+            } finally {
+                // The staged bytes lived only for this send; the tab keeps no
+                // copy of what was already delivered.
+                context.releaseTabAttachments(attachmentTabId);
+            }
         });
     }
 

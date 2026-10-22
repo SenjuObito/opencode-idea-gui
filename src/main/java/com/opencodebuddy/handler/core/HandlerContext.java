@@ -51,6 +51,29 @@ public class HandlerContext {
         default String getTabIdForSession(String sessionId) {
             return null;
         }
+
+        /**
+         * Hand an attachment to the tab that owns it and return the bytes to
+         * send.
+         *
+         * <p>The attachment belongs to the tab: it is written into that tab's
+         * own directory and disappears with the tab. A host that does not stage
+         * attachments returns {@code null} and the caller sends the payload
+         * unchanged.</p>
+         */
+        default String stageAttachment(
+                String tabId,
+                String attachmentId,
+                String fileName,
+                String mediaType,
+                String base64Data
+        ) {
+            return null;
+        }
+
+        /** Drop the attachments a tab staged. */
+        default void releaseTabAttachments(String tabId) {
+        }
     }
 
     public HandlerContext(
@@ -142,6 +165,33 @@ public class HandlerContext {
             return null;
         }
         return jsCallback.getTabIdForSession(sessionId);
+    }
+
+    /**
+     * Hand an attachment to the tab that owns it.
+     *
+     * @return the bytes to send (the staged copy when the host stages them)
+     */
+    public String stageAttachment(
+            String tabId,
+            String attachmentId,
+            String fileName,
+            String mediaType,
+            String base64Data
+    ) {
+        if (tabId == null || tabId.isBlank()) {
+            return base64Data;
+        }
+        String staged = jsCallback.stageAttachment(tabId, attachmentId, fileName, mediaType, base64Data);
+        return staged != null ? staged : base64Data;
+    }
+
+    /** Drop the attachments a tab staged. */
+    public void releaseTabAttachments(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            return;
+        }
+        jsCallback.releaseTabAttachments(tabId);
     }
 
     /**

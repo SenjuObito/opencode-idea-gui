@@ -90,6 +90,10 @@ public class OpencodeBuddyChatWindow {
     private volatile JBCefBrowser browser;
     private final TabRegistry tabRegistry = new TabRegistry();
     private final TabSessionFactory tabSessionFactory;
+    /** The attachments each tab staged; released with the tab. */
+    private final com.opencodebuddy.tab.TabAttachmentStore attachmentStore =
+            new com.opencodebuddy.tab.TabAttachmentStore(
+                    com.opencodebuddy.tab.TabAttachmentStore.defaultRoot());
     private final TabCommandRouter tabCommandRouter;
     private volatile String activeTabId = null;
     private final WebviewWatchdog webviewWatchdog;
@@ -1569,6 +1573,37 @@ public class OpencodeBuddyChatWindow {
     }
 
     /**
+     * Hand an attachment to the tab that owns it.
+     *
+     * <p>The bytes are written into the tab's own directory; the send path
+     * reads them back from there. The attachment disappears with the tab.</p>
+     */
+    public String stageAttachment(
+            String tabId,
+            String attachmentId,
+            String fileName,
+            String mediaType,
+            String base64Data
+    ) {
+        if (tabId == null || tabId.isBlank()) {
+            return base64Data;
+        }
+        com.opencodebuddy.tab.TabAttachmentStore.Staged staged = attachmentStore.stage(
+                tabId, attachmentId, fileName, mediaType, base64Data);
+        if (staged == null) {
+            return base64Data;
+        }
+        String data = attachmentStore.readData(tabId, attachmentId);
+        return data != null ? data : base64Data;
+    }
+
+    public void releaseTabAttachments(String tabId) {
+        if (tabId != null) {
+            attachmentStore.releaseTab(tabId);
+        }
+    }
+
+    /**
      * Bind a forked session to the tab the webview reserved for it.
      *
      * <p>The fork lands in its own tab: the tab record is created, a session
@@ -2141,6 +2176,10 @@ public class OpencodeBuddyChatWindow {
         String tabKey = record != null ? record.getTabId().value() : targetSessionId;
         SessionCallbackAdapter closedAdapter = record != null ? record.getAdapter() : null;
         StreamMessageCoalescer closedCoalescer = record != null ? record.getCoalescer() : null;
+        if (record != null) {
+            // The tab owns its attachments: the bytes go with it.
+            attachmentStore.releaseTab(record.getTabId().value());
+        }
         if (permissionHandler != null) {
             // The tab owns its prompts: reject exactly this tab's requests.
             permissionHandler.clearPendingRequestsForTab(record != null ? record.getTabId().value() : tabKey);
@@ -3623,6 +3662,8 @@ public class OpencodeBuddyChatWindow {
             this.handlerContext.setBrowser(null);
         }
         webviewWatchdog.stop();
+        // The staged attachments belong to the tabs; the window is going away.
+        attachmentStore.clear();
 
         try {
             if (this.webviewInitializer != null) {
@@ -4063,6 +4104,23 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void bindForkedSession(String targetTabId, String sessionId) {
                 OpencodeBuddyChatWindow.this.bindForkedSession(targetTabId, sessionId);
+            }
+
+            @Override
+            public String stageAttachment(
+                    String tabId,
+                    String attachmentId,
+                    String fileName,
+                    String mediaType,
+                    String base64Data
+            ) {
+                return OpencodeBuddyChatWindow.this.stageAttachment(
+                        tabId, attachmentId, fileName, mediaType, base64Data);
+            }
+
+            @Override
+            public void releaseTabAttachments(String tabId) {
+                OpencodeBuddyChatWindow.this.releaseTabAttachments(tabId);
             }
 
             @Override

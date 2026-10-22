@@ -18,7 +18,7 @@
  * localStorage win over the host copy at first read, so an existing user's
  * current on-disk choice is never downgraded to a default on upgrade.
  */
-import { sendBridgeEvent } from './bridge';
+import { sendWindowCommand } from './bridge';
 import { getStoredDiffTheme, type DiffThemeMode } from './diffTheme';
 import { CHAT_BAR_COLOR_STORAGE_KEY } from './chatBarTheme';
 import {
@@ -245,13 +245,13 @@ export function updateUiPreferences(patch: Partial<UiPreferences>): void {
   const serialized = JSON.stringify(current);
   if (serialized !== lastSyncedJson) {
     lastSyncedJson = serialized;
-    sendBridgeEvent('set_ui_preferences', serialized);
+    sendWindowCommand('settings.uiPreferences', JSON.parse(serialized) as Record<string, unknown>);
   }
 }
 
 /** Ask the extension host for the authoritative preferences. */
 export function requestUiPreferences(): void {
-  sendBridgeEvent('get_ui_preferences');
+  sendWindowCommand('settings.uiPreferences.get');
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendWindowCommand } from '../../utils/bridge';
 import type { ModelInfo } from '../../components/ChatInputBox/types';
 import { OPENCODE_MODELS, isKnownNonReasoningModel } from '../../components/ChatInputBox/types';
 
@@ -191,7 +191,7 @@ function beginLoad(providerId: string) {
   };
   notifyListeners();
 
-  sendBridgeEvent('get_cli_models', providerId);
+  sendWindowCommand('models.list', { provider: providerId });
 
   pendingLoadTimer = {
     provider: providerId,
@@ -247,7 +247,7 @@ export function useCliModels(currentProvider: string = 'opencode') {
       if (!currentSnapshot.modelsByProvider[currentProvider]?.length) {
         beginLoad(currentProvider);
       } else {
-        sendBridgeEvent('get_cli_models', currentProvider);
+        sendWindowCommand('models.list', { provider: currentProvider });
       }
       return;
     }

@@ -1,6 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge';
+import { sendBridgeEvent, sendHostCommand, sendInterrupt, sendWindowCommand } from '../utils/bridge';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
@@ -391,7 +391,7 @@ export function useMessageSender({
     });
 
     // Sync provider setting
-    sendBridgeEvent('set_provider', currentProvider);
+    sendWindowCommand('settings.provider', { provider: currentProvider });
 
     // Build agent info
 

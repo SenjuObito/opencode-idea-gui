@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { TFunction as I18nTFunction } from 'i18next';
-import { sendSessionCommand, sendBridgeEvent } from '../utils/bridge';
+import { sendSessionCommand, sendBridgeEvent, sendWindowCommand } from '../utils/bridge';
 import type {
   PermissionMode,
   ReasoningEffort,
@@ -132,7 +132,7 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
 
   const handleProviderSelect = useCallback((providerId: string) => {
     setCurrentProvider(providerId);
-    sendBridgeEvent('set_provider', providerId);
+    sendWindowCommand('settings.provider', { provider: providerId });
     setPermissionMode(openCodePermissionMode);
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     if (!sessionId) return;

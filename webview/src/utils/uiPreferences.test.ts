@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const sendBridgeEventMock = vi.fn();
+const sendWindowCommandMock = vi.fn();
 
 vi.mock('./bridge', () => ({
-  sendBridgeEvent: (...args: unknown[]) => sendBridgeEventMock(...(args as [])),
+  sendWindowCommand: (...args: unknown[]) => sendWindowCommandMock(...(args as [])),
 }));
 
 import type { UiPreferences as Prefs } from './uiPreferences';
@@ -28,10 +28,10 @@ async function loadModule(initial?: Partial<Prefs>): Promise<UiPreferencesModule
 }
 
 function lastSent(): Record<string, unknown> | null {
-  for (let i = sendBridgeEventMock.mock.calls.length - 1; i >= 0; i--) {
-    const call = sendBridgeEventMock.mock.calls[i] as unknown[];
-    if (call[0] === 'set_ui_preferences') {
-      return JSON.parse(String(call[1])) as Record<string, unknown>;
+  for (let i = sendWindowCommandMock.mock.calls.length - 1; i >= 0; i--) {
+    const call = sendWindowCommandMock.mock.calls[i] as unknown[];
+    if (call[0] === 'settings.uiPreferences') {
+      return call[1] as Record<string, unknown>;
     }
   }
   return null;
@@ -40,7 +40,7 @@ function lastSent(): Record<string, unknown> | null {
 describe('uiPreferences', () => {
   beforeEach(() => {
     localStorage.clear();
-    sendBridgeEventMock.mockClear();
+    sendWindowCommandMock.mockClear();
   });
 
   it('starts from defaults when neither host nor localStorage has values', async () => {
@@ -75,10 +75,10 @@ describe('uiPreferences', () => {
   it('does not re-send an unchanged value to the host', async () => {
     const m = await loadModule();
     m.updateUiPreferences({ theme: 'dark' });
-    const before = sendBridgeEventMock.mock.calls.length;
+    const before = sendWindowCommandMock.mock.calls.length;
     m.updateUiPreferences({ theme: 'dark' });
 
-    expect(sendBridgeEventMock.mock.calls.length).toBe(before);
+    expect(sendWindowCommandMock.mock.calls.length).toBe(before);
   });
 
   it('applies an authoritative host snapshot and broadcasts it as host-sourced', async () => {

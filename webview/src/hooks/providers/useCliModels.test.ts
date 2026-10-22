@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetCliModelsCacheForTests, useCliModels } from './useCliModels';
 import { OPENCODE_MODELS } from '../../components/ChatInputBox/types';
 
-const sendBridgeEventMock = vi.hoisted(() => vi.fn());
+const sendWindowCommandMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../utils/bridge', () => ({
-  sendBridgeEvent: (...args: unknown[]) => sendBridgeEventMock(...args),
+  sendWindowCommand: (...args: unknown[]) => sendWindowCommandMock(...args),
 }));
 
 function emitCliModels(payload: unknown) {
@@ -17,7 +17,7 @@ function emitCliModels(payload: unknown) {
 
 describe('useCliModels', () => {
   beforeEach(() => {
-    sendBridgeEventMock.mockClear();
+    sendWindowCommandMock.mockClear();
     __resetCliModelsCacheForTests();
   });
 
@@ -28,7 +28,7 @@ describe('useCliModels', () => {
 
   it('fetches the opencode catalog when opencode provider is active', () => {
     renderHook(() => useCliModels('opencode'));
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'opencode');
+    expect(sendWindowCommandMock).toHaveBeenCalledWith('models.list', { provider: 'opencode' });
   });
 
   it('falls back to the static OPENCODE_MODELS list before the catalog arrives', () => {
@@ -119,10 +119,10 @@ describe('useCliModels', () => {
     ]);
     first.unmount();
 
-    sendBridgeEventMock.mockClear();
+    sendWindowCommandMock.mockClear();
     const second = renderHook(() => useCliModels('opencode'));
     // Cache already has entries — no bridge round-trip on remount.
-    expect(sendBridgeEventMock).not.toHaveBeenCalled();
+    expect(sendWindowCommandMock).not.toHaveBeenCalled();
     expect(second.result.current.cliModels.map((m) => m.id)).toEqual([
       'opencode-default',
       'openai/gpt-5',
@@ -135,8 +135,8 @@ describe('useCliModels', () => {
   it('silently triggers get_cli_models in background on initial plugin open even if cache exists', () => {
     // 1. Initial mount fetches and populates cache
     const first = renderHook(() => useCliModels('opencode'));
-    expect(sendBridgeEventMock).toHaveBeenCalledTimes(1);
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'opencode');
+    expect(sendWindowCommandMock).toHaveBeenCalledTimes(1);
+    expect(sendWindowCommandMock).toHaveBeenCalledWith('models.list', { provider: 'opencode' });
 
     emitCliModels({
       success: true,
@@ -147,9 +147,9 @@ describe('useCliModels', () => {
     first.unmount();
 
     // 2. Second mount in same session: reuses cache without extra bridge call
-    sendBridgeEventMock.mockClear();
+    sendWindowCommandMock.mockClear();
     const second = renderHook(() => useCliModels('opencode'));
-    expect(sendBridgeEventMock).not.toHaveBeenCalled();
+    expect(sendWindowCommandMock).not.toHaveBeenCalled();
     expect(second.result.current.cliModelsLoading).toBe(false);
     expect(second.result.current.cliModels.map((m) => m.id)).toEqual(['openai/gpt-5']);
   });
@@ -184,7 +184,7 @@ describe('useCliModels', () => {
     expect(hook1.result.current.cliModelsLoading).toBe(false);
     expect(hook2.result.current.cliModelsLoading).toBe(false);
 
-    sendBridgeEventMock.mockClear();
+    sendWindowCommandMock.mockClear();
 
     // 2. Trigger refresh from hook1
     act(() => {
@@ -192,7 +192,7 @@ describe('useCliModels', () => {
     });
 
     // Both hooks must immediately see loading = true
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'opencode');
+    expect(sendWindowCommandMock).toHaveBeenCalledWith('models.list', { provider: 'opencode' });
     expect(hook1.result.current.cliModelsLoading).toBe(true);
     expect(hook2.result.current.cliModelsLoading).toBe(true);
 

@@ -37,8 +37,9 @@ public class CliModelsHandlerTest {
     public void getSupportedTypesReturnsGetCliModels() {
         CliModelsHandler handler = new CliModelsHandler(new HandlerContext(null, null, null, new RecordingJsCallback()));
         String[] types = handler.getSupportedTypes();
-        assertEquals(1, types.length);
+        assertEquals(2, types.length);
         assertEquals("get_cli_models", types[0]);
+        assertEquals("models.list", types[1]);
     }
 
     @Test

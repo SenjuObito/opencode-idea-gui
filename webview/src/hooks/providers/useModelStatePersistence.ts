@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendWindowCommand } from '../../utils/bridge';
 import type {
   PermissionMode,
   ReasoningEffort,
@@ -89,7 +89,7 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
           if (window.__CCGUI_RECOVERY_RELOAD__ === true) {
             return;
           }
-          sendBridgeEvent('set_provider', 'opencode');
+          sendWindowCommand('settings.provider', { provider: 'opencode' });
           // The restored model stays frontend state only. There is no bound
           // session at boot, so `set_model` would write to whatever session the
           // host still points at (a background tab after a reload). The first

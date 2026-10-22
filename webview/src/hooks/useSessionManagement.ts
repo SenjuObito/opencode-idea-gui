@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
-import { sendHostCommand, sendSessionCommand, sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { sendHostCommand, sendSessionCommand, sendBridgeEvent, sendInterrupt, sendWindowCommand, cardDebugLog } from '../utils/bridge';
 import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
@@ -238,7 +238,7 @@ export function useSessionManagement({
     }
     // The provider selection travels with the tab's next send; do not create a
     // host session here.
-    sendBridgeEvent('set_provider', providerId);
+    sendWindowCommand('settings.provider', { provider: providerId });
     openNewSessionTab();
   }, [loading, openNewSessionTab]);
 

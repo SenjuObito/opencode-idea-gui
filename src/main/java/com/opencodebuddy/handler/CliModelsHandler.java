@@ -43,6 +43,7 @@ public class CliModelsHandler extends BaseMessageHandler {
 
     private static final String[] SUPPORTED_TYPES = {
             "get_cli_models",
+            "models.list",
     };
 
     private static final Set<String> SUPPORTED_PROVIDERS = Set.of(
@@ -62,15 +63,26 @@ public class CliModelsHandler extends BaseMessageHandler {
 
     @Override
     public boolean handle(String type, String content) {
-        if (!"get_cli_models".equals(type)) {
+        if (!"get_cli_models".equals(type) && !"models.list".equals(type)) {
             return false;
         }
         String provider = content != null ? content.trim().toLowerCase(Locale.ROOT) : "";
+        if (provider.startsWith("{")) {
+            try {
+                JsonObject payload = gson.fromJson(provider, JsonObject.class);
+                if (payload != null && payload.has("provider") && !payload.get("provider").isJsonNull()) {
+                    provider = payload.get("provider").getAsString().trim().toLowerCase(Locale.ROOT);
+                }
+            } catch (Exception ignored) {
+                // Keep the legacy raw-provider path below.
+            }
+        }
         if (!SUPPORTED_PROVIDERS.contains(provider)) {
             pushError(provider, "Unsupported CLI provider for model list: " + provider);
             return true;
         }
-        CompletableFuture.runAsync(() -> listModels(provider), AppExecutorUtil.getAppExecutorService());
+        final String resolvedProvider = provider;
+        CompletableFuture.runAsync(() -> listModels(resolvedProvider), AppExecutorUtil.getAppExecutorService());
         return true;
     }
 

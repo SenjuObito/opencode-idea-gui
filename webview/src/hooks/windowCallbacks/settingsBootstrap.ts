@@ -6,7 +6,7 @@
  * (stored in window.__pending* slots by main.tsx).
  */
 
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendWindowCommand } from '../../utils/bridge';
 
 const MAX_RETRIES = 30;
 
@@ -52,7 +52,7 @@ export const startModeRequest = (): void => {
       return;
     }
     if (window.sendToJava) {
-      sendBridgeEvent('get_mode');
+      sendWindowCommand('settings.mode.get');
     } else {
       modeRetryCount++;
       if (modeRetryCount < MAX_RETRIES) {

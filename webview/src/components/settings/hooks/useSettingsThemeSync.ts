@@ -1,6 +1,6 @@
 // hooks/useSettingsThemeSync.ts
 import { useState, useEffect, useCallback } from 'react';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { sendWindowCommand } from '../../../utils/bridge';
 import { applyDiffTheme, type DiffThemeMode } from '../../../utils/diffTheme';
 import { applyChatBarThemeColor } from '../../../utils/chatBarTheme';
 import { applyFontScale } from '../../../utils/fontScale';
@@ -95,7 +95,7 @@ export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
   const handleSetThemePreference = useCallback((theme: 'light' | 'dark' | 'system') => {
     setThemePreference(theme);
     if (theme === 'system') {
-      sendBridgeEvent('get_ide_theme');
+      sendWindowCommand('settings.theme.get');
     }
   }, []);
 

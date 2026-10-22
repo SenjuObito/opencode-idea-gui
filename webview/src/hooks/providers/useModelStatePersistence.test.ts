@@ -4,9 +4,11 @@ import { useModelStatePersistence, type UseModelStatePersistenceOptions } from '
 import type { PermissionMode } from '../../components/ChatInputBox/types';
 
 const sendBridgeEventMock = vi.hoisted(() => vi.fn());
+const sendWindowCommandMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../utils/bridge', () => ({
   sendBridgeEvent: (...args: unknown[]) => sendBridgeEventMock(...args),
+  sendWindowCommand: (...args: unknown[]) => sendWindowCommandMock(...args),
 }));
 
 function makeOptions(overrides: Partial<UseModelStatePersistenceOptions> = {}): UseModelStatePersistenceOptions {
@@ -28,10 +30,15 @@ function bridgeEventsFor(name: string): unknown[][] {
   return sendBridgeEventMock.mock.calls.filter((c) => c[0] === name);
 }
 
+function windowCommandsFor(name: string): unknown[][] {
+  return sendWindowCommandMock.mock.calls.filter((c) => c[0] === name);
+}
+
 describe('useModelStatePersistence — boot sync', () => {
   beforeEach(() => {
     localStorage.clear();
     sendBridgeEventMock.mockClear();
+    sendWindowCommandMock.mockClear();
     (window as unknown as { sendToJava?: unknown }).sendToJava = () => {};
     window.__CCGUI_PAGE_CONTEXT_READY__ = true;
     window.__CCGUI_PAGE_LOAD_KIND__ = 'initial_load';
@@ -55,7 +62,7 @@ describe('useModelStatePersistence — boot sync', () => {
     vi.advanceTimersByTime(200); // fire the deferred syncToBackend
 
     expect(bridgeEventsFor('set_mode')).toHaveLength(0);
-    expect(bridgeEventsFor('set_provider')).toHaveLength(1);
+    expect(windowCommandsFor('settings.provider')).toHaveLength(1);
     expect(bridgeEventsFor('set_model')).toHaveLength(0);
   });
 
@@ -66,7 +73,7 @@ describe('useModelStatePersistence — boot sync', () => {
     renderHook(() => useModelStatePersistence(makeOptions()));
     vi.advanceTimersByTime(200);
 
-    expect(bridgeEventsFor('set_provider')).toHaveLength(1);
+    expect(windowCommandsFor('settings.provider')).toHaveLength(1);
     expect(bridgeEventsFor('set_model')).toHaveLength(0);
   });
 
@@ -79,7 +86,7 @@ describe('useModelStatePersistence — boot sync', () => {
     renderHook(() => useModelStatePersistence(makeOptions()));
     vi.advanceTimersByTime(200);
 
-    expect(bridgeEventsFor('set_provider')).toHaveLength(0);
+    expect(windowCommandsFor('settings.provider')).toHaveLength(0);
     expect(bridgeEventsFor('set_model')).toHaveLength(0);
     expect(localStorage.getItem('model-selection-state')).toBeNull();
   });
@@ -109,6 +116,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
   beforeEach(() => {
     localStorage.clear();
     sendBridgeEventMock.mockClear();
+    sendWindowCommandMock.mockClear();
     (window as unknown as { sendToJava?: unknown }).sendToJava = () => {};
     window.__CCGUI_PAGE_CONTEXT_READY__ = true;
     window.__CCGUI_PAGE_LOAD_KIND__ = 'initial_load';
@@ -142,7 +150,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
     vi.advanceTimersByTime(200);
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
-    expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
+    expect(windowCommandsFor('settings.provider')).toEqual([['settings.provider', { provider: 'opencode' }]]);
     expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
@@ -164,7 +172,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('claude-sonnet-4-6');
-    expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
+    expect(windowCommandsFor('settings.provider')).toEqual([['settings.provider', { provider: 'opencode' }]]);
     // No bound session at boot: the model travels with the first send instead.
     expect(bridgeEventsFor('set_model')).toEqual([]);
   });
@@ -190,6 +198,7 @@ describe('useModelStatePersistence — OpenCode persistence', () => {
   beforeEach(() => {
     localStorage.clear();
     sendBridgeEventMock.mockClear();
+    sendWindowCommandMock.mockClear();
     (window as unknown as { sendToJava?: unknown }).sendToJava = () => {};
     window.__CCGUI_PAGE_CONTEXT_READY__ = true;
     window.__CCGUI_PAGE_LOAD_KIND__ = 'initial_load';
@@ -221,7 +230,7 @@ describe('useModelStatePersistence — OpenCode persistence', () => {
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('openai/gpt-5');
-    expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
+    expect(windowCommandsFor('settings.provider')).toEqual([['settings.provider', { provider: 'opencode' }]]);
     // The model is restored into frontend state only; the first send carries it.
     expect(bridgeEventsFor('set_model')).toEqual([]);
   });
@@ -237,7 +246,7 @@ describe('useModelStatePersistence — OpenCode persistence', () => {
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('openai/gpt-5');
-    expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
+    expect(windowCommandsFor('settings.provider')).toEqual([['settings.provider', { provider: 'opencode' }]]);
     expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 

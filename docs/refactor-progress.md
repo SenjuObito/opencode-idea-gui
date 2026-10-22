@@ -430,3 +430,9 @@
   `tab.title.set`；webview 的 `get_agents`、`get/set_pinned_models`、
   `update_tab_title` 调用点已迁移，旧宿主类型保留兼容入口。
 - 数字更新：webview 非测试/非传输的 `sendBridgeEvent` 从约 70 处降到 46 处。
+
+## 第四轮补充 2：设置/模型/主题命令继续收口
+
+- 新增 models.list、settings.provider、settings.uiPreferences[.get]、settings.theme.get、settings.mode.get；对应 webview 调用点已迁移，宿主保留旧类型兼容。
+- get_cli_models、set_provider、get/set_ui_preferences、get_ide_theme、get_mode 的调用不再走裸 sendBridgeEvent。
+- 数字更新：webview 非测试/非传输的 sendBridgeEvent 从 46 处降到 36 处。

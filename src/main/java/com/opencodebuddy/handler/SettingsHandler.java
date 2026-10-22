@@ -36,6 +36,7 @@ public class SettingsHandler extends BaseMessageHandler {
 
     private static final String[] SUPPORTED_TYPES = {
         "get_mode",
+        "settings.mode.get",
         "settings.mode",
         "settings.model",
         "settings.reasoning",
@@ -82,6 +83,7 @@ public class SettingsHandler extends BaseMessageHandler {
         "get_ask_user_question_sound_notification_enabled",
         "set_ask_user_question_sound_notification_enabled",
         "get_ide_theme",
+        "settings.theme.get",
         "get_commit_prompt",
         "set_commit_prompt",
         "get_commit_ai_config",
@@ -107,8 +109,11 @@ public class SettingsHandler extends BaseMessageHandler {
         "get_user_language",
         "clear_user_language",
         "set_provider",
+        "settings.provider",
         "get_ui_preferences",
         "set_ui_preferences",
+        "settings.uiPreferences.get",
+        "settings.uiPreferences",
         "get_pinned_models",
         "set_pinned_models",
         "settings.pinnedModels.get",
@@ -165,6 +170,7 @@ public class SettingsHandler extends BaseMessageHandler {
         switch (type) {
             // Permission mode
             case "get_mode":
+            case "settings.mode.get":
                 permissionModeHandler.handleGetMode();
                 return true;
             case "settings.mode":
@@ -302,6 +308,7 @@ public class SettingsHandler extends BaseMessageHandler {
                 projectConfigHandler.handleSetAiTitleGenerationEnabled(content);
                 return true;
             case "get_ide_theme":
+            case "settings.theme.get":
                 projectConfigHandler.handleGetIdeTheme();
                 return true;
             case "get_commit_prompt":
@@ -374,11 +381,24 @@ public class SettingsHandler extends BaseMessageHandler {
                 handleClearUserLanguage();
                 return true;
             case "set_provider":
+            case "settings.provider":
                 if (content != null && !content.isEmpty()) {
-                    context.setCurrentProvider(content);
+                    String provider = content;
+                    if (content.trim().startsWith("{")) {
+                        try {
+                            JsonObject obj = gson.fromJson(content, JsonObject.class);
+                            if (obj != null && obj.has("provider") && !obj.get("provider").isJsonNull()) {
+                                provider = obj.get("provider").getAsString();
+                            }
+                        } catch (Exception ignored) {
+                            // Keep the legacy raw-provider path.
+                        }
+                    }
+                    context.setCurrentProvider(provider);
                 }
                 return true;
             case "get_ui_preferences":
+            case "settings.uiPreferences.get":
                 ApplicationManager.getApplication().invokeLater(() -> {
                     try {
                         JsonObject prefs = context.getSettingsService().getUiPreferences();
@@ -390,6 +410,7 @@ public class SettingsHandler extends BaseMessageHandler {
                 });
                 return true;
             case "set_ui_preferences":
+            case "settings.uiPreferences":
                 try {
                     JsonObject patch = gson.fromJson(content, JsonObject.class);
                     context.getSettingsService().setUiPreferences(patch);

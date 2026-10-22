@@ -4,7 +4,7 @@
 - 方案原文：`docs/full-refactor-architecture-plan.md`（验收口径）
 - 逐轮流水：`docs/refactor-progress.md`
 - 配套仓库：`../opencode-buddy-core`
-- 统计时间：以 `dc1b76a`（附件分块上传）为基线
+- 统计时间：以 `e4643df`（子代理历史迁入信封）为基线
 
 ## 一、总览
 
@@ -33,7 +33,7 @@ cd webview && npx vitest run
 | 条目 | 内容 | 状态 | 证据 / 提交 |
 |---|---|---|---|
 | A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload |
-| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 已完成 | 5 处 `load_subagent_session` 已迁为 `subagent.history`；宿主从父会话工具元数据解析子会话并读取 transcript，Core 只补 `parentID` 查询 |
+| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 已完成 | `e4643df`：5 处 `load_subagent_session` 已迁为 `subagent.history`；宿主从父会话工具元数据解析子会话并读取 transcript，Core `8d882cc` 补 `parentID` / `limit` |
 | A3 | 路由表已权威（31 个事件）；约 96 个 `window.*` 全局仍在 | 部分完成 | 路由层已落地；已删除无运行时使用的 `__sessionTransitioning` 测试残留，其余全局清理待做 |
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |

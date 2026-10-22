@@ -566,3 +566,4 @@
   thinking/tool 转换；vitest 增加命名 payload 路由测试。
 - 验证：gradle 全绿、tsc 通过、vitest `173 文件 / 1512 测试`、
   `checkLegacyPatterns` 0 forbidden / 0 debt。
+- 提交：宿主 `e4643df`，Core `8d882cc`。

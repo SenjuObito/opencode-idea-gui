@@ -33,8 +33,8 @@ public class PermissionModeHandler {
             String currentMode = "default";  // Default value (prompt on each tool call)
 
             // Prefer getting from session first
-            if (this.context.getSession() != null) {
-                String sessionMode = this.context.getSession().getPermissionMode();
+            if (this.context.getActiveTabSession() != null) {
+                String sessionMode = this.context.getActiveTabSession().getPermissionMode();
                 if (sessionMode != null && !sessionMode.trim().isEmpty()) {
                     currentMode = sessionMode;
                 }
@@ -100,7 +100,7 @@ public class PermissionModeHandler {
                 return;
             } else {
                 // Legacy bare-string callers keep the window-scoped behaviour.
-                targetSession = context.getSession();
+                targetSession = context.getActiveTabSession();
             }
 
             if (targetSession != null) {

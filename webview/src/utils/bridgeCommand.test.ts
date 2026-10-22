@@ -1,0 +1,87 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { sendHostCommand, sendInterrupt } from './bridge';
+
+describe('bridge v2 command envelope', () => {
+  beforeEach(() => {
+    window.sendToJava = vi.fn();
+    delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
+  });
+
+  const lastCall = () => {
+    const calls = (window.sendToJava as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    return calls[calls.length - 1][0] as string;
+  };
+
+  it('carries the identity with the command', () => {
+    expect(sendHostCommand('tab-1', 'session.send', { text: 'hi' }, 'ses_a')).toBe(true);
+
+    const call = lastCall();
+    expect(call.startsWith('session.send:')).toBe(true);
+
+    const envelope = JSON.parse(call.substring('session.send:'.length));
+    expect(envelope.v).toBe(2);
+    expect(envelope.type).toBe('session.send');
+    expect(envelope.tabId).toBe('tab-1');
+    expect(envelope.sessionId).toBe('ses_a');
+    expect(envelope.requestId).toBeTruthy();
+    expect(envelope.payload).toEqual({ text: 'hi' });
+  });
+
+  it('refuses to send a command without a tab', () => {
+    expect(sendHostCommand('', 'session.send', { text: 'hi' })).toBe(false);
+    expect(window.sendToJava).not.toHaveBeenCalled();
+  });
+
+  it('gives every command its own request id', () => {
+    sendHostCommand('tab-1', 'session.send', { text: 'a' });
+    sendHostCommand('tab-1', 'session.send', { text: 'b' });
+
+    const calls = (window.sendToJava as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const ids = calls.map((call) => JSON.parse((call[0] as string).substring('session.send:'.length)).requestId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('bridge interrupt', () => {
+  beforeEach(() => {
+    window.sendToJava = vi.fn();
+    delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
+  });
+
+  const payload = () => {
+    const call = (window.sendToJava as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    return JSON.parse(call.substring('interrupt_session:'.length));
+  };
+
+  it('names the tab it stops', () => {
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => 'tab-7',
+      getTabIdForSession: () => 'tab-7',
+    };
+
+    expect(sendInterrupt({ sessionId: 'ses_a' })).toBe(true);
+    expect(payload().tabId).toBe('tab-7');
+    expect(payload().sessionId).toBe('ses_a');
+  });
+
+  it('stops the tab that owns the session, not the active one', () => {
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => 'tab-active',
+      getTabIdForSession: (sessionId: string | null | undefined) =>
+        sessionId === 'ses_background' ? 'tab-background' : null,
+    };
+
+    sendInterrupt({ sessionId: 'ses_background' });
+    expect(payload().tabId).toBe('tab-background');
+  });
+
+  it('prefers an explicit tab id', () => {
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => 'tab-active',
+      getTabIdForSession: () => 'tab-other',
+    };
+
+    sendInterrupt({ tabId: 'tab-explicit', sessionId: 'ses_a' });
+    expect(payload().tabId).toBe('tab-explicit');
+  });
+});

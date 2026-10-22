@@ -465,8 +465,8 @@ class OpenFileHandler {
     private List<File> getResolutionBases() {
         LinkedHashSet<String> basePaths = new LinkedHashSet<>();
 
-        if (context.getSession() != null) {
-            String sessionCwd = context.getSession().getCwd();
+        if (context.getActiveTabSession() != null) {
+            String sessionCwd = context.getActiveTabSession().getCwd();
             if (sessionCwd != null && !sessionCwd.isBlank()) {
                 basePaths.add(sessionCwd);
             }
@@ -722,8 +722,8 @@ class OpenFileHandler {
 
             Path projectRoot = new File(NodeDetector.toVfsPath(basePath)).getCanonicalFile().toPath();
             Path baseDirectory = projectRoot;
-            if (context.getSession() != null) {
-                String sessionCwd = context.getSession().getCwd();
+            if (context.getActiveTabSession() != null) {
+                String sessionCwd = context.getActiveTabSession().getCwd();
                 if (sessionCwd != null && !sessionCwd.isBlank()) {
                     Path sessionPath = new File(NodeDetector.toVfsPath(sessionCwd)).getCanonicalFile().toPath();
                     if (sessionPath.startsWith(projectRoot)) {

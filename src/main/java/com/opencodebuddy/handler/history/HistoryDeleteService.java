@@ -52,7 +52,7 @@ class HistoryDeleteService {
             return;
         }
         quiesceActiveSessionForDeletion(
-                context.getSession(), Collections.singleton(sessionId), currentProvider)
+                context.getActiveTabSession(), Collections.singleton(sessionId), currentProvider)
                 .thenRunAsync(() -> {
                     try {
                         LOG.info("[HistoryHandler] ========== Delete session start ==========");
@@ -87,7 +87,7 @@ class HistoryDeleteService {
             return;
         }
 
-        quiesceActiveSessionForDeletion(context.getSession(), sessionIds, currentProvider)
+        quiesceActiveSessionForDeletion(context.getActiveTabSession(), sessionIds, currentProvider)
                 .thenRunAsync(() -> {
                     try {
                         LOG.info("[HistoryHandler] ========== Batch delete sessions start ==========");

@@ -2,6 +2,8 @@ package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
+import com.opencodebuddy.handler.core.HostCommand;
+import com.opencodebuddy.handler.core.RequestIdLedger;
 
 import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.bridge.NodeDetector;
@@ -31,12 +33,19 @@ public class SessionHandler extends BaseMessageHandler {
     private static final Logger LOG = Logger.getInstance(SessionHandler.class);
 
     private static final String[] SUPPORTED_TYPES = {
+            // v2 envelope (preferred): identity travels with the command.
+            "session.send",
+            // Legacy per-field payloads; kept while the remaining senders
+            // migrate, and still validated for a tab id inside the payload.
             "send_message",
             "send_message_with_attachments",
             "interrupt_session",
             "restart_session"
             // Note: create_new_session should not be handled here; it should be handled by OpencodeBuddyToolWindow.createNewSession()
     };
+
+    /** Replayed commands must not send the same prompt twice. */
+    private final RequestIdLedger requestIds = new RequestIdLedger();
 
     public SessionHandler(HandlerContext context) {
         super(context);
@@ -50,6 +59,9 @@ public class SessionHandler extends BaseMessageHandler {
     @Override
     public boolean handle(String type, String content) {
         switch (type) {
+            case "session.send":
+                handleHostSessionSend(content);
+                return true;
             case "send_message":
                 LOG.debug("[SessionHandler] 处理: send_message");
                 handleSendMessage(content);
@@ -64,7 +76,7 @@ public class SessionHandler extends BaseMessageHandler {
                 return true;
             case "restart_session":
                 LOG.debug("[SessionHandler] 处理: restart_session");
-                handleRestartSession();
+                handleRestartSession(content);
                 return true;
             default:
                 return false;
@@ -96,8 +108,19 @@ public class SessionHandler extends BaseMessageHandler {
         return null;
     }
 
-    private void recordSendFailure(String prompt, String errorMessage) {
-        recordSendFailure(context.getSession(), null, prompt, errorMessage);
+    /**
+     * Run on the EDT when an IDE is present.
+     *
+     * <p>The handler is also exercised by unit tests, where no application
+     * instance exists; a missing EDT must not turn a rejected command into a
+     * NullPointerException.</p>
+     */
+    private static void runOnEdt(Runnable action) {
+        if (ApplicationManager.getApplication() == null) {
+            action.run();
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(action);
     }
 
     private void recordSendFailure(OpencodeSession session, String targetSessionId, String prompt, String errorMessage) {
@@ -109,7 +132,7 @@ public class SessionHandler extends BaseMessageHandler {
             session.getCallbackFacade().notifyMessageUpdate(session.getState().getMessages());
             session.getCallbackFacade().notifyStateChange(false, false, errorMessage);
         }
-        ApplicationManager.getApplication().invokeLater(() -> {
+        runOnEdt(() -> {
             callJavaScript("addErrorMessage", targetSessionId != null ? targetSessionId : "", escapeJs(errorMessage));
         });
     }
@@ -140,6 +163,71 @@ public class SessionHandler extends BaseMessageHandler {
      * Send message to Claude
      * [FIX] Now parses JSON format to extract text, agent info and file tags
      */
+    /**
+     * v2 command entry point: the envelope owns identity, the payload owns
+     * content.
+     *
+     * <p>Everything the plan calls "no guessing" is enforced here — the version,
+     * the tab id, the request id and the session binding are all validated
+     * before a single byte reaches the daemon. A command that does not add up is
+     * rejected back to the tab that sent it instead of being executed against
+     * whatever session happened to be active.</p>
+     */
+    private void handleHostSessionSend(String content) {
+        HostCommand command;
+        try {
+            command = HostCommand.parse(content, "session.send");
+        } catch (HostCommand.Invalid invalid) {
+            rejectCommand(null, null, invalid.getCode(), invalid.getMessage());
+            return;
+        }
+
+        if (!requestIds.remember(command.getRequestId())) {
+            LOG.debug("[SessionHandler] replayed session.send ignored: " + command.getRequestId());
+            return;
+        }
+
+        String mismatch = sessionMismatch(command.getTabId(), command.getSessionId());
+        if (mismatch != null) {
+            requestIds.forget(command.getRequestId());
+            rejectCommand(command.getTabId(), command.getRequestId(), "SESSION_MISMATCH", mismatch);
+            return;
+        }
+
+        handleSendMessage(command.getPayloadJson());
+    }
+
+    /**
+     * @return a human readable reason when the named session is not the one the
+     *         tab is bound to, or {@code null} when the command is consistent
+     */
+    private String sessionMismatch(String tabId, String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        OpencodeSession session = context.getSession(tabId);
+        if (session == null) {
+            return "tab " + tabId + " has no session to address";
+        }
+        String bound = session.getSessionId();
+        if (bound == null || bound.isBlank()) {
+            // The binding is still in flight: the tab owns the send, the
+            // canonical id is simply not known yet.
+            return null;
+        }
+        return bound.equals(sessionId) ? null : "tab " + tabId + " is bound to " + bound;
+    }
+
+    private void rejectCommand(String tabId, String requestId, String code, String message) {
+        LOG.warn("[SessionHandler] command rejected (" + code + "): " + message
+                + (tabId != null ? " tab=" + tabId : ""));
+        callJavaScript("commandRejected",
+                escapeJs(tabId != null ? tabId : ""),
+                escapeJs(requestId != null ? requestId : ""),
+                escapeJs(code),
+                escapeJs(message));
+    }
+
     private void handleSendMessage(String content) {
         // [FIX] Parse JSON format to extract text, agent info and file tags
         String prompt;
@@ -232,7 +320,13 @@ public class SessionHandler extends BaseMessageHandler {
             }
         }
         if (sessionObj == null) {
-            sessionObj = context.getSession();
+            // No tab identity: refuse instead of sending to whichever session
+            // happens to be active. The rejection names the missing identity so
+            // the failure is visible instead of silent.
+            rejectCommand(tabId, null, "MISSING_TAB_ID",
+                    "the command must name the tab it belongs to");
+            recordSendFailure(null, null, prompt, "发送失败：命令缺少 tab 身份");
+            return;
         }
         final OpencodeSession targetSession = sessionObj;
         final String resolvedSessionId = targetSessionId != null ? targetSessionId
@@ -263,7 +357,7 @@ public class SessionHandler extends BaseMessageHandler {
             final String command = finalPrompt.substring(1).trim();
             CompletableFuture.runAsync(() -> {
                 String currentWorkingDir = determineWorkingDirectory();
-                String previousCwd = targetSession != null ? targetSession.getCwd() : context.getSession().getCwd();
+                String previousCwd = targetSession != null ? targetSession.getCwd() : null;
 
                 if (!currentWorkingDir.equals(previousCwd) && targetSession != null) {
                     targetSession.setCwd(currentWorkingDir);
@@ -477,7 +571,12 @@ public class SessionHandler extends BaseMessageHandler {
             }
         }
         if (sessionObj == null) {
-            sessionObj = context.getSession();
+            // No tab identity: refuse instead of sending to whichever session
+            // happens to be active.
+            rejectCommand(tabId, null, "MISSING_TAB_ID",
+                    "the command must name the tab it belongs to");
+            recordSendFailure(null, null, prompt, "发送失败：命令缺少 tab 身份");
+            return;
         }
         final OpencodeSession targetSession = sessionObj;
         final String resolvedSessionId = targetSessionId != null ? targetSessionId
@@ -582,16 +681,12 @@ public class SessionHandler extends BaseMessageHandler {
         }
 
         if (targetSession == null && (targetSessionId == null || targetSessionId.isBlank())) {
-            // No identity at all: fall back to the window's current session, but
-            // say so. Silently doing nothing here is how a tab stayed "loading"
-            // forever after the user pressed stop.
-            OpencodeSession current = context.getSession();
-            if (current != null) {
-                LOG.warn("[SessionHandler] interrupt without sessionId/tabId; using the current session "
-                        + current.getSessionId());
-                targetSession = current;
-                targetSessionId = current.getSessionId();
-            }
+            // No identity at all: the command does not say what it stops, so it
+            // is refused. Stopping "whatever is running" is how one tab's stop
+            // button used to kill another tab's turn.
+            rejectCommand(null, null, "MISSING_TAB_ID",
+                    "an interrupt must name the session or tab it stops");
+            return;
         }
 
         final String resolvedSessionId = targetSessionId != null ? targetSessionId : tabId;
@@ -623,8 +718,27 @@ public class SessionHandler extends BaseMessageHandler {
     /**
      * Restart the session.
      */
-    private void handleRestartSession() {
-        context.getSession().restart().thenRun(() -> {
+    private void handleRestartSession(String content) {
+        String tabId = null;
+        try {
+            if (content != null && content.trim().startsWith("{")) {
+                JsonObject payload = new Gson().fromJson(content, JsonObject.class);
+                if (payload != null && payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
+                    tabId = payload.get("tabId").getAsString();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        if (tabId == null || tabId.isBlank()) {
+            rejectCommand(null, null, "MISSING_TAB_ID", "a restart must name the tab it restarts");
+            return;
+        }
+        OpencodeSession target = context.getSession(tabId);
+        if (target == null) {
+            rejectCommand(tabId, null, "TAB_NOT_FOUND", "unknown tab " + tabId);
+            return;
+        }
+        target.restart().thenRun(() -> {
             ApplicationManager.getApplication().invokeLater(() -> {});
         });
     }

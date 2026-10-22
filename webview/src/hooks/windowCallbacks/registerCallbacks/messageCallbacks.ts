@@ -556,11 +556,15 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.updateMessages = (arg0, arg1, arg2, arg3) => {
+  window.updateMessages = (arg0, arg1, arg2, arg3, arg4) => {
     let targetSessionId: string | null = null;
     let json: string;
     let sequenceArg: string | number | undefined;
     let baseIndexArg: string | number | undefined;
+    // The host stamps the owning tab on every snapshot. When it is present the
+    // routing is exact; the session id is only used as a fallback for hosts
+    // that do not stamp it yet.
+    let targetTabId: string | null = null;
 
     const isFirstArgJson = typeof arg0 === 'string' && (arg0.trimStart().startsWith('[') || arg0.trimStart().startsWith('{'));
     if (!isFirstArgJson && typeof arg1 === 'string') {
@@ -568,6 +572,7 @@ export function registerMessageCallbacks(
       json = arg1;
       sequenceArg = arg2;
       baseIndexArg = arg3;
+      targetTabId = typeof arg4 === 'string' && arg4.length > 0 ? arg4 : null;
     } else {
       targetSessionId = null;
       json = arg0;
@@ -580,18 +585,30 @@ export function registerMessageCallbacks(
       || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
 
     if (!isForegroundSession && targetSessionId && window.__sessionTabsStore) {
+      const applyToBackgroundTab = (t: any) => {
+        try {
+          const raw = JSON.parse(json);
+          if (Array.isArray(raw)) {
+            t.messages = raw;
+          }
+        } catch (e) {
+          console.error('[MultiSession] Failed to parse background updateMessages', e);
+        }
+      };
+
+      if (targetTabId) {
+        // The tab id is known: write to exactly that tab. No lookup, no
+        // guessing, and a closed tab simply has nowhere to write.
+        const written = window.__sessionTabsStore.updateTab?.(targetTabId, applyToBackgroundTab);
+        if (!written) {
+          cardDebugLog('[updateMessages] dropped: no tab', targetTabId, 'owns this snapshot');
+        }
+        return;
+      }
+
       window.__sessionTabsStore.updateBackgroundTab(
         (t) => t.sessionId === targetSessionId,
-        (t) => {
-          try {
-            const raw = JSON.parse(json);
-            if (Array.isArray(raw)) {
-              t.messages = raw;
-            }
-          } catch (e) {
-            console.error('[MultiSession] Failed to parse background updateMessages', e);
-          }
-        }
+        applyToBackgroundTab
       );
       // No tab claims this session: the user closed it (or the host pushed an
       // id the webview never bound). Drop the snapshot — falling through to the

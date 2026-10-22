@@ -38,7 +38,9 @@ describe('useMessageSender - /context command', () => {
     ...overrides,
   });
 
-  const getBridgePayload = (eventName: string) => {
+  // Commands travel in the v2 envelope; the content lives in `payload` and the
+  // identity in the envelope itself.
+  const getEnvelope = (eventName: string) => {
     const calls = (window.sendToJava as any).mock.calls.map((call: [string]) => call[0]);
     const prefix = `${eventName}:`;
     const sendCall = calls.find((call: string) => call.startsWith(prefix));
@@ -46,8 +48,14 @@ describe('useMessageSender - /context command', () => {
     return JSON.parse(sendCall!.substring(prefix.length));
   };
 
+  const getBridgePayload = (eventName: string) => getEnvelope(eventName).payload;
+
   beforeEach(() => {
     window.sendToJava = vi.fn();
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => 'tab-1',
+      getActiveTabAutoOpenFileEnabled: () => false,
+    };
   });
 
   afterEach(() => {
@@ -169,7 +177,7 @@ describe('useMessageSender - /context command', () => {
       result.current.handleSubmit('hello');
     });
 
-    const payload = getBridgePayload('send_message');
+    const payload = getBridgePayload('session.send');
     expect(payload.reasoningEffort).toBe('high');
   });
 
@@ -191,7 +199,7 @@ describe('useMessageSender - /context command', () => {
       }]);
     });
 
-    const payload = getBridgePayload('send_message_with_attachments');
+    const payload = getBridgePayload('session.send');
     expect(payload.reasoningEffort).toBe('high');
   });
 
@@ -208,7 +216,7 @@ describe('useMessageSender - /context command', () => {
       result.current.handleSubmit('hello');
     });
 
-    const payload = getBridgePayload('send_message');
+    const payload = getBridgePayload('session.send');
     expect(payload.reasoningEffort).toBe('low');
   });
 
@@ -223,7 +231,7 @@ describe('useMessageSender - /context command', () => {
       result.current.handleSubmit('hello');
     });
 
-    const payload = getBridgePayload('send_message');
+    const payload = getBridgePayload('session.send');
     expect(payload.reasoningEffort).toBe('low');
   });
 
@@ -243,7 +251,7 @@ describe('useMessageSender - /context command', () => {
       }]);
     });
 
-    const payload = getBridgePayload('send_message_with_attachments');
+    const payload = getBridgePayload('session.send');
     expect(payload.reasoningEffort).toBe('low');
   });
 
@@ -259,7 +267,7 @@ describe('useMessageSender - /context command', () => {
       result.current.handleSubmit('hello');
     });
 
-    const payload = getBridgePayload('send_message');
+    const payload = getBridgePayload('session.send');
     expect(payload.model).toBe('opencode/new-model');
   });
 
@@ -277,7 +285,7 @@ describe('useMessageSender - /context command', () => {
       }]);
     });
 
-    const payload = getBridgePayload('send_message_with_attachments');
+    const payload = getBridgePayload('session.send');
     expect(payload.model).toBe('opencode/new-model');
   });
 
@@ -302,9 +310,14 @@ describe('useMessageSender - /context command', () => {
       result.current.handleSubmit('hello');
     });
 
-    const payload = getBridgePayload('send_message');
-    expect(payload.tabId).toBe('tab-new');
-    expect(payload.sessionId).toBeUndefined();
+    const envelope = getEnvelope('session.send');
+    expect(envelope.v).toBe(2);
+    expect(envelope.type).toBe('session.send');
+    expect(envelope.tabId).toBe('tab-new');
+    expect(envelope.sessionId).toBeNull();
+    expect(envelope.requestId).toBeTruthy();
+
+    const payload = envelope.payload;
     expect(payload.model).toBe('opencode/new-model');
     expect(payload.permissionMode).toBe('plan');
     expect(payload.reasoningEffort).toBe('high');

@@ -83,10 +83,10 @@ public class ContextHandler extends BaseMessageHandler {
 
         // Fall back to session state if not provided
         if (sessionId == null || sessionId.isEmpty()) {
-            sessionId = this.context.getSession().getSessionId();
+            sessionId = this.context.getActiveTabSession().getSessionId();
         }
         if (cwd == null || cwd.isEmpty()) {
-            cwd = this.context.getSession().getCwd();
+            cwd = this.context.getActiveTabSession().getCwd();
         }
 
         final String finalSessionId = sessionId;

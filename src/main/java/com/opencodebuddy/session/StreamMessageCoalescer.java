@@ -56,6 +56,9 @@ public class StreamMessageCoalescer {
     // This lightweight signal keeps the frontend watchdog alive.
     private static final int HEARTBEAT_INTERVAL_MS = 10_000;       // 10s
 
+    /** The tab that owns this coalescer; stamped on every snapshot it pushes. */
+    private volatile String tabId;
+
     private final Object lock = new Object();
     private final Alarm updateAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
     private final Alarm heartbeatAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
@@ -122,7 +125,12 @@ public class StreamMessageCoalescer {
     }
 
     public StreamMessageCoalescer(String sessionId, JsCallbackTarget callbackTarget) {
+        this(sessionId, null, callbackTarget);
+    }
+
+    public StreamMessageCoalescer(String sessionId, String tabId, JsCallbackTarget callbackTarget) {
         this.sessionId = sessionId;
+        this.tabId = tabId;
         this.callbackTarget = callbackTarget;
     }
 
@@ -132,6 +140,22 @@ public class StreamMessageCoalescer {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
+    }
+
+    /**
+     * The tab this coalescer belongs to.
+     *
+     * <p>The tab id is the stable identity of the conversation; the session id
+     * only exists once the daemon has answered. Every snapshot therefore
+     * carries both, so the webview can route it to exactly one tab instead of
+     * looking the owner up by session id.</p>
+     */
+    public String getTabId() {
+        return tabId;
+    }
+
+    public void setTabId(String tabId) {
+        this.tabId = tabId;
     }
 
     /**
@@ -485,7 +509,8 @@ public class StreamMessageCoalescer {
                                 String.valueOf(tailBaseIndex),
                                 String.valueOf(pushSequence));
                     } else {
-                        callbackTarget.callJavaScript("updateMessages", getTargetSessionId(), escapedMessagesJson, String.valueOf(pushSequence));
+                        callbackTarget.callJavaScript("updateMessages", getTargetSessionId(), escapedMessagesJson,
+                                String.valueOf(pushSequence), tabId);
                     }
                     synchronized (lock) {
                         // Unconditional: this frame reached the webview, so it becomes the

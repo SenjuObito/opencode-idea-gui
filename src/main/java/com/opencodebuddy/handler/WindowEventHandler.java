@@ -129,7 +129,7 @@ public class WindowEventHandler extends BaseMessageHandler {
     // =========================================================================
 
     private void handleForkSession(String content) {
-        String targetSessionId = sessionIdOrEmpty();
+        String targetSessionId = activeTabSessionIdOrEmpty();
         String messageId = null;
         boolean isFull = false;
 
@@ -145,6 +145,17 @@ public class WindowEventHandler extends BaseMessageHandler {
                             String s = obj.get("sessionId").getAsString();
                             if (s != null && !s.isBlank()) {
                                 targetSessionId = s.trim();
+                            }
+                        }
+                        if (obj.has("tabId") && !obj.get("tabId").isJsonNull()) {
+                            String tabRef = obj.get("tabId").getAsString();
+                            if (tabRef != null && !tabRef.isBlank() && (targetSessionId == null || targetSessionId.isBlank())) {
+                                // The caller named a tab: resolve the session that
+                                // tab is bound to instead of guessing.
+                                com.opencodebuddy.session.OpencodeSession tabSession = context.getSession(tabRef);
+                                if (tabSession != null && tabSession.getSessionId() != null) {
+                                    targetSessionId = tabSession.getSessionId();
+                                }
                             }
                         }
                         if (obj.has("type") && "full".equals(obj.get("type").getAsString())) {
@@ -170,9 +181,14 @@ public class WindowEventHandler extends BaseMessageHandler {
             return;
         }
 
+        // The fork source is the session the caller named. There is no fallback
+        // to "the session on screen": forking the wrong conversation is worse
+        // than refusing the fork.
         com.opencodebuddy.session.OpencodeSession session = context.getSession(sessionId);
         if (session == null) {
-            session = context.getSession();
+            LOG.warn("[fork] skipped: no session for sessionId=" + sessionId);
+            callJavaScript("onForkError", "no session for " + sessionId);
+            return;
         }
         if (session != null && session.isBusy()) {
             LOG.warn("[fork] skipped: session busy");
@@ -279,7 +295,7 @@ public class WindowEventHandler extends BaseMessageHandler {
     }
 
     private void handleRevertSession(String content) {
-        String targetSessionId = sessionIdOrEmpty();
+        String targetSessionId = activeTabSessionIdOrEmpty();
         String messageId = null;
 
         if (content != null) {
@@ -373,7 +389,7 @@ public class WindowEventHandler extends BaseMessageHandler {
             }
         }
         if (targetSessionId == null || targetSessionId.isBlank()) {
-            targetSessionId = sessionIdOrEmpty();
+            targetSessionId = activeTabSessionIdOrEmpty();
         }
 
         final String sessionId = targetSessionId;
@@ -449,7 +465,9 @@ public class WindowEventHandler extends BaseMessageHandler {
         boolean hasRevert = fallbackMessageId != null || (revertObj != null && messageId != null && !messageId.isBlank());
         LOG.info("[revert-state] sessionId=" + sessionId + " hasRevert=" + hasRevert + " messageId=" + messageId);
 
-        com.opencodebuddy.session.OpencodeSession session = context.getSession();
+        // The revert state belongs to the session that was asked about, never to
+        // whichever session happens to be on screen.
+        com.opencodebuddy.session.OpencodeSession session = context.getSession(sessionId);
         if (session != null) {
             session.setRevertState(hasRevert ? new com.opencodebuddy.session.SessionState.RevertState(messageId != null ? messageId : "") : null);
         }
@@ -539,7 +557,7 @@ public class WindowEventHandler extends BaseMessageHandler {
             }
         }
         final String resolvedModel = (model != null && !model.isBlank()) ? model.trim() : null;
-        String targetSessionId = sessionIdOrEmpty();
+        String targetSessionId = activeTabSessionIdOrEmpty();
         if (content != null && content.trim().startsWith("{")) {
             try {
                 com.google.gson.JsonElement el = com.google.gson.JsonParser.parseString(content);
@@ -622,8 +640,9 @@ public class WindowEventHandler extends BaseMessageHandler {
         }
     }
 
-    private String sessionIdOrEmpty() {
-        com.opencodebuddy.session.OpencodeSession session = context.getSession();
+    /** The canonical id of the active tab's session (window-level commands only). */
+    private String activeTabSessionIdOrEmpty() {
+        com.opencodebuddy.session.OpencodeSession session = context.getActiveTabSession();
         String id = session != null ? session.getSessionId() : null;
         return id != null ? id : "";
     }
@@ -633,7 +652,7 @@ public class WindowEventHandler extends BaseMessageHandler {
     }
 
     private com.google.gson.JsonObject singleSessionParams(String sessionId, String model) {
-        String id = sessionId != null && !sessionId.isBlank() ? sessionId : sessionIdOrEmpty();
+        String id = sessionId != null && !sessionId.isBlank() ? sessionId : activeTabSessionIdOrEmpty();
         com.google.gson.JsonObject params = new com.google.gson.JsonObject();
         params.addProperty("sessionId", id);
         String cwd = context.resolveEffectiveWorkingDirectory();

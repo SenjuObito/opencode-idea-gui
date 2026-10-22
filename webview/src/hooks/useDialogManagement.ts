@@ -4,7 +4,7 @@ import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
-import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
+import { sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
 
 interface UseDialogManagementOptions {
@@ -353,7 +353,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       remember: false,
       rejectMessage: t('permission.timedOut', { defaultValue: '请求超时，已停止会话' }),
     }));
-    sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId }));
+    sendInterrupt({ sessionId });
     closePermissionCurrent();
   }, [closePermissionCurrent, t, forceClosePermissionDialog]);
 
@@ -388,7 +388,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     }
     const sessionId = activeReq.sessionId;
     sendBridgeEvent('ask_user_question_reject', JSON.stringify({ requestId }));
-    sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId }));
+    sendInterrupt({ sessionId });
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 

@@ -98,10 +98,32 @@ public class HandlerContext {
     private final java.util.Map<String, OpencodeSession> sessionPool = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile java.util.function.Function<String, OpencodeSession> sessionLookup;
 
-    public OpencodeSession getSession() {
+    /**
+     * The session of the <em>active tab</em>.
+     *
+     * <p>Window-level actions (the title bar, the status bar, the editor
+     * context) legitimately need the session the user is looking at. They must
+     * ask for it by this name, so that "the session a command targets" and "the
+     * session on screen" can never be confused: everything that routes a
+     * command uses {@link #getSession(String)} with an explicit tab or session
+     * id instead.</p>
+     */
+    public OpencodeSession getActiveTabSession() {
         return session;
     }
 
+    /**
+     * @deprecated use {@link #getActiveTabSession()}; a bare "current session"
+     *     accessor is exactly the ambiguity the multi-tab cutover removes.
+     */
+    @Deprecated
+    public OpencodeSession getSession() {
+        return getActiveTabSession();
+    }
+
+    /**
+     * Resolve a session by tab id or canonical session id.
+     */
     public OpencodeSession getSession(String sessionId) {
         if (sessionId != null && !sessionId.isBlank()) {
             if (sessionLookup != null) {

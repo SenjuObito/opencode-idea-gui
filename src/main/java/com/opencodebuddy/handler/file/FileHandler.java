@@ -224,8 +224,8 @@ public class FileHandler extends BaseMessageHandler {
      * Ensures a non-null path is always returned with proper fallback chain
      */
     private String getEffectiveBasePath() {
-        if (context.getSession() != null) {
-            String cwd = context.getSession().getCwd();
+        if (context.getActiveTabSession() != null) {
+            String cwd = context.getActiveTabSession().getCwd();
             if (cwd != null && !cwd.isEmpty()) {
                 LOG.debug("[FileHandler] Using session cwd as base path: " + cwd);
                 return cwd;

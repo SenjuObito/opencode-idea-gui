@@ -28,7 +28,12 @@ interface Window {
     arg0: string,
     arg1?: string | number,
     arg2?: string | number,
-    arg3?: string | number
+    arg3?: string | number,
+    /**
+     * The tab that owns the snapshot. The host stamps it on every push so the
+     * webview routes the snapshot to exactly one tab.
+     */
+    arg4?: string
   ) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
   updateMessageTail?: (
@@ -186,6 +191,20 @@ interface Window {
    * Set current session ID (for rewind feature)
    */
   setSessionId?: (sessionId: string, previousSessionId?: string, tabId?: string) => void;
+
+  /**
+   * The host refused a command. `tabId`/`requestId` name the rejected command,
+   * `code` is the machine readable reason (e.g. `MISSING_TAB_ID`).
+   */
+  commandRejected?: (tabId: string, requestId: string, code: string, message: string) => void;
+
+  /** Rejections that arrived before the real handler was registered. */
+  __pendingCommandRejections?: Array<{
+    tabId: string;
+    requestId: string;
+    code: string;
+    message: string;
+  }>;
 
   /**
    * Add toast notification (called from backend)

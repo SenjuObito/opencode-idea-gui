@@ -214,7 +214,7 @@ public class CliModelsHandler extends BaseMessageHandler {
             return;
         }
         try {
-            OpencodeSession session = context.getSession();
+            OpencodeSession session = context.getActiveTabSession();
             if (session == null) {
                 return;
             }

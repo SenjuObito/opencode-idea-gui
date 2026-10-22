@@ -822,3 +822,85 @@ tasks.named('buildPlugin') {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Architecture guard (docs/full-refactor-architecture-plan.md §16)
+//
+// Legacy mechanisms must stay deleted. The `forbidden` list is a hard gate: a
+// hit fails the build. The `debt` list is the set of patterns the cutover has
+// not removed yet; it is reported on every `check` and becomes fatal with
+// -PstrictLegacy=true once the counters reach zero.
+//
+// Any intentional exception must sit on the same line and carry
+// `legacy-allow: <reason>`, so the exception is visible where it applies.
+// ---------------------------------------------------------------------------
+tasks.register('checkLegacyPatterns') {
+    group = 'verification'
+    description = 'Fails on removed legacy mechanisms and reports remaining architecture debt.'
+
+    def javaSources = fileTree('src/main/java') { include '**/*.java' }
+    def webviewSources = fileTree('webview/src') {
+        include '**/*.ts'
+        include '**/*.tsx'
+        exclude '**/*.test.ts'
+        exclude '**/*.test.tsx'
+    }
+
+    def forbidden = [
+        'legacy-session-identity': ~/claimUnboundTab|switch_session|permissionServiceKey|__pendingSessionId|getHostedSessionIds/,
+        // A bare "current session" accessor is the ambiguity the cutover
+        // removes: window-level code must ask for the active tab by name.
+        'active-session-fallback': ~/context\.getSession\(\)/,
+    ]
+    def debt = [
+        'window-session-lookup':   [files: webviewSources, pattern: ~/currentSessionIdRef\.current/],
+        'single-runtime-swap':     [files: webviewSources, pattern: ~/captureStreamingRuntime|restoreStreamingRuntime/],
+        'global-transition-lock':  [files: webviewSources, pattern: ~/__sessionTransitioning/],
+    ]
+    def strict = project.hasProperty('strictLegacy') && project.property('strictLegacy').toString() == 'true'
+
+    doLast {
+        def violations = []
+        def debtCounts = [:]
+
+        forbidden.each { name, pattern ->
+            javaSources.plus(webviewSources).each { file ->
+                file.eachLine { line, number ->
+                    if ((line =~ pattern).find() && !line.contains('legacy-allow:')) {
+                        violations << "${name}: ${project.relativePath(file)}:${number}"
+                    }
+                }
+            }
+        }
+
+        debt.each { name, rule ->
+            int count = 0
+            rule.files.each { file ->
+                file.eachLine { line, number ->
+                    if ((line =~ rule.pattern).find() && !line.contains('legacy-allow:')) {
+                        count++
+                        if (count <= 5) {
+                            println "  [debt:${name}] ${project.relativePath(file)}:${number}"
+                        }
+                    }
+                }
+            }
+            debtCounts[name] = count
+        }
+
+        if (!violations.isEmpty()) {
+            violations.each { println "  ✗ ${it}" }
+            throw new GradleException("checkLegacyPatterns: ${violations.size()} removed legacy mechanism(s) are back; see docs/full-refactor-architecture-plan.md §2.3")
+        }
+
+        def total = debtCounts.values().sum() ?: 0
+        println "checkLegacyPatterns: 0 forbidden hits, ${total} remaining debt lines ${debtCounts}"
+        if (strict && total > 0) {
+            throw new GradleException("checkLegacyPatterns: -PstrictLegacy=true and ${total} debt lines remain")
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'checkLegacyPatterns'
+}

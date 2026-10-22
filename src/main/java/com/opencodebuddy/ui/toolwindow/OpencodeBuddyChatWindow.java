@@ -18,7 +18,9 @@ import com.opencodebuddy.tab.TabCommandRouter;
 import com.opencodebuddy.tab.TabRecord;
 import com.opencodebuddy.tab.TabRegistry;
 import com.opencodebuddy.tab.TabSessionFactory;
+import com.opencodebuddy.tab.TabSettings;
 import com.opencodebuddy.tab.TabState;
+import com.opencodebuddy.tab.TurnId;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.ui.ChatWindowDelegate;
 import com.opencodebuddy.ui.EditorContextTracker;
@@ -1706,7 +1708,11 @@ public class OpencodeBuddyChatWindow {
         // the tab id would stamp every snapshot with a non-session identity.
         String identity = com.opencodebuddy.tab.SessionId.tryParse(targetSessionId) != null
                 ? targetSessionId : null;
-        StreamMessageCoalescer newCoalescer = new StreamMessageCoalescer(identity, new StreamMessageCoalescer.JsCallbackTarget() {
+        // The tab id is known even before the session id is: it is the stable
+        // identity of the conversation this coalescer belongs to.
+        String coalescerTabId = com.opencodebuddy.tab.SessionId.tryParse(targetSessionId) != null
+                ? null : targetSessionId;
+        StreamMessageCoalescer newCoalescer = new StreamMessageCoalescer(identity, coalescerTabId, new StreamMessageCoalescer.JsCallbackTarget() {
             @Override
             public void callJavaScript(String functionName, String... args) {
                 OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
@@ -1799,8 +1805,53 @@ public class OpencodeBuddyChatWindow {
                     }
                 }
             }
+
+            @Override
+            public void onTurnEnd(String jsonContent) {
+                if (tabRefId != null && !acceptTurnTerminal(tabRefId, jsonContent)) {
+                    LOG.debug("[Tab] duplicate turn terminal ignored for " + tabRefId);
+                    return;
+                }
+                super.onTurnEnd(jsonContent);
+            }
         };
         return newAdapter;
+    }
+
+    /**
+     * First-wins gate for a tab's turn terminal.
+     *
+     * <p>The daemon marker, the stream-end path and the interrupted-close path
+     * can all report the same turn. Only the first report is forwarded, so a
+     * late terminal from an older turn cannot clear a newer turn's spinner.</p>
+     *
+     * @return {@code true} when the terminal should be forwarded
+     */
+    private boolean acceptTurnTerminal(String tabId, String jsonContent) {
+        TurnId turnId = parseTurnId(jsonContent);
+        if (turnId == null) {
+            return true;
+        }
+        TabRecord record = tabRegistry.get(TabId.of(tabId));
+        if (record == null || record.isClosed()) {
+            return true;
+        }
+        return record.markTurnEnded(turnId);
+    }
+
+    private static TurnId parseTurnId(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return null;
+        }
+        try {
+            JsonObject payload = JsonParser.parseString(jsonContent).getAsJsonObject();
+            if (!payload.has("turnId") || payload.get("turnId").isJsonNull()) {
+                return null;
+            }
+            return TurnId.tryParse(payload.get("turnId").getAsString());
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -1858,6 +1909,11 @@ public class OpencodeBuddyChatWindow {
                 : (project != null ? project.getBasePath() : null);
         tabSessionFactory.attach(stableTabId, canonicalSessionId, session,
                 effectiveAdapter, effectiveCoalescer, cwd);
+        if (effectiveCoalescer != null) {
+            // The history tab now owns this coalescer: stamp its tab id so the
+            // snapshots it pushes are routed by tab, not by session lookup.
+            effectiveCoalescer.setTabId(stableTabId.value());
+        }
         registerSession(canonicalSessionId, session, effectiveAdapter, effectiveCoalescer);
         if (handlerContext != null) {
             handlerContext.removeSession(tabId);
@@ -1888,6 +1944,7 @@ public class OpencodeBuddyChatWindow {
         }
         if (boundCoalescer != null) {
             boundCoalescer.setSessionId(canonicalSessionId);
+            boundCoalescer.setTabId(stableTabId.value());
         }
         bindSessionSink(canonicalSessionId, boundSession);
 

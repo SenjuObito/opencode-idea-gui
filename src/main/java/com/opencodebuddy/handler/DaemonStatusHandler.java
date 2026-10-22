@@ -210,7 +210,7 @@ public class DaemonStatusHandler extends BaseMessageHandler {
     }
 
     private String sessionIdOrEmpty() {
-        com.opencodebuddy.session.OpencodeSession session = context.getSession();
+        com.opencodebuddy.session.OpencodeSession session = context.getActiveTabSession();
         String id = session != null ? session.getSessionId() : null;
         return id != null ? id : "";
     }

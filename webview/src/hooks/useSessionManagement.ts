@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
-import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
+import { sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
 type ViewMode = 'chat' | 'history' | 'settings';
@@ -226,14 +226,14 @@ export function useSessionManagement({
   // Force create new session (no confirmation, used by /clear /new /reset commands)
   const forceCreateNewSession = useCallback(() => {
     if (loading) {
-      sendBridgeEvent('interrupt_session');
+      sendInterrupt();
     }
     openNewSessionTab();
   }, [loading, openNewSessionTab]);
 
   const forceCreateNewSessionWithProvider = useCallback((providerId: string) => {
     if (loading) {
-      sendBridgeEvent('interrupt_session');
+      sendInterrupt();
     }
     // The provider selection travels with the tab's next send; do not create a
     // host session here.
@@ -244,7 +244,7 @@ export function useSessionManagement({
   // Confirm interrupt
   const handleConfirmInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
-    sendBridgeEvent('interrupt_session');
+    sendInterrupt();
     openNewSessionTab();
     pendingActionRef.current = null;
   }, [openNewSessionTab]);
@@ -364,7 +364,7 @@ export function useSessionManagement({
       if (sessionId === currentSessionId) {
         // [FIX] Send interrupt signal if AI is responding
         if (loading) {
-          sendBridgeEvent('interrupt_session');
+          sendInterrupt();
         }
         if (!window.__sessionTabsStore) {
           beginSessionTransition(null, null);
@@ -420,7 +420,7 @@ export function useSessionManagement({
 
       if (currentSessionId && deletedSessionIds.has(currentSessionId)) {
         if (loading) {
-          sendBridgeEvent('interrupt_session');
+          sendInterrupt();
         }
         if (!window.__sessionTabsStore) {
           beginSessionTransition(null, null);

@@ -69,8 +69,8 @@ public class RewindHandler extends BaseMessageHandler {
                 LOG.info("[RewindHandler] Rewinding files - Session: " + sessionId + ", Message: " + userMessageId);
 
                 String cwd = null;
-                if (context.getSession() != null) {
-                    cwd = context.getSession().getCwd();
+                if (context.getActiveTabSession() != null) {
+                    cwd = context.getActiveTabSession().getCwd();
                 }
                 if ((cwd == null || cwd.isEmpty()) && context.getProject() != null) {
                     cwd = context.getProject().getBasePath();

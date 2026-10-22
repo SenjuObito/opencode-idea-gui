@@ -1,6 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent } from '../utils/bridge';
+import { sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
@@ -275,11 +275,17 @@ export function useMessageSender({
       ? autoOpenFileEnabled
       : (window.__sessionTabsStore?.getActiveTabAutoOpenFileEnabled?.() ?? false);
 
+    if (!activeTabId) {
+      // Without a tab identity the host would have to guess which tab owns the
+      // message. Refuse here instead of sending an unattributable command.
+      console.error('[Frontend] refusing to send: no active tab id');
+      addToast(t('chat.sendFailedNoTab', { defaultValue: '发送失败：找不到当前标签页' }), 'error');
+      return;
+    }
+
     if (hasAttachments) {
       try {
-        const payload = JSON.stringify({
-          tabId: activeTabId,
-          sessionId: targetSessionId,
+        sendHostCommand(activeTabId, 'session.send', {
           text,
           attachments: (attachments || []).map(a => ({
             fileName: a.fileName,
@@ -291,34 +297,27 @@ export function useMessageSender({
           autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...modelPayload,
           ...reasoningEffortPayload,
-        });
-        sendBridgeEvent('send_message_with_attachments', payload);
+        }, targetSessionId);
       } catch (error) {
         console.error('[Frontend] Failed to serialize attachments payload', error);
-        const fallbackPayload = JSON.stringify({
-          tabId: activeTabId,
-          sessionId: targetSessionId,
+        sendHostCommand(activeTabId, 'session.send', {
           text,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
           autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...modelPayload,
           ...reasoningEffortPayload,
-        });
-        sendBridgeEvent('send_message', fallbackPayload);
+        }, targetSessionId);
       }
     } else {
-      const payload = JSON.stringify({
-        tabId: activeTabId,
-        sessionId: targetSessionId,
+      sendHostCommand(activeTabId, 'session.send', {
         text,
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
         autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
         ...modelPayload,
         ...reasoningEffortPayload,
-      });
-      sendBridgeEvent('send_message', payload);
+      }, targetSessionId);
     }
   }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef, autoOpenFileEnabled]);
 
@@ -485,7 +484,7 @@ export function useMessageSender({
     const targetSessionId = currentSessionIdRef
       ? (currentSessionIdRef.current ?? undefined)
       : (currentSessionId ?? undefined);
-    sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId: targetSessionId }));
+    sendInterrupt({ sessionId: targetSessionId });
   }, [
     isStreamingRef,
     streamingContentRef,

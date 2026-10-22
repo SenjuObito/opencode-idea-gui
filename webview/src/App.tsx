@@ -519,12 +519,17 @@ const App = () => {
     }
     const id = getMessageId(message);
     const sid = currentSessionIdRef.current;
+    // The fork source is named explicitly: the host refuses to fork "the
+    // session on screen" when the caller did not say which one it meant.
+    const sourceTabId = window.__sessionTabsStore?.getTabIdForSession?.(sid)
+      ?? window.__sessionTabsStore?.getActiveTabId?.()
+      ?? '';
     if (!id) {
       console.warn('[App] fork: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, messageId: 'latest' }));
+      sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, tabId: sourceTabId, messageId: 'latest' }));
       return;
     }
-    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, messageId: id }));
+    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, tabId: sourceTabId, messageId: id }));
   }, [streamingActive, addToast, t, getMessageId]);
 
   /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
@@ -534,7 +539,10 @@ const App = () => {
       return;
     }
     const sid = currentSessionIdRef.current;
-    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, type: 'full' }));
+    const sourceTabId = window.__sessionTabsStore?.getTabIdForSession?.(sid)
+      ?? window.__sessionTabsStore?.getActiveTabId?.()
+      ?? '';
+    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, tabId: sourceTabId, type: 'full' }));
   }, [streamingActive, addToast, t]);
 
   // Latest user message id, used by the builtin /undo slash command.

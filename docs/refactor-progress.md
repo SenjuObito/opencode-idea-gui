@@ -107,3 +107,54 @@
 - 真实 JCEF 6 tab / 3 流 / 10k 消息渲染基准，以及 §13.4 完整矩阵
   （1000 次切 tab、50 次 reload、100 次权限请求）。需要 IDE 运行时，
   当前环境无法启动 JCEF；步骤、记录表和预算见 `docs/jcef-benchmark.md`。
+
+## 第二轮收口：协议 v2 与身份收口
+
+对照 `docs/full-refactor-architecture-plan.md` 逐条复核后补齐的部分。
+
+### 静态护栏（§16）
+
+- 新增 gradle 任务 `checkLegacyPatterns`，接入 `check` 生命周期。
+- 硬门禁（命中即失败）：`claimUnboundTab` / `switch_session` /
+  `permissionServiceKey` / `__pendingSessionId` / `getHostedSessionIds`，
+  以及 `context.getSession()` 这类"当前会话"兜底访问。
+- 债务清单（当前只报告，`-PstrictLegacy=true` 时才失败）：
+  `currentSessionIdRef.current`、`capture/restoreStreamingRuntime`、
+  `__sessionTransitioning`。
+- 例外必须写在命中行并带 `legacy-allow:` 注释。
+
+### W→H 命令信封（§7.1）
+
+- 新增 `handler/core/HostCommand`：统一解析
+  `{v, type, requestId, tabId, sessionId?, payload}`，校验版本、类型、
+  tabId、requestId，并把信封身份合并进 payload（payload 自带的身份作废）。
+- `session.send` 走新信封；校验失败回 `commandRejected`
+  （`tabId/requestId/code/message`），webview 侧 toast + 日志。
+- 新增 `handler/core/RequestIdLedger`：命令按 requestId 幂等，重放只执行一次。
+- 发送路径不再回落"当前会话"：没有 tabId 直接拒绝
+  （`MISSING_TAB_ID`），sessionId 与 tab 绑定不一致时拒绝
+  （`SESSION_MISMATCH`）。
+- `interrupt_session` / `restart_session` 必须带 tabId；前端统一走
+  `sendInterrupt()`，关闭后台 tab 时停止的是那个 tab 自己的会话。
+
+### 回合终态幂等（INV-5）
+
+- 新增 `tab/TurnId`（强类型，正数）。
+- `TabRecord` 记录已结算回合（上限 256，LRU 淘汰），`[TURN_END]` 只结算一次，
+  迟到的旧回合终态不会清掉新回合的 spinner。
+- 关闭 tab 时一并释放该表。
+
+### 快照按 tab 路由（INV-1）
+
+- `StreamMessageCoalescer` 现在同时持有 tabId 与 sessionId，
+  `updateMessages` 推送时附带 tabId。
+- webview 收到带 tabId 的快照时直接写那一个 tab，不再用 sessionId 反查 tab。
+
+### 其他
+
+- `HandlerContext.getSession()` 拆成 `getActiveTabSession()`（窗口级）
+  与 `getSession(tabId|sessionId)`（路由级）；窗口级调用点全部显式改名，
+  路由级调用点全部补身份。
+- fork 不再回落到"当前会话"：只 fork 调用方点名的会话，支持用 tabId 寻址。
+- 新增测试：`HostCommandTest`、`RequestIdLedgerTest`、
+  `SessionHandlerHostCommandTest`、`TabRecordTest`。

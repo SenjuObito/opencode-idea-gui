@@ -25,6 +25,23 @@ describe('useSessionManagement', () => {
     setBackgroundTasks: vi.fn(),
   });
 
+  const withActiveTab = (tabId = 'tab-1') => {
+    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
+      getActiveTabId: () => tabId,
+      getTabIdForSession: () => tabId,
+    };
+  };
+
+  const interruptCalls = () => (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls
+    .map((c: unknown[]) => c[0] as string)
+    .filter((c: string) => c.startsWith('interrupt_session:'));
+
+  const interruptPayload = () => {
+    const call = interruptCalls()[0];
+    if (!call) return null;
+    return JSON.parse(call.substring('interrupt_session:'.length));
+  };
+
   beforeEach(() => {
     window.__sessionTransitioning = false;
     window.__sessionTransitionToken = null;
@@ -35,6 +52,7 @@ describe('useSessionManagement', () => {
 
   afterEach(() => {
     delete window.__openNewSessionTab;
+    delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
   });
 
   it('opens a local tab for a direct new session', () => {
@@ -252,11 +270,13 @@ describe('useSessionManagement', () => {
       })
     );
 
+    withActiveTab();
     act(() => {
       result.current.forceCreateNewSession();
     });
 
-    expect(window.sendToJava).toHaveBeenCalledWith('interrupt_session:');
+    expect(interruptCalls()).toHaveLength(1);
+    expect(interruptPayload()?.tabId).toBe('tab-1');
     expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
     expect(window.sendToJava).not.toHaveBeenCalledWith('create_new_session:');
   });
@@ -341,7 +361,7 @@ describe('useSessionManagement', () => {
     const calls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map(
       (c: unknown[]) => c[0]
     );
-    expect(calls.filter((c) => c === 'interrupt_session:')).toHaveLength(1);
+    expect(calls.filter((c) => c.startsWith('interrupt_session:'))).toHaveLength(1);
     expect(calls.filter((c) => c === 'create_new_session:')).toHaveLength(0);
   });
 
@@ -365,11 +385,13 @@ describe('useSessionManagement', () => {
     });
 
     // Then confirm interrupt
+    withActiveTab();
     act(() => {
       result.current.handleConfirmInterrupt();
     });
 
-    expect(window.sendToJava).toHaveBeenCalledWith('interrupt_session:');
+    expect(interruptCalls()).toHaveLength(1);
+    expect(interruptPayload()?.tabId).toBe('tab-1');
     expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
     expect(window.sendToJava).not.toHaveBeenCalledWith('create_new_session:');
   });
@@ -409,7 +431,7 @@ describe('useSessionManagement', () => {
 
     // Should NOT send interrupt when not loading
     const calls = (window.sendToJava as any).mock.calls.map((c: any) => c[0]);
-    expect(calls).not.toContain('interrupt_session:');
+    expect(calls.filter((c) => c.startsWith('interrupt_session:'))).toHaveLength(0);
     expect(calls).toContain(
       'load_session:{"sessionId":"hist-2"}',
     );

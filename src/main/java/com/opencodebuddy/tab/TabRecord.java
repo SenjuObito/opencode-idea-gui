@@ -4,6 +4,10 @@ import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.session.SessionCallbackAdapter;
 import com.opencodebuddy.session.StreamMessageCoalescer;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -16,12 +20,23 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class TabRecord {
 
+    /**
+     * A turn can settle through several paths (marker, stream end, interrupted
+     * send, daemon restart), so the last few terminal ids are remembered to make
+     * the second and later arrivals a no-op. Bounded so a long-lived tab cannot
+     * grow without limit; an evicted id only means a very late duplicate would
+     * be forwarded again, which the webview also ignores.
+     */
+    private static final int MAX_SETTLED_TURNS = 256;
+
     private final TabId tabId;
     private final String cwd;
     private final TabSettings settings = new TabSettings();
     private final TabSessionActor actor;
     private final AtomicLong epoch = new AtomicLong(0);
     private final AtomicLong revision = new AtomicLong();
+    private final Map<Long, Boolean> settledTurns = new LinkedHashMap<>();
+    private final Deque<Long> settledTurnOrder = new ArrayDeque<>();
 
     private volatile TabState state = TabState.NEW;
     private volatile SessionId sessionId;
@@ -106,6 +121,41 @@ public final class TabRecord {
         return revision.get();
     }
 
+    /**
+     * Record a turn terminal for this tab.
+     *
+     * <p>Terminal signals are not guaranteed to be unique: the daemon marker,
+     * the stream-end path and an interrupted close can all report the same turn.
+     * The first report wins; every later report for the same {@code turnId} is
+     * rejected so the UI cannot clear a newer turn's spinner with an older
+     * terminal.</p>
+     *
+     * @return {@code true} when this is the first report of the turn
+     */
+    public synchronized boolean markTurnEnded(TurnId turnId) {
+        if (turnId == null) {
+            return true;
+        }
+        Long key = turnId.value();
+        if (settledTurns.containsKey(key)) {
+            return false;
+        }
+        settledTurns.put(key, Boolean.TRUE);
+        settledTurnOrder.addLast(key);
+        while (settledTurnOrder.size() > MAX_SETTLED_TURNS) {
+            settledTurns.remove(settledTurnOrder.removeFirst());
+        }
+        return true;
+    }
+
+    public synchronized boolean isTurnSettled(TurnId turnId) {
+        return turnId != null && settledTurns.containsKey(turnId.value());
+    }
+
+    synchronized int settledTurnCount() {
+        return settledTurns.size();
+    }
+
     public boolean isBound() {
         return sessionId != null && session != null;
     }
@@ -156,9 +206,11 @@ public final class TabRecord {
         this.coalescer = null;
     }
 
-    public void close() {
+    public synchronized void close() {
         state = TabState.CLOSED;
         clearSessionResources();
+        settledTurns.clear();
+        settledTurnOrder.clear();
         actor.close();
     }
 }

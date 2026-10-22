@@ -56,7 +56,7 @@ public class ModelProviderHandler {
                     + ": payload has no sessionId — ignoring (an unbound tab sends its selection with the message)");
             return null;
         }
-        return context.getSession();
+        return context.getActiveTabSession();
     }
 
     public void handleSetModel(String content) {

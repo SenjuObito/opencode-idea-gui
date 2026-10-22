@@ -108,6 +108,26 @@ export function registerSessionCallbacks(
     addToast(message, type as 'info' | 'success' | 'warning' | 'error' | undefined);
   };
 
+  /**
+   * A command was refused by the host (docs/full-refactor-architecture-plan.md
+   * §7.1). The rejection is routed back to the tab that sent the command, so a
+   * refused send is visible instead of silently swallowed.
+   */
+  window.commandRejected = (tabId: string, requestId: string, code: string, message: string) => {
+    cardDebugLog('[commandRejected] code:', code, 'tab:', tabId, 'request:', requestId, 'message:', message);
+    const text = message || code;
+    if (text) {
+      addToast(text, 'error');
+    }
+  };
+
+  // Rejections that arrived before this handler existed are shown now.
+  const pendingRejections = window.__pendingCommandRejections ?? [];
+  window.__pendingCommandRejections = [];
+  for (const pending of pendingRejections) {
+    window.commandRejected?.(pending.tabId, pending.requestId, pending.code, pending.message);
+  }
+
   window.onExportSessionData = (json) => {
     try {
       const data = JSON.parse(json);

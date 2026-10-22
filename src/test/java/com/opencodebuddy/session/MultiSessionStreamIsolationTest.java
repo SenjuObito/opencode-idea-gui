@@ -154,6 +154,37 @@ public class MultiSessionStreamIsolationTest {
     }
 
     @Test
+    public void everySnapshotCarriesTheOwningTabId() throws Exception {
+        RecordingTarget targetA = new RecordingTarget();
+        StreamMessageCoalescer coalescerA = new StreamMessageCoalescer("ses_a", "tab-a", targetA);
+        RecordingTarget targetB = new RecordingTarget();
+        StreamMessageCoalescer coalescerB = new StreamMessageCoalescer("ses_b", "tab-b", targetB);
+        try {
+            coalescerA.enqueue(List.of(message("A1")));
+            coalescerB.enqueue(List.of(message("B1")));
+
+            CountDownLatch flushed = new CountDownLatch(2);
+            coalescerA.flush(seq -> flushed.countDown());
+            coalescerB.flush(seq -> flushed.countDown());
+            assertTrue("flush callbacks never ran", flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
+
+            assertFalse("session A produced no snapshot at all", targetA.updateCalls.isEmpty());
+            assertFalse("session B produced no snapshot at all", targetB.updateCalls.isEmpty());
+            // The tab id is what lets the webview route a snapshot to exactly one
+            // tab; without it the frontend has to look the owner up by session.
+            for (String call : targetA.updateCalls) {
+                assertTrue("A's push lost its tab id: " + call, call.endsWith(":tab-a"));
+            }
+            for (String call : targetB.updateCalls) {
+                assertTrue("B's push lost its tab id: " + call, call.endsWith(":tab-b"));
+            }
+        } finally {
+            coalescerA.dispose();
+            coalescerB.dispose();
+        }
+    }
+
+    @Test
     public void usageUpdateIsStampedWithTheStreamingSessionNotTheActiveOne() throws Exception {
         RecordingTarget target = new RecordingTarget();
         OpencodeSession owner = new OpencodeSession(null, null);

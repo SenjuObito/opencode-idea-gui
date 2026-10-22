@@ -39,7 +39,7 @@ public class UsagePushService {
      */
     public void pushUsageUpdateAfterModelChange(int newMaxTokens) {
         try {
-            OpencodeSession session = context.getSession();
+            OpencodeSession session = context.getActiveTabSession();
             if (session == null) {
                 clearUsageDisplay();
                 return;
@@ -77,7 +77,7 @@ public class UsagePushService {
      */
     public boolean pushCurrentUsageIfAvailable(int fallbackMaxTokens) {
         try {
-            OpencodeSession session = context.getSession();
+            OpencodeSession session = context.getActiveTabSession();
             if (session == null) {
                 return false;
             }
@@ -137,7 +137,7 @@ public class UsagePushService {
 
     void sendUsagePayload(JsonObject usageUpdate) {
         String usageJson = gson.toJson(usageUpdate);
-        OpencodeSession session = context.getSession();
+        OpencodeSession session = context.getActiveTabSession();
         String sessionId = (session != null) ? session.getSessionId() : null;
         if (sessionId == null || sessionId.isEmpty()) {
             // Never send an un-attributable usage update: the webview used to read

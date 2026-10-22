@@ -12,7 +12,7 @@ import { TabStatusStore, statusSnapshotOf } from '../store/tabStatusStore';
 import { TabPromptStore } from '../store/tabPromptStore';
 import type { ModelInfo, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { getFirstPreferredModelId, resolveSessionModel } from '../components/ChatInputBox/modelSelectUtils';
-import { sendBridgeEvent, sendTabCommand, cardDebugLog } from '../utils/bridge';
+import { sendBridgeEvent, sendInterrupt, sendTabCommand, cardDebugLog } from '../utils/bridge';
 import { observeHostEpoch, resetHostDispatcherEpochs } from '../utils/hostDispatcher';
 import { clearSessionSequenceBarrier } from './windowCallbacks/sequenceBarrier';
 import { releaseSessionTransition } from './windowCallbacks/sessionTransition';
@@ -1346,7 +1346,7 @@ export function useSessionTabs({
       const closingTab = tabsRef.current.find((t) => t.id === tabId);
       if (closingTab?.loading && closingTab.sessionId) {
         // Only interrupt this specific session if it was actively generating
-        sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId: closingTab.sessionId }));
+        sendInterrupt({ tabId, sessionId: closingTab.sessionId });
       }
       if (closingTab?.sessionId) {
         clearSessionSequenceBarrier(closingTab.sessionId);

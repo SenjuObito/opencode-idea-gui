@@ -580,6 +580,19 @@ if (typeof window !== 'undefined' && !window.showToast) {
   };
 }
 
+// Pre-register commandRejected so a rejection that arrives before React mounts
+// is not lost. The real handler drains the queue when it registers.
+if (typeof window !== 'undefined' && !window.commandRejected) {
+  debugLog('[Main] Pre-registering commandRejected placeholder');
+  window.commandRejected = (tabId: string, requestId: string, code: string, message: string) => {
+    debugLog('[Main] Storing pending command rejection:', code, 'tab:', tabId);
+    if (!window.__pendingCommandRejections) {
+      window.__pendingCommandRejections = [];
+    }
+    window.__pendingCommandRejections.push({ tabId, requestId, code, message });
+  };
+}
+
 // Pre-register onModeReceived to avoid losing early backend push before React callbacks are ready.
 if (typeof window !== 'undefined' && !window.onModeReceived) {
   debugLog('[Main] Pre-registering onModeReceived placeholder');

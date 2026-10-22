@@ -202,6 +202,71 @@ export const sendTabCommand = (
   }));
 };
 
+/**
+ * The v2 command envelope (docs/full-refactor-architecture-plan.md §7.1).
+ *
+ * Identity travels with the command: the host validates the version, the tab
+ * id, the request id and the session binding before the command runs, and
+ * rejects it back to the sending tab when any of them does not add up.
+ */
+export interface HostCommandEnvelope {
+  v: 2;
+  type: string;
+  requestId: string;
+  tabId: string;
+  sessionId: string | null;
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Send one v2 command.
+ *
+ * @param tabId     the owning tab; mandatory — the host never guesses
+ * @param type      command type, e.g. `session.send`
+ * @param payload   command content, without identity
+ * @param sessionId the canonical session, when the tab is already bound
+ */
+export const sendHostCommand = (
+  tabId: string,
+  type: string,
+  payload: Record<string, unknown> = {},
+  sessionId?: string | null,
+): boolean => {
+  if (!tabId || !type) return false;
+  const envelope: HostCommandEnvelope = {
+    v: 2,
+    type,
+    requestId: createTabRequestId(),
+    tabId,
+    sessionId: sessionId ?? null,
+    payload,
+  };
+  return sendBridgeEvent(type, JSON.stringify(envelope));
+};
+
+/**
+ * Stop the turn of one tab.
+ *
+ * The tab id is mandatory: the host refuses an interrupt that does not say
+ * what it stops, because stopping "whatever is running" is how one tab's stop
+ * button used to kill another tab's turn.
+ */
+export const sendInterrupt = (
+  options: { tabId?: string | null; sessionId?: string | null } = {},
+): boolean => {
+  const ownerTabId = options.sessionId
+    ? window.__sessionTabsStore?.getTabIdForSession?.(options.sessionId)
+    : null;
+  const tabId = options.tabId
+    ?? ownerTabId
+    ?? window.__sessionTabsStore?.getActiveTabId?.()
+    ?? '';
+  return sendBridgeEvent('interrupt_session', JSON.stringify({
+    tabId,
+    sessionId: options.sessionId ?? undefined,
+  }));
+};
+
 /** 强类型桥接调用函数 */
 export const sendTypedBridgeEvent = <T>(event: BridgeMessageType, payload?: T): boolean => {
   const content = payload === undefined ? '' : typeof payload === 'string' ? payload : JSON.stringify(payload);

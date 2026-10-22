@@ -1,5 +1,6 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { ClaudeMessage, SubagentHistoryResponse, TodoItem } from '../types';
+import { getTabStore } from '../store/tabStore';
 
 export const DEFAULT_STATUS = 'ready';
 
@@ -44,7 +45,32 @@ const MessagesContext = createContext<MessagesContextValue | null>(null);
  * to read setters via useMessages() directly, prop drilling will collapse.
  */
 export function MessagesProvider({ children }: { children: ReactNode }) {
-  const [messages, setMessages] = useState<ClaudeMessage[]>([]);
+  // The transcript belongs to the tab: the view reads the active tab's
+  // messages from the store instead of keeping a second copy of them.
+  const tabStore = getTabStore();
+  const messages = useSyncExternalStore(
+    tabStore.subscribe,
+    () => tabStore.getActiveTabMessages(),
+    () => tabStore.getActiveTabMessages(),
+  );
+
+  /**
+   * Write the active tab's transcript.
+   *
+   * <p>The updater sees the tab's own messages (the owner), so a write can
+   * never land in another tab's transcript, and switching tabs does not have
+   * to copy anything.</p>
+   */
+  const setMessages = useCallback<React.Dispatch<React.SetStateAction<ClaudeMessage[]>>>(
+    (updater) => {
+      tabStore.updateActiveTabMessages((current) => (
+        typeof updater === 'function'
+          ? (updater as (previous: ClaudeMessage[]) => ClaudeMessage[])(current)
+          : updater
+      ));
+    },
+    [tabStore],
+  );
   const [subagentHistories, setSubagentHistories] = useState<Record<string, SubagentHistoryResponse>>({});
   const [status, setStatus] = useState<string>(DEFAULT_STATUS);
   const [loading, setLoading] = useState<boolean>(false);

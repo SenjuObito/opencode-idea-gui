@@ -5,6 +5,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { useSessionTabs } from './useSessionTabs';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeMessage } from '../types';
+import { resetTabStore } from '../store/tabStore';
 
 const bridgeMocks = vi.hoisted(() => ({
   sendBridgeEvent: vi.fn(),
@@ -66,6 +67,8 @@ describe('useSessionTabs - multi-session attribution', () => {
   const store = () => window.__sessionTabsStore!;
 
   beforeEach(() => {
+    // Every test starts with an empty tab strip.
+    resetTabStore();
     vi.clearAllMocks();
     delete window.__sessionTabsStore;
     delete window.__dialogStore;
@@ -305,6 +308,8 @@ describe('useSessionTabs - history session loading', () => {
   const store = () => window.__sessionTabsStore!;
 
   beforeEach(() => {
+    // Every test starts with an empty tab strip.
+    resetTabStore();
     vi.clearAllMocks();
     delete window.__sessionTabsStore;
     delete window.__dialogStore;

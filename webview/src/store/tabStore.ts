@@ -1,4 +1,5 @@
 import type { SessionTabData } from '../components/ChatHeader/types';
+import type { ClaudeMessage } from '../types';
 
 type Updater<T> = T | ((previous: T) => T);
 
@@ -8,6 +9,28 @@ export function createTabId(): string {
     return `tab-${crypto.randomUUID()}`;
   }
   return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * The tab strip of this webview.
+ *
+ * <p>One webview hosts one chat window, so the strip has the same lifetime as
+ * the JS context: a module-level instance, not one per React mount. The
+ * message flow reads the active tab's transcript from here, so a conversation
+ * exists exactly once in the webview.</p>
+ */
+let singleton: TabStore | null = null;
+
+export function getTabStore(): TabStore {
+  if (singleton === null) {
+    singleton = new TabStore([], '');
+  }
+  return singleton;
+}
+
+/** Drop the strip (tests: a fresh window must not inherit the previous tabs). */
+export function resetTabStore(): void {
+  singleton = new TabStore([], '');
 }
 
 /**
@@ -21,6 +44,8 @@ export function createTabId(): string {
 export class TabStore {
   private tabs: SessionTabData[];
   private activeTabId: string;
+  /** The transcript of a window that has no tab yet. */
+  private detachedMessages: ClaudeMessage[] = [];
   private readonly listeners = new Set<() => void>();
   private updatingTabs = false;
   private activeChangedDuringUpdate = false;
@@ -76,9 +101,54 @@ export class TabStore {
     this.emit();
   };
 
+  /** How many tabs the strip holds. */
+  size(): number {
+    return this.tabs.length;
+  }
+
   findById(tabId: string | null | undefined): SessionTabData | undefined {
     if (!tabId) return undefined;
     return this.tabs.find((tab) => tab.id === tabId);
+  }
+
+  /**
+   * The transcript of the tab that is on screen.
+   *
+   * <p>The store owns it: the view reads it from here, so switching tabs
+   * never has to copy a transcript into another piece of state.</p>
+   */
+  getActiveTabMessages(): ClaudeMessage[] {
+    const active = this.findById(this.activeTabId);
+    // No tab yet (the strip is being built): the transcript waits in the store
+    // instead of in a second owner.
+    return active ? active.messages ?? [] : this.detachedMessages;
+  }
+
+  /** The transcript of one tab. */
+  getTabMessages(tabId: string | null | undefined): ClaudeMessage[] {
+    return this.findById(tabId)?.messages ?? [];
+  }
+
+  /**
+   * Write the active tab's transcript.
+   *
+   * <p>The updater receives the tab's current transcript — the owner — and
+   * returns the new one.</p>
+   */
+  updateActiveTabMessages(
+    updater: (current: ClaudeMessage[]) => ClaudeMessage[],
+  ): void {
+    const activeId = this.activeTabId;
+    if (!activeId) {
+      this.detachedMessages = updater(this.detachedMessages);
+      this.emit();
+      return;
+    }
+    this.setTabs((prev) => prev.map((tab) => (
+      tab.id === activeId
+        ? { ...tab, messages: updater(tab.messages ?? []) }
+        : tab
+    )));
   }
 
   findIdBySession(sessionId: string | null | undefined): string | null {

@@ -5,7 +5,7 @@ import type { ContextInfo } from './useWindowCallbacks';
 import type { TabScrollState } from './useScrollBehavior';
 import type { SessionTabData } from '../components/ChatHeader/types';
 import type { TabType } from '../components/StatusPanel/types';
-import { TabStore, createTabId } from '../store/tabStore';
+import { createTabId, getTabStore } from '../store/tabStore';
 import { TabDraftStore } from '../store/tabDraftStore';
 import { TabStatusStore, statusSnapshotOf } from '../store/tabStatusStore';
 import { TabPromptStore } from '../store/tabPromptStore';
@@ -158,28 +158,37 @@ export function useSessionTabs({
   restoreScrollState,
   t,
 }: UseSessionTabsOptions) {
-  const [tabStore] = useState(() => new TabStore([
-    {
-      id: 'tab-1',
-      sessionId: null,
-      messageStore: new TabMessageStore(),
-      title: t('common.newSession', { defaultValue: '新会话' }),
-      messages: [],
-      isShared: false,
-      autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
-      permissionMode: permissionMode || 'default',
-      selectedModel: selectedModel,
-      reasoningEffort: reasoningEffort || 'default',
-      filteredFileChanges: [],
-      contextInfo: contextInfo ?? null,
-      statusPanelExpanded: true,
-      statusPanelTab: null,
-      turnStartedAt: loadingStartTime ?? null,
-      usagePercentage: usagePercentage ?? 0,
-      usageUsedTokens: usageUsedTokens,
-      usageMaxTokens: usageMaxTokens,
-    },
-  ], 'tab-1'));
+  // The tab strip is owned by the shared store (see TabStoreContext): the
+  // message flow reads the active tab's transcript from there, so there is
+  // exactly one copy of a conversation in the webview.
+  const tabStore = getTabStore();
+  useState(() => {
+    if (tabStore.size() === 0) {
+      tabStore.setTabs([
+        {
+          id: 'tab-1',
+          sessionId: null,
+          messageStore: new TabMessageStore(),
+          title: t('common.newSession', { defaultValue: '新会话' }),
+          messages: [],
+          isShared: false,
+          autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
+          permissionMode: permissionMode || 'default',
+          selectedModel: selectedModel,
+          reasoningEffort: reasoningEffort || 'default',
+          filteredFileChanges: [],
+          contextInfo: contextInfo ?? null,
+          statusPanelExpanded: true,
+          statusPanelTab: null,
+          turnStartedAt: loadingStartTime ?? null,
+          usagePercentage: usagePercentage ?? 0,
+          usageUsedTokens: usageUsedTokens,
+          usageMaxTokens: usageMaxTokens,
+        },
+      ]);
+      tabStore.setActiveTabId('tab-1');
+    }
+  });
   const tabs = useSyncExternalStore(tabStore.subscribe, tabStore.getTabs, tabStore.getTabs);
   const activeTabId = useSyncExternalStore(
     tabStore.subscribe,
@@ -304,9 +313,10 @@ export function useSessionTabs({
           return {
             ...tab,
             sessionId: currentSessionId ?? tab.sessionId,
+            // The transcript is not copied here: the tab owns it and the view
+            // reads it from the store.
             title: (!sessionTitle || sessionTitle === t('common.newSession')) ? tab.title : (sessionTitle || tab.title),
             isShared,
-            messages,
             loading,
             streamingActive,
             isThinking,

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionTabs } from './useSessionTabs';
 import type { ContextInfo } from './useWindowCallbacks';
 import type { ClaudeMessage } from '../types';
+import { resetTabStore } from '../store/tabStore';
 
 vi.mock('../utils/bridge', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/bridge')>();
@@ -17,6 +18,8 @@ vi.mock('../utils/bridge', async (importOriginal) => {
 
 describe('useSessionTabs - Context Decoupling', () => {
   beforeEach(() => {
+    // Every test starts with an empty tab strip.
+    resetTabStore();
     vi.clearAllMocks();
   });
 

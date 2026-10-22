@@ -3,6 +3,8 @@ package com.opencodebuddy.handler.history;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.intellij.openapi.diagnostic.Logger;
 
 /**
@@ -18,12 +20,17 @@ public class HistoryHandler extends BaseMessageHandler {
             "history.refresh",
             "session.load",
             "delete_session",  // Delete session
+            "history.delete",
             "delete_sessions", // Batch delete sessions
+            "history.deleteMany",
             "export_session",  // Export session
+            "history.export",
             "toggle_favorite", // Toggle favorite status
+            "history.favorite",
             "session.rename", // Rename the session title
             "delete_title",    // Delete orphaned custom title (B-011)
-            "deep_search_history" // Deep search (clear cache and reload)
+            "deep_search_history", // Deep search (clear cache and reload)
+            "history.deepSearch"
     };
 
     // Session load callback interface
@@ -76,20 +83,24 @@ public class HistoryHandler extends BaseMessageHandler {
                 historyMessageInjector.handleLoadSession(content, currentProvider, sessionLoadCallback);
                 return true;
             case "delete_session":
+            case "history.delete":
                 LOG.info("[HistoryHandler] 处理: delete_session, sessionId=" + content);
-                historyDeleteService.handleDeleteSession(content, currentProvider);
+                historyDeleteService.handleDeleteSession(extractString(content, "sessionId"), currentProvider);
                 return true;
             case "delete_sessions":
+            case "history.deleteMany":
                 LOG.info("[HistoryHandler] 处理: delete_sessions");
-                historyDeleteService.handleDeleteSessions(content, currentProvider);
+                historyDeleteService.handleDeleteSessions(extractArray(content, "sessionIds"), currentProvider);
                 return true;
             case "export_session":
+            case "history.export":
                 LOG.info("[HistoryHandler] 处理: export_session, sessionId=" + content);
                 historyExportService.handleExportSession(content, currentProvider);
                 return true;
             case "toggle_favorite":
+            case "history.favorite":
                 LOG.info("[HistoryHandler] 处理: toggle_favorite, sessionId=" + content);
-                historyMetadataService.handleToggleFavorite(content);
+                historyMetadataService.handleToggleFavorite(extractString(content, "sessionId"));
                 return true;
             case "session.rename":
                 LOG.info("[HistoryHandler] 处理: session.rename");
@@ -100,6 +111,7 @@ public class HistoryHandler extends BaseMessageHandler {
                 historyMetadataService.handleDeleteTitle(content);
                 return true;
             case "deep_search_history":
+            case "history.deepSearch":
                 LOG.info("[HistoryHandler] 处理: deep_search_history, provider=" + content);
                 this.currentProvider = HandlerContext.DEFAULT_PROVIDER;
                 historyLoadService.handleDeepSearchHistory(currentProvider);
@@ -107,5 +119,45 @@ public class HistoryHandler extends BaseMessageHandler {
             default:
                 return false;
         }
+    }
+
+    /** Envelope payloads carry the id as JSON; legacy callers send the bare id. */
+    static String extractString(String content, String field) {
+        if (content == null) {
+            return null;
+        }
+        String trimmed = content.trim();
+        if (!trimmed.startsWith("{")) {
+            return content;
+        }
+        try {
+            JsonObject payload = JsonParser.parseString(trimmed).getAsJsonObject();
+            if (payload.has(field) && !payload.get(field).isJsonNull()) {
+                return payload.get(field).getAsString();
+            }
+        } catch (Exception ignored) {
+            // Fall through to the legacy raw value.
+        }
+        return content;
+    }
+
+    /** Envelope payloads carry the id list as JSON; legacy callers send the bare array. */
+    static String extractArray(String content, String field) {
+        if (content == null) {
+            return null;
+        }
+        String trimmed = content.trim();
+        if (!trimmed.startsWith("{")) {
+            return content;
+        }
+        try {
+            JsonObject payload = JsonParser.parseString(trimmed).getAsJsonObject();
+            if (payload.has(field) && payload.get(field).isJsonArray()) {
+                return payload.get(field).toString();
+            }
+        } catch (Exception ignored) {
+            // Fall through to the legacy raw value.
+        }
+        return content;
     }
 }

@@ -332,7 +332,7 @@ export function useSessionManagement({
   // Delete history session
   const deleteHistorySession = useCallback((sessionId: string) => {
     // Send delete request to Java backend
-    sendBridgeEvent('delete_session', sessionId);
+    sendWindowCommand('history.delete', { sessionId });
     let startedSessionTransition = false;
 
     // Immediately update frontend state, remove session from history list
@@ -387,7 +387,7 @@ export function useSessionManagement({
       return;
     }
 
-    sendBridgeEvent('delete_sessions', JSON.stringify(uniqueSessionIds));
+    sendWindowCommand('history.deleteMany', { sessionIds: uniqueSessionIds });
     let startedSessionTransition = false;
 
     if (historyData && historyData.sessions) {
@@ -438,18 +438,17 @@ export function useSessionManagement({
   // Export history session
   const exportHistorySession = useCallback((sessionId: string, title: string) => {
     const session = historyDataRef.current?.sessions?.find(s => s.sessionId === sessionId);
-    const exportData = JSON.stringify({
+    sendWindowCommand('history.export', {
       sessionId,
       title,
       provider: session?.provider || currentProvider || 'opencode',
     });
-    sendBridgeEvent('export_session', exportData);
   }, [currentProvider]);
 
   // Toggle favorite status
   const toggleFavoriteSession = useCallback((sessionId: string) => {
     // Send favorite toggle request to backend
-    sendBridgeEvent('toggle_favorite', sessionId);
+    sendWindowCommand('history.favorite', { sessionId });
 
     // Immediately update frontend state
     if (historyData && historyData.sessions) {

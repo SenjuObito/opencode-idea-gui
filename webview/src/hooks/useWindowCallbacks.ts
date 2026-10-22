@@ -10,7 +10,7 @@ import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import { registerWindowCallbacks } from './windowCallbacks/registerCallbacks';
-import { sendBridgeEvent } from '../utils/bridge';
+import { sendWindowCommand } from '../utils/bridge';
 
 // Re-export from messageSync to avoid duplicate definition
 export { OPTIMISTIC_MESSAGE_TIME_WINDOW } from './windowCallbacks/messageSync';
@@ -134,7 +134,7 @@ export function useWindowCallbacks(options: UseWindowCallbacksOptions): void {
       historyRenderCommitEpoch > 0
       && window.__historySurfaceRefreshEpoch === historyRenderCommitEpoch
     ) {
-      sendBridgeEvent('history_dom_committed', String(historyRenderCommitEpoch));
+      sendWindowCommand('history.domCommitted', { epoch: historyRenderCommitEpoch });
     }
     return undefined;
   }, [historyRenderCommitEpoch]);

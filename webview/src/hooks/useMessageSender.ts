@@ -1,6 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent, sendHostCommand, sendInterrupt, sendWindowCommand } from '../utils/bridge';
+import { sendHostCommand, sendInterrupt, sendWindowCommand } from '../utils/bridge';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
@@ -162,10 +162,10 @@ export function useMessageSender({
       openContextUsageDialog(requestId, true);
 
       // Send bridge event to fetch context usage with current model
-      const sent = sendBridgeEvent('get_context_usage', JSON.stringify({
+      const sent = sendWindowCommand('context.usage', {
         model: selectedModel,
         requestId,
-      }));
+      });
 
       if (!sent) {
         closeContextUsageDialog(requestId);

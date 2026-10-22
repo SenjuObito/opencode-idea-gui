@@ -11,7 +11,7 @@ import { downloadJSON } from '../../../utils/exportMarkdown';
 import { releaseSessionTransition } from '../sessionTransition';
 import { isTabTransitioning, transitionTargetFor } from '../tabTransition';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
-import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { sendWindowCommand, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
@@ -207,7 +207,7 @@ export function registerSessionCallbacks(
     const reloadHistory = () => {
       const provider = options.currentProviderRef.current;
       if (provider) {
-        sendBridgeEvent('deep_search_history', provider);
+        sendWindowCommand('history.deepSearch');
       } else {
         cardDebugLog('[Frontend] Provider unavailable for conversion state reload');
       }

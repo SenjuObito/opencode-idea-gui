@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HistoryData } from '../../types';
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendWindowCommand } from '../../utils/bridge';
 import HistoryView from './HistoryView';
 
 vi.mock('react-i18next', () => ({
@@ -46,7 +46,7 @@ vi.mock('../shared/ProviderModelIcon', () => ({
 }));
 
 vi.mock('../../utils/bridge', () => ({
-  sendBridgeEvent: vi.fn(),
+  sendWindowCommand: vi.fn(),
 }));
 
 vi.mock('../../utils/copyUtils', () => ({
@@ -231,7 +231,7 @@ describe('HistoryView conversion', () => {
     const deepSearchButton = screen.getByRole('button', { name: 'Deep Search' });
     fireEvent.click(deepSearchButton);
 
-    expect(sendBridgeEvent).toHaveBeenCalledWith('deep_search_history', 'claude');
+    expect(sendWindowCommand).toHaveBeenCalledWith('history.deepSearch');
     expect(deepSearchButton).toHaveProperty('disabled', true);
 
     rerender(

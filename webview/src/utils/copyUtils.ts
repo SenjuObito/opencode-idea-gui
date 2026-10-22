@@ -1,5 +1,5 @@
 import type { ClaudeMessage, ClaudeContentBlock, ClaudeRawMessage } from '../types';
-import { sendBridgeEvent } from './bridge';
+import { sendWindowCommand } from './bridge';
 import {
   hasCommandMessageTag,
   formatCommandForDisplay,
@@ -189,7 +189,7 @@ export function copyViaHost(text: string): Promise<boolean> {
     hostCopyWaiter = finish;
     window.setTimeout(() => finish(true), 2000);
 
-    if (!sendBridgeEvent('write_clipboard', text)) {
+    if (!sendWindowCommand('clipboard.write', { text })) {
       finish(false);
     }
   });

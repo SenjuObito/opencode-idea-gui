@@ -52,11 +52,14 @@ public class SettingsHandler extends BaseMessageHandler {
         "get_working_directory",
         "set_working_directory",
         "get_editor_font_config",
+        "settings.font.editor.get",
         "get_system_font_list",
         "get_ui_font_config",
+        "settings.font.ui.get",
         "set_ui_font_config",
         "browse_ui_font_file",
         "get_code_font_config",
+        "settings.font.code.get",
         "set_code_font_config",
         "browse_code_font_file",
         "get_streaming_enabled",
@@ -65,8 +68,10 @@ public class SettingsHandler extends BaseMessageHandler {
         "set_codex_sandbox_mode",
         "get_send_shortcut",
         "set_send_shortcut",
+        "settings.sendShortcut",
         "get_auto_open_file_enabled",
         "set_auto_open_file_enabled",
+        "settings.autoOpenFileEnabled",
         "get_permission_dialog_timeout",
         "set_permission_dialog_timeout",
         "get_commit_generation_enabled",
@@ -217,12 +222,14 @@ public class SettingsHandler extends BaseMessageHandler {
                 projectConfigHandler.handleSetWorkingDirectory(content);
                 return true;
             case "get_editor_font_config":
+            case "settings.font.editor.get":
                 projectConfigHandler.handleGetEditorFontConfig();
                 return true;
             case "get_system_font_list":
                 projectConfigHandler.handleGetSystemFontList();
                 return true;
             case "get_ui_font_config":
+            case "settings.font.ui.get":
                 projectConfigHandler.handleGetUiFontConfig();
                 return true;
             case "set_ui_font_config":
@@ -232,6 +239,7 @@ public class SettingsHandler extends BaseMessageHandler {
                 projectConfigHandler.handleBrowseUiFontFile();
                 return true;
             case "get_code_font_config":
+            case "settings.font.code.get":
                 projectConfigHandler.handleGetCodeFontConfig();
                 return true;
             case "set_code_font_config":
@@ -250,12 +258,14 @@ public class SettingsHandler extends BaseMessageHandler {
                 projectConfigHandler.handleGetSendShortcut();
                 return true;
             case "set_send_shortcut":
+            case "settings.sendShortcut":
                 projectConfigHandler.handleSetSendShortcut(content);
                 return true;
             case "get_auto_open_file_enabled":
                 projectConfigHandler.handleGetAutoOpenFileEnabled();
                 return true;
             case "set_auto_open_file_enabled":
+            case "settings.autoOpenFileEnabled":
                 projectConfigHandler.handleSetAutoOpenFileEnabled(content);
                 return true;
             case "get_permission_dialog_timeout":

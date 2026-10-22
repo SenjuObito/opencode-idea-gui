@@ -120,6 +120,6 @@ public class ContextHandlerTest {
         );
 
         ContextHandler handler = new ContextHandler(context);
-        assertArrayEquals(new String[]{"get_context_usage"}, handler.getSupportedTypes());
+        assertArrayEquals(new String[]{"get_context_usage", "context.usage"}, handler.getSupportedTypes());
     }
 }

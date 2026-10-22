@@ -9,7 +9,7 @@
  * subscribe without overwriting each other's callbacks.
  */
 
-import { sendBridgeEvent } from './bridge';
+import { sendWindowCommand } from './bridge';
 
 export type NodeProcessKind = 'DAEMON' | 'CHANNEL' | 'ORPHAN';
 
@@ -126,20 +126,20 @@ export function subscribeNodeProcessKillResult(listener: KillResultListener): ()
 
 /** Request the latest snapshot from Java. The response arrives via `window.updateNodeProcesses`. */
 export function fetchNodeProcesses(): void {
-  sendBridgeEvent('get_node_processes');
+  sendWindowCommand('diagnostics.nodeProcesses.list');
 }
 
 /** Ask the backend to kill a single process by PID. */
 export function killNodeProcess(pid: number, id?: string): void {
-  sendBridgeEvent('kill_node_process', JSON.stringify(id ? { pid, id } : { pid }));
+  sendWindowCommand('diagnostics.nodeProcesses.kill', id ? { pid, id } : { pid });
 }
 
 /** Ask the backend to kill every detected orphan process. */
 export function killAllOrphanProcesses(): void {
-  sendBridgeEvent('kill_all_orphans');
+  sendWindowCommand('diagnostics.nodeProcesses.killOrphans');
 }
 
 /** Ask the backend to restart the daemon owning the given PID (falls back to plain kill on miss). */
 export function restartNodeDaemon(pid: number): void {
-  sendBridgeEvent('restart_node_daemon', JSON.stringify({ pid }));
+  sendWindowCommand('diagnostics.nodeProcesses.restart', { pid });
 }

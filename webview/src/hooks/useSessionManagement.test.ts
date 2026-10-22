@@ -47,12 +47,16 @@ describe('useSessionManagement', () => {
   const interruptCalls = () => (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls
     .map((c: unknown[]) => c[0] as string)
     .filter((c: string) => c.startsWith('host_command:') && c.includes('session.interrupt'));
-
   const interruptPayload = () => {
     const call = interruptCalls()[0];
     if (!call) return null;
     return JSON.parse(call.substring('host_command:'.length));
   };
+
+  const deleteManyCalls = () => sentCommands(
+    (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0] as string),
+  ).filter((envelope) => envelope?.type === 'history.deleteMany')
+    .map((envelope) => (envelope?.payload as { sessionIds?: string[] }).sessionIds);
 
   beforeEach(() => {
     endTransition('tab-1');
@@ -138,8 +142,11 @@ describe('useSessionManagement', () => {
 
     expect(historyData.sessions).toEqual([]);
     expect(historyData.total).toBe(0);
-    expect(window.sendToJava).toHaveBeenCalledWith('delete_session:history-1');
-    expect(window.sendToJava).toHaveBeenCalledWith('delete_session:history-2');
+    const deletes = sentCommands(
+      (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map((call: unknown[]) => call[0] as string),
+    ).filter((envelope) => envelope?.type === 'history.delete')
+      .map((envelope) => (envelope?.payload as { sessionId?: string }).sessionId);
+    expect(deletes).toEqual(['history-1', 'history-2']);
   });
 
   it('sends one backend request when deleting multiple history sessions', () => {
@@ -189,7 +196,7 @@ describe('useSessionManagement', () => {
     expect(historyData.sessions).toEqual([]);
     expect(historyData.total).toBe(0);
     expect(window.sendToJava).toHaveBeenCalledTimes(1);
-    expect(window.sendToJava).toHaveBeenCalledWith('delete_sessions:["history-1","history-2"]');
+    expect(deleteManyCalls()).toEqual([['history-1', 'history-2']]);
     expect(mocks.addToast).toHaveBeenCalledWith('history.sessionDeleted', 'success');
   });
 
@@ -211,7 +218,7 @@ describe('useSessionManagement', () => {
       result.current.deleteHistorySessions(['history-1', 'history-2', 'history-1']);
     });
 
-    expect(window.sendToJava).toHaveBeenCalledWith('delete_sessions:["history-1","history-2"]');
+    expect(deleteManyCalls()).toEqual([['history-1', 'history-2']]);
     expect(mocks.addToast).toHaveBeenCalledWith('history.sessionDeleted', 'success');
   });
 
@@ -259,7 +266,7 @@ describe('useSessionManagement', () => {
       result.current.deleteHistorySessions(['history-1', 'history-2']);
     });
 
-    expect(window.sendToJava).toHaveBeenCalledWith('delete_sessions:["history-1","history-2"]');
+    expect(deleteManyCalls()).toEqual([['history-1', 'history-2']]);
     expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
     expect(mocks.addToast).not.toHaveBeenCalledWith('history.sessionDeleted', 'success');
     expect(window.__pendingSessionTransitionToast).toEqual({

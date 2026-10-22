@@ -25,6 +25,11 @@ describe('surfaceDamagePulse', () => {
     vi.restoreAllMocks();
   });
 
+  const lastAck = () => {
+    const message = bridgeMessages.mock.calls.at(-1)?.[0] as string;
+    return JSON.parse(message.substring('host_command:'.length)).payload;
+  };
+
   it('acknowledges sentinel mutations without changing app zoom', () => {
     const app = document.getElementById('app') as HTMLElement;
 
@@ -38,16 +43,12 @@ describe('surfaceDamagePulse', () => {
     expect(sentinel?.style.contain).toBe('strict');
     expect(sentinel?.style.backgroundColor).not.toBe('transparent');
     expect(app.style.zoom).toBe('1.4');
-    expect(bridgeMessages).toHaveBeenLastCalledWith(
-      'surface_damage_applied:{"token":"attempt-a","phase":"A","applied":true}',
-    );
+    expect(lastAck()).toEqual({ token: 'attempt-a', phase: 'A', applied: true });
 
     expect(advanceSurfaceDamagePulse('attempt-a')).toBe(true);
     expect(sentinel?.style.backgroundColor).toBe('transparent');
     expect(app.style.zoom).toBe('1.4');
-    expect(bridgeMessages).toHaveBeenLastCalledWith(
-      'surface_damage_applied:{"token":"attempt-a","phase":"B","applied":true}',
-    );
+    expect(lastAck()).toEqual({ token: 'attempt-a', phase: 'B', applied: true });
 
     expect(finishSurfaceDamagePulse('attempt-a')).toBe(true);
     expect(document.getElementById('ccgui-surface-damage-sentinel')).toBeNull();
@@ -60,9 +61,7 @@ describe('surfaceDamagePulse', () => {
 
     expect(advanceSurfaceDamagePulse('attempt-b')).toBe(false);
     expect(sentinel?.style.backgroundColor).toBe(phaseAColor);
-    expect(bridgeMessages).toHaveBeenLastCalledWith(
-      'surface_damage_applied:{"token":"attempt-b","phase":"B","applied":false}',
-    );
+    expect(lastAck()).toEqual({ token: 'attempt-b', phase: 'B', applied: false });
   });
 
   it('removes the sentinel when a phase-A attempt is cancelled', () => {
@@ -85,9 +84,7 @@ describe('surfaceDamagePulse', () => {
 
     expect(sentinel?.style.backgroundColor).not.toBe(firstColor);
     expect(deferred).not.toHaveBeenCalled();
-    expect(bridgeMessages).toHaveBeenLastCalledWith(
-      'surface_damage_applied:{"token":"attempt-b","phase":"A","applied":true}',
-    );
+    expect(lastAck()).toEqual({ token: 'attempt-b', phase: 'A', applied: true });
     expect(cancelSurfaceDamagePulse('attempt-b')).toBe(true);
     await Promise.resolve();
     expect(deferred).toHaveBeenCalledTimes(1);
@@ -101,8 +98,6 @@ describe('surfaceDamagePulse', () => {
 
     expect(replaceSurfaceDamagePulse('stale-attempt', 'attempt-b')).toBe(false);
     expect(sentinel?.style.backgroundColor).toBe(phaseAColor);
-    expect(bridgeMessages).toHaveBeenLastCalledWith(
-      'surface_damage_applied:{"token":"attempt-b","phase":"A","applied":false}',
-    );
+    expect(lastAck()).toEqual({ token: 'attempt-b', phase: 'A', applied: false });
   });
 });

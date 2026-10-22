@@ -37,6 +37,14 @@ public class ClipboardHandlerTest {
         assertTrue(supported.contains("read_clipboard"));
         assertTrue(supported.contains("write_clipboard"));
         assertTrue(supported.contains("copy_to_clipboard"));
+        assertTrue(supported.contains("clipboard.write"));
+    }
+
+    @Test
+    public void extractTextReadsEnvelopePayloadAndFallsBackToRawText() {
+        assertEquals("hello", ClipboardHandler.extractText("{\"text\":\"hello\"}"));
+        assertEquals("legacy text", ClipboardHandler.extractText("legacy text"));
+        assertEquals("{\"other\":1}", ClipboardHandler.extractText("{\"other\":1}"));
     }
 
     @Test

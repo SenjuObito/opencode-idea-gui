@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { sendBridgeEvent } from '../utils/bridge';
+import { sendWindowCommand } from '../utils/bridge';
 import { insertNewlineAtCursor } from './useContextMenu';
 
 /**
@@ -18,7 +18,7 @@ export function useContextActions() {
             text = window.getSelection()?.toString() ?? '';
           }
           if (text) {
-            sendBridgeEvent('write_clipboard', text);
+            sendWindowCommand('clipboard.write', { text });
           }
           break;
         }
@@ -40,7 +40,7 @@ export function useContextActions() {
             }
           }
           if (text) {
-            sendBridgeEvent('write_clipboard', text);
+            sendWindowCommand('clipboard.write', { text });
           }
           break;
         }

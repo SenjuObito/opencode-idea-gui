@@ -35,6 +35,7 @@ public class FileHandler extends BaseMessageHandler {
         "open_browser",
         "open_class",
         "get_linkify_capabilities",
+        "filesystem.linkify.get",
         "resolve_file_path"
     };
 
@@ -80,6 +81,10 @@ public class FileHandler extends BaseMessageHandler {
                 yield true;
             }
             case "get_linkify_capabilities" -> {
+                sendLinkifyCapabilities();
+                yield true;
+            }
+            case "filesystem.linkify.get" -> {
                 sendLinkifyCapabilities();
                 yield true;
             }

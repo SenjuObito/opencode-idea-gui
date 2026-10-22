@@ -32,7 +32,7 @@ cd webview && npx vitest run
 | 条目 | 内容 | 状态 | 证据 / 提交 |
 |---|---|---|---|
 | A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload |
-| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 主路径已统一；webview 仍有约 36 处 `sendBridgeEvent`（历史/设置/窗口命令），旧类型仍保留兼容入口 |
+| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 主路径与生命周期事件已统一；webview 仅剩 8 处 `sendBridgeEvent`，全部指向宿主未实现的旧功能（子会话历史、CLI 转换、自定义模型定价、早期游标） |
 | A3 | 路由表已权威（31 个事件）；约 96 个 `window.*` 全局仍在 | 部分完成 | 路由层已落地，全局清理待做 |
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |

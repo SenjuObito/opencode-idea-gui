@@ -6,6 +6,8 @@ import com.opencodebuddy.handler.core.HandlerContext;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.awt.*;
 import java.awt.datatransfer.Clipboard;
@@ -19,7 +21,7 @@ import java.awt.datatransfer.StringSelection;
 public class ClipboardHandler extends BaseMessageHandler {
 
     private static final Logger LOG = Logger.getInstance(ClipboardHandler.class);
-    private static final String[] SUPPORTED_TYPES = {"read_clipboard", "write_clipboard", "copy_to_clipboard"};
+    private static final String[] SUPPORTED_TYPES = {"read_clipboard", "write_clipboard", "copy_to_clipboard", "clipboard.write"};
 
     private static final long MIN_READ_INTERVAL_MS = 200;
     private static final int MAX_CLIPBOARD_WRITE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -54,8 +56,8 @@ public class ClipboardHandler extends BaseMessageHandler {
                 handleReadClipboard();
                 yield true;
             }
-            case "write_clipboard", "copy_to_clipboard" -> {
-                handleWriteClipboard(content);
+            case "write_clipboard", "copy_to_clipboard", "clipboard.write" -> {
+                handleWriteClipboard(extractText(content));
                 yield true;
             }
             default -> false;
@@ -128,5 +130,25 @@ public class ClipboardHandler extends BaseMessageHandler {
                 callJavaScript("window.onCopyToClipboardResult", "false");
             }
         }, ModalityState.any());
+    }
+
+    /** Envelope payloads carry the text as JSON; legacy callers send the bare text. */
+    static String extractText(String content) {
+        if (content == null) {
+            return null;
+        }
+        String trimmed = content.trim();
+        if (!trimmed.startsWith("{")) {
+            return content;
+        }
+        try {
+            JsonObject payload = JsonParser.parseString(trimmed).getAsJsonObject();
+            if (payload.has("text") && !payload.get("text").isJsonNull()) {
+                return payload.get("text").getAsString();
+            }
+        } catch (Exception ignored) {
+            // Fall through to the legacy raw value.
+        }
+        return content;
     }
 }

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendWindowCommand } from '../../utils/bridge';
 import type { ProviderConfig } from '../../types/provider';
 
 export interface UseProviderSettingsOptions {
@@ -27,12 +27,12 @@ export function useProviderSettings({ addToast, t }: UseProviderSettingsOptions)
 
   const handleSendShortcutChange = useCallback((shortcut: 'enter' | 'cmdEnter') => {
     setSendShortcut(shortcut);
-    sendBridgeEvent('set_send_shortcut', JSON.stringify({ sendShortcut: shortcut }));
+    sendWindowCommand('settings.sendShortcut', { sendShortcut: shortcut });
   }, []);
 
   const handleAutoOpenFileEnabledChange = useCallback((enabled: boolean) => {
     setAutoOpenFileEnabled(enabled);
-    sendBridgeEvent('set_auto_open_file_enabled', JSON.stringify({ autoOpenFileEnabled: enabled }));
+    sendWindowCommand('settings.autoOpenFileEnabled', { autoOpenFileEnabled: enabled });
     addToast(
       enabled ? t('settings.basic.autoOpenFile.enabled') : t('settings.basic.autoOpenFile.disabled'),
       'success',

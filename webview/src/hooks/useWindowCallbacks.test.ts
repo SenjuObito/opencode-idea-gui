@@ -96,6 +96,19 @@ describe('useWindowCallbacks integration', () => {
     ...overrides,
   });
 
+  const isHistoryCommit = (payload: unknown): boolean => {
+    if (typeof payload !== 'string' || !payload.startsWith('host_command:')) return false;
+    try {
+      const envelope = JSON.parse(payload.substring('host_command:'.length));
+      return envelope?.type === 'history.domCommitted' && envelope?.payload?.epoch === 1;
+    } catch {
+      return false;
+    }
+  };
+
+  const historyCommitCalls = () =>
+    (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.filter(([payload]) => isHistoryCommit(payload));
+
   beforeEach(() => {
     endTransition('tab-active');
     endTransition('tab-new');
@@ -689,7 +702,7 @@ describe('useWindowCallbacks integration', () => {
 
     expect(window.__pendingHistoryRefreshMessageCount).toBeUndefined();
     act(() => vi.runAllTimers());
-    expect(window.sendToJava).toHaveBeenCalledWith('history_dom_committed:1');
+    expect(historyCommitCalls().length).toBeGreaterThan(0);
 
     act(() => {
       window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
@@ -698,7 +711,7 @@ describe('useWindowCallbacks integration', () => {
     });
 
     const historyRefreshCalls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([payload]) => payload === 'history_dom_committed:1');
+      .filter(([payload]) => isHistoryCommit(payload));
     expect(historyRefreshCalls).toHaveLength(1);
     vi.useRealTimers();
   });
@@ -714,7 +727,7 @@ describe('useWindowCallbacks integration', () => {
     window.__pendingHistoryLoadComplete = { expectedMessageCount: 1 };
     let domTextWhenAcknowledged = '';
     window.sendToJava = vi.fn((payload: string) => {
-      if (payload === 'history_dom_committed:1') {
+      if (isHistoryCommit(payload)) {
         domTextWhenAcknowledged = document.querySelector('[data-testid="history-dom"]')?.textContent ?? '';
       }
     });
@@ -735,7 +748,7 @@ describe('useWindowCallbacks integration', () => {
       expect(domTextWhenAcknowledged).toContain('restored before callback registration');
     });
     expect(window.__pendingHistoryLoadComplete).toBeUndefined();
-    expect(window.sendToJava).toHaveBeenCalledWith('history_dom_committed:1');
+    expect(historyCommitCalls().length).toBeGreaterThan(0);
   });
 
   it('preserves an explicit zero count buffered before callback registration', async () => {
@@ -743,10 +756,10 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(createOptions()));
 
     await waitFor(() => {
-      expect(window.sendToJava).toHaveBeenCalledWith('history_dom_committed:1');
+      expect(historyCommitCalls().length).toBeGreaterThan(0);
     });
     expect(window.__pendingHistoryLoadComplete).toBeUndefined();
-    expect(window.sendToJava).toHaveBeenCalledWith('history_dom_committed:1');
+    expect(historyCommitCalls().length).toBeGreaterThan(0);
   });
 
   it('reports a DOM commit when the restored-history snapshot arrived first', () => {
@@ -765,7 +778,7 @@ describe('useWindowCallbacks integration', () => {
 
     expect(window.__pendingHistoryRefreshMessageCount).toBeUndefined();
     act(() => vi.runAllTimers());
-    expect(window.sendToJava).toHaveBeenCalledWith('history_dom_committed:1');
+    expect(historyCommitCalls().length).toBeGreaterThan(0);
     vi.useRealTimers();
   });
 
@@ -794,7 +807,7 @@ describe('useWindowCallbacks integration', () => {
 
     expect(window.__pendingHistoryRefreshMessageCount).toBeUndefined();
     act(() => vi.runAllTimers());
-    expect(window.sendToJava).toHaveBeenCalledWith('history_dom_committed:1');
+    expect(historyCommitCalls().length).toBeGreaterThan(0);
     vi.useRealTimers();
   });
 
@@ -813,7 +826,7 @@ describe('useWindowCallbacks integration', () => {
 
     act(() => vi.runAllTimers());
     expect(window.__pendingHistoryRefreshMessageCount).toBeUndefined();
-    expect(window.sendToJava).not.toHaveBeenCalledWith('history_dom_committed:1');
+    expect(historyCommitCalls()).toHaveLength(0);
     vi.useRealTimers();
   });
 

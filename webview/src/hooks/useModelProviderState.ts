@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { TFunction as I18nTFunction } from 'i18next';
-import { sendSessionCommand, sendBridgeEvent, sendWindowCommand } from '../utils/bridge';
+import { sendSessionCommand, sendWindowCommand } from '../utils/bridge';
 import type {
   PermissionMode,
   ReasoningEffort,
@@ -148,7 +148,6 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
   }, [setReasoningEffort, currentSessionId, currentSessionIdRef]);
 
   const handleToggleThinking = useCallback((enabled: boolean) => {
-    sendBridgeEvent('set_thinking_enabled', JSON.stringify({ enabled }));
     addToast(enabled ? t('toast.thinkingEnabled') : t('toast.thinkingDisabled'), 'success');
   }, [addToast, t]);
 

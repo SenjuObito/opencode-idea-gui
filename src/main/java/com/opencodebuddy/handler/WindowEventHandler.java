@@ -17,10 +17,10 @@ public class WindowEventHandler extends BaseMessageHandler {
 
     private static final Logger LOG = Logger.getInstance(WindowEventHandler.class);
     private static final String[] SUPPORTED_TYPES = {
-        "heartbeat", "tab_loading_changed", "tab_status_changed",
+        "heartbeat", "app.heartbeat", "tab_loading_changed", "tab.loading.changed", "tab_status_changed", "tab.status.changed",
         "tab_activate", "close_session",
-        "frontend_ready", "history_dom_committed",
-        "history_render_complete", "surface_damage_applied",
+        "frontend_ready", "app.frontendReady", "history_dom_committed", "history.domCommitted",
+        "history_render_complete", "surface_damage_applied", "surface.damage.applied",
         "refresh_slash_commands", "commands.refresh",
         "session.fork", "share_session", "unshare_session",
         "session.share", "session.unshare",
@@ -63,12 +63,15 @@ public class WindowEventHandler extends BaseMessageHandler {
     public boolean handle(String type, String content) {
         switch (type) {
             case "heartbeat":
+            case "app.heartbeat":
                 callback.onHeartbeat(content);
                 return true;
             case "tab_loading_changed":
+            case "tab.loading.changed":
                 handleTabLoadingChanged(content);
                 return true;
             case "tab_status_changed":
+            case "tab.status.changed":
                 handleTabStatusChanged(content);
                 return true;
             case "tab_activate":
@@ -78,15 +81,18 @@ public class WindowEventHandler extends BaseMessageHandler {
                 handleCloseSession(content);
                 return true;
             case "frontend_ready":
+            case "app.frontendReady":
                 callback.onFrontendReady();
                 return true;
             case "history_dom_committed":
+            case "history.domCommitted":
                 callback.onHistoryRenderComplete(parseHistoryCommitEpoch(content));
                 return true;
             case "history_render_complete":
                 callback.onHistoryRenderComplete(1L);
                 return true;
             case "surface_damage_applied":
+            case "surface.damage.applied":
                 handleSurfaceDamageApplied(content);
                 return true;
             case "refresh_slash_commands":
@@ -774,8 +780,15 @@ public class WindowEventHandler extends BaseMessageHandler {
 
     private long parseHistoryCommitEpoch(String content) {
         try {
-            return Math.max(1L, Long.parseLong(content == null ? "" : content.trim()));
-        } catch (NumberFormatException e) {
+            String value = content == null ? "" : content.trim();
+            if (value.startsWith("{")) {
+                JsonObject payload = new Gson().fromJson(value, JsonObject.class);
+                if (payload != null && payload.has("epoch") && !payload.get("epoch").isJsonNull()) {
+                    value = payload.get("epoch").getAsString();
+                }
+            }
+            return Math.max(1L, Long.parseLong(value));
+        } catch (Exception e) {
             LOG.warn("[WebviewSurface] Invalid history commit epoch: " + content);
             return 1L;
         }

@@ -8,7 +8,7 @@
 import { startTransition } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
-import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { sendWindowCommand, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { isSessionTransitioning } from '../tabTransition';
 import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../../utils/hostEventTypes';
@@ -740,7 +740,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       advanceMinAcceptedSequence(targetSessionId, parsedSequence);
     }
     // Notify backend about stream completion for tab status indicator
-    sendBridgeEvent('tab_status_changed', JSON.stringify({ status: 'completed' }));
+    sendWindowCommand('tab.status.changed', { status: 'completed' });
 
     if (handlingMode === 'minimal') {
       if (typeof window.__cancelPendingUpdateMessages === 'function') {

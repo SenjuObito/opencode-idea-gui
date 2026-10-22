@@ -80,10 +80,7 @@ describe('useMessageSender - /context command', () => {
     });
 
     expect(window.sendToJava).toHaveBeenCalledTimes(1);
-    const call = (window.sendToJava as any).mock.calls[0][0] as string;
-    expect(call).toMatch(/^get_context_usage:/);
-
-    const payload = JSON.parse(call.substring('get_context_usage:'.length));
+    const payload = getBridgePayload('context.usage');
     expect(payload.model).toBe('claude-opus-4-8');
     expect(payload.requestId).toBeTruthy();
   });
@@ -101,8 +98,7 @@ describe('useMessageSender - /context command', () => {
     });
 
     expect(window.sendToJava).toHaveBeenCalledTimes(1);
-    const call = (window.sendToJava as any).mock.calls[0][0] as string;
-    const payload = JSON.parse(call.substring('get_context_usage:'.length));
+    const payload = getBridgePayload('context.usage');
     expect(payload.model).toBe('claude-opus-4-8');
   });
 

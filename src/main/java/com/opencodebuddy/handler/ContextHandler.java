@@ -17,7 +17,7 @@ public class ContextHandler extends BaseMessageHandler {
     private static final Logger LOG = Logger.getInstance(ContextHandler.class);
     private final Gson gson = new Gson();
 
-    private static final String[] SUPPORTED_TYPES = {"get_context_usage"};
+    private static final String[] SUPPORTED_TYPES = {"get_context_usage", "context.usage"};
 
     public ContextHandler(HandlerContext context) {
         super(context);
@@ -30,7 +30,7 @@ public class ContextHandler extends BaseMessageHandler {
 
     @Override
     public boolean handle(String type, String content) {
-        if ("get_context_usage".equals(type)) {
+        if ("get_context_usage".equals(type) || "context.usage".equals(type)) {
             LOG.info("[ContextHandler] Handling: get_context_usage");
             handleGetContextUsage(content);
             return true;

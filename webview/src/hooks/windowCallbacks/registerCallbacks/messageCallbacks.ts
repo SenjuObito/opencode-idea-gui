@@ -10,7 +10,7 @@
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import type { ContextUsageData } from '../../../components/ContextUsageDialog';
-import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { sendBridgeEvent, sendWindowCommand, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { isSessionTransitioning, transitionTargetOfSession } from '../tabTransition';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
@@ -893,7 +893,7 @@ export function registerMessageCallbacks(
     // onStreamEnd that may never arrive is what left tabs spinning forever.
     //
     // Notify backend about loading state change for tab indicator
-    sendBridgeEvent('tab_loading_changed', JSON.stringify({ loading: isLoading }));
+    sendWindowCommand('tab.loading.changed', { loading: isLoading });
 
     setLoading((prevLoading) => {
       if (isLoading) {

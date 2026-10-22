@@ -436,3 +436,22 @@
 - 新增 models.list、settings.provider、settings.uiPreferences[.get]、settings.theme.get、settings.mode.get；对应 webview 调用点已迁移，宿主保留旧类型兼容。
 - get_cli_models、set_provider、get/set_ui_preferences、get_ide_theme、get_mode 的调用不再走裸 sendBridgeEvent。
 - 数字更新：webview 非测试/非传输的 sendBridgeEvent 从 46 处降到 36 处。
+
+## 第四轮补充 3：历史、剪贴板、诊断与生命周期事件
+
+- 历史命令语义化：`history.delete`、`history.deleteMany`、`history.export`、
+  `history.favorite`、`history.deepSearch`；宿主新增 JSON 字段提取，旧裸
+  id/数组仍可解析。
+- 剪贴板与上下文：`clipboard.write`、`context.usage`；`get_context_usage`
+  的 /context 调用改为信封。
+- 设置：`settings.sendShortcut`、`settings.autoOpenFileEnabled`、
+  `settings.font.editor.get` / `.ui.get` / `.code.get`、`filesystem.linkify.get`。
+- 诊断：`diagnostics.nodeProcesses.list` / `.kill` / `.killOrphans` / `.restart`。
+- 生命周期事件也走 `host_command`：`app.frontendReady`、`app.heartbeat`、
+  `tab.loading.changed`、`tab.status.changed`、`history.domCommitted`、
+  `surface.damage.applied`；`parseHistoryCommitEpoch` 同时接受裸数字与
+  `{epoch}`。
+- 删除无宿主的 `set_thinking_enabled` 发送；`sendBridgeEvent` 只剩 8 处，
+  全部是宿主未实现的旧功能（子会话历史、CLI 转换、自定义模型定价、早期游标）。
+- 新增 `HistoryHandlerTest` / `ClipboardHandlerTest.extractText` 覆盖信封与旧值
+  两条路径。

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { HistoryData, HistorySessionSummary } from '../../types';
 import VirtualList from './VirtualList';
-import { sendBridgeEvent } from '../../utils/bridge';
+import { sendWindowCommand } from '../../utils/bridge';
 import { copyToClipboard } from '../../utils/copyUtils';
 import { HistoryListItem, stopPropagationHandler } from './HistoryListItem';
 import { HistoryFilters } from './HistoryFilters';
@@ -402,7 +402,7 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
   const handleDeepSearch = useCallback(() => {
     setIsDeepSearching(prev => {
       if (prev) return prev;
-      sendBridgeEvent('deep_search_history', currentProvider || 'claude');
+      sendWindowCommand('history.deepSearch');
 
       if (deepSearchTimeoutRef.current) {
         clearTimeout(deepSearchTimeoutRef.current);

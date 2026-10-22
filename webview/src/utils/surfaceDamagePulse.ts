@@ -1,4 +1,4 @@
-import { sendBridgeEvent } from './bridge';
+import { sendWindowCommand } from './bridge';
 
 /**
  * Coordinates strict raster-sentinel pulses and legacy generic zoom repaints.
@@ -28,7 +28,7 @@ const SENTINEL_COLORS = [
 ] as const;
 
 function acknowledgePhase(token: string, phase: SurfaceDamagePhase, applied: boolean): void {
-  sendBridgeEvent('surface_damage_applied', JSON.stringify({ token, phase, applied }));
+  sendWindowCommand('surface.damage.applied', { token, phase, applied });
 }
 
 function parseEffectiveScale(scale: string): number {

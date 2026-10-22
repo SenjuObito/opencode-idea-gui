@@ -19,7 +19,9 @@ describe('copyUtils', () => {
       (window as any).sendToJava = sendToJavaMock;
 
       const promise = copyViaHost('https://opencode.ai/share/123');
-      expect(sendToJavaMock).toHaveBeenCalledWith('write_clipboard:https://opencode.ai/share/123');
+      const envelope = JSON.parse(String(sendToJavaMock.mock.calls[0][0]).substring('host_command:'.length));
+      expect(envelope.type).toBe('clipboard.write');
+      expect(envelope.payload.text).toBe('https://opencode.ai/share/123');
 
       // Simulate host callback
       window.onCopyToClipboardResult?.('true');
@@ -33,7 +35,9 @@ describe('copyUtils', () => {
       (window as any).sendToJava = sendToJavaMock;
 
       const promise = copyViaHost('https://opencode.ai/share/123');
-      expect(sendToJavaMock).toHaveBeenCalledWith('write_clipboard:https://opencode.ai/share/123');
+      const envelope = JSON.parse(String(sendToJavaMock.mock.calls[0][0]).substring('host_command:'.length));
+      expect(envelope.type).toBe('clipboard.write');
+      expect(envelope.payload.text).toBe('https://opencode.ai/share/123');
 
       // Simulate host failure callback
       window.onCopyToClipboardResult?.('false');

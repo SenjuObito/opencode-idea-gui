@@ -34,9 +34,13 @@ public class NodeProcessHandler implements MessageHandler {
 
     private static final String[] SUPPORTED_TYPES = {
             "get_node_processes",
+            "diagnostics.nodeProcesses.list",
             "kill_node_process",
+            "diagnostics.nodeProcesses.kill",
             "kill_all_orphans",
-            "restart_node_daemon"
+            "diagnostics.nodeProcesses.killOrphans",
+            "restart_node_daemon",
+            "diagnostics.nodeProcesses.restart"
     };
 
     /**
@@ -63,15 +67,19 @@ public class NodeProcessHandler implements MessageHandler {
     public boolean handle(String type, String content) {
         switch (type) {
             case "get_node_processes":
+            case "diagnostics.nodeProcesses.list":
                 handleGetNodeProcesses();
                 return true;
             case "kill_node_process":
+            case "diagnostics.nodeProcesses.kill":
                 handleKillNodeProcess(content);
                 return true;
             case "kill_all_orphans":
+            case "diagnostics.nodeProcesses.killOrphans":
                 handleKillAllOrphans();
                 return true;
             case "restart_node_daemon":
+            case "diagnostics.nodeProcesses.restart":
                 handleRestartDaemon(content);
                 return true;
             default:

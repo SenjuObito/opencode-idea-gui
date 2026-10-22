@@ -21,7 +21,7 @@ import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
-import { sendBridgeEvent, sendHostCommand, sendWindowCommand, cardDebugLog } from './utils/bridge';
+import { sendHostCommand, sendWindowCommand, cardDebugLog } from './utils/bridge';
 import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
 import { installPinnedModelsBridge } from './components/ChatInputBox/modelSelectUtils';
 import { debugLog } from './utils/debug';
@@ -77,7 +77,7 @@ function createBridgeHeartbeatStarter() {
         focus: document.hasFocus(),
         seq: sequence,
       });
-      sendBridgeEvent('heartbeat', payload);
+      sendWindowCommand('app.heartbeat', JSON.parse(payload) as Record<string, unknown>);
     }, intervalMs);
 
     const cleanup = () => {
@@ -722,15 +722,15 @@ waitForBridge(() => {
   startBridgeHeartbeat();
 
   debugLog('[Main] Sending frontend_ready signal');
-  sendBridgeEvent('frontend_ready');
+  sendWindowCommand('app.frontendReady');
 
   // Authoritative appearance / behaviour settings (host globalState). Sent
   // right after frontend_ready so the host can answer from warm state.
   requestUiPreferences();
   sendWindowCommand('settings.pinnedModels.get');
-  sendBridgeEvent('get_editor_font_config');
-  sendBridgeEvent('get_ui_font_config');
-  sendBridgeEvent('get_code_font_config');
+  sendWindowCommand('settings.font.editor.get');
+  sendWindowCommand('settings.font.ui.get');
+  sendWindowCommand('settings.font.code.get');
 
   debugLog('[Main] Sending commands.refresh request');
   const refreshTabId = window.__sessionTabsStore?.getActiveTabId?.();
@@ -740,5 +740,5 @@ waitForBridge(() => {
     sendWindowCommand('commands.refresh');
   }
 
-  sendBridgeEvent('get_linkify_capabilities');
+  sendWindowCommand('filesystem.linkify.get');
 });

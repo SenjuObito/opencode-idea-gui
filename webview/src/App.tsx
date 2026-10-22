@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
-import { sendHostCommand, sendSessionCommand, sendWindowCommand, sendBridgeEvent } from './utils/bridge';
+import { sendHostCommand, sendSessionCommand, sendWindowCommand } from './utils/bridge';
 import { createTabId } from './store/tabStore';
 import { copyViaHost } from './utils/copyUtils';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
@@ -1099,7 +1099,7 @@ const App = () => {
     if (titleTabId) {
       sendHostCommand(titleTabId, 'tab.title.set', { title: isDefaultNewSession ? '' : sessionTitle });
     } else {
-      sendBridgeEvent('update_tab_title', isDefaultNewSession ? '' : sessionTitle);
+      sendWindowCommand('tab.title.set', { title: isDefaultNewSession ? '' : sessionTitle });
     }
   }, [sessionTitle, t]);
 

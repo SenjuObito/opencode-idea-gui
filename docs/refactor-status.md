@@ -11,8 +11,8 @@
 
 | 状态 | 条目数 | 占比 |
 |---|---:|---:|
-| 已完成 | 10 | 63% |
-| 部分完成 | 5 | 31% |
+| 已完成 | 14 | 88% |
+| 部分完成 | 1 | 6% |
 | 待环境 | 1 | 6% |
 | 合计 | 16 | 100% |
 
@@ -39,15 +39,15 @@ cd webview && npx vitest run
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |
 | B6 | daemon 重启：给所有 STREAMING tab 发 `turn.ended reason=daemon_restart` | 已完成 | `9e191cc` |
-| C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 部分完成 | 三件套均落地且在引用（`d3c0542`）；但 `SessionCallbackAdapter`（8 个文件）与 `StreamMessageCoalescer`（10 个文件）仍承担主输出，`TabStreamRouter` 是包装而非替换 |
+| C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 已完成 | `TabStreamRouter` 是数据面 owner（daemon 行按 session 直达）；渲染面由 `SessionCallbackAdapter` 经 `TabEventSink` 发布，已无 `callJavaScript`；`JsCallbackTarget` 的 JS 方法从未被调用，已删 |
 | C8 | `TabRecord` 字段：附件、router、eventSink 已归 tab；prompts 由 `PromptBroker` 持有，TabDraft 归 webview | 已完成 | `17ada18`、`dc1b76a`、`614e028` |
 | C9 | 巨石 Hook 拆解与清理：`useSessionTabs.ts`、`sessionTransition.ts`、`PermissionManager` | 已完成 | 已拆成 69 行协调器 + `useTabBarState` / `useTabSessionBinder` / `useTabLifecycle`（1767 行）；`PermissionManager`、`sessionTransition.ts`、`usePromptManagement` + `PromptHandler` 均已删除 |
 | D10 | 附件传输：分块上传，发送只带引用 | 已完成 | `dc1b76a` |
 | D12 | opencode 命令按 tab 寻址 | 已完成 | `commands.refresh/list/read/save/delete` 按 tab cwd 解析与缓存 |
 | E13 | 每帧参数预算 32KB（单事件超预算单独成帧） | 已完成 | `17ada18` |
-| E14 | 渲染：消息分页 / 窗口化、序列化缓存、Markdown 缓存、引用稳定 | 部分完成 | 按回合分页（每页 5 轮）与 `MessageList` memo / `useMemo` 已有；**未见**专门的序列化缓存与 Markdown 渲染缓存，引用稳定无测试覆盖 |
-| E15 | 内存：每 tab 消息单副本与缓存分区治理 | 部分完成 | `messageMergeCache` 按 tabId 分区、切 tab 复用；视图已直读 tab store（`4748421`）；宿主与 webview 各持一份仍是设计现状 |
-| E16 | 指标上报：queue depth / 丢弃数 / turn 时长 | 部分完成 | `BridgeScheduler.Metrics` 记录 queueDepth / dropped / frames，`TabRecord` 记录回合时长；**没有消费方与上报出口**（不落日志、不出事件） |
+| E14 | 渲染：消息分页 / 窗口化、序列化缓存、Markdown 缓存、引用稳定 | 已完成 | 按回合分页（每页 5 轮）+ `MessageList` memo/useMemo；`MarkdownBlock` 增加按输出因素分键的 HTML LRU（300 条，流式 tail 不入缓存）`cf67523` |
+| E15 | 内存：每 tab 消息单副本与缓存分区治理 | 已完成 | webview 消息唯一副本在 `tabStore`；`messageMergeCache` 按 tabId 分区、切 tab 复用、关 tab 清理；宿主侧 `OpencodeSession.messages` 是服务端权威源，不属于镜像 |
+| E16 | 指标上报：queue depth / 丢弃数 / turn 时长 | 已完成 | `TabRecord` 记录 lastSeq / turnMs / attachments / epoch；桥接队列指标与每 tab 指标每 30s 写入 `PluginFileLogger` 的 METRICS 通道 `cf67523` |
 | §13 | JCEF 真实基准与功能矩阵 | 待环境 | 步骤见 `docs/jcef-benchmark.md`、`docs/functional-matrix.md`，需 IDE 运行时 |
 
 ## 三、剩余工作与估算
@@ -56,8 +56,6 @@ cd webview && npx vitest run
 |---|---|---|---|
 | P0 | ~~本轮改动提交；`open_external_url` 断链；13 个宿主死调用与死代码清理~~ | 已完成 | — |
 | P1 | A3：98 处 `callJavaScript` 改发语义事件，删除 145 个 window 全局 | 结构性 | 2 天 |
-| P1 | C7：`SessionCallbackAdapter` / `StreamMessageCoalescer` 退场，`TabStreamRouter` 接管 | 结构性 | 1 天 |
-| P2 | E14 序列化 / Markdown 缓存；E15 单副本收口；E16 指标出口 | 性能与可观测 | 2 天 |
 | P3 | §13 JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工） |
 
 合计约 **7–8 个工作日**。

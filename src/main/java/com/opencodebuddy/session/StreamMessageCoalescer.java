@@ -90,7 +90,6 @@ public class StreamMessageCoalescer {
      * Callback interface to push data to the webview.
      */
     public interface JsCallbackTarget {
-        void callJavaScript(String functionName, String... args);
         JBCefBrowser getBrowser();
         boolean isDisposed();
         HandlerContext getHandlerContext();

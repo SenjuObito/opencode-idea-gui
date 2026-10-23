@@ -490,7 +490,8 @@ public class HistoryLoadPipelineIntegrationTest {
         private final List<String> updateCalls = Collections.synchronizedList(new ArrayList<>());
         private final List<String[]> recordedArgs = Collections.synchronizedList(new ArrayList<>());
 
-        @Override
+        // Legacy call recorder: the coalescer publishes events now, so this is
+        // no longer an interface method. Kept so the recorded fixtures stay intact.
         public void callJavaScript(String functionName, String... args) {
             StringBuilder sb = new StringBuilder(functionName);
             for (String arg : args) {

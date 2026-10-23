@@ -308,11 +308,6 @@ public class OpencodeBuddyChatWindow {
         this.streamCoalescer = new StreamMessageCoalescer(
                 OpencodeBuddyChatWindow.this::publishTabEvent, new StreamMessageCoalescer.JsCallbackTarget() {
             @Override
-            public void callJavaScript(String functionName, String... args) {
-                OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
-            }
-
-            @Override
             public JBCefBrowser getBrowser() {
                 return browser;
             }
@@ -1754,7 +1749,55 @@ public class OpencodeBuddyChatWindow {
      * in that tab's lane.</p>
      */
     public void publishTabEvent(com.opencodebuddy.tab.TabEvent event) {
+        if (event == null) {
+            return;
+        }
+        recordTabMetrics(event);
         tabEventBus.publish(event);
+        maybeLogBridgeMetrics();
+    }
+
+    /** Track per-tab sequence and turn duration for the diagnostics report. */
+    private void recordTabMetrics(com.opencodebuddy.tab.TabEvent event) {
+        String tabId = event.getTabId();
+        if (tabId == null || tabId.isBlank()) {
+            return;
+        }
+        TabRecord record = tabRegistry.get(TabId.of(tabId));
+        if (record == null) {
+            return;
+        }
+        if (event.getSeq() != null) {
+            record.observeSeq(event.getSeq());
+        }
+        if ("turn.started".equals(event.getType())) {
+            record.markTurnStarted();
+        } else if ("turn.ended".equals(event.getType())) {
+            record.markTurnEnded();
+        }
+    }
+
+    private volatile long lastBridgeMetricsLogAt;
+
+    /**
+     * Write the bridge and per-tab metrics to the diagnostics log.
+     *
+     * <p>Throttled: the report exists for a human reading the log after the
+     * fact, so one line per half minute is enough — and it must never become the
+     * reason a delta is late.</p>
+     */
+    private void maybeLogBridgeMetrics() {
+        long now = System.currentTimeMillis();
+        if (now - lastBridgeMetricsLogAt < 30_000L) {
+            return;
+        }
+        lastBridgeMetricsLogAt = now;
+        StringBuilder report = new StringBuilder("[metrics] ").append(webviewEventQueue.metrics());
+        for (TabRecord record : tabRegistry.liveTabs()) {
+            report.append(" | ").append(record.metricsLine());
+        }
+        PluginFileLogger.throttled("INFO", "METRICS", "bridge", report.toString(), 30_000L);
+        LOG.debug(report.toString());
     }
 
     /**
@@ -1924,11 +1967,6 @@ public class OpencodeBuddyChatWindow {
                 ? null : targetSessionId;
         StreamMessageCoalescer newCoalescer = new StreamMessageCoalescer(identity, coalescerTabId,
                 OpencodeBuddyChatWindow.this::publishTabEvent, new StreamMessageCoalescer.JsCallbackTarget() {
-            @Override
-            public void callJavaScript(String functionName, String... args) {
-                OpencodeBuddyChatWindow.this.callJavaScript(functionName, args);
-            }
-
             @Override
             public JBCefBrowser getBrowser() {
                 return browser;

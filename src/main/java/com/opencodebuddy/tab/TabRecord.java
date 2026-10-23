@@ -179,6 +179,51 @@ public final class TabRecord {
         settings.applyUserTitle(title);
     }
 
+    private volatile long turnStartedAtMillis = -1L;
+    private volatile long lastTurnMillis = -1L;
+    private volatile long lastSeq = -1L;
+
+    /** Mark the start of a turn for the diagnostics report. */
+    public void markTurnStarted() {
+        this.turnStartedAtMillis = System.currentTimeMillis();
+    }
+
+    /** Mark the end of a turn and keep its duration. */
+    public void markTurnEnded() {
+        long startedAt = turnStartedAtMillis;
+        if (startedAt > 0) {
+            this.lastTurnMillis = System.currentTimeMillis() - startedAt;
+            this.turnStartedAtMillis = -1L;
+        }
+    }
+
+    /** The highest event sequence number this tab has seen. */
+    public long getLastSeq() {
+        return lastSeq;
+    }
+
+    /** Remember the newest sequence number of an applied event. */
+    public void observeSeq(long seq) {
+        if (seq > lastSeq) {
+            lastSeq = seq;
+        }
+    }
+
+    /** Duration of the last finished turn in milliseconds, or -1. */
+    public long getLastTurnMillis() {
+        return lastTurnMillis;
+    }
+
+    /** One-line diagnostics for this tab. */
+    public String metricsLine() {
+        return "tab=" + tabId.value()
+                + " state=" + state
+                + " lastSeq=" + lastSeq
+                + " turnMs=" + lastTurnMillis
+                + " attachments=" + attachments.size()
+                + " epoch=" + epoch.get();
+    }
+
     public long getEpoch() {
         return epoch.get();
     }

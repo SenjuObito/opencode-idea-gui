@@ -25,13 +25,6 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     /** Throttle interval targeting ~30fps to balance responsiveness with UI thread load. */
     private static final int DELTA_THROTTLE_MS = 33;
 
-    /**
-     * Callback interface for JavaScript calls from session events.
-     */
-    public interface JsTarget {
-        void callJavaScript(String functionName, String... args);
-    }
-
     private final StreamMessageCoalescer streamCoalescer;
     private final TabEventSink eventSink;
     private final PermissionHandler permissionHandler;
@@ -515,9 +508,9 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             warnUnattributedOnce("onStreamEnd");
             return;
         }
-        safeRun("callJavaScript(onStreamEnd)", () ->
+        safeRun("publish(turn.ended)", () ->
                 publish("turn.ended", getTargetSessionId(), b -> b.field("sequence", sequence)));
-        safeRun("callJavaScript(showLoading, false)", () ->
+        safeRun("publish(session.loading)", () ->
                 publish("session.loading", getTargetSessionId(), b -> b.field("loading", false)));
         if (streamEndCallback != null) {
             safeRun("streamEndCallback", streamEndCallback);

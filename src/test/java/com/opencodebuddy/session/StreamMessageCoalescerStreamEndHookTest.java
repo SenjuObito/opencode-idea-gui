@@ -26,8 +26,6 @@ public class StreamMessageCoalescerStreamEndHookTest {
     /** Minimal JsCallbackTarget that counts onStreamEnded() firings. */
     private static final class CountingTarget implements StreamMessageCoalescer.JsCallbackTarget {
         final AtomicInteger streamEndedCount = new AtomicInteger();
-
-        @Override public void callJavaScript(String functionName, String... args) {}
         @Override public JBCefBrowser getBrowser() { return null; }
         @Override public boolean isDisposed() { return false; }
         @Override public HandlerContext getHandlerContext() { return null; }

@@ -10,6 +10,7 @@ import {
   type CliToolStatus,
 } from '../../../types/cliTool';
 import styles from './style.module.less';
+import { sendWindowCommand } from '../../../utils/bridge';
 
 interface CliSectionProps {
   addToast?: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
@@ -17,12 +18,6 @@ interface CliSectionProps {
 
 /** Java may not answer get_cli_status (handler absent) — show an error instead of spinning forever. */
 const CLI_STATUS_TIMEOUT_MS = 15_000;
-
-const sendToJava = (message: string) => {
-  if (window.sendToJava) {
-    window.sendToJava(message);
-  }
-};
 
 const isCliToolStatus = (value: unknown): value is CliToolStatus => {
   if (!value || typeof value !== 'object') return false;
@@ -53,7 +48,7 @@ const openExternalUrl = (url: string) => {
   // JCEF 会拦截 window.open / 外链 <a>，改由宿主打开。
   // 用既有的 `open_browser` 通道：`open_external_url` 从未有宿主处理器。
   if (window.sendToJava) {
-    window.sendToJava(`open_browser:${url}`);
+    sendWindowCommand('open_browser', url);
   }
 };
 
@@ -209,7 +204,7 @@ const CliSection = ({ addToast }: CliSectionProps) => {
     clearStatusTimeout();
     setLoading(true);
     setStatusError(false);
-    sendToJava('get_cli_status:');
+    sendWindowCommand('get_cli_status');
     statusTimeoutRef.current = setTimeout(() => {
       statusTimeoutRef.current = null;
       setStatusError(true);

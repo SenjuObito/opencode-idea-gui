@@ -8,6 +8,7 @@ import {
   INTERNAL_METADATA_TAGS,
   containsAnyTag,
 } from './messageUtils';
+import { sendWindowCommand } from './bridge';
 
 // ---------------------------------------------------------------------------
 // Type guard for text blocks in raw content arrays
@@ -379,7 +380,7 @@ export function downloadJSON(content: string, filename: string): void {
   });
 
   if (window.sendToJava) {
-    window.sendToJava(`save_json:${payload}`);
+    sendWindowCommand('save_json', payload);
   } else {
     console.error('[Frontend] sendToJava not available, falling back to browser download');
     // Fallback: use browser download
@@ -428,7 +429,7 @@ export function downloadMarkdown(content: string, filename: string): void {
   });
 
   if (window.sendToJava) {
-    window.sendToJava(`save_json:${payload}`);
+    sendWindowCommand('save_json', payload);
   } else {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);

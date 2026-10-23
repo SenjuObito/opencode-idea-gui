@@ -108,7 +108,7 @@ export const resolveFilePathWithCallback = (
     callbacks: [callback],
     timeoutId,
   });
-  sendBridgeEvent('resolve_file_path', normalizedPath);
+  sendWindowCommand('resolve_file_path', normalizedPath);
 };
 
 /**
@@ -218,7 +218,8 @@ export interface HostCommandEnvelope {
   /** The owning tab, or null for a window-level command. */
   tabId: string | null;
   sessionId: string | null;
-  payload: Record<string, unknown>;
+  /** Object for a structured command, a bare string for a single-value one. */
+  payload: unknown;
 }
 
 /**
@@ -303,7 +304,7 @@ export const sendSessionCommand = (
  */
 export const sendWindowCommand = (
   type: string,
-  payload: Record<string, unknown> = {},
+  payload: unknown = {},
 ): boolean => {
   if (!type) return false;
   const envelope: HostCommandEnvelope = {
@@ -337,7 +338,7 @@ export const resolveFilePath = (filePath?: string) => {
   if (!normalizedPath || !isValidOpenFileTarget(normalizedPath)) {
     return;
   }
-  sendBridgeEvent('resolve_file_path', normalizedPath);
+  sendWindowCommand('resolve_file_path', normalizedPath);
 };
 
 export const openFile = (filePath?: string, lineStart?: number, lineEnd?: number) => {
@@ -360,7 +361,7 @@ export const openFile = (filePath?: string, lineStart?: number, lineEnd?: number
       ? `${pathOnly}:${resolvedLineStart}-${resolvedLineEnd}`
       : `${pathOnly}:${resolvedLineStart}`;
   }
-  sendBridgeEvent('open_file', path);
+  sendWindowCommand('open_file', path);
 };
 
 export const openClass = (className?: string) => {
@@ -369,7 +370,7 @@ export const openClass = (className?: string) => {
     return;
   }
 
-  sendBridgeEvent('open_class', trimmed);
+  sendWindowCommand('open_class', trimmed);
 };
 
 export const openBrowser = (url?: string) => {
@@ -382,7 +383,7 @@ export const openBrowser = (url?: string) => {
   if (!SAFE_BROWSER_PROTOCOLS.test(url)) {
     return;
   }
-  sendBridgeEvent('open_browser', url);
+  sendWindowCommand('open_browser', url);
 };
 
 export const sendToJava = (message: string, payload: any = {}) => {

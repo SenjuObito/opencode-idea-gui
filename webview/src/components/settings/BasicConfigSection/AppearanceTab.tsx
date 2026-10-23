@@ -3,6 +3,7 @@ import styles from './style.module.less';
 import { useTranslation } from 'react-i18next';
 import type { DiffThemeMode } from '../../../utils/diffTheme';
 import type { UiFontConfig, CodeFontConfig } from '../hooks/useSettingsBasicActions';
+import { sendWindowCommand } from '../../../utils/bridge';
 
 // Preset colors (module-level constants to avoid recreating on each render)
 const DARK_PRESETS = [
@@ -426,14 +427,14 @@ const AppearanceTab = ({
 
     if (language === FOLLOW_IDEA_LANGUAGE) {
       if (window.sendToJava) {
-        window.sendToJava('clear_user_language:');
+        sendWindowCommand('clear_user_language');
       }
       return;
     }
 
     i18n.changeLanguage(language);
     if (window.sendToJava) {
-      window.sendToJava(`set_user_language:${JSON.stringify({ language })}`);
+      sendWindowCommand('set_user_language', { language });
     }
   };
 

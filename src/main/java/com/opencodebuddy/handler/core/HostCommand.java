@@ -1,5 +1,6 @@
 package com.opencodebuddy.handler.core;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -97,19 +98,41 @@ public final class HostCommand {
             }
         }
 
-        JsonObject payload = root.has("payload") && root.get("payload").isJsonObject()
-                ? root.getAsJsonObject("payload").deepCopy()
-                : new JsonObject();
-        // The envelope owns the identity.
-        if (tabId != null) {
-            payload.addProperty("tabId", tabId);
+        String payloadJson;
+        if (root.has("payload") && !root.get("payload").isJsonNull()) {
+            JsonElement payload = root.get("payload");
+            if (payload.isJsonObject()) {
+                JsonObject object = payload.getAsJsonObject().deepCopy();
+                // The envelope owns the identity.
+                if (tabId != null) {
+                    object.addProperty("tabId", tabId);
+                }
+                if (sessionId != null) {
+                    object.addProperty("sessionId", sessionId);
+                }
+                object.addProperty("requestId", requestId);
+                payloadJson = object.toString();
+            } else if (payload.isJsonPrimitive() && payload.getAsJsonPrimitive().isString()) {
+                // A window-level command whose whole content is one string
+                // (`delete_session:ses-x`, `open_file:/a/b`). Handlers expect the
+                // bare value, not a JSON string literal.
+                payloadJson = payload.getAsString();
+            } else {
+                payloadJson = payload.toString();
+            }
+        } else {
+            JsonObject empty = new JsonObject();
+            if (tabId != null) {
+                empty.addProperty("tabId", tabId);
+            }
+            if (sessionId != null) {
+                empty.addProperty("sessionId", sessionId);
+            }
+            empty.addProperty("requestId", requestId);
+            payloadJson = empty.toString();
         }
-        if (sessionId != null) {
-            payload.addProperty("sessionId", sessionId);
-        }
-        payload.addProperty("requestId", requestId);
 
-        return new HostCommand(type, tabId, sessionId, requestId, payload.toString());
+        return new HostCommand(type, tabId, sessionId, requestId, payloadJson);
     }
 
     /** Parse a command that must name its tab. */

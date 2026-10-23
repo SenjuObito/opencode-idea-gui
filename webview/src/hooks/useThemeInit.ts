@@ -7,6 +7,7 @@ import {
   type UiPreferences,
   type UiPreferencesChangedDetail,
 } from '../utils/uiPreferences';
+import { sendWindowCommand } from '../utils/bridge';
 
 /** 字号档位 → 缩放比（与设置页保持一致的唯一映射）。 */
 const FONT_SIZE_SCALE: Record<number, number> = {
@@ -125,7 +126,7 @@ export function useThemeInit() {
     const requestIdeTheme = () => {
       if (cancelled) return;
       if (window.sendToJava) {
-        window.sendToJava('get_ide_theme:');
+        sendWindowCommand('get_ide_theme');
       } else {
         retryCount++;
         if (retryCount < MAX_RETRIES) {

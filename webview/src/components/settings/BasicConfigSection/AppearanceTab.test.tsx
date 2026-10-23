@@ -14,6 +14,23 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+/** Every command travels on one envelope: read it back by type. */
+const sentCommand = (spy: unknown, type: string) => {
+  const calls = (spy as ReturnType<typeof vi.fn>).mock.calls;
+  for (const call of calls) {
+    const raw = call[0] as string;
+    if (!raw.startsWith('host_command:')) continue;
+    const envelope = JSON.parse(raw.substring('host_command:'.length));
+    if (envelope.type === type) return envelope;
+  }
+  return undefined;
+};
+
+const commandTypes = (spy: unknown) => (spy as ReturnType<typeof vi.fn>).mock.calls
+  .map((call: unknown[]) => call[0] as string)
+  .filter((raw: string) => raw.startsWith('host_command:'))
+  .map((raw: string) => JSON.parse(raw.substring('host_command:'.length)).type);
+
 describe('AppearanceTab ui font selector', () => {
   afterEach(() => {
     localStorage.clear();
@@ -68,7 +85,7 @@ describe('AppearanceTab ui font selector', () => {
       target: { value: '__follow_idea__' },
     });
 
-    expect(sendToJava).toHaveBeenCalledWith('clear_user_language:');
+    expect(commandTypes(sendToJava)).toContain('clear_user_language');
     expect(changeLanguageMock).not.toHaveBeenCalled();
     // Java + main.tsx own the persisted state; component must not write here.
     expect(localStorage.getItem('languageSelectionMode')).toBe('manual');
@@ -86,9 +103,7 @@ describe('AppearanceTab ui font selector', () => {
       target: { value: 'en' },
     });
 
-    expect(sendToJava).toHaveBeenCalledWith(
-      'set_user_language:' + JSON.stringify({ language: 'en' })
-    );
+    expect(sentCommand(sendToJava, 'set_user_language')?.payload).toEqual({ language: 'en' });
     expect(changeLanguageMock).toHaveBeenCalledWith('en');
     expect(localStorage.getItem('languageSelectionMode')).toBe('followIdea');
     expect(localStorage.getItem('language')).toBeNull();

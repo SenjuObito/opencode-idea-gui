@@ -13,32 +13,45 @@ describe('bridge navigation helpers', () => {
     window.sendToJava = vi.fn();
   });
 
+  /** Every command travels on one envelope; assertions read type + payload. */
+  const sentCommands = () => ((window.sendToJava as unknown as ReturnType<typeof vi.fn>).mock.calls)
+    .map((call: unknown[]) => {
+      const envelope = JSON.parse((call[0] as string).substring('host_command:'.length));
+      return { type: envelope.type, payload: envelope.payload };
+    });
+
   it('decodes percent-encoded navigation paths for openFile', () => {
     openFile('/Users/demo/my%20file.ts');
     openFile('/Users/demo/%C3%BCber.txt');
     openFile('file:///Users/demo/my%20file.ts');
 
-    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'open_file:/Users/demo/my file.ts');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(2, 'open_file:/Users/demo/über.txt');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(3, 'open_file:/Users/demo/my file.ts');
+    expect(sentCommands()).toEqual([
+      { type: 'open_file', payload: '/Users/demo/my file.ts' },
+      { type: 'open_file', payload: '/Users/demo/über.txt' },
+      { type: 'open_file', payload: '/Users/demo/my file.ts' },
+    ]);
   });
 
   it('parses line numbers from normalized navigation paths', () => {
     openFile('/Users/demo/my%20file.ts:42');
 
-    expect(window.sendToJava).toHaveBeenCalledWith('open_file:/Users/demo/my file.ts:42');
+    expect(sentCommands()).toEqual([
+      { type: 'open_file', payload: '/Users/demo/my file.ts:42' },
+    ]);
   });
 
   it('allows relative navigation paths for openFile', () => {
     openFile('../shared/utils.ts');
-    expect(window.sendToJava).toHaveBeenCalledWith('open_file:../shared/utils.ts');
+    expect(sentCommands()).toEqual([
+      { type: 'open_file', payload: '../shared/utils.ts' },
+    ]);
   });
 
   it('sends openClass for valid Java FQCN values', () => {
     openClass('com.github.claudecodegui.handler.file.OpenFileHandler');
-    expect(window.sendToJava).toHaveBeenCalledWith(
-      'open_class:com.github.claudecodegui.handler.file.OpenFileHandler',
-    );
+    expect(sentCommands()).toEqual([
+      { type: 'open_class', payload: 'com.github.claudecodegui.handler.file.OpenFileHandler' },
+    ]);
   });
 
   it('shares the same trimmed FQCN validation rules as linkify', () => {
@@ -47,8 +60,10 @@ describe('bridge navigation helpers', () => {
     openClass('org.junit.jupiter.api');
     openClass('com.github.foo.Bar.baz()');
 
-    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'open_class:com.github.foo.BarService');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(2, 'open_class:com.github.foo.Outer.Inner');
+    expect(sentCommands()).toEqual([
+      { type: 'open_class', payload: 'com.github.foo.BarService' },
+      { type: 'open_class', payload: 'com.github.foo.Outer.Inner' },
+    ]);
     expect(window.sendToJava).toHaveBeenCalledTimes(2);
   });
 
@@ -70,9 +85,11 @@ describe('bridge navigation helpers', () => {
     openBrowser('http://example.com');
     openBrowser('mailto:test@example.com');
 
-    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'open_browser:https://example.com/docs');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(2, 'open_browser:http://example.com');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(3, 'open_browser:mailto:test@example.com');
+    expect(sentCommands()).toEqual([
+      { type: 'open_browser', payload: 'https://example.com/docs' },
+      { type: 'open_browser', payload: 'http://example.com' },
+      { type: 'open_browser', payload: 'mailto:test@example.com' },
+    ]);
   });
 
   it('rejects file: and javascript: protocols in openBrowser', () => {

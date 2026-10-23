@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { cardDebugLog } from '../../utils/bridge';
+import { sendWindowCommand } from '../../utils/bridge';
 
 /**
  * The engine resolution snapshot the daemon reports (see `daemon.js` →
@@ -109,7 +110,7 @@ export function useUsageTracking() {
   const retryDaemonStatus = useCallback(() => {
     setDaemonStatusLoaded(false);
     if (window.sendToJava) {
-      window.sendToJava('check_daemon_status:');
+      sendWindowCommand('check_daemon_status');
     }
   }, []);
 

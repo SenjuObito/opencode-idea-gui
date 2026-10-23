@@ -67,7 +67,10 @@ describe('CliSection', () => {
   it('requests CLI status on mount', async () => {
     render(<CliSection />);
     await waitFor(() => {
-      expect(window.sendToJava).toHaveBeenCalledWith('get_cli_status:');
+      const calls = (window.sendToJava as unknown as ReturnType<typeof vi.fn>).mock.calls
+        .map((call: unknown[]) => call[0] as string);
+      expect(calls.some((raw) => raw.startsWith('host_command:')
+        && JSON.parse(raw.substring('host_command:'.length)).type === 'get_cli_status')).toBe(true);
     });
   });
 

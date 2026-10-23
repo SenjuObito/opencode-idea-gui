@@ -8,6 +8,17 @@ describe('useSettingsBasicActions', () => {
     window.sendToJava = vi.fn();
   });
 
+  /** Commands share one envelope: read them back by type. */
+  const sentEnvelopes = () => ((window.sendToJava as unknown as ReturnType<typeof vi.fn>).mock.calls)
+    .map((call: unknown[]) => call[0] as string)
+    .filter((raw: string) => raw.startsWith('host_command:'))
+    .map((raw: string) => JSON.parse(raw.substring('host_command:'.length)));
+
+  const sentTypes = () => sentEnvelopes().map((envelope) => envelope.type);
+
+  const sentPayload = (type: string) =>
+    sentEnvelopes().find((envelope) => envelope.type === type)?.payload;
+
   it('sends independent code font updates without mutating ui font state', () => {
     const { result } = renderHook(() => useSettingsBasicActions({}));
 
@@ -15,12 +26,8 @@ describe('useSettingsBasicActions', () => {
       result.current.handleCodeFontSelectionChange('followEditor');
     });
 
-    expect(window.sendToJava).not.toHaveBeenCalledWith(
-      'set_ui_font_config:{"mode":"customFile"}'
-    );
-    expect(window.sendToJava).toHaveBeenCalledWith(
-      'set_code_font_config:{"mode":"followEditor"}'
-    );
+    expect(sentTypes()).not.toContain('set_ui_font_config');
+    expect(sentPayload('set_code_font_config')).toEqual({ mode: 'followEditor' });
   });
 
   it('sends a code font customFile update when a saved path exists', () => {
@@ -43,9 +50,10 @@ describe('useSettingsBasicActions', () => {
       result.current.handleCodeFontSelectionChange('customFile');
     });
 
-    expect(window.sendToJava).toHaveBeenCalledWith(
-      'set_code_font_config:{"mode":"customFile","customFontPath":"/tmp/my-code-font.ttf"}'
-    );
+    expect(sentPayload('set_code_font_config')).toEqual({
+      mode: 'customFile',
+      customFontPath: '/tmp/my-code-font.ttf',
+    });
   });
 
   it('does not send anything when switching to customFile without a saved path (silent no-op)', () => {
@@ -57,9 +65,7 @@ describe('useSettingsBasicActions', () => {
       result.current.handleCodeFontSelectionChange('customFile');
     });
 
-    expect(window.sendToJava).not.toHaveBeenCalledWith(
-      expect.stringMatching(/^set_code_font_config:/)
-    );
+    expect(sentTypes()).not.toContain('set_code_font_config');
   });
 
   it('sends named font configuration updates for ui and code font selections', () => {
@@ -70,11 +76,13 @@ describe('useSettingsBasicActions', () => {
       result.current.handleCodeFontSelectionChange('named:Fira Code');
     });
 
-    expect(window.sendToJava).toHaveBeenCalledWith(
-      'set_ui_font_config:{"mode":"named","fontFamily":"JetBrains Mono"}'
-    );
-    expect(window.sendToJava).toHaveBeenCalledWith(
-      'set_code_font_config:{"mode":"named","fontFamily":"Fira Code"}'
-    );
+    expect(sentPayload('set_ui_font_config')).toEqual({
+      mode: 'named',
+      fontFamily: 'JetBrains Mono',
+    });
+    expect(sentPayload('set_code_font_config')).toEqual({
+      mode: 'named',
+      fontFamily: 'Fira Code',
+    });
   });
 });

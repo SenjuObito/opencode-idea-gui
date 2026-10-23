@@ -5,7 +5,7 @@
  * inside useWindowCallbacks' useEffect.  Receives the full options bag from
  * the hook rather than individual parameters to keep the call-site tidy.
  *
- * Pure functions have been extracted to messageSync.ts / sessionTransition.ts /
+ * Pure functions have been extracted to messageSync.ts / resetTransientState.ts /
  * settingsBootstrap.ts; callback groups are further split into dedicated
  * sub-modules under registerCallbacks/ for easier navigation and maintenance.
  */
@@ -25,7 +25,7 @@ import {
   setupDollarCommandsCallback,
   resetDollarCommandsState,
 } from '../../components/ChatInputBox/providers';
-import { buildResetTransientUiState } from './sessionTransition';
+import { buildResetTransientUiState } from './resetTransientState';
 import { startModeRequest } from './settingsBootstrap';
 import { registerMessageCallbacks } from './registerCallbacks/messageCallbacks';
 import { registerStreamingCallbacks } from './registerCallbacks/streamingCallbacks';

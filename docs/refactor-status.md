@@ -11,8 +11,8 @@
 
 | 状态 | 条目数 | 占比 |
 |---|---:|---:|
-| 已完成 | 8 | 50% |
-| 部分完成 | 7 | 44% |
+| 已完成 | 9 | 56% |
+| 部分完成 | 6 | 38% |
 | 待环境 | 1 | 6% |
 | 合计 | 16 | 100% |
 
@@ -41,7 +41,7 @@ cd webview && npx vitest run
 | B6 | daemon 重启：给所有 STREAMING tab 发 `turn.ended reason=daemon_restart` | 已完成 | `9e191cc` |
 | C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 部分完成 | 三件套均落地且在引用（`d3c0542`）；但 `SessionCallbackAdapter`（8 个文件）与 `StreamMessageCoalescer`（10 个文件）仍承担主输出，`TabStreamRouter` 是包装而非替换 |
 | C8 | `TabRecord` 字段：附件、router、eventSink 已归 tab；prompts 由 `PromptBroker` 持有，TabDraft 归 webview | 已完成 | `17ada18`、`dc1b76a`、`614e028` |
-| C9 | 巨石 Hook 拆解与清理：`useSessionTabs.ts`、`sessionTransition.ts`、`PermissionManager` | 部分完成 | 已拆成 69 行协调器 + `useTabBarState` / `useTabSessionBinder` / `useTabLifecycle`（1767 行）；`PermissionManager` 已删除；`sessionTransition.ts` 仍有 **6 处引用**未清 |
+| C9 | 巨石 Hook 拆解与清理：`useSessionTabs.ts`、`sessionTransition.ts`、`PermissionManager` | 已完成 | 已拆成 69 行协调器 + `useTabBarState` / `useTabSessionBinder` / `useTabLifecycle`（1767 行）；`PermissionManager`、`sessionTransition.ts`、`usePromptManagement` + `PromptHandler` 均已删除 |
 | D10 | 附件传输：分块上传，发送只带引用 | 已完成 | `dc1b76a` |
 | D12 | opencode 命令按 tab 寻址 | 已完成 | `commands.refresh/list/read/save/delete` 按 tab cwd 解析与缓存 |
 | E13 | 每帧参数预算 32KB（单事件超预算单独成帧） | 已完成 | `17ada18` |
@@ -56,10 +56,8 @@ cd webview && npx vitest run
 |---|---|---|---|
 | P0 | ~~本轮改动提交；`open_external_url` 断链；13 个宿主死调用与死代码清理~~ | 已完成 | — |
 | P1 | A2：50 个配置类命令迁入 `host_command` | 机械、量大 | 1 天 |
-| P1 | 死链清理（P0 发现的遗留）：`usePromptManagement` 整条链未挂载、`PromptHandler` 无前端调用、`AgentHandler` 选中段已删但 `settingsService` 选中状态仍需确认用途 | 小 | 0.5 天 |
 | P1 | A3：98 处 `callJavaScript` 改发语义事件，删除 145 个 window 全局 | 结构性 | 2 天 |
 | P1 | C7：`SessionCallbackAdapter` / `StreamMessageCoalescer` 退场，`TabStreamRouter` 接管 | 结构性 | 1 天 |
-| P1 | C9：清掉 `sessionTransition.ts` 最后 6 处引用 | 小 | 0.5 天 |
 | P2 | E14 序列化 / Markdown 缓存；E15 单副本收口；E16 指标出口 | 性能与可观测 | 2 天 |
 | P3 | §13 JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工） |
 

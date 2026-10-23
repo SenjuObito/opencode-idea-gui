@@ -26,7 +26,7 @@ import {
   preserveStreamingAssistantContent,
   stripDuplicateTrailingToolMessages,
 } from '../messageSync';
-import { releaseSessionTransition } from '../sessionTransition';
+import { activeTabId, endTransition } from '../tabTransition';
 import {
   parseSequence,
   getMinAcceptedSequence,
@@ -1200,7 +1200,7 @@ export function registerMessageCallbacks(
 
     cardDebugLog('[HistoryLoadComplete] called, transitioning BEFORE release:', isSessionTransitioning(targetSessionId), 'expectedMsgCount:', expectedMessageCountArg);
     cardDebugLog('[HistoryLoadComplete] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
-    releaseSessionTransition();
+    endTransition(activeTabId());
     cardDebugLog('[HistoryLoadComplete] transitioning AFTER release:', isSessionTransitioning(targetSessionId));
     // Immediately release sessionLoading flag
     options.setSessionLoading(false);

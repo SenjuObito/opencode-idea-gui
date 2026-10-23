@@ -8,7 +8,7 @@
 import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { downloadJSON } from '../../../utils/exportMarkdown';
-import { releaseSessionTransition } from '../sessionTransition';
+import { endTransition } from '../tabTransition';
 import { isTabTransitioning, transitionTargetFor } from '../tabTransition';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 import { cardDebugLog } from '../../../utils/bridge';
@@ -109,7 +109,9 @@ export function registerSessionCallbacks(
       ? targetTab.id
       : (window.__sessionTabsStore?.getTabIdForSession?.(sessionId) ?? null);
     if (!transitionTargetFor(ownerTabId)) {
-      releaseSessionTransition();
+      // Release this tab's own transition. `activeTabId` in this scope is the
+      // parameter, not the module helper, so resolve by the owner tab id.
+      endTransition(ownerTabId);
     }
   };
 

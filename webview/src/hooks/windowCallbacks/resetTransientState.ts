@@ -1,15 +1,17 @@
 /**
- * sessionTransition.ts
+ * resetTransientState.ts
  *
- * Helpers for session transition guard management and transient UI state reset.
- * These functions encapsulate the logic that coordinates the React state setters
- * and streaming refs when a new session is initiated.
+ * Clears the transient UI state (streaming refs, status flags, deferred frames)
+ * that must not leak from the outgoing session into the incoming one.
+ *
+ * The transition guard itself is per tab and lives in `tabTransition.ts`; this
+ * file only owns the reset.
  */
 
 import type { MutableRefObject } from 'react';
 import { cardDebugLog } from '../../utils/bridge';
 import { forceWebviewRepaint } from '../../utils/forceWebviewRepaint';
-import { activeTabId, endTransition, isTabTransitioning } from './tabTransition';
+import { activeTabId, isTabTransitioning } from './tabTransition';
 
 export interface ResetTransientUiStateOptions {
   clearToasts: () => void;
@@ -121,17 +123,4 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     // surface fence once the new transcript commits.
     forceWebviewRepaint('session-transition');
   };
-};
-
-/**
- * Release the session transition guard flags set by beginSessionTransition
- * (useSessionManagement).
- *
- * Note: unlike cc-gui this project does not buffer `updateMessages` while the
- * guard is active — `messageCallbacks.updateMessages` *drops* payloads from
- * non-target sessions and lets the target through (messageCallbacks.ts:589-600).
- * So there is nothing to flush here.
- */
-export const releaseSessionTransition = (): void => {
-  endTransition(activeTabId());
 };

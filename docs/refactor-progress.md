@@ -624,3 +624,16 @@
   `add_prompt` / `import_prompts_file` 等命令因此无人触发；`PromptHandler`
   整体进入死代码候选。旧的 prompt 导入/导出/预览 UI 已被 `PromptSection`
   的 `commands.*` 通道取代。
+
+## P1：C9 收尾与 prompt 死链清理
+
+- `sessionTransition.ts` 删除：它只剩两件事——`releaseSessionTransition()`
+  （`endTransition(activeTabId())` 的薄封装，已内联到两个调用点，并按调用处的
+  语义改成结束**所属 tab** 的过渡）和 `buildResetTransientUiState`
+  （文件改名为 `resetTransientState.ts`，只负责清瞬时 UI 状态）。
+  过渡守卫本身早在 `tabTransition.ts` 里按 tab 持有。
+- `usePromptManagement.ts` 删除：没有任何组件使用它，它发的 `get_prompts` /
+  `add_prompt` / `import_prompts_file` 等命令因此永远无人触发。
+- `PromptHandler.java` 删除：上一条的直接结果。旧的 prompt 导入/导出/预览
+  通道（含 `promptImportPreviewResult` / `promptOperationResult`）整体退场，
+  命令管理只保留 `PromptSection` 的 `commands.*`。

@@ -549,7 +549,7 @@ public class TokenTrackerHandler {
     private void pushResponse(JsonObject response) {
         String json = GSON.toJson(response);
         ApplicationManager.getApplication().invokeLater(() ->
-                context.callJavaScript("window.onTokenTrackerResponse", context.escapeJs(json)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("tokentracker.response").field("data", json).build()));
     }
 
     // ------------------------------------------------------------------

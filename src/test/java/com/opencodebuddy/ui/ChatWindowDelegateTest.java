@@ -66,8 +66,18 @@ public class ChatWindowDelegateTest {
 
         delegate.handleFrontendReady();
 
-        assertFalse(javaScriptCalls.contains("window.applyBackendTabState"));
-        assertTrue(javaScriptCalls.contains("session.loading"));
+        assertFalse(javaScriptCalls.stream().anyMatch(call -> call.startsWith("tab.state")));
+        assertTrue(javaScriptCalls.stream().anyMatch(call -> call.startsWith("session.loading")));
+    }
+
+    /** Index of the first call whose recorded line starts with {@code prefix}. */
+    private static int indexOfPrefix(List<String> calls, String prefix) {
+        for (int i = 0; i < calls.size(); i++) {
+            if (calls.get(i).startsWith(prefix)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**
@@ -81,9 +91,9 @@ public class ChatWindowDelegateTest {
 
         delegate.handleFrontendReady();
 
-        int snapshotIndex = javaScriptCalls.indexOf("window.applyBackendTabState");
-        int replayIndex = javaScriptCalls.indexOf("session.loading");
-        assertEquals(1, Collections.frequency(javaScriptCalls, "window.applyBackendTabState"));
+        int snapshotIndex = indexOfPrefix(javaScriptCalls, "tab.state");
+        int replayIndex = indexOfPrefix(javaScriptCalls, "session.loading");
+        assertEquals(1, javaScriptCalls.stream().filter(call -> call.startsWith("tab.state")).count());
         assertTrue(snapshotIndex >= 0);
         assertTrue(replayIndex >= 0);
         assertTrue(snapshotIndex < replayIndex);

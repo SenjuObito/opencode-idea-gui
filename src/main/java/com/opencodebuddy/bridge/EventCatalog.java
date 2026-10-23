@@ -83,6 +83,68 @@ public final class EventCatalog {
         byType.put("subagent.history", "onSubagentHistoryLoaded");
         byType.put("revert.changed", "onRevertStateUpdate");
 
+        // ── webview 回调事件（A3 全量迁移） ─────────────────────────────
+        byType.put("agents.import.preview", "agentImportPreviewResult");
+        byType.put("agents.import.result", "agentImportResult");
+        byType.put("agents.operation", "agentOperationResult");
+        byType.put("tab.state", "applyBackendTabState");
+        byType.put("font.idea", "applyIdeaFontConfig");
+        byType.put("settings.pinned.models", "applyPinnedModels");
+        byType.put("settings.ui.preferences", "applyUiPreferences");
+        byType.put("mcp.toggled", "mcpServerToggled");
+        byType.put("node.process.killed", "nodeProcessKillResult");
+        byType.put("clipboard.read", "onClipboardRead");
+        byType.put("commands.deleted", "onCommandsDeleted");
+        byType.put("commands.listed", "onCommandsList");
+        byType.put("commands.detail", "onCommandsRead");
+        byType.put("commands.saved", "onCommandsSaved");
+        byType.put("session.compact.failed", "onCompactError");
+        byType.put("session.compact.done", "onCompactSuccess");
+        byType.put("context.usage.error", "onContextUsageError");
+        byType.put("clipboard.copied", "onCopyToClipboardResult");
+        byType.put("font.editor.received", "onEditorFontConfigReceived");
+        byType.put("files.listed", "onFileListResult");
+        byType.put("files.path.resolved", "onFilePathResolved");
+        byType.put("session.fork.bound", "onForkBound");
+        byType.put("session.fork.failed", "onForkError");
+        byType.put("session.fork.done", "onForkSuccess");
+        byType.put("theme.changed", "onIdeThemeChanged");
+        byType.put("theme.received", "onIdeThemeReceived");
+        byType.put("settings.mode.received", "onModeReceived");
+        byType.put("settings.model.confirmed", "onModelConfirmed");
+        byType.put("permission.denied", "onPermissionDenied");
+        byType.put("session.revert.failed", "onRevertError");
+        byType.put("session.hydrated", "onSessionHydrated");
+        byType.put("session.share.failed", "onShareError");
+        byType.put("session.share.done", "onShareSuccess");
+        byType.put("font.system.list", "onSystemFontListReceived");
+        byType.put("tab.activated", "onTabActivated");
+        byType.put("tokentracker.response", "onTokenTrackerResponse");
+        byType.put("files.undo.all", "onUndoAllFileResult");
+        byType.put("files.undo", "onUndoFileResult");
+        byType.put("session.unshare.failed", "onUnshareError");
+        byType.put("session.unshare.done", "onUnshareSuccess");
+        byType.put("skills.delete", "skillDeleteResult");
+        byType.put("skills.import", "skillImportResult");
+        byType.put("skills.toggle", "skillToggleResult");
+        byType.put("agents.updated", "updateAgents");
+        byType.put("cli.status", "updateCliStatus");
+        byType.put("copilot.import.preview", "updateCopilotImportPreview");
+        byType.put("daemon.status", "updateDaemonStatus");
+        byType.put("linkify.capabilities", "updateLinkifyCapabilities");
+        byType.put("mcp.marketplace.entries", "updateMcpMarketplaceEntries");
+        byType.put("mcp.marketplace.sources", "updateMcpMarketplaceSources");
+        byType.put("mcp.status", "updateMcpServerStatus");
+        byType.put("mcp.tools", "updateMcpServerTools");
+        byType.put("mcp.servers", "updateMcpServers");
+        byType.put("node.path", "updateNodePath");
+        byType.put("node.processes", "updateNodeProcesses");
+        byType.put("cli.path", "updateOpencodeCliPath");
+        byType.put("skills.updated", "updateSkills");
+        byType.put("slash.commands", "updateSlashCommands");
+        byType.put("settings.sound", "updateSoundNotificationConfig");
+        byType.put("project.working.directory", "updateWorkingDirectory");
+
         Map<String, String> byFunction = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : byType.entrySet()) {
             // The first mapping wins: a function may serve several semantic

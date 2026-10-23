@@ -99,7 +99,7 @@ public class FileHandler extends BaseMessageHandler {
     private void sendLinkifyCapabilities() {
         String capabilitiesJson = OpenClassHandler.buildCapabilitiesJson();
         ApplicationManager.getApplication().invokeLater(() ->
-            callJavaScript("window.updateLinkifyCapabilities", escapeJs(capabilitiesJson))
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("linkify.capabilities").field("data", capabilitiesJson).build())
         );
     }
 
@@ -117,7 +117,7 @@ public class FileHandler extends BaseMessageHandler {
                 String resultJson = GSON.toJson(result);
 
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    callJavaScript("window.onFilePathResolved", escapeJs(resultJson));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("files.path.resolved").field("data", resultJson).build());
                 });
             } catch (Exception e) {
                 LOG.error("[FileHandler] Failed to resolve file path: " + e.getMessage(), e);
@@ -126,7 +126,7 @@ public class FileHandler extends BaseMessageHandler {
                 errorResult.addProperty("resolvedPath", (String) null);
                 String errorJson = GSON.toJson(errorResult);
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    callJavaScript("window.onFilePathResolved", escapeJs(errorJson));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("files.path.resolved").field("data", errorJson).build());
                 });
             }
         }, AppExecutorUtil.getAppExecutorService());
@@ -193,7 +193,7 @@ public class FileHandler extends BaseMessageHandler {
         String resultJson = GSON.toJson(result);
 
         ApplicationManager.getApplication().invokeLater(() -> {
-            callJavaScript("window.onFileListResult", escapeJs(resultJson));
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("files.listed").field("data", resultJson).build());
         });
     }
 

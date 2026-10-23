@@ -113,11 +113,11 @@ public class SettingsHandler extends BaseMessageHandler {
         "get_ui_preferences",
         "set_ui_preferences",
         "settings.uiPreferences.get",
-        "settings.uiPreferences",
+        "settings.ui.preferences",
         "get_pinned_models",
         "set_pinned_models",
         "settings.pinnedModels.get",
-        "settings.pinnedModels"
+        "settings.pinned.models"
     };
 
     public SettingsHandler(HandlerContext context) {
@@ -143,7 +143,7 @@ public class SettingsHandler extends BaseMessageHandler {
     private void registerThemeChangeListener() {
         themeCallbackHandle = ThemeConfigService.registerThemeChangeListener(themeConfig -> {
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.onIdeThemeChanged", escapeJs(themeConfig.toString()));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("theme.changed").field("data", themeConfig.toString()).build());
             });
         }, true);
     }
@@ -394,21 +394,21 @@ public class SettingsHandler extends BaseMessageHandler {
                 ApplicationManager.getApplication().invokeLater(() -> {
                     try {
                         JsonObject prefs = context.getSettingsService().getUiPreferences();
-                        callJavaScript("window.applyUiPreferences", escapeJs(prefs.toString()));
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("settings.ui.preferences").field("data", prefs.toString()).build());
                     } catch (Exception e) {
                         LOG.warn("[SettingsHandler] Failed to get ui_preferences: " + e.getMessage());
-                        callJavaScript("window.applyUiPreferences", "{}");
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("settings.ui.preferences").field("data", "{}").build());
                     }
                 });
                 return true;
             case "set_ui_preferences":
-            case "settings.uiPreferences":
+            case "settings.ui.preferences":
                 try {
                     JsonObject patch = gson.fromJson(content, JsonObject.class);
                     context.getSettingsService().setUiPreferences(patch);
                     JsonObject currentPrefs = context.getSettingsService().getUiPreferences();
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        broadcastToAll("window.applyUiPreferences", escapeJs(currentPrefs.toString()));
+                        context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("settings.ui.preferences").field("data", currentPrefs.toString()).build());
                     });
                 } catch (Exception e) {
                     LOG.warn("[SettingsHandler] Failed to set ui_preferences: " + e.getMessage());
@@ -419,21 +419,21 @@ public class SettingsHandler extends BaseMessageHandler {
                 ApplicationManager.getApplication().invokeLater(() -> {
                     try {
                         JsonObject pinned = context.getSettingsService().getPinnedModels();
-                        callJavaScript("window.applyPinnedModels", escapeJs(pinned.toString()));
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("settings.pinned.models").field("data", pinned.toString()).build());
                     } catch (Exception e) {
                         LOG.warn("[SettingsHandler] Failed to get pinned_models: " + e.getMessage());
-                        callJavaScript("window.applyPinnedModels", "{}");
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("settings.pinned.models").field("data", "{}").build());
                     }
                 });
                 return true;
             case "set_pinned_models":
-            case "settings.pinnedModels":
+            case "settings.pinned.models":
                 try {
                     JsonObject patch = gson.fromJson(content, JsonObject.class);
                     context.getSettingsService().setPinnedModels(patch);
                     JsonObject currentPinned = context.getSettingsService().getPinnedModels();
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        broadcastToAll("window.applyPinnedModels", escapeJs(currentPinned.toString()));
+                        context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("settings.pinned.models").field("data", currentPinned.toString()).build());
                     });
                 } catch (Exception e) {
                     LOG.warn("[SettingsHandler] Failed to set pinned_models: " + e.getMessage());

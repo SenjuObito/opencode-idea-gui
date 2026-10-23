@@ -86,7 +86,7 @@ public class NodePathHandler {
                     response.addProperty("path", finalPath);
                     response.addProperty("version", finalVersion);
                     response.addProperty("minVersion", NodeDetector.MIN_NODE_MAJOR_VERSION);
-                    context.callJavaScript("window.updateNodePath", context.escapeJs(gson.toJson(response)));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("node.path").field("data", gson.toJson(response)).build());
                 });
             } catch (Exception e) {
                 LOG.error("[NodePathHandler] Failed to get Node.js path: " + e.getMessage(), e);
@@ -186,14 +186,14 @@ public class NodePathHandler {
                     response.addProperty("minVersion", NodeDetector.MIN_NODE_MAJOR_VERSION);
 
                     if (successFlag) {
-                        context.broadcastToAll("window.updateNodePath", context.escapeJs(gson.toJson(response)));
+                        context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("node.path").field("data", gson.toJson(response)).build());
                         context.callJavaScript("window.showSwitchSuccess", context.escapeJs("Node.js 路径已保存并生效,无需重启IDE"));
                         // The daemon runs on a fixed Node runtime chosen at spawn, so a
                         // Node path change can only take effect by restarting the daemon
                         // (which re-launches it via NodeDetector#findNodeExecutable()).
                         restartDaemonForNodeChange();
                     } else {
-                        context.callJavaScript("window.updateNodePath", context.escapeJs(gson.toJson(response)));
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("node.path").field("data", gson.toJson(response)).build());
                         String msg = failureMsgFinal != null ? failureMsgFinal : "无法验证指定的 Node.js 路径";
                         context.callJavaScript("window.showError", context.escapeJs("保存的 Node.js 路径无效: " + msg));
                     }

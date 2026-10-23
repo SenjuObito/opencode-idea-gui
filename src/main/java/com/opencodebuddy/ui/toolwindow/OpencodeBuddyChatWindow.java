@@ -746,7 +746,7 @@ public class OpencodeBuddyChatWindow {
                     // Windowed JCEF keeps the established activation repaint path. It does not
                     // participate in the OSR publication fence or its sentinel pulse.
                     requestCurrentWindowedSurfaceRefresh("tab_activated");
-                    callJavaScript("window.onTabActivated");
+                    publishTabEvent(com.opencodebuddy.tab.TabEvent.of("tab.activated").build());
                     break;
                 default:
                     break;
@@ -2316,7 +2316,7 @@ public class OpencodeBuddyChatWindow {
             }
             packet.add("messages", com.google.gson.JsonParser.parseString(messagesJson));
 
-            callJavaScript("onSessionHydrated", packet.toString());
+            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.hydrated").field("data", packet.toString()).build());
             LOG.info("[hydrateSession] Sent onSessionHydrated for session " + sId + " with " + messages.size() + " messages");
         } catch (Exception e) {
             LOG.warn("Failed to hydrate session to webview: " + sId, e);
@@ -3817,7 +3817,7 @@ public class OpencodeBuddyChatWindow {
         // this session's tab spinning after its own permission denial.
         final String sid = getSession() != null && getSession().getSessionId() != null ? getSession().getSessionId() : "";
         getSession().interrupt().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
-            callJavaScript("onPermissionDenied");
+            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("permission.denied").build());
             publishTabEvent(com.opencodebuddy.tab.TabEvent.of("turn.ended")
                     .session(sid)
                     .tab(findTabIdForSession(sid))

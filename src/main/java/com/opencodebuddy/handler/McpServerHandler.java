@@ -98,7 +98,7 @@ public class McpServerHandler extends BaseMessageHandler {
             LOG.error("[McpServerHandler] Failed to get MCP servers: " + e.getMessage(), e);
             // Send empty array so frontend exits loading state instead of hanging
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.updateMcpServers", escapeJs("[]"));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.servers").field("data", "[]").build());
             });
         }
     }
@@ -175,14 +175,14 @@ public class McpServerHandler extends BaseMessageHandler {
                         }
 
                         ApplicationManager.getApplication().invokeLater(() -> {
-                            callJavaScript("window.updateMcpServerStatus", escapeJs(statusJson));
+                            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.status").field("data", statusJson).build());
                         });
                     })
                     .exceptionally(e -> {
                         LOG.error("[McpServerHandler] Failed to get MCP server status: "
                             + e.getMessage(), e);
                         ApplicationManager.getApplication().invokeLater(() -> {
-                            callJavaScript("window.updateMcpServerStatus", escapeJs("[]"));
+                            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.status").field("data", "[]").build());
                         });
                         return null;
                     });
@@ -190,7 +190,7 @@ public class McpServerHandler extends BaseMessageHandler {
                 LOG.error("[McpServerHandler] Error while waiting for bridge or fetching status: "
                     + e.getMessage(), e);
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    callJavaScript("window.updateMcpServerStatus", escapeJs("[]"));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.status").field("data", "[]").build());
                 });
             }
         });
@@ -245,7 +245,7 @@ public class McpServerHandler extends BaseMessageHandler {
                     result.addProperty("serverId", serverId);
                     result.add("tools", new com.google.gson.JsonArray());
                     LOG.info("[McpServerHandler] MCP tool listing unsupported for opencode; returning empty list");
-                    callJavaScript("window.updateMcpServerTools", escapeJs(gson.toJson(result)));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.tools").field("data", gson.toJson(result)).build());
                 });
             } catch (Exception e) {
                 LOG.error("[McpServerHandler] Error while waiting for bridge or fetching tools: "
@@ -255,7 +255,7 @@ public class McpServerHandler extends BaseMessageHandler {
                     errorResult.addProperty("serverId", serverId);
                     errorResult.addProperty("error", e.getMessage());
                     errorResult.add("tools", new com.google.gson.JsonArray());
-                    callJavaScript("window.updateMcpServerTools", escapeJs(gson.toJson(errorResult)));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.tools").field("data", gson.toJson(errorResult)).build());
                 });
             }
         });
@@ -358,7 +358,7 @@ public class McpServerHandler extends BaseMessageHandler {
             LOG.info("[McpServerHandler] Toggled MCP server: " + serverName + " (enabled: " + isEnabled + ")");
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.mcpServerToggled", escapeJs(content));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.toggled").field("data", content).build());
                 handleGetMcpServers();
                 // Also refresh status so the UI shows the latest connection state
                 handleGetMcpServerStatus();

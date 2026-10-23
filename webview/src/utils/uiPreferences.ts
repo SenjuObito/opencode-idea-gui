@@ -245,7 +245,7 @@ export function updateUiPreferences(patch: Partial<UiPreferences>): void {
   const serialized = JSON.stringify(current);
   if (serialized !== lastSyncedJson) {
     lastSyncedJson = serialized;
-    sendWindowCommand('settings.uiPreferences', JSON.parse(serialized) as Record<string, unknown>);
+    sendWindowCommand('settings.ui.preferences', JSON.parse(serialized) as Record<string, unknown>);
   }
 }
 

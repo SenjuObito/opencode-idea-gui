@@ -30,7 +30,7 @@ async function loadModule(initial?: Partial<Prefs>): Promise<UiPreferencesModule
 function lastSent(): Record<string, unknown> | null {
   for (let i = sendWindowCommandMock.mock.calls.length - 1; i >= 0; i--) {
     const call = sendWindowCommandMock.mock.calls[i] as unknown[];
-    if (call[0] === 'settings.uiPreferences') {
+    if (call[0] === 'settings.ui.preferences') {
       return call[1] as Record<string, unknown>;
     }
   }

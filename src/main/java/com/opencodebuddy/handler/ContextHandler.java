@@ -145,7 +145,7 @@ public class ContextHandler extends BaseMessageHandler {
 
     private void callContextUsageError(String message, String requestId) {
         if (requestId != null && !requestId.isEmpty()) {
-            callJavaScript("onContextUsageError", escapeJs(message), escapeJs(requestId));
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("context.usage.error").field("args", java.util.List.of(message, requestId)).build());
             return;
         }
         callJavaScript("onContextUsageError", escapeJs(message));

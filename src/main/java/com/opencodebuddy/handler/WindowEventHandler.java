@@ -161,20 +161,20 @@ public class WindowEventHandler extends BaseMessageHandler {
             @Override
             public void onError(String error) {
                 LOG.error("[fork] Failed to fork session: " + error);
-                callJavaScript("onForkError", error != null ? error : "");
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.fork.failed").field("data", error != null ? error : "").build());
             }
 
             @Override
             public void onComplete(boolean success, java.util.List<String> chunks) {
                 if (!success) {
                     LOG.error("[fork] Fork session failed (success=false)");
-                    callJavaScript("onForkError", "");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.fork.failed").field("data", "").build());
                     return;
                 }
                 String newSessionId = extractStringField(chunks, "newSessionId");
                 LOG.info("[fork] newSessionId=\"" + newSessionId + "\"");
                 if (newSessionId.isEmpty()) {
-                    callJavaScript("onForkError", "");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.fork.failed").field("data", "").build());
                     return;
                 }
                 registerForkedSession(newSessionId);
@@ -182,10 +182,10 @@ public class WindowEventHandler extends BaseMessageHandler {
                     // The fork lands in its own tab: bind it there and let the
                     // webview activate that tab.
                     callback.onForkBound(targetTabId, newSessionId);
-                    callJavaScript("onForkBound", escapeJs(targetTabId), escapeJs(newSessionId));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.fork.bound").field("args", java.util.List.of(targetTabId, newSessionId)).build());
                     return;
                 }
-                callJavaScript("onForkSuccess", "{\"sessionId\":\"" + newSessionId + "\"}");
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.fork.done").field("data", "{\"sessionId\":\"" + newSessionId + "\"}").build());
             }
         });
     }
@@ -221,14 +221,14 @@ public class WindowEventHandler extends BaseMessageHandler {
         if (sourceTabId == null || sourceTabId.isBlank()
                 || targetTabId == null || targetTabId.isBlank()) {
             LOG.warn("[fork] session.fork without source/target tab");
-            callJavaScript("onForkError", "the fork must name its source and target tab");
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.fork.failed").field("data", "the fork must name its source and target tab").build());
             return;
         }
 
         com.opencodebuddy.session.OpencodeSession source = context.getSessionForTab(sourceTabId);
         if (source == null || source.getSessionId() == null || source.getSessionId().isBlank()) {
             LOG.warn("[fork] source tab has no session: " + sourceTabId);
-            callJavaScript("onForkError", "the source tab has no session to fork");
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.fork.failed").field("data", "the source tab has no session to fork").build());
             return;
         }
 
@@ -238,7 +238,7 @@ public class WindowEventHandler extends BaseMessageHandler {
         if (forkMessageId != null && !forkMessageId.isBlank() && !"latest".equals(forkMessageId)) {
             withMessageId(sourceSessionId, forkMessageId, "fork",
                     resolvedId -> requestFork(sourceSessionId, resolvedId, forkTargetTabId),
-                    err -> callJavaScript("onForkError", err != null ? err : ""));
+                    err -> context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.fork.failed").field("data", err != null ? err : "").build()));
             return;
         }
         requestFork(sourceSessionId, null, forkTargetTabId);
@@ -256,20 +256,20 @@ public class WindowEventHandler extends BaseMessageHandler {
         requestDaemonJson("shareSession", () -> singleSessionParams(sessionId), new ResponseHandler() {
             @Override
             public void onError(String error) {
-                callJavaScript("onShareError", error != null ? error : "");
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.share.failed").field("data", error != null ? error : "").build());
             }
 
             @Override
             public void onComplete(boolean success, java.util.List<String> chunks) {
                 if (!success) {
-                    callJavaScript("onShareError", "");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.share.failed").field("data", "").build());
                     return;
                 }
                 String url = extractShareUrl(chunks);
                 if (!url.isEmpty()) {
-                    callJavaScript("onShareSuccess", url);
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.share.done").field("data", url).build());
                 } else {
-                    callJavaScript("onShareError", "");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.share.failed").field("data", "").build());
                 }
             }
         });
@@ -279,15 +279,15 @@ public class WindowEventHandler extends BaseMessageHandler {
         requestDaemonJson("unshareSession", () -> singleSessionParams(sessionId), new ResponseHandler() {
             @Override
             public void onError(String error) {
-                callJavaScript("onUnshareError", error != null ? error : "");
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.unshare.failed").field("data", error != null ? error : "").build());
             }
 
             @Override
             public void onComplete(boolean success, java.util.List<String> chunks) {
                 if (success) {
-                    callJavaScript("onUnshareSuccess", "");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.unshare.done").field("data", "").build());
                 } else {
-                    callJavaScript("onUnshareError", "");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.unshare.failed").field("data", "").build());
                 }
             }
         });
@@ -328,7 +328,7 @@ public class WindowEventHandler extends BaseMessageHandler {
             com.google.gson.JsonObject err = new com.google.gson.JsonObject();
             err.addProperty("op", "undo");
             err.addProperty("error", "no active session");
-            callJavaScript("onRevertError", err.toString());
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.revert.failed").field("data", err.toString()).build());
             return;
         }
 
@@ -349,7 +349,7 @@ public class WindowEventHandler extends BaseMessageHandler {
                     if (error != null) {
                         err.addProperty("error", error);
                     }
-                    callJavaScript("onRevertError", err.toString());
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.revert.failed").field("data", err.toString()).build());
                 }
 
                 @Override
@@ -358,7 +358,7 @@ public class WindowEventHandler extends BaseMessageHandler {
                         LOG.error("[revert] Revert session failed (success=false)");
                         com.google.gson.JsonObject err = new com.google.gson.JsonObject();
                         err.addProperty("op", "undo");
-                        callJavaScript("onRevertError", err.toString());
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.revert.failed").field("data", err.toString()).build());
                         return;
                     }
                     pushRevertStateFromResponse(sessionId, joinLines(chunks), resolvedId);
@@ -368,7 +368,7 @@ public class WindowEventHandler extends BaseMessageHandler {
             com.google.gson.JsonObject errObj = new com.google.gson.JsonObject();
             errObj.addProperty("op", "undo");
             errObj.addProperty("error", err != null ? err : "");
-            callJavaScript("onRevertError", errObj.toString());
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.revert.failed").field("data", errObj.toString()).build());
         });
     }
 
@@ -413,7 +413,7 @@ public class WindowEventHandler extends BaseMessageHandler {
                 if (error != null) {
                     err.addProperty("error", error);
                 }
-                callJavaScript("onRevertError", err.toString());
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.revert.failed").field("data", err.toString()).build());
             }
 
             @Override
@@ -422,7 +422,7 @@ public class WindowEventHandler extends BaseMessageHandler {
                     LOG.error("[unrevert] Unrevert session failed (success=false)");
                     com.google.gson.JsonObject err = new com.google.gson.JsonObject();
                     err.addProperty("op", "redo");
-                    callJavaScript("onRevertError", err.toString());
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.revert.failed").field("data", err.toString()).build());
                     return;
                 }
                 pushRevertStateFromResponse(sessionId, joinLines(chunks), null);
@@ -574,7 +574,7 @@ public class WindowEventHandler extends BaseMessageHandler {
                 }
                 errorReported.set(true);
                 LOG.warn("[WindowEventHandler] Compact session failed: " + error);
-                callJavaScript("onCompactError", finalTargetSessionId, error != null ? error : "");
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.compact.failed").field("args", java.util.List.of(finalTargetSessionId, error != null ? error : "")).build());
             }
 
             @Override
@@ -582,11 +582,11 @@ public class WindowEventHandler extends BaseMessageHandler {
                 if (success) {
                     LOG.info("[WindowEventHandler] Compact session succeeded");
                     new com.opencodebuddy.handler.UsagePushService(context).refreshContextBar();
-                    callJavaScript("onCompactSuccess", finalTargetSessionId);
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.compact.done").field("data", finalTargetSessionId).build());
                 } else if (!errorReported.get()) {
                     errorReported.set(true);
                     LOG.warn("[WindowEventHandler] Compact session failed (success=false)");
-                    callJavaScript("onCompactError", finalTargetSessionId, "");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.compact.failed").field("args", java.util.List.of(finalTargetSessionId, "")).build());
                 }
             }
         });

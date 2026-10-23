@@ -380,7 +380,7 @@ public class SessionLifecycleManager {
 
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                host.callJavaScript("updateSlashCommands", JsUtils.escapeJs(commandsJson));
+                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("slash.commands").field("data", commandsJson).build());
             } catch (Exception e) {
                 LOG.warn("Failed to send slash commands to frontend: " + e.getMessage(), e);
             }
@@ -441,7 +441,7 @@ public class SessionLifecycleManager {
                         host.setFetchedSlashCommandsCount(mergedList.size());
                         ApplicationManager.getApplication().invokeLater(() -> {
                             try {
-                                host.callJavaScript("updateSlashCommands", JsUtils.escapeJs(mergedJson));
+                                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("slash.commands").field("data", mergedJson).build());
                                 LOG.info("Slash commands refreshed from OpenCode daemon: " + mergedList.size() + " commands");
                             } catch (Exception e) {
                                 LOG.debug("Failed to send refreshed slash commands to frontend: " + e.getMessage());
@@ -477,7 +477,7 @@ public class SessionLifecycleManager {
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 if (!host.isDisposed() && host.getBrowser() != null) {
-                    host.callJavaScript("window.onModeReceived", JsUtils.escapeJs(modeToSend));
+                    host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("settings.mode.received").field("data", modeToSend).build());
                 }
             });
         } catch (Exception e) {

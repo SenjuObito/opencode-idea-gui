@@ -292,7 +292,7 @@ public class UndoFileHandler extends BaseMessageHandler {
         LOG.info("[UndoFileHandler] Sending success callback: " + json);
 
         ApplicationManager.getApplication().invokeLater(() -> {
-            callJavaScript("onUndoFileResult", escapeJs(json));
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("files.undo").field("data", json).build());
         });
     }
 
@@ -306,7 +306,7 @@ public class UndoFileHandler extends BaseMessageHandler {
         LOG.warn("[UndoFileHandler] Sending error callback: " + json);
 
         ApplicationManager.getApplication().invokeLater(() -> {
-            callJavaScript("onUndoFileResult", escapeJs(json));
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("files.undo").field("data", json).build());
         });
     }
 
@@ -319,7 +319,7 @@ public class UndoFileHandler extends BaseMessageHandler {
         LOG.info("[UndoFileHandler] Sending batch success callback: " + json);
 
         ApplicationManager.getApplication().invokeLater(() -> {
-            callJavaScript("onUndoAllFileResult", escapeJs(json));
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("files.undo.all").field("data", json).build());
         });
     }
 
@@ -332,7 +332,7 @@ public class UndoFileHandler extends BaseMessageHandler {
         LOG.warn("[UndoFileHandler] Sending batch error callback: " + json);
 
         ApplicationManager.getApplication().invokeLater(() -> {
-            callJavaScript("onUndoAllFileResult", escapeJs(json));
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("files.undo.all").field("data", json).build());
         });
     }
 }

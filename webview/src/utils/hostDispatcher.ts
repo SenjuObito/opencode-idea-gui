@@ -48,6 +48,37 @@ function resolveWindowFunction(path: string): ((...args: unknown[]) => void) | n
     : null;
 }
 
+/**
+ * Adapt a named-payload event to a handler that still takes its old arguments.
+ *
+ * <p>The catalog maps a semantic type to a handler implemented for the legacy
+ * string protocol: one JSON string, or two positional strings. The event
+ * carries `data` (one value) or `args` (positional values), so the adapter
+ * hands the handler exactly what it used to receive.</p>
+ */
+function adaptLegacyPayload(
+  handler: (...args: unknown[]) => void,
+): (...args: unknown[]) => void {
+  return (...incoming: unknown[]) => {
+    // Positional legacy calls (a type with several arguments) pass straight
+    // through: the dispatcher already spread them.
+    if (incoming.length > 1) {
+      return handler(...incoming);
+    }
+    const payload = incoming[0];
+    if (payload && typeof payload === 'object') {
+      const record = payload as { args?: unknown; data?: unknown };
+      if (Array.isArray(record.args)) {
+        return handler(...record.args);
+      }
+      if (typeof record.data === 'string') {
+        return handler(record.data);
+      }
+    }
+    return handler(payload);
+  };
+}
+
 function resolveHandler(type: string): ((...args: unknown[]) => void) | null {
   if (!type) return null;
   // The registry is the routing table: the handler of a semantic event is
@@ -59,7 +90,7 @@ function resolveHandler(type: string): ((...args: unknown[]) => void) | null {
   const semantic = handlerForSemanticType(type);
   if (semantic) {
     const handler = resolveWindowFunction(semantic);
-    if (handler) return handler;
+    if (handler) return adaptLegacyPayload(handler);
   }
   // Fallback: the legacy function name, which is also what the host sends
   // next to the semantic type.

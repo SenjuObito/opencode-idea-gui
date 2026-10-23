@@ -143,7 +143,7 @@ export function writePinnedModelIds(providerId: string, modelIds: string[]): voi
   } catch {
     // sandboxed / quota — ignore
   }
-  sendWindowCommand('settings.pinnedModels', { [providerId]: modelIds });
+  sendWindowCommand('settings.pinned.models', { [providerId]: modelIds });
 }
 
 /** Toggle pin; returns the next pinned id list for this provider (most recently pinned models appear first). */

@@ -135,6 +135,20 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
      * @param functionName JavaScript function to call
      * @param args arguments to pass to the JavaScript function
      */
+    /** Publish one named event to every open chat window. */
+    public static void broadcastEvent(HandlerContext excludeContext, com.opencodebuddy.tab.TabEvent event) {
+        if (event == null) {
+            return;
+        }
+        for (OpencodeBuddyChatWindow window : collectAllChatWindows()) {
+            if (window != null && !window.isDisposed()) {
+                if (excludeContext == null || window.getHandlerContext() != excludeContext) {
+                    window.publishTabEvent(event);
+                }
+            }
+        }
+    }
+
     public static void broadcastToAllChatWindows(HandlerContext excludeContext, String functionName, String... args) {
         Set<OpencodeBuddyChatWindow> windows = collectAllChatWindows();
         for (OpencodeBuddyChatWindow window : windows) {

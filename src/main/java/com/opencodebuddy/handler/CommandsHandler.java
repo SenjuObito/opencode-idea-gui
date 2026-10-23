@@ -87,7 +87,7 @@ public class CommandsHandler extends BaseMessageHandler {
             json = gson.toJson(buildList(scope, root));
             listCache.put(key, new CachedList(json, now));
         }
-        callJavaScript("window.onCommandsList", json);
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("commands.listed").field("data", json).build());
     }
 
     /**
@@ -148,7 +148,7 @@ public class CommandsHandler extends BaseMessageHandler {
             result.addProperty("content", defaultTemplate(name));
             result.addProperty("exists", false);
         }
-        callJavaScript("window.onCommandsRead", gson.toJson(result));
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("commands.detail").field("data", gson.toJson(result)).build());
     }
 
     private void handleSave(JsonObject payload) throws IOException {
@@ -175,7 +175,7 @@ public class CommandsHandler extends BaseMessageHandler {
         JsonObject result = baseResult(scope);
         result.addProperty("name", name);
         result.addProperty("path", target.getAbsolutePath());
-        callJavaScript("window.onCommandsSaved", gson.toJson(result));
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("commands.saved").field("data", gson.toJson(result)).build());
     }
 
     private void handleDelete(JsonObject payload) throws IOException {
@@ -193,7 +193,7 @@ public class CommandsHandler extends BaseMessageHandler {
         JsonObject result = baseResult(scope);
         result.addProperty("name", name);
         result.addProperty("deleted", deleted);
-        callJavaScript("window.onCommandsDeleted", gson.toJson(result));
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("commands.deleted").field("data", gson.toJson(result)).build());
     }
 
     // ===== helpers =====

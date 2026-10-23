@@ -62,7 +62,7 @@ public class CliStatusHandler extends BaseMessageHandler {
                 }
                 String json = gson.toJson(payload);
                 ApplicationManager.getApplication().invokeLater(() ->
-                        callJavaScript("window.updateCliStatus", escapeJs(json))
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("cli.status").field("data", json).build())
                 );
             } catch (Exception e) {
                 LOG.error("[CliStatusHandler] Failed to detect CLI status: " + e.getMessage(), e);
@@ -70,7 +70,7 @@ public class CliStatusHandler extends BaseMessageHandler {
                 error.addProperty("error", e.getMessage() != null ? e.getMessage() : "unknown error");
                 String json = gson.toJson(error);
                 ApplicationManager.getApplication().invokeLater(() ->
-                        callJavaScript("window.updateCliStatus", escapeJs(json))
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("cli.status").field("data", json).build())
                 );
             }
         }, AppExecutorUtil.getAppExecutorService()).exceptionally(ex -> {

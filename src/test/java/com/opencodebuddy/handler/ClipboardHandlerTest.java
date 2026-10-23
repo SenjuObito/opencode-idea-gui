@@ -54,11 +54,11 @@ public class ClipboardHandlerTest {
         ClipboardHandler handler = new ClipboardHandler(context);
 
         assertTrue(handler.handle("write_clipboard", "https://opencode.ai/share/123"));
-        assertTrue(jsCallback.calls.contains("window.onCopyToClipboardResult:true"));
+        assertTrue(jsCallback.calls.contains("clipboard.copied:true"));
 
         jsCallback.calls.clear();
         assertTrue(handler.handle("copy_to_clipboard", "https://opencode.ai/share/456"));
-        assertTrue(jsCallback.calls.contains("window.onCopyToClipboardResult:true"));
+        assertTrue(jsCallback.calls.contains("clipboard.copied:true"));
 
         assertFalse(handler.handle("unknown_type", "test"));
     }
@@ -72,11 +72,11 @@ public class ClipboardHandlerTest {
         });
 
         assertTrue(handler.handle("write_clipboard", "headless-test-text"));
-        assertTrue(jsCallback.calls.contains("window.onCopyToClipboardResult:true"));
+        assertTrue(jsCallback.calls.contains("clipboard.copied:true"));
 
         jsCallback.calls.clear();
         assertTrue(handler.handle("read_clipboard", ""));
-        assertTrue(jsCallback.calls.contains("window.onClipboardRead:headless-test-text"));
+        assertTrue(jsCallback.calls.contains("clipboard.read:headless-test-text"));
     }
 
     @Test
@@ -87,7 +87,7 @@ public class ClipboardHandlerTest {
 
         String hugeContent = "x".repeat(11 * 1024 * 1024);
         assertTrue(handler.handle("write_clipboard", hugeContent));
-        assertTrue(jsCallback.calls.contains("window.onCopyToClipboardResult:false"));
+        assertTrue(jsCallback.calls.contains("clipboard.copied:false"));
     }
 
     private static @NotNull Application invokeLaterInlineApplication() {
@@ -118,6 +118,18 @@ public class ClipboardHandlerTest {
         @Override
         public void callJavaScript(String functionName, String... args) {
             calls.add(functionName + ":" + String.join(",", args));
+        }
+
+        @Override
+        public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+            Object data = event.getPayload().get("data");
+            Object args = event.getPayload().get("args");
+            if (args != null) {
+                calls.add(event.getType() + ":" + args);
+            } else {
+                boolean empty = data == null || data instanceof com.google.gson.JsonNull;
+                calls.add(event.getType() + ":" + (empty ? "" : data));
+            }
         }
 
         @Override

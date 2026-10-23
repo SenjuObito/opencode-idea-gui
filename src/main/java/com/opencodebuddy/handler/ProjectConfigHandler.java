@@ -160,7 +160,7 @@ public class ProjectConfigHandler {
             String projectPath = context.getProject().getBasePath();
             if (projectPath == null) {
                 ApplicationManager.getApplication().invokeLater(() ->
-                    context.callJavaScript("window.updateWorkingDirectory", "{}"));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("project.working.directory").field("data", "{}").build()));
                 return;
             }
             String customWorkingDir = settingsService.getCustomWorkingDirectory(projectPath);
@@ -485,7 +485,7 @@ public class ProjectConfigHandler {
         try {
             String themeConfigJson = ThemeConfigService.getIdeThemeConfig().toString();
             ApplicationManager.getApplication().invokeLater(() ->
-                context.callJavaScript("window.onIdeThemeReceived", context.escapeJs(themeConfigJson)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("theme.received").field("data", themeConfigJson).build()));
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to get IDE theme: " + e.getMessage(), e);
         }
@@ -495,8 +495,8 @@ public class ProjectConfigHandler {
         try {
             String fontConfigJson = FontConfigService.getEditorFontConfig().toString();
             ApplicationManager.getApplication().invokeLater(() -> {
-                context.callJavaScript("window.onEditorFontConfigReceived", context.escapeJs(fontConfigJson));
-                context.callJavaScript("window.applyIdeaFontConfig", context.escapeJs(fontConfigJson));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("font.editor.received").field("data", fontConfigJson).build());
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("font.idea").field("data", fontConfigJson).build());
             });
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to get editor font config: " + e.getMessage(), e);
@@ -507,7 +507,7 @@ public class ProjectConfigHandler {
         try {
             JsonObject json = FontConfigService.getSystemFontListJson();
             ApplicationManager.getApplication().invokeLater(() ->
-                context.callJavaScript("window.onSystemFontListReceived", context.escapeJs(json.toString())));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("font.system.list").field("data", json.toString()).build()));
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to get system font list: " + e.getMessage(), e);
         }

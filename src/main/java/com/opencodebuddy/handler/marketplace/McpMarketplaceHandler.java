@@ -61,7 +61,7 @@ public final class McpMarketplaceHandler extends BaseMessageHandler {
     private void handleGetSources() {
         List<McpMarketplaceSource> sources = marketplaceService.getSources();
         String json = gson.toJson(sources);
-        ApplicationManager.getApplication().invokeLater(() -> callJavaScript("window.updateMcpMarketplaceSources", escapeJs(json)));
+        ApplicationManager.getApplication().invokeLater(() -> context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.marketplace.sources").field("data", json).build()));
     }
 
     private void handleSearch(String content) {
@@ -81,7 +81,7 @@ public final class McpMarketplaceHandler extends BaseMessageHandler {
                 response.addProperty("error", e.getMessage());
             }
             String json = gson.toJson(response);
-            ApplicationManager.getApplication().invokeLater(() -> callJavaScript("window.updateMcpMarketplaceEntries", escapeJs(json)));
+            ApplicationManager.getApplication().invokeLater(() -> context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.marketplace.entries").field("data", json).build()));
         });
     }
 

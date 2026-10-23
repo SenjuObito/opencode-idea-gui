@@ -46,7 +46,7 @@ public class OpenCodeCliPathHandler {
                 ApplicationManager.getApplication().invokeLater(() -> {
                     JsonObject response = new JsonObject();
                     response.addProperty("path", pathToSend);
-                    context.callJavaScript("window.updateOpencodeCliPath", context.escapeJs(gson.toJson(response)));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("cli.path").field("data", gson.toJson(response)).build());
                 });
             } catch (Exception e) {
                 LOG.error("[OpenCodeCliPathHandler] Failed to get opencode CLI path: " + e.getMessage(), e);
@@ -99,7 +99,7 @@ public class OpenCodeCliPathHandler {
             ApplicationManager.getApplication().invokeLater(() -> {
                 JsonObject response = new JsonObject();
                 response.addProperty("path", path);
-                context.broadcastToAll("window.updateOpencodeCliPath", context.escapeJs(gson.toJson(response)));
+                context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("cli.path").field("data", gson.toJson(response)).build());
                 context.callJavaScript("window.showSuccess", context.escapeJs("opencode CLI path saved"));
             });
 

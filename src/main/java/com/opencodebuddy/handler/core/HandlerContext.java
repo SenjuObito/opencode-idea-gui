@@ -283,6 +283,14 @@ public class HandlerContext {
         jsCallback.releaseTabAttachments(tabId);
     }
 
+    /** Publish a named event to every open chat window. */
+    public void broadcastEvent(com.opencodebuddy.tab.TabEvent event) {
+        if (event == null) {
+            return;
+        }
+        com.opencodebuddy.ui.toolwindow.OpencodeBuddyToolWindow.broadcastEvent(this, event);
+    }
+
     /** Publish a named event to the webview. */
     public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
         if (event == null) {

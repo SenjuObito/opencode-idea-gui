@@ -50,7 +50,7 @@ public class PermissionModeHandler {
             final String modeToSend = currentMode;
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                this.context.callJavaScript("window.onModeReceived", this.context.escapeJs(modeToSend));
+                this.context.publishEvent(com.opencodebuddy.tab.TabEvent.of("settings.mode.received").field("data", modeToSend).build());
             });
         } catch (Exception e) {
             LOG.error("[PermissionModeHandler] Failed to get mode: " + e.getMessage(), e);

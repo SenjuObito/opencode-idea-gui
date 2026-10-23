@@ -84,13 +84,13 @@ public class SkillHandler extends BaseMessageHandler {
             String skillsJson = GSON.toJson(skills);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                broadcastToAll("window.updateSkills", escapeJs(skillsJson));
+                context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("skills.updated").field("data", skillsJson).build());
             });
         } catch (Exception e) {
             LOG.error("[SkillHandler] Failed to get all skills: " + e.getMessage(), e);
             String fallbackJson = "{\"global\":{},\"local\":{}}";
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.updateSkills", escapeJs(fallbackJson));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.updated").field("data", fallbackJson).build());
             });
         }
     }
@@ -135,7 +135,7 @@ public class SkillHandler extends BaseMessageHandler {
                             String resultJson = GSON.toJson(importResult);
 
                             ApplicationManager.getApplication().invokeLater(() -> {
-                                callJavaScript("window.skillImportResult", escapeJs(resultJson));
+                                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.import").field("data", resultJson).build());
                             });
                         } catch (Exception e) {
                             LOG.error("[SkillHandler] Import skill failed: " + e.getMessage(), e);
@@ -143,7 +143,7 @@ public class SkillHandler extends BaseMessageHandler {
                             errorResult.addProperty("success", false);
                             errorResult.addProperty("error", e.getMessage());
                             ApplicationManager.getApplication().invokeLater(() -> {
-                                callJavaScript("window.skillImportResult", escapeJs(GSON.toJson(errorResult)));
+                                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.import").field("data", GSON.toJson(errorResult)).build());
                             });
                         }
                     }, AppExecutorUtil.getAppExecutorService());
@@ -171,7 +171,7 @@ public class SkillHandler extends BaseMessageHandler {
                     String resultJson = GSON.toJson(result);
 
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        callJavaScript("window.skillDeleteResult", escapeJs(resultJson));
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.delete").field("data", resultJson).build());
                     });
                 } catch (Exception e) {
                     LOG.error("[SkillHandler] Delete skill failed: " + e.getMessage(), e);
@@ -179,7 +179,7 @@ public class SkillHandler extends BaseMessageHandler {
                     errorResult.addProperty("success", false);
                     errorResult.addProperty("error", e.getMessage());
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        callJavaScript("window.skillDeleteResult", escapeJs(GSON.toJson(errorResult)));
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.delete").field("data", GSON.toJson(errorResult)).build());
                     });
                 }
             }, AppExecutorUtil.getAppExecutorService());
@@ -189,7 +189,7 @@ public class SkillHandler extends BaseMessageHandler {
             errorResult.addProperty("success", false);
             errorResult.addProperty("error", e.getMessage());
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.skillDeleteResult", escapeJs(GSON.toJson(errorResult)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.delete").field("data", GSON.toJson(errorResult)).build());
             });
         }
     }
@@ -214,7 +214,7 @@ public class SkillHandler extends BaseMessageHandler {
                     String resultJson = GSON.toJson(result);
 
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        callJavaScript("window.skillToggleResult", escapeJs(resultJson));
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.toggle").field("data", resultJson).build());
                     });
                 } catch (Exception e) {
                     LOG.error("[SkillHandler] Toggle skill failed: " + e.getMessage(), e);
@@ -223,7 +223,7 @@ public class SkillHandler extends BaseMessageHandler {
                     errorResult.addProperty("error", e.getMessage());
                     attachToggleCorrelation(errorResult, skillId, requestId, skillName);
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        callJavaScript("window.skillToggleResult", escapeJs(GSON.toJson(errorResult)));
+                        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.toggle").field("data", GSON.toJson(errorResult)).build());
                     });
                 }
             }, AppExecutorUtil.getAppExecutorService());
@@ -234,7 +234,7 @@ public class SkillHandler extends BaseMessageHandler {
             errorResult.addProperty("error", e.getMessage());
             attachToggleCorrelationFromContent(errorResult, content);
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.skillToggleResult", escapeJs(GSON.toJson(errorResult)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.toggle").field("data", GSON.toJson(errorResult)).build());
             });
         }
     }

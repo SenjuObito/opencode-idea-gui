@@ -554,10 +554,7 @@ public class ChatWindowDelegate {
         host.setFrontendReady(true);
         host.getWebviewWatchdog().markFrontendReady();
 
-        host.callJavaScript(
-            "window.updateLinkifyCapabilities",
-            JsUtils.escapeJs(OpenClassHandler.buildCapabilitiesJson())
-        );
+        host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("linkify.capabilities").field("data", OpenClassHandler.buildCapabilitiesJson()).build());
         // Daemon/serve status: clears the webview's "starting OpenCode service"
         // spinner as soon as the state is known (serveReady:true) or shows the
         // retryable "not running" row (alive:false).
@@ -617,7 +614,7 @@ public class ChatWindowDelegate {
                 session.getReasoningEffort(),
                 session.getCodexServiceTier()
         );
-        host.callJavaScript("window.applyBackendTabState", JsUtils.escapeJs(payload));
+        host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("tab.state").field("data", payload).build());
     }
 
     /**

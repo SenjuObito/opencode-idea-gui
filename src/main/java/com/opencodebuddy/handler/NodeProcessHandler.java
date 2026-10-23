@@ -234,13 +234,13 @@ public class NodeProcessHandler implements MessageHandler {
 
     private void pushUpdate(String json) {
         ApplicationManager.getApplication().invokeLater(() ->
-            context.callJavaScript("window.updateNodeProcesses", context.escapeJs(json))
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("node.processes").field("data", json).build())
         );
     }
 
     private void pushKillResult(String json) {
         ApplicationManager.getApplication().invokeLater(() ->
-            context.callJavaScript("window.nodeProcessKillResult", context.escapeJs(json))
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("node.process.killed").field("data", json).build())
         );
     }
 

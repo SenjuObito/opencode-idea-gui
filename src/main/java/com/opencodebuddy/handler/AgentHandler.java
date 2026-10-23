@@ -116,7 +116,7 @@ public class AgentHandler extends BaseMessageHandler {
                         }
                         String agentsJson = gson.toJson(resultAgents);
                         ApplicationManager.getApplication().invokeLater(() -> {
-                            broadcastToAll("window.updateAgents", escapeJs(agentsJson));
+                            context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
                         });
                         return;
                     }
@@ -140,12 +140,12 @@ public class AgentHandler extends BaseMessageHandler {
             String agentsJson = gson.toJson(agents);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                broadcastToAll("window.updateAgents", escapeJs(agentsJson));
+                context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
             });
         } catch (Exception e) {
             LOG.error("[AgentHandler] Failed to get agents: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.updateAgents", escapeJs("[]"));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", "[]").build());
             });
         }
     }
@@ -161,7 +161,7 @@ public class AgentHandler extends BaseMessageHandler {
             // Refresh the list
             ApplicationManager.getApplication().invokeLater(() -> {
                 handleGetAgents();
-                callJavaScript("window.agentOperationResult", escapeJs("{\"success\":true,\"operation\":\"add\"}"));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.operation").field("data", "{\"success\":true,\"operation\":\"add\"}").build());
             });
         } catch (Exception e) {
             LOG.error("[AgentHandler] Failed to add agent: " + e.getMessage(), e);
@@ -170,7 +170,7 @@ public class AgentHandler extends BaseMessageHandler {
             errorResult.addProperty("operation", "add");
             errorResult.addProperty("error", e.getMessage());
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.agentOperationResult", escapeJs(gson.toJson(errorResult)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.operation").field("data", gson.toJson(errorResult)).build());
             });
         }
     }
@@ -189,7 +189,7 @@ public class AgentHandler extends BaseMessageHandler {
             // Refresh the list
             ApplicationManager.getApplication().invokeLater(() -> {
                 handleGetAgents();
-                callJavaScript("window.agentOperationResult", escapeJs("{\"success\":true,\"operation\":\"update\"}"));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.operation").field("data", "{\"success\":true,\"operation\":\"update\"}").build());
             });
         } catch (Exception e) {
             LOG.error("[AgentHandler] Failed to update agent: " + e.getMessage(), e);
@@ -198,7 +198,7 @@ public class AgentHandler extends BaseMessageHandler {
             errorResult.addProperty("operation", "update");
             errorResult.addProperty("error", e.getMessage());
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.agentOperationResult", escapeJs(gson.toJson(errorResult)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.operation").field("data", gson.toJson(errorResult)).build());
             });
         }
     }
@@ -227,7 +227,7 @@ public class AgentHandler extends BaseMessageHandler {
                 // Refresh the list
                 ApplicationManager.getApplication().invokeLater(() -> {
                     handleGetAgents();
-                    callJavaScript("window.agentOperationResult", escapeJs("{\"success\":true,\"operation\":\"delete\"}"));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.operation").field("data", "{\"success\":true,\"operation\":\"delete\"}").build());
                 });
             } else {
                 JsonObject errorResult = new JsonObject();
@@ -235,7 +235,7 @@ public class AgentHandler extends BaseMessageHandler {
                 errorResult.addProperty("operation", "delete");
                 errorResult.addProperty("error", "Agent not found");
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    callJavaScript("window.agentOperationResult", escapeJs(gson.toJson(errorResult)));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.operation").field("data", gson.toJson(errorResult)).build());
                 });
             }
         } catch (Exception e) {
@@ -245,7 +245,7 @@ public class AgentHandler extends BaseMessageHandler {
             errorResult.addProperty("operation", "delete");
             errorResult.addProperty("error", e.getMessage());
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.agentOperationResult", escapeJs(gson.toJson(errorResult)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.operation").field("data", gson.toJson(errorResult)).build());
             });
         }
     }
@@ -426,7 +426,7 @@ public class AgentHandler extends BaseMessageHandler {
                     previewResult.add("summary", summary);
 
                     String resultJson = gson.toJson(previewResult);
-                    callJavaScript("window.agentImportPreviewResult", escapeJs(resultJson));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.import.preview").field("data", resultJson).build());
                 } else {
                     LOG.info("[AgentHandler] Import cancelled by user");
                 }
@@ -483,7 +483,7 @@ public class AgentHandler extends BaseMessageHandler {
                 importResult.addProperty("updated", updated);
                 importResult.addProperty("skipped", skipped);
 
-                callJavaScript("window.agentImportResult", escapeJs(gson.toJson(importResult)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.import.result").field("data", gson.toJson(importResult)).build());
             });
         } catch (Exception e) {
             LOG.error("[AgentHandler] Failed to save imported agents: " + e.getMessage(), e);
@@ -496,7 +496,7 @@ public class AgentHandler extends BaseMessageHandler {
                 JsonObject errorResult = new JsonObject();
                 errorResult.addProperty("success", false);
                 errorResult.addProperty("error", e.getMessage());
-                callJavaScript("window.agentImportResult", escapeJs(gson.toJson(errorResult)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.import.result").field("data", gson.toJson(errorResult)).build());
             });
         }
     }

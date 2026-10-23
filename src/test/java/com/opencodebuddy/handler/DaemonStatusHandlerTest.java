@@ -33,6 +33,19 @@ public class DaemonStatusHandlerTest {
         }
 
         @Override
+        public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+            if (!"daemon.status".equals(event.getType())) {
+                return;
+            }
+            Object data = event.getPayload().get("data");
+            if (data instanceof com.google.gson.JsonElement element && element.isJsonObject()) {
+                pushed.add(element.getAsJsonObject());
+            } else if (data instanceof String text && !text.isEmpty()) {
+                pushed.add(JsonParser.parseString(text).getAsJsonObject());
+            }
+        }
+
+        @Override
         public String escapeJs(String str) {
             // Mirror JsUtils quoting so the JSON payload stays parseable.
             return str == null ? "" : str.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");

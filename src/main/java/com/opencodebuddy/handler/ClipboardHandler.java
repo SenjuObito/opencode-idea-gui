@@ -85,7 +85,7 @@ public class ClipboardHandler extends BaseMessageHandler {
         long now = System.currentTimeMillis();
         if (now - lastReadTime < MIN_READ_INTERVAL_MS) {
             LOG.debug("Clipboard read rate-limited");
-            callJavaScript("window.onClipboardRead", "");
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("clipboard.read").field("data", "").build());
             return;
         }
         lastReadTime = now;
@@ -97,13 +97,13 @@ public class ClipboardHandler extends BaseMessageHandler {
                 Clipboard clipboard = getClipboard();
                 if (clipboard != null && clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
                     String text = (String) clipboard.getData(DataFlavor.stringFlavor);
-                    callJavaScript("window.onClipboardRead", escapeJs(text != null ? text : ""));
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("clipboard.read").field("data", text != null ? text : "").build());
                 } else {
-                    callJavaScript("window.onClipboardRead", "");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("clipboard.read").field("data", "").build());
                 }
             } catch (Exception e) {
                 LOG.warn("Failed to read clipboard", e);
-                callJavaScript("window.onClipboardRead", "");
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("clipboard.read").field("data", "").build());
             }
         }, ModalityState.any());
     }
@@ -111,7 +111,7 @@ public class ClipboardHandler extends BaseMessageHandler {
     private void handleWriteClipboard(String content) {
         if (content != null && content.length() > MAX_CLIPBOARD_WRITE_SIZE) {
             LOG.warn("Clipboard write rejected: content too large (" + content.length() + " chars)");
-            callJavaScript("window.onCopyToClipboardResult", "false");
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("clipboard.copied").field("data", "false").build());
             return;
         }
         // Dispatch clipboard access to EDT to avoid blocking the CEF browser thread.
@@ -121,13 +121,13 @@ public class ClipboardHandler extends BaseMessageHandler {
                 Clipboard clipboard = getClipboard();
                 if (clipboard != null) {
                     clipboard.setContents(new StringSelection(content != null ? content : ""), null);
-                    callJavaScript("window.onCopyToClipboardResult", "true");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("clipboard.copied").field("data", "true").build());
                 } else {
-                    callJavaScript("window.onCopyToClipboardResult", "false");
+                    context.publishEvent(com.opencodebuddy.tab.TabEvent.of("clipboard.copied").field("data", "false").build());
                 }
             } catch (Exception e) {
                 LOG.warn("Failed to write clipboard", e);
-                callJavaScript("window.onCopyToClipboardResult", "false");
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("clipboard.copied").field("data", "false").build());
             }
         }, ModalityState.any());
     }

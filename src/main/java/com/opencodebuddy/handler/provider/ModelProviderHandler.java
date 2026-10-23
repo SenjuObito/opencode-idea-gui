@@ -125,8 +125,7 @@ public class ModelProviderHandler {
             final String confirmedModel = model;
             final String confirmedProvider = context.getCurrentProvider();
             ApplicationManager.getApplication().invokeLater(() -> {
-                context.callJavaScript("window.onModelConfirmed",
-                        context.escapeJs(confirmedModel), context.escapeJs(confirmedProvider));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("settings.model.confirmed").field("args", java.util.List.of(confirmedModel, confirmedProvider)).build());
                 if (modelChanged) {
                     usagePushService.pushUsageUpdateAfterModelChange(targetSession, newMaxTokens);
                 }

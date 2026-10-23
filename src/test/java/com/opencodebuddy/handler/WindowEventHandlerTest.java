@@ -40,7 +40,7 @@ public class WindowEventHandlerTest {
 
         assertTrue(handler.handle("share_session", "session_123"));
         assertEquals(1, jsCallback.calls.size());
-        assertEquals("onShareSuccess:https://opencode.ai/share/session_123", jsCallback.calls.get(0));
+        assertEquals("session.share.done:https://opencode.ai/share/session_123", jsCallback.calls.get(0));
     }
 
     @Test
@@ -61,7 +61,7 @@ public class WindowEventHandlerTest {
         WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback());
 
         assertTrue(handler.handle("share_session", "session_123"));
-        assertTrue(jsCallback.calls.contains("onShareError:Share disabled") || jsCallback.calls.contains("onShareError:"));
+        assertTrue(jsCallback.calls.contains("session.share.failed:Share disabled") || jsCallback.calls.contains("session.share.failed:"));
     }
 
     @Test
@@ -85,7 +85,7 @@ public class WindowEventHandlerTest {
         payload.addProperty("sessionId", "session_123");
         assertTrue(handler.handle("session.compact", payload.toString()));
         assertEquals(1, jsCallback.calls.size());
-        assertEquals("onCompactError:session_123,Nothing to compact yet", jsCallback.calls.get(0));
+        assertEquals("session.compact.failed:[session_123, Nothing to compact yet]", jsCallback.calls.get(0));
     }
 
     @Test
@@ -107,7 +107,7 @@ public class WindowEventHandlerTest {
 
         assertTrue(handler.handle("unshare_session", "session_123"));
         assertEquals(1, jsCallback.calls.size());
-        assertEquals("onUnshareSuccess:", jsCallback.calls.get(0));
+        assertEquals("session.unshare.done:", jsCallback.calls.get(0));
     }
 
     @Test
@@ -128,7 +128,7 @@ public class WindowEventHandlerTest {
         WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback());
 
         assertTrue(handler.handle("unshare_session", "session_123"));
-        assertTrue(jsCallback.calls.contains("onUnshareError:Unshare error") || jsCallback.calls.contains("onUnshareError:"));
+        assertTrue(jsCallback.calls.contains("session.unshare.failed:Unshare error") || jsCallback.calls.contains("session.unshare.failed:"));
     }
 
     /** Verifies that history_dom_committed is supported and dispatched exactly once. */
@@ -187,6 +187,18 @@ public class WindowEventHandlerTest {
         @Override
         public void callJavaScript(String functionName, String... args) {
             calls.add(functionName + ":" + (args != null ? String.join(",", args) : ""));
+        }
+
+        @Override
+        public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+            Object data = event.getPayload().get("data");
+            Object args = event.getPayload().get("args");
+            if (args != null) {
+                calls.add(event.getType() + ":" + args);
+            } else {
+                boolean empty = data == null || data instanceof com.google.gson.JsonNull;
+                calls.add(event.getType() + ":" + (empty ? "" : data));
+            }
         }
 
         @Override

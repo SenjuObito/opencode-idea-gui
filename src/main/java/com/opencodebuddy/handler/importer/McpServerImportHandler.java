@@ -78,6 +78,6 @@ public final class McpServerImportHandler extends BaseMessageHandler {
 
         String json = gson.toJson(response);
         ApplicationManager.getApplication().invokeLater(
-            () -> callJavaScript("window.updateCopilotImportPreview", escapeJs(json)));
+            () -> context.publishEvent(com.opencodebuddy.tab.TabEvent.of("copilot.import.preview").field("data", json).build()));
     }
 }

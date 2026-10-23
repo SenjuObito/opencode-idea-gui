@@ -28,6 +28,16 @@ public class CliModelsHandlerTest {
         }
 
         @Override
+        public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+            Object data = event.getPayload().get("data");
+            if (data instanceof com.google.gson.JsonElement element && element.isJsonObject()) {
+                pushed.add(element.getAsJsonObject());
+            } else if (data instanceof String text && !text.isEmpty()) {
+                pushed.add(JsonParser.parseString(text).getAsJsonObject());
+            }
+        }
+
+        @Override
         public String escapeJs(String str) {
             return str == null ? "" : str.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
         }

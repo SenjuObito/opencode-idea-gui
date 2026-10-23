@@ -41,7 +41,7 @@ public class SoundSettingsHandler {
                 response.addProperty("onlyWhenUnfocused", onlyWhenUnfocused);
                 response.addProperty("selectedSound", selectedSound);
                 response.addProperty("customSoundPath", customPath != null ? customPath : "");
-                context.callJavaScript("window.updateSoundNotificationConfig", context.escapeJs(gson.toJson(response)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("settings.sound").field("data", gson.toJson(response)).build());
             });
         } catch (Exception e) {
             LOG.error("[SoundSettingsHandler] Failed to get sound notification config: " + e.getMessage(), e);
@@ -51,7 +51,7 @@ public class SoundSettingsHandler {
                 response.addProperty("onlyWhenUnfocused", false);
                 response.addProperty("selectedSound", "default");
                 response.addProperty("customSoundPath", "");
-                context.callJavaScript("window.updateSoundNotificationConfig", context.escapeJs(gson.toJson(response)));
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("settings.sound").field("data", gson.toJson(response)).build());
             });
         }
     }
@@ -221,8 +221,7 @@ public class SoundSettingsHandler {
                             response.addProperty("enabled", enabled);
                             response.addProperty("selectedSound", "custom");
                             response.addProperty("customSoundPath", path);
-                            context.broadcastToAll("window.updateSoundNotificationConfig",
-                                context.escapeJs(gson.toJson(response)));
+                            context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("settings.sound").field("data", gson.toJson(response)).build());
                             context.callJavaScript("window.showSuccessI18n",
                                 context.escapeJs("settings.basic.soundNotification.customSoundSaved"));
                         }
@@ -268,7 +267,7 @@ public class SoundSettingsHandler {
             response.addProperty("onlyWhenUnfocused", finalOnlyWhenUnfocused);
             response.addProperty("selectedSound", finalSelectedSound);
             response.addProperty("customSoundPath", finalCustomPath);
-            context.broadcastToAll("window.updateSoundNotificationConfig", context.escapeJs(gson.toJson(response)));
+            context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("settings.sound").field("data", gson.toJson(response)).build());
         });
     }
 }

@@ -231,6 +231,6 @@ public class DaemonStatusHandler extends BaseMessageHandler {
         }
         String json = gson.toJson(payload);
         PluginFileLogger.info("DAEMON", "pushStatus " + json);
-        callJavaScript("window.updateDaemonStatus", escapeJs(json));
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("daemon.status").field("data", json).build());
     }
 }

@@ -34,6 +34,7 @@ import { registerUsageModeCallbacks } from './registerCallbacks/usageModeCallbac
 import { registerPermissionCallbacks } from './registerCallbacks/permissionCallbacks';
 import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCallbacks';
 import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../utils/hostEventTypes';
+import { registerHostEvents } from '../../utils/hostEventRegistry';
 
 function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, nextMessages: unknown[] | undefined): boolean {
   if (previousMessages === nextMessages) return true;
@@ -329,6 +330,12 @@ export function registerWindowCallbacks(
       console.error('[onTodoUpdated] parse error:', e);
     }
   };
+
+  registerHostEvents({
+    'subagent.history': window.onSubagentHistoryLoaded,
+    'task.event': window.onTaskEvent,
+    'todos.updated': window.onTodoUpdated,
+  });
 
   // =========================================================================
   // Slash Commands Setup

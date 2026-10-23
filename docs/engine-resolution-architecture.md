@@ -61,7 +61,7 @@ flowchart TB
     B5 -->|"getState()"| B3
     B4 --> E1
     B4 --> E2
-    B2 -.->|"GET /api/info | /config"| E1
+    B2 -.->|"GET /global/health | /config"| E1
     B3 -->|"engine_status 事件"| H3
     H3 --> S2
     H3 --> S3
@@ -102,7 +102,7 @@ flowchart TB
 |---|---|
 | 职责 | 对着**已经跑起来的**服务做能力探测，回答"这个 server 是 v1 还是 v2" |
 | 对外 API | `probeEngine({ baseUrl, auth, directory, timeoutMs, fetchImpl })` → `{ engine, evidence, tries }`（§4.2） |
-| 判据 | `GET /api/info` → 200 且 `content-type: application/json` ⇒ v2；否则 `GET /config` → JSON ⇒ v1；都不满足 ⇒ `unknown` |
+| 判据 | `GET /global/health`（或备选 `/api/health`、`/api/info`）→ 200 且 `content-type: application/json` ⇒ v2；否则 `GET /config` → JSON ⇒ v1；都不满足 ⇒ `unknown` |
 | 不变量 | ① 有超时上限（默认 3s）与有限重试（≤2 次）；② **绝不**因为"探测失败"返回 v1（禁止隐式降级）；③ 只看能力，不看 `--version` 字符串 |
 | 不做 | 不 spawn、不读环境变量、不读写状态 |
 
@@ -179,17 +179,17 @@ type EngineState = 'pending' | 'v1' | 'v2' | 'unknown';
 | `pending` | `RESOLVE_FAIL` | L0–L4 全部候选验证失败 | `unknown` | `reason.kind=cli-not-found`, `blocking=true`；上报 |
 | `pending` | `RESOLVE_OK` | 得到 `{path, version, source}` | `pending` | 记录 `cli.*`，继续 spawn；**不以 version 判模式** |
 | `pending` | `SERVE_READY` | 进程就绪 | `pending` | 触发 `probeEngine()` |
-| `pending` | `PROBE_V2` | `/api/info` 200 + JSON | `v2` | `lock()`，`evidence` 落盘；上报 |
+| `pending` | `PROBE_V2` | `/global/health` 200 + JSON（或备选 `/api/health`、`/api/info`） | `v2` | `lock()`，`evidence` 落盘；上报 |
 | `pending` | `PROBE_V1` | `/config` 返回 JSON | `v1` | 同上 |
 | `pending` | `PROBE_UNKNOWN` | 两者均不通 | `unknown` | `blocking=false`，进入 auto-restart 预算内重试；预算耗尽 → `blocking=true` |
 | `v1`/`v2` | `SERVE_EXIT` | 进程退出（崩溃） | `pending` | `invalidate('serve-exit')`；保留 `cli.*` 缓存，模式**必须重探** |
-| `v1`/`v2` | `EVIDENCE_CONTRADICTS` | 运行期观测到与锁定不符（如 `/api/info` 突然 404） | `pending` | WARN + 重探，禁止直接翻转 |
+| `v1`/`v2` | `EVIDENCE_CONTRADICTS` | 运行期观测到与锁定不符（如 `/global/health` 突然 404） | `pending` | WARN + 重探，禁止直接翻转 |
 | `unknown` | `RETRY` | 用户点重试 / 下一个请求 | `pending` | 重跑 resolve+probe（`blocking=true` 时需用户显式触发） |
 | 任意 | `SETTINGS_CHANGED` | 用户在设置页保存 | 进程终止 | **由宿主重启 daemon**；进程边界 = 失效边界（ADR-5） |
 
 ### 3.3 不变量（写进代码断言）
 
-- **INV-1**：`state ∈ {v1, v2} ⇒ ∃ evidence ∈ {/api/info 200, /config JSON}`。版本字符串永远**不是**充分证据。
+- **INV-1**：`state ∈ {v1, v2} ⇒ ∃ evidence ∈ {/global/health 200, /config JSON}`。版本字符串永远**不是**充分证据。防 SPA HTML 回退：必须校验 `Content-Type: application/json`。
 - **INV-2**：`v1 → v2` 与 `v2 → v1` 无直接迁移，必经 `pending`。任何"直接翻转"都是 bug。
 - **INV-3**：`state === 'unknown' && blocking` ⇒ router 必须抛错，且错误消息可读（含 `reason.kind`），不允许发请求。
 - **INV-4**：`lock()` 前置条件为"本次 `probeEngine` 返回 v1|v2"；违反即抛断言（生产环境降级为 WARN + 不锁定）。
@@ -253,11 +253,11 @@ type Evidence = { probePath:string|null; status:number|null; contentType:string|
 **可扩展性设计**：不把状态写成字面量，而是让探测器返回服务端**自报的 API 版本**，再用映射表决定模式：
 
 ```js
-// GET /api/info → { apiVersion: 2, version: '2.0.27' }
+// GET /global/health → { healthy: true, version: '1.19.1', apiVersion?: 2 }
 const ENGINE_BY_API_VERSION = { 1:'v1', 2:'v2' /*, 3:'v3'*/ };
 ```
 
-这样未来加 v3 时，探测器与状态机结构不变，只加一条映射（§9）。若 `/api/info` 不提供 `apiVersion`，回退到"路径能力探测"（`/api/info` 存在 ⇒ v2）。
+这样未来加 v3 时，探测器与状态机结构不变，只加一条映射（§9）。若探测端点不提供显式 `apiVersion`，回退到"路径能力探测"（`/global/health` 存在且为 JSON ⇒ v2）。同时按顺序探测 `['/global/health', '/api/health', '/api/info']` 保证向下兼容。
 
 ### 4.3 `engine-registry`
 

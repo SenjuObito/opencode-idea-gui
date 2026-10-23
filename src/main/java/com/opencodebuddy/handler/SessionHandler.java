@@ -2,7 +2,6 @@ package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.handler.core.HostCommand;
 import com.opencodebuddy.handler.core.RequestIdLedger;
 
 import com.opencodebuddy.session.OpencodeSession;
@@ -155,40 +154,59 @@ public class SessionHandler extends BaseMessageHandler {
      * v2 command entry point: the envelope owns identity, the payload owns
      * content.
      *
-     * <p>Everything the plan calls "no guessing" is enforced here — the version,
-     * the tab id, the request id and the session binding are all validated
-     * before a single byte reaches the daemon. A command that does not add up is
-     * rejected back to the tab that sent it instead of being executed against
-     * whatever session happened to be active.</p>
+     * <p>The outer envelope was already verified at the gateway
+     * ({@link com.opencodebuddy.ui.toolwindow.OpencodeBuddyChatWindow}), with
+     * {@code tabId}, {@code sessionId} and {@code requestId} merged into the payload JSON.
+     * We only enforce session consistency here before dispatching.</p>
      */
     private void handleHostSessionSend(String content) {
-        HostCommand command;
+        if (content == null || content.isBlank()) {
+            rejectCommand(null, null, "BAD_ENVELOPE", "empty payload");
+            return;
+        }
+
+        JsonObject payloadJson;
         try {
-            command = HostCommand.parse(content, "session.send");
-        } catch (HostCommand.Invalid invalid) {
-            rejectCommand(null, null, invalid.getCode(), invalid.getMessage());
+            payloadJson = com.google.gson.JsonParser.parseString(content).getAsJsonObject();
+        } catch (RuntimeException e) {
+            rejectCommand(null, null, "BAD_ENVELOPE", "the payload is not a JSON object");
             return;
         }
 
-        if (!requestIds.remember(command.getRequestId())) {
-            LOG.debug("[SessionHandler] replayed session.send ignored: " + command.getRequestId());
+        String requestId = payloadJson.has("requestId") && !payloadJson.get("requestId").isJsonNull()
+                ? payloadJson.get("requestId").getAsString() : null;
+        String tabId = payloadJson.has("tabId") && !payloadJson.get("tabId").isJsonNull()
+                ? payloadJson.get("tabId").getAsString() : null;
+        String sessionId = payloadJson.has("sessionId") && !payloadJson.get("sessionId").isJsonNull()
+                ? payloadJson.get("sessionId").getAsString() : null;
+
+        if (tabId == null || tabId.isBlank()) {
+            rejectCommand(null, requestId, "MISSING_TAB_ID", "the command must name the tab it belongs to");
+            return;
+        }
+        if (requestId == null || requestId.isBlank()) {
+            rejectCommand(tabId, null, "MISSING_REQUEST_ID", "the command request id is required");
             return;
         }
 
-        String mismatch = sessionMismatch(command.getTabId(), command.getSessionId());
+        if (!requestIds.remember(requestId)) {
+            LOG.debug("[SessionHandler] replayed session.send ignored: " + requestId);
+            return;
+        }
+
+        String mismatch = sessionMismatch(tabId, sessionId);
         if (mismatch != null) {
-            requestIds.forget(command.getRequestId());
-            rejectCommand(command.getTabId(), command.getRequestId(), "SESSION_MISMATCH", mismatch);
+            requestIds.forget(requestId);
+            rejectCommand(tabId, requestId, "SESSION_MISMATCH", mismatch);
             return;
         }
 
         // One command, two shapes: the attachments are part of the payload.
-        String payload = command.getPayloadJson();
-        if (hasAttachments(payload)) {
-            handleSendMessageWithAttachments(payload);
+        if (hasAttachments(content)) {
+            handleSendMessageWithAttachments(content);
             return;
         }
-        handleSendMessage(payload);
+        handleSendMessage(content);
     }
 
     /** Does this send carry attachments? */
@@ -215,7 +233,9 @@ public class SessionHandler extends BaseMessageHandler {
         }
         OpencodeSession session = context.getSession(tabId);
         if (session == null) {
-            return "tab " + tabId + " has no session to address";
+            // The tab has not initialized a session yet; let handleSendMessage
+            // create it via context.createSession(tabId).
+            return null;
         }
         String bound = session.getSessionId();
         if (bound == null || bound.isBlank()) {

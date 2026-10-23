@@ -5,7 +5,6 @@ import com.google.gson.JsonParser;
 import com.intellij.openapi.diagnostic.Logger;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.handler.core.HostCommand;
 import com.opencodebuddy.tab.TabEvent;
 
 /**
@@ -59,54 +58,61 @@ public class AttachmentHandler extends BaseMessageHandler {
     }
 
     private boolean handlePrepare(String content) {
-        HostCommand command;
+        JsonObject payload;
         try {
-            command = HostCommand.parse(content, "attachment.prepare");
-        } catch (HostCommand.Invalid invalid) {
-            fail(null, null, invalid.getCode(), invalid.getMessage());
+            payload = JsonParser.parseString(content).getAsJsonObject();
+        } catch (RuntimeException e) {
+            fail(null, null, "BAD_ENVELOPE", "the payload is not a JSON object");
             return true;
         }
-        String attachmentId = string(command, "attachmentId");
-        String fileName = string(command, "fileName");
-        String mediaType = string(command, "mediaType");
+
+        String tabId = stringField(payload, "tabId");
+        String requestId = stringField(payload, "requestId");
+        String attachmentId = stringField(payload, "attachmentId");
+        String fileName = stringField(payload, "fileName");
+        String mediaType = stringField(payload, "mediaType");
+
         if (attachmentId == null) {
-            fail(command.getTabId(), command.getRequestId(), "MISSING_ATTACHMENT_ID",
+            fail(tabId, requestId, "MISSING_ATTACHMENT_ID",
                     "an upload must name the attachment it prepares");
             return true;
         }
-        long size = longField(command, "size");
+        long size = longField(payload, "size");
         String path = context.prepareAttachment(
-                command.getTabId(), attachmentId, fileName, mediaType, size);
+                tabId, attachmentId, fileName, mediaType, size);
         if (path == null) {
-            fail(command.getTabId(), command.getRequestId(), "UPLOAD_REFUSED",
+            fail(tabId, requestId, "UPLOAD_REFUSED",
                     "the attachment cannot be staged (too large or no disk space)");
             return true;
         }
         // Success needs no event: the caller already queued the chunks and the
         // send, and the bridge keeps them in order.
         LOG.debug("[AttachmentHandler] prepared " + attachmentId + " for tab "
-                + command.getTabId() + " at " + path);
+                + tabId + " at " + path);
         return true;
     }
 
     private boolean handleChunk(String content) {
-        HostCommand command;
+        JsonObject payload;
         try {
-            command = HostCommand.parse(content, "attachment.chunk");
-        } catch (HostCommand.Invalid invalid) {
-            fail(null, null, invalid.getCode(), invalid.getMessage());
+            payload = JsonParser.parseString(content).getAsJsonObject();
+        } catch (RuntimeException e) {
+            fail(null, null, "BAD_ENVELOPE", "the payload is not a JSON object");
             return true;
         }
-        String attachmentId = string(command, "attachmentId");
-        String data = string(command, "data");
-        long offset = longField(command, "offset");
+
+        String tabId = stringField(payload, "tabId");
+        String requestId = stringField(payload, "requestId");
+        String attachmentId = stringField(payload, "attachmentId");
+        String data = stringField(payload, "data");
+        long offset = longField(payload, "offset");
         long written = context.appendAttachment(
-                command.getTabId(), attachmentId, offset, data);
+                tabId, attachmentId, offset, data);
         if (written < 0) {
             // A refused chunk leaves the upload unusable: a gap would corrupt the
             // file, so the caller must start again.
-            context.abortAttachment(command.getTabId(), attachmentId);
-            fail(command.getTabId(), command.getRequestId(), "CHUNK_REFUSED",
+            context.abortAttachment(tabId, attachmentId);
+            fail(tabId, requestId, "CHUNK_REFUSED",
                     "the chunk does not continue the upload");
             return true;
         }
@@ -114,18 +120,21 @@ public class AttachmentHandler extends BaseMessageHandler {
     }
 
     private boolean handleComplete(String content) {
-        HostCommand command;
+        JsonObject payload;
         try {
-            command = HostCommand.parse(content, "attachment.complete");
-        } catch (HostCommand.Invalid invalid) {
-            fail(null, null, invalid.getCode(), invalid.getMessage());
+            payload = JsonParser.parseString(content).getAsJsonObject();
+        } catch (RuntimeException e) {
+            fail(null, null, "BAD_ENVELOPE", "the payload is not a JSON object");
             return true;
         }
-        String attachmentId = string(command, "attachmentId");
-        boolean complete = context.completeAttachment(command.getTabId(), attachmentId);
+
+        String tabId = stringField(payload, "tabId");
+        String requestId = stringField(payload, "requestId");
+        String attachmentId = stringField(payload, "attachmentId");
+        boolean complete = context.completeAttachment(tabId, attachmentId);
         if (!complete) {
-            context.abortAttachment(command.getTabId(), attachmentId);
-            fail(command.getTabId(), command.getRequestId(), "UPLOAD_INCOMPLETE",
+            context.abortAttachment(tabId, attachmentId);
+            fail(tabId, requestId, "UPLOAD_INCOMPLETE",
                     "the upload did not reach the announced size");
             return true;
         }
@@ -133,14 +142,16 @@ public class AttachmentHandler extends BaseMessageHandler {
     }
 
     private boolean handleAbort(String content) {
-        HostCommand command;
+        JsonObject payload;
         try {
-            command = HostCommand.parse(content, "attachment.abort");
-        } catch (HostCommand.Invalid invalid) {
-            LOG.debug("[AttachmentHandler] aborted upload rejected: " + invalid.getMessage());
+            payload = JsonParser.parseString(content).getAsJsonObject();
+        } catch (RuntimeException e) {
+            LOG.debug("[AttachmentHandler] aborted upload malformed");
             return true;
         }
-        context.abortAttachment(command.getTabId(), string(command, "attachmentId"));
+
+        String tabId = stringField(payload, "tabId");
+        context.abortAttachment(tabId, stringField(payload, "attachmentId"));
         return true;
     }
 
@@ -155,14 +166,8 @@ public class AttachmentHandler extends BaseMessageHandler {
                 .build());
     }
 
-    private static String string(HostCommand command, String field) {
-        JsonObject payload;
-        try {
-            payload = JsonParser.parseString(command.getPayloadJson()).getAsJsonObject();
-        } catch (RuntimeException e) {
-            return null;
-        }
-        if (!payload.has(field) || payload.get(field).isJsonNull()) {
+    private static String stringField(JsonObject payload, String field) {
+        if (payload == null || !payload.has(field) || payload.get(field).isJsonNull()) {
             return null;
         }
         String value = payload.get(field).getAsString();
@@ -170,12 +175,11 @@ public class AttachmentHandler extends BaseMessageHandler {
     }
 
     /** A numeric field, or -1 when the caller did not send one. */
-    private static long longField(HostCommand command, String field) {
+    private static long longField(JsonObject payload, String field) {
+        if (payload == null || !payload.has(field) || payload.get(field).isJsonNull()) {
+            return -1L;
+        }
         try {
-            JsonObject payload = JsonParser.parseString(command.getPayloadJson()).getAsJsonObject();
-            if (!payload.has(field) || payload.get(field).isJsonNull()) {
-                return -1L;
-            }
             return payload.get(field).getAsLong();
         } catch (RuntimeException e) {
             return -1L;

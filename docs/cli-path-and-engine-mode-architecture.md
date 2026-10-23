@@ -78,7 +78,7 @@ sequenceDiagram
 3. **验证通过才锁定**：锁定值必须来自一次成功的 `--version` 探测或一次成功的服务端能力探测，
    否则状态是 `unknown`，并且**不允许** `unknown → v1` 的隐式转换。
 4. **引擎模式以"能力探测"为准，不以版本号为准**：版本号字符串只用于日志与展示；
-   判定用 HTTP 能力（`/api/info` 200 ⇒ v2）。这样 future v3 不会重演同类事故。
+   判定用 HTTP 能力（`/global/health` 200 JSON ⇒ v2）。这样 future v3 不会重演同类事故。
 5. **失败必须可见**：解析/探测失败要沿 daemon → 宿主 → 前端状态栏一路上报，不允许静默兜底。
 6. **平台差异收敛在一处**：`Windows .cmd/.bat 需要 shell`、`WSL 路径需要 wsl 前置`、
    `macOS GUI 需要 login+interactive shell 兜底`，全部在解析器内部处理，调用方无感。
@@ -160,11 +160,11 @@ L4 裸命令名      最后兜底（仅当 L3 也失败）
 
 1. `spawn <opencode> serve --port <port>`（v1/v2 参数一致）。
 2. 就用**启动后的真实服务**做能力探测，而不是去看 CLI 版本号：
-   * `GET /api/info` → 200 ⇒ **v2**
+   * `GET /global/health`（或备选 `/api/health`、`/api/info`）→ 200 JSON ⇒ **v2**
    * 否则 `GET /config` → `application/json` ⇒ **v1**
    * 两者都不通 ⇒ `unknown`（启动失败，按现有 auto-restart 退避重试；到上限后上报）
 3. 探测成功 → **此时才锁定**；探测失败 → 保持 `unknown`，**不再默认 v1**。
-4. `waitForReady()` 改为按探测结果校验（v2 必须 `/api/info` 200；v1 必须 `/config` 返回 JSON），
+4. `waitForReady()` 必须做内容类型校验（防止 SPA 通配路由返回 HTML 误判为就绪），
    不允许"任何响应即就绪"。
 
 ### 阶段 3：路由
@@ -212,7 +212,7 @@ L4 裸命令名      最后兜底（仅当 L3 也失败）
 
 * **不改路由实现**：`opencode-sdk-client.js` 里 v1/v2 两套调用已经写好（约 23 处分叉），
   本次只改"如何得到模式"。
-* **判定依据 = 服务端能力**：`/api/info` 200 ⇒ v2；`/config` 返回 JSON ⇒ v1。版本字符串仅作展示。
+* **判定依据 = 服务端能力**：`/global/health` 200 JSON ⇒ v2；`/config` 返回 JSON ⇒ v1。版本字符串仅作展示。
 * **收敛分叉点**：把 `serveManager.isV2()` 换成 `engine.state === 'v2'`，并把两套路由封装成
   `engine.route('session.list', params)`（可选进阶），未来加 v3 只需新增适配器。
 * **v1 仍要能跑**：能力探测失败时不要急着判 v1；先探 `/config`，确认是 JSON 才锁定 v1。

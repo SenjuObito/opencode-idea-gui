@@ -14,6 +14,7 @@ import {
   isCompactCommandMessage,
   MESSAGE_TYPES,
 } from '../utils/messageUtils';
+import { getTabMergeCache } from '../utils/messageMergeCache';
 import type { ClaudeContentBlock, ClaudeMessage, ClaudeRawMessage } from '../types';
 
 export interface UseMessageProcessingOptions {
@@ -33,7 +34,6 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
   // Cache for normalizeBlocks to avoid re-parsing unchanged messages
   const normalizeBlocksCache = useRef(new WeakMap<object, ClaudeContentBlock[]>());
   const shouldShowMessageCache = useRef(new WeakMap<object, boolean>());
-  const mergedAssistantMessageCache = useRef(new Map<string, { source: ClaudeMessage[]; merged: ClaudeMessage }>());
   // Persistent storage: non-image attachment metadata from sent messages
   const sentAttachmentsRef = useRef(new Map<string, Array<{ fileName: string; mediaType: string }>>());
 
@@ -41,7 +41,6 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
   useEffect(() => {
     normalizeBlocksCache.current = new WeakMap();
     shouldShowMessageCache.current = new WeakMap();
-    mergedAssistantMessageCache.current = new Map();
     sentAttachmentsRef.current.clear();
   }, [localizeMessage, t, currentSessionId]);
 
@@ -115,10 +114,11 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
   const mergedMessages = useMemo(() => {
     // Pair compact_boundary system lines with their compact-summary user line
     // (attaches compactMetadata, drops the metadata-only boundary line).
+    const tabCache = getTabMergeCache(currentSessionId ?? '__default');
     const merged = mergeConsecutiveAssistantMessages(
       attachCompactBoundaryMetadata(messages),
       normalizeBlocks,
-      mergedAssistantMessageCache.current
+      tabCache
     );
 
     const visible: ClaudeMessage[] = [];

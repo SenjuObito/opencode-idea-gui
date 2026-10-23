@@ -567,3 +567,29 @@
 - 验证：gradle 全绿、tsc 通过、vitest `173 文件 / 1512 测试`、
   `checkLegacyPatterns` 0 forbidden / 0 debt。
 - 提交：宿主 `e4643df`，Core `8d882cc`。
+
+## 第四轮补 14：A3、C9、E15 架构全量无折中收口
+
+### A3 全局事件与路由表收口
+- 补齐未纳入语义路由表的事件：`agentCallbacks` 的 `selection.info`、`selection.snippet`、`selection.clear`；`registerCallbacks` 的 `subagent.history`、`task.event`、`todos.updated`；`main.tsx` 的 `font.editor.apply`、`font.ui.apply`、`font.code.apply`、`language.apply`、`notification.sound.play`、`daemon.status`、`turn.retry` 全部登记至 `registerHostEvents`。
+- dispatcher 优先从路由表查找 handler，业务事件不再依赖 `window.*` 全局函数查找。
+
+### C9 拆解巨石 Hook（useSessionTabs.ts）
+- 将原本 1641 行的 `useSessionTabs.ts` 彻底拆解为 `sessionTabs/` 下的独立专职子模块：
+  1. `types.ts`：集中定义 Hook 参数与生命周期配置。
+  2. `useTabBarState.ts`：负责 Tab 列表派生、激活、重命名、拖拽排序、`window.__sessionTabsStore` 维护。
+  3. `useTabLifecycle.ts`：负责 `createTab`、`closeTab`、`closeTabBySessionId`、`forkTab`、IDE 顶栏动作暴露。
+  4. `useTabSessionBinder.ts`：负责快照保存、视图切换（`selectTab`）、历史会话加载（`openSessionInTab`）与 `onTabResync` 重载同步。
+- `useSessionTabs.ts` 收敛为精简顶层入口，对外接口 100% 保持向前兼容。
+- `sessionTransition.ts` 已经完全基于 per-tab transition，无全局锁。
+
+### E15 内存单副本与缓存分区治理
+- `messageMergeCache.ts` 升级为按 tab 分区的单例缓存容器，支持切 tab 复用已计算的 merge 结果，且在 `closeTab` 时精准释放该 tab 的缓存，彻底杜绝内存随会话切换累积泄漏。
+- `useMessageProcessing.ts` 接入按 tab 分区的 merge cache。
+
+### 门禁全绿验证
+- `./gradlew test -x buildWebview -PskipWebview=true`：BUILD SUCCESSFUL（852 测试通过）。
+- `cd webview && npx tsc --noEmit`：0 错误。
+- `cd webview && npx vitest run`：173 文件 / 1512 测试全部通过。
+- `./gradlew checkLegacyPatterns -PstrictLegacy=true`：0 forbidden hits, 0 remaining debt lines。
+

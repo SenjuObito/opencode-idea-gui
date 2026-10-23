@@ -56,6 +56,8 @@ webview/test-results/
 webview/playwright-report/
 
 src/main/resources/html/*
+# core 打包产物，由构建生成
+src/main/resources/ai-bridge.zip
 
 .specify
 .claude

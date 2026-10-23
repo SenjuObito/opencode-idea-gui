@@ -6,13 +6,14 @@
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
 
 export function registerAgentAndSelectionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
   setContextInfo,
 } = options;
 
-  window.addSelectionInfo = (selectionInfo) => {
+  const addSelectionInfo = (selectionInfo?: string) => {
     if (selectionInfo) {
       const match = selectionInfo.match(/^@([^#]+)(?:#L(\d+)(?:-(\d+))?)?$/);
       if (match) {
@@ -30,14 +31,23 @@ export function registerAgentAndSelectionCallbacks(options: UseWindowCallbacksOp
     }
   };
 
-  window.addCodeSnippet = (selectionInfo) => {
+  const addCodeSnippet = (selectionInfo?: string) => {
     if (selectionInfo && window.insertCodeSnippetAtCursor) {
       window.insertCodeSnippetAtCursor(selectionInfo);
     }
   };
 
-  window.clearSelectionInfo = () => {
+  const clearSelectionInfo = () => {
     setContextInfo(null);
   };
 
+  window.addSelectionInfo = addSelectionInfo;
+  window.addCodeSnippet = addCodeSnippet;
+  window.clearSelectionInfo = clearSelectionInfo;
+
+  registerHostEvents({
+    'selection.info': addSelectionInfo,
+    'selection.snippet': addCodeSnippet,
+    'selection.clear': clearSelectionInfo,
+  });
 }

@@ -316,32 +316,33 @@ public class PermissionHandler extends BaseMessageHandler {
     }
 
     /**
-     * A reply as a v2 command: {@code {v, type, requestId, tabId, sessionId, payload}}.
-     *
-     * <p>The command names the tab and the session it answers; the host checks
-     * them against the pending prompt before it applies the answer.</p>
+     * A reply dispatched from gateway: {@code content} is already the merged payload
+     * containing {@code tabId}, {@code sessionId} and {@code requestId}.
      */
     private boolean handleReplyCommand(String content, String expectedType) {
-        com.opencodebuddy.handler.core.HostCommand command;
-        try {
-            // A prompt reply may name only the session: the host resolves the
-            // tab from the session the prompt belongs to.
-            command = com.opencodebuddy.handler.core.HostCommand.parse(content, expectedType, false);
-        } catch (com.opencodebuddy.handler.core.HostCommand.Invalid invalid) {
-            LOG.warn("[PROMPT_REPLY] refused a malformed command: " + invalid.getMessage());
-            publishRejection(null, null, invalid.getCode(), invalid.getMessage());
+        if (content == null || content.isBlank()) {
+            LOG.warn("[PROMPT_REPLY] refused an empty command payload");
+            publishRejection(null, null, "BAD_ENVELOPE", "empty payload");
             return true;
         }
-        String payloadJson = command.getPayloadJson();
+        JsonObject payloadJson;
+        try {
+            payloadJson = com.google.gson.JsonParser.parseString(content).getAsJsonObject();
+        } catch (RuntimeException e) {
+            LOG.warn("[PROMPT_REPLY] refused a malformed payload");
+            publishRejection(null, null, "BAD_ENVELOPE", "the payload is not a JSON object");
+            return true;
+        }
+
         switch (expectedType) {
             case "permission.reply":
-                handlePermissionDecision(payloadJson);
+                handlePermissionDecision(content);
                 return true;
             case "question.reply":
-                handleAskUserQuestionResponse(payloadJson);
+                handleAskUserQuestionResponse(content);
                 return true;
             case "plan.reply":
-                handlePlanApprovalResponse(payloadJson);
+                handlePlanApprovalResponse(content);
                 return true;
             default:
                 return false;

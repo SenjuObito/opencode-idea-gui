@@ -37,6 +37,7 @@ import {
 } from './utils/surfaceDamagePulse';
 import { forceWebviewRepaint } from './utils/forceWebviewRepaint';
 import type { HostEventPayload } from './utils/hostEventTypes';
+import { registerHostEvents } from './utils/hostEventRegistry';
 
 // Silence noisy console output in production (including third-party libs).
 // console.error is preserved so ErrorBoundary and unhandled exceptions still
@@ -433,6 +434,25 @@ function applyLanguageConfig(rawConfig: { language: string; source?: string; ide
 
 // Register the applyIdeaLanguageConfig function
 window.applyIdeaLanguageConfig = applyLanguageConfig;
+
+registerHostEvents({
+  'font.editor.apply': applyEditorTypographyConfig,
+  'font.ui.apply': applyUiFontConfig,
+  'font.code.apply': applyCodeFontConfig,
+  'language.apply': applyLanguageConfig,
+  'notification.sound.play': (json: string) => {
+    try {
+      const payload = JSON.parse(json) as { soundId?: string; variant?: string; customDataBase64?: string };
+      playNotificationSound(payload);
+    } catch {
+      // ignore
+    }
+  },
+  'daemon.status': (json: string) => {
+    window.dispatchEvent(new CustomEvent('updateDaemonStatus', { detail: json }));
+  },
+  'turn.retry': onRetryStatusFromHost,
+});
 
 // 通知提示音播放器（全局常驻）：判定在宿主 NotificationService，
 // 这里只负责发声。payload: { soundId?, variant?, customDataBase64? }

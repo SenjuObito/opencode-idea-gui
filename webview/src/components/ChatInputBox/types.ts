@@ -243,7 +243,7 @@ export const AVAILABLE_PROVIDERS: ProviderInfo[] = [
  * Because it is not in the catalog, it is injected by the UI rather than derived
  * from it. See `getAvailableReasoningLevels`.
  */
-export type ReasoningEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ReasoningEffort = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
  * Reasoning level information
@@ -292,44 +292,33 @@ export const REASONING_LEVELS: ReasoningInfo[] = [
 ];
 
 /**
- * "Use whatever the model defaults to" — no variant is sent at all.
- *
- * Kept out of `REASONING_LEVELS` on purpose: that array mirrors the model
- * catalog, and no opencode model lists `default` among its variants. The UI
- * injects this entry instead, because the state itself is real and reachable.
- */
-export const DEFAULT_REASONING_LEVEL: ReasoningInfo = {
-  id: 'default',
-  label: 'default',
-  icon: 'codicon-circle-outline',
-  description: 'Use the model default',
-};
-
-/**
- * Compute the visible reasoning levels for a model.
- * opencode reasoning effort = model variants (per-model, see docs/models#variants).
- *
- * `DEFAULT_REASONING_LEVEL` is prepended whenever the selector is visible, so
- * the user can always get back to "no variant sent". It is not part of any
- * catalog; opencode only reports `variant: "default"` once the field is absent.
- *
- * Three states are distinguished on purpose:
- *   - `undefined` → support unknown (opencode v1 ships no variant catalog) →
- *     keep the legacy list, plus Default
- *   - `[]`        → this model has no variants → return empty so the selector
- *     hides. Falling back to the full list here is what let users pick `high`
- *     on models that do not offer it. Default is not injected either: a
- *     dropdown with a single "Default" option says nothing useful, and hiding
- *     it tells the truth — this model cannot be tuned.
- *   - `[...]`     → render exactly what the model offers, plus Default
- */
-/**
  * Check if a model is known to not support reasoning effort variants (e.g. MiMo).
  */
 export function isKnownNonReasoningModel(modelId?: string): boolean {
   if (!modelId) return false;
   const lower = modelId.toLowerCase();
   return lower.includes('mimo');
+}
+
+/**
+ * Determine the recommended reasoning effort for a list of variant IDs.
+ * Preference: 'medium' -> 'low' -> first available variant.
+ */
+export function getRecommendedReasoningEffort(variants?: string[]): ReasoningEffort | undefined {
+  if (!variants || variants.length === 0) {
+    return undefined;
+  }
+  const cleanVariants = variants.filter(v => v !== 'default');
+  if (cleanVariants.length === 0) {
+    return undefined;
+  }
+  if (cleanVariants.includes('medium')) {
+    return 'medium';
+  }
+  if (cleanVariants.includes('low')) {
+    return 'low';
+  }
+  return cleanVariants[0] as ReasoningEffort;
 }
 
 export function getAvailableReasoningLevels(
@@ -341,7 +330,7 @@ export function getAvailableReasoningLevels(
     if (isKnownNonReasoningModel(selectedModel)) {
       return [];
     }
-    return [DEFAULT_REASONING_LEVEL, ...REASONING_LEVELS];
+    return REASONING_LEVELS;
   }
   if (modelVariants.length === 0) {
     return [];
@@ -350,11 +339,7 @@ export function getAvailableReasoningLevels(
   const known = new Map(REASONING_LEVELS.map((level) => [level.id, level]));
   const levels: ReasoningInfo[] = [];
   for (const id of modelVariants) {
-    // A catalog can legitimately contain `default`; don't duplicate it.
-    if (id === DEFAULT_REASONING_LEVEL.id) continue;
-    // Catalog variants go beyond low/medium/high (`none`, `minimal`, `xhigh`,
-    // `max` all appear in the wild), so unknown ids get a generated entry
-    // instead of being silently dropped.
+    if (id === 'default') continue;
     levels.push(known.get(id as ReasoningEffort) ?? {
       id: id as ReasoningEffort,
       label: id,
@@ -362,7 +347,7 @@ export function getAvailableReasoningLevels(
       description: id,
     });
   }
-  return [DEFAULT_REASONING_LEVEL, ...levels];
+  return levels;
 }
 
 // ============================================================

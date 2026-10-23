@@ -53,11 +53,16 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   // ── Drag to reorder tabs (no long-press wait) ──
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropIndicatorIndex, setDropIndicatorIndex] = useState<number | null>(null);
+  const [dropOverflowIndex, setDropOverflowIndex] = useState<number | null>(null);
+  const [dropTargetArea, setDropTargetArea] = useState<'visible' | 'overflow' | null>(null);
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingActiveRef = useRef<boolean>(false);
   const draggingTabIdRef = useRef<string | null>(null);
   const dropIndicatorIndexRef = useRef<number | null>(null);
+  const dropOverflowIndexRef = useRef<number | null>(null);
+  const dropTargetAreaRef = useRef<'visible' | 'overflow' | null>(null);
   const tabElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const overflowTabElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const justFinishedDragRef = useRef<boolean>(false);
   // 正在随鼠标跟随的 DOM 元素及鼠标相对该元素左上角的偏移量
   const draggingElementRef = useRef<HTMLDivElement | null>(null);
@@ -70,6 +75,14 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   useEffect(() => {
     dropIndicatorIndexRef.current = dropIndicatorIndex;
   }, [dropIndicatorIndex]);
+
+  useEffect(() => {
+    dropOverflowIndexRef.current = dropOverflowIndex;
+  }, [dropOverflowIndex]);
+
+  useEffect(() => {
+    dropTargetAreaRef.current = dropTargetArea;
+  }, [dropTargetArea]);
 
   // Enable horizontal scrolling with mouse wheel if needed
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -219,7 +232,6 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
       const targetTabId = draggingTabIdRef.current;
       if (targetTabId) {
         setDraggingTabId(targetTabId);
-        setDropIndicatorIndex(dropIndicatorIndexRef.current);
       }
 
       // 让被拖拽的 tab 标题固定定位并跟随鼠标移动（脱离文档流，其余 tab 自动让路）
@@ -229,31 +241,72 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
         followEl.style.position = 'fixed';
         followEl.style.left = `${e.clientX - (dragOffsetRef.current?.x ?? 0)}px`;
         followEl.style.top = `${e.clientY - (dragOffsetRef.current?.y ?? 0)}px`;
-        followEl.style.zIndex = '9999';
+        followEl.style.zIndex = '10001';
         followEl.style.pointerEvents = 'none';
         followEl.style.transition = 'none';
         followEl.style.width = `${followEl.offsetWidth}px`;
       }
 
-      // 计算 drop 插入索引：基于鼠标 X 与各 tab 中点比较（跳过已脱离流的拖拽元素）
-      const mouseX = e.clientX;
-      let targetIndex = visibleTabs.length;
+      // 检查鼠标是否在二级菜单（overflowMenu）内部
+      const overflowEl = overflowMenuRef.current;
+      const overflowRect = overflowEl ? overflowEl.getBoundingClientRect() : null;
+      const isOverOverflow =
+        overflowOpen &&
+        overflowRect &&
+        e.clientX >= overflowRect.left - 15 &&
+        e.clientX <= overflowRect.right + 15 &&
+        e.clientY >= overflowRect.top - 10 &&
+        e.clientY <= overflowRect.bottom + 10;
 
-      for (let i = 0; i < visibleTabs.length; i++) {
-        const tabItem = visibleTabs[i];
-        const el = tabElementsRef.current.get(tabItem.id);
-        if (el && el !== followEl) {
-          const rect = el.getBoundingClientRect();
-          const midX = rect.left + rect.width / 2;
-          if (mouseX < midX) {
-            targetIndex = i;
-            break;
+      if (isOverOverflow && overflowTabs.length > 0) {
+        // 鼠标在二级菜单内：按垂直 Y 坐标计算 dropOverflowIndex
+        const mouseY = e.clientY;
+        let targetIndex = overflowTabs.length;
+
+        for (let i = 0; i < overflowTabs.length; i++) {
+          const tabItem = overflowTabs[i];
+          const el = overflowTabElementsRef.current.get(tabItem.id);
+          if (el && el !== followEl) {
+            const rect = el.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+            if (mouseY < midY) {
+              targetIndex = i;
+              break;
+            }
           }
         }
-      }
 
-      dropIndicatorIndexRef.current = targetIndex;
-      setDropIndicatorIndex(targetIndex);
+        dropTargetAreaRef.current = 'overflow';
+        setDropTargetArea('overflow');
+        dropOverflowIndexRef.current = targetIndex;
+        setDropOverflowIndex(targetIndex);
+        dropIndicatorIndexRef.current = null;
+        setDropIndicatorIndex(null);
+      } else {
+        // 鼠标在顶部可见栏或外部：按水平 X 坐标计算 visibleTabs 中的插入索引
+        const mouseX = e.clientX;
+        let targetIndex = visibleTabs.length;
+
+        for (let i = 0; i < visibleTabs.length; i++) {
+          const tabItem = visibleTabs[i];
+          const el = tabElementsRef.current.get(tabItem.id);
+          if (el && el !== followEl) {
+            const rect = el.getBoundingClientRect();
+            const midX = rect.left + rect.width / 2;
+            if (mouseX < midX) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        dropTargetAreaRef.current = 'visible';
+        setDropTargetArea('visible');
+        dropIndicatorIndexRef.current = targetIndex;
+        setDropIndicatorIndex(targetIndex);
+        dropOverflowIndexRef.current = null;
+        setDropOverflowIndex(null);
+      }
     };
 
     const handleGlobalMouseUp = (e: MouseEvent) => {
@@ -265,7 +318,9 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
       dragStartPosRef.current = null;
 
       const currentDraggingId = draggingTabIdRef.current;
+      const currentTargetArea = dropTargetAreaRef.current;
       const currentDropIndex = dropIndicatorIndexRef.current;
+      const currentDropOverflowIndex = dropOverflowIndexRef.current;
 
       // 清理被拖拽元素的 fixed 跟随样式，恢复正常文档流布局
       const followEl = draggingElementRef.current;
@@ -284,8 +339,12 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
 
       draggingTabIdRef.current = null;
       dropIndicatorIndexRef.current = null;
+      dropOverflowIndexRef.current = null;
+      dropTargetAreaRef.current = null;
       setDraggingTabId(null);
       setDropIndicatorIndex(null);
+      setDropOverflowIndex(null);
+      setDropTargetArea(null);
 
       // 短按（几乎未移动）：视为普通点击，由 onClick 负责选中标签，不重排
       // 拖拽（移动超过阈值）：执行顺序调整，并 120ms 内抑制 onClick 误触
@@ -293,16 +352,27 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
         ? Math.hypot(e.clientX - startPos.x, e.clientY - startPos.y) <= 5
         : true;
 
-      if (!isShortPress && currentDraggingId && currentDropIndex != null) {
+      if (!isShortPress && currentDraggingId) {
         const sourceGlobalIndex = tabs.findIndex((t) => t.id === currentDraggingId);
         if (sourceGlobalIndex >= 0) {
-          let targetGlobalIndex: number;
-          if (currentDropIndex < visibleTabs.length) {
-            const targetTab = visibleTabs[currentDropIndex];
-            targetGlobalIndex = tabs.findIndex((t) => t.id === targetTab.id);
-          } else {
-            const lastVisible = visibleTabs[visibleTabs.length - 1];
-            targetGlobalIndex = lastVisible ? tabs.findIndex((t) => t.id === lastVisible.id) : sourceGlobalIndex;
+          let targetGlobalIndex = -1;
+
+          if (currentTargetArea === 'overflow' && currentDropOverflowIndex != null) {
+            if (currentDropOverflowIndex < overflowTabs.length) {
+              const targetTab = overflowTabs[currentDropOverflowIndex];
+              targetGlobalIndex = tabs.findIndex((t) => t.id === targetTab.id);
+            } else {
+              const lastOverflow = overflowTabs[overflowTabs.length - 1];
+              targetGlobalIndex = lastOverflow ? tabs.findIndex((t) => t.id === lastOverflow.id) : sourceGlobalIndex;
+            }
+          } else if (currentDropIndex != null) {
+            if (currentDropIndex < visibleTabs.length) {
+              const targetTab = visibleTabs[currentDropIndex];
+              targetGlobalIndex = tabs.findIndex((t) => t.id === targetTab.id);
+            } else {
+              const lastVisible = visibleTabs[visibleTabs.length - 1];
+              targetGlobalIndex = lastVisible ? tabs.findIndex((t) => t.id === lastVisible.id) : sourceGlobalIndex;
+            }
           }
 
           if (targetGlobalIndex >= 0 && sourceGlobalIndex !== targetGlobalIndex) {
@@ -325,7 +395,7 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [visibleTabs, tabs, onReorderTabs]);
+  }, [visibleTabs, overflowTabs, overflowOpen, tabs, onReorderTabs]);
 
   const handleTabMouseDown = useCallback(
     (e: React.MouseEvent, tab: SessionTabData, visibleIndex: number) => {
@@ -335,6 +405,7 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
 
       dragStartPosRef.current = { x: e.clientX, y: e.clientY };
       draggingTabIdRef.current = tab.id;
+      dropTargetAreaRef.current = 'visible';
       dropIndicatorIndexRef.current = visibleIndex;
 
       // 记录被按下的 tab 元素，以及鼠标相对该元素左上角的偏移量，
@@ -355,6 +426,29 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
     [editingTabId]
   );
 
+  const handleOverflowTabMouseDown = useCallback(
+    (e: React.MouseEvent, tab: SessionTabData, overflowIndex: number) => {
+      if (e.button !== 0) return; // Only primary button
+      if (e.detail > 1) return;   // Ignore multi-clicks
+
+      dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+      draggingTabIdRef.current = tab.id;
+      dropTargetAreaRef.current = 'overflow';
+      dropOverflowIndexRef.current = overflowIndex;
+
+      const el = e.currentTarget as HTMLDivElement;
+      draggingElementRef.current = el;
+      const rect = el.getBoundingClientRect();
+      dragOffsetRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+
+      isDraggingActiveRef.current = true;
+    },
+    []
+  );
+
   return (
     <>
       <div
@@ -370,8 +464,10 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
           const hasPendingAction =
             (tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0;
 
-          const showDropBefore = draggingTabId !== null && dropIndicatorIndex === idx;
+          const showDropBefore =
+            dropTargetArea === 'visible' && draggingTabId !== null && dropIndicatorIndex === idx;
           const showDropAfter =
+            dropTargetArea === 'visible' &&
             draggingTabId !== null &&
             dropIndicatorIndex === visibleTabs.length &&
             idx === visibleTabs.length - 1;
@@ -503,52 +599,78 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
                 }}
                 role="menu"
               >
-                {overflowTabs.map((tab) => {
+                {overflowTabs.map((tab, idx) => {
                   const isActive = tab.id === activeTabId;
                   const isBusy = tab.streamingActive || tab.loading;
+                  const isDragging = tab.id === draggingTabId;
                   const hasPendingAction =
                     (tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0;
 
+                  const showDropBefore =
+                    dropTargetArea === 'overflow' &&
+                    draggingTabId !== null &&
+                    dropOverflowIndex === idx;
+                  const showDropAfter =
+                    dropTargetArea === 'overflow' &&
+                    draggingTabId !== null &&
+                    dropOverflowIndex === overflowTabs.length &&
+                    idx === overflowTabs.length - 1;
+
                   return (
-                    <div
-                      key={tab.id}
-                      className={`session-tab-overflow-item ${isActive ? 'active' : ''} ${hasPendingAction ? 'has-attention' : ''}`}
-                      onClick={() => {
-                        setOverflowOpen(false);
-                        onSelectTab(tab.id);
-                      }}
-                      onContextMenu={(e) => {
-                        setOverflowOpen(false);
-                        handleContextMenu(e, tab);
-                      }}
-                      title={hasPendingAction ? `${tab.title} (${t('common.pendingApproval', { defaultValue: '等待操作' })})` : tab.title}
-                      role="menuitem"
-                    >
-                      <div className="session-tab-icon">
-                        {hasPendingAction ? (
-                          <span
-                            className="codicon codicon-warning session-tab-attention-icon"
-                            title={t('common.pendingApproval', { defaultValue: '等待操作' })}
-                          />
-                        ) : isBusy ? (
-                          <span className="codicon codicon-loading codicon-modifier-spin" />
-                        ) : (
-                          <span className="codicon codicon-comment-discussion" />
-                        )}
-                      </div>
-                      <span className="session-tab-overflow-title">{tab.title}</span>
-                      <button
-                        className="session-tab-overflow-close"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCloseTab(tab.id);
+                    <React.Fragment key={tab.id}>
+                      {showDropBefore && <div className="session-tab-overflow-drop-indicator" />}
+                      <div
+                        key={tab.id}
+                        ref={(el) => {
+                          if (el) {
+                            if (draggingElementRef.current === el) return;
+                            overflowTabElementsRef.current.set(tab.id, el);
+                          } else {
+                            if (draggingElementRef.current === el) return;
+                            overflowTabElementsRef.current.delete(tab.id);
+                          }
                         }}
-                        title={t('common.close', { defaultValue: 'Close' })}
-                        aria-label={t('common.close', { defaultValue: 'Close' })}
+                        className={`session-tab-overflow-item ${isActive ? 'active' : ''} ${hasPendingAction ? 'has-attention' : ''} ${isDragging ? 'is-dragging' : ''}`}
+                        onMouseDown={(e) => handleOverflowTabMouseDown(e, tab, idx)}
+                        onClick={() => {
+                          if (justFinishedDragRef.current) return;
+                          setOverflowOpen(false);
+                          onSelectTab(tab.id);
+                        }}
+                        onContextMenu={(e) => {
+                          setOverflowOpen(false);
+                          handleContextMenu(e, tab);
+                        }}
+                        title={hasPendingAction ? `${tab.title} (${t('common.pendingApproval', { defaultValue: '等待操作' })})` : tab.title}
+                        role="menuitem"
                       >
-                        <span className="codicon codicon-close" />
-                      </button>
-                    </div>
+                        <div className="session-tab-icon">
+                          {hasPendingAction ? (
+                            <span
+                              className="codicon codicon-warning session-tab-attention-icon"
+                              title={t('common.pendingApproval', { defaultValue: '等待操作' })}
+                            />
+                          ) : isBusy ? (
+                            <span className="codicon codicon-loading codicon-modifier-spin" />
+                          ) : (
+                            <span className="codicon codicon-comment-discussion" />
+                          )}
+                        </div>
+                        <span className="session-tab-overflow-title">{tab.title}</span>
+                        <button
+                          className="session-tab-overflow-close"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCloseTab(tab.id);
+                          }}
+                          title={t('common.close', { defaultValue: 'Close' })}
+                          aria-label={t('common.close', { defaultValue: 'Close' })}
+                        >
+                          <span className="codicon codicon-close" />
+                        </button>
+                      </div>
+                      {showDropAfter && <div className="session-tab-overflow-drop-indicator" />}
+                    </React.Fragment>
                   );
                 })}
               </div>

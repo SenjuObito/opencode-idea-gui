@@ -14,9 +14,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * The v2 command entry point of the send path.
  *
- * <p>These tests only cover the rejection paths: they need no IDE, no daemon
- * and no session, which is exactly the point — a command that does not add up
- * must be refused before it can reach any of them.</p>
+ * <p>These tests cover the rejection paths of the payload handled by SessionHandler.</p>
  */
 public class SessionHandlerHostCommandTest {
 
@@ -46,22 +44,20 @@ public class SessionHandlerHostCommandTest {
         return new SessionHandler(context);
     }
 
-    private String envelope(String tabId, String requestId, String version) {
+    private String payload(String tabId, String requestId) {
         JsonObject root = new JsonObject();
-        root.addProperty("v", version == null ? 2 : Integer.parseInt(version));
-        root.addProperty("type", "session.send");
         if (tabId != null) {
             root.addProperty("tabId", tabId);
         }
         if (requestId != null) {
             root.addProperty("requestId", requestId);
         }
-        root.add("payload", JsonParser.parseString("{\"text\":\"hi\"}"));
+        root.addProperty("text", "hi");
         return root.toString();
     }
 
     @Test
-    public void aMalformedEnvelopeIsRejectedInsteadOfExecuted() {
+    public void aMalformedPayloadIsRejectedInsteadOfExecuted() {
         SessionHandler handler = handler();
 
         assertTrue(handler.handle("session.send", "not json"));
@@ -72,10 +68,10 @@ public class SessionHandlerHostCommandTest {
     }
 
     @Test
-    public void anEnvelopeWithoutATabIdIsRejected() {
+    public void aPayloadWithoutATabIdIsRejected() {
         SessionHandler handler = handler();
 
-        assertTrue(handler.handle("session.send", envelope(null, "req-1", null)));
+        assertTrue(handler.handle("session.send", payload(null, "req-1")));
 
         assertEquals(1, jsCalls.size());
         assertEquals("command.rejected", jsCalls.get(0)[0]);
@@ -83,10 +79,10 @@ public class SessionHandlerHostCommandTest {
     }
 
     @Test
-    public void anEnvelopeWithoutARequestIdIsRejected() {
+    public void aPayloadWithoutARequestIdIsRejected() {
         SessionHandler handler = handler();
 
-        assertTrue(handler.handle("session.send", envelope("tab-1", null, null)));
+        assertTrue(handler.handle("session.send", payload("tab-1", null)));
 
         assertEquals(1, jsCalls.size());
         assertEquals("command.rejected", jsCalls.get(0)[0]);
@@ -94,20 +90,9 @@ public class SessionHandlerHostCommandTest {
     }
 
     @Test
-    public void anOldEnvelopeVersionIsRejected() {
-        SessionHandler handler = handler();
-
-        assertTrue(handler.handle("session.send", envelope("tab-1", "req-1", "1")));
-
-        assertEquals(1, jsCalls.size());
-        assertEquals("command.rejected", jsCalls.get(0)[0]);
-        assertTrue(jsCalls.get(0)[1].contains("UNSUPPORTED_VERSION"));
-    }
-
-    @Test
     public void aReplayedCommandIsExecutedOnlyOnce() {
         SessionHandler handler = handler();
-        String command = envelope("tab-1", "req-1", null);
+        String command = payload("tab-1", "req-1");
 
         handler.handle("session.send", command);
         int afterFirst = jsCalls.size();

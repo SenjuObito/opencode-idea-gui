@@ -18,8 +18,6 @@ import com.opencodebuddy.tab.TabCommandRouter;
 import com.opencodebuddy.tab.TabRecord;
 import com.opencodebuddy.tab.TabRegistry;
 import com.opencodebuddy.tab.TabSessionFactory;
-import com.opencodebuddy.tab.TabSettings;
-import com.opencodebuddy.tab.TabState;
 import com.opencodebuddy.tab.TurnId;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.ui.ChatWindowDelegate;
@@ -265,10 +263,10 @@ public class OpencodeBuddyChatWindow {
         });
 
         this.tabCommandRouter = new TabCommandRouter(tabRegistry);
-        tabCommandRouter.register("tab.create", command ->
-                tabRegistry.create(command.tabId(),
-                        command.string("cwd") != null ? command.string("cwd")
-                                : (project != null ? project.getBasePath() : null)));
+        tabCommandRouter.register("tab.create", command -> {
+            String tabIdStr = command.tabId().value();
+            createSessionForTab(tabIdStr);
+        });
         tabCommandRouter.register("tab.activate", command -> activateTab(command.tabId().value()));
         tabCommandRouter.register("tab.close", command -> closeSession(command.tabId().value()));
         tabCommandRouter.register("tab.title.set", command -> {
@@ -1817,16 +1815,20 @@ public class OpencodeBuddyChatWindow {
             return;
         }
         TabId stableTabId = TabId.of(tabId);
-        TabRecord record = tabRegistry.create(stableTabId,
-                project != null ? project.getBasePath() : null);
+        createSessionForTab(tabId);
+        TabRecord record = tabRegistry.get(stableTabId);
         tabRegistry.activate(stableTabId);
         activeTabId = tabId;
-        sessionCallbackAdapter = record.getAdapter();
-        if (record.getCoalescer() != null) {
-            streamCoalescer = record.getCoalescer();
-        }
-        if (handlerContext != null) {
-            handlerContext.setSession(record.getSession());
+        if (record != null) {
+            if (record.getAdapter() != null) {
+                sessionCallbackAdapter = record.getAdapter();
+            }
+            if (record.getCoalescer() != null) {
+                streamCoalescer = record.getCoalescer();
+            }
+            if (handlerContext != null) {
+                handlerContext.setSession(record.getSession());
+            }
         }
     }
 
@@ -3292,11 +3294,16 @@ public class OpencodeBuddyChatWindow {
         // permission-service key as a session id: doing so created a pseudo
         // session that outlived the first real send.
 
+        OpencodeSession curSession = getSession();
+        if (curSession == null) {
+            return;
+        }
+
         if (this.sessionCallbackAdapter != null) {
             this.sessionCallbackAdapter.deactivate();
         }
         this.sessionCallbackAdapter = new SessionCallbackAdapter(
-                getSession() != null ? getSession().getSessionId() : null,
+                curSession.getSessionId(),
                 streamCoalescer,
                 OpencodeBuddyChatWindow.this::publishTabEvent,
                 permissionHandler,
@@ -3308,11 +3315,11 @@ public class OpencodeBuddyChatWindow {
                 super.onSessionIdReceived(newSessionId);
             }
         };
-        getSession().setCallback(sessionCallbackAdapter);
+        curSession.setCallback(sessionCallbackAdapter);
 
-        String curId = getSession().getSessionId();
+        String curId = curSession.getSessionId();
         if (curId != null && !curId.isBlank()) {
-            registerSession(curId, getSession(), sessionCallbackAdapter, streamCoalescer);
+            registerSession(curId, curSession, sessionCallbackAdapter, streamCoalescer);
         }
 
         // Wire daemon events directly to frontend (bypasses adapter lifecycle).
@@ -4220,6 +4227,10 @@ public class OpencodeBuddyChatWindow {
                 handlerContext = ctx;
                 if (ctx != null) {
                     ctx.setSessionCreator(OpencodeBuddyChatWindow.this::createSessionForTab);
+                    ctx.setSessionLookup(id -> {
+                        TabRecord record = findTabRecord(id);
+                        return record != null ? record.getSession() : null;
+                    });
                     // A command that names a tab resolves through the registry,
                     // so it can only ever reach the session that tab shows.
                     ctx.setTabSessionLookup(id -> {

@@ -4,15 +4,15 @@
 - 方案原文：`docs/full-refactor-architecture-plan.md`（验收口径）
 - 逐轮流水：`docs/refactor-progress.md`
 - 配套仓库：`../opencode-buddy-core`
-- 统计时间：以 `e4643df`（子代理历史迁入信封）为基线
+- 口径：**只按代码事实判定**。"已完成"= 方案要求的入口唯一、旧路径已删除，
+  而不是"新路径已存在"。
 
 ## 一、总览
 
 | 状态 | 条目数 | 占比 |
 |---|---:|---:|
-| 已完成 | 12 | 75% |
-| 部分完成 | 2 | 13% |
-| 未开始 | 1 | 6% |
+| 已完成 | 8 | 50% |
+| 部分完成 | 7 | 44% |
 | 待环境 | 1 | 6% |
 | 合计 | 16 | 100% |
 
@@ -25,50 +25,49 @@ cd webview && npx vitest run
 ./gradlew checkLegacyPatterns -PstrictLegacy=true
 ```
 
-当前基线：gradle `BUILD SUCCESSFUL`、tsc 通过、vitest `173 文件 / 1512 测试`
-全通过、`checkLegacyPatterns` 0 forbidden / 0 debt。
+当前基线（`ffaf345` + 本轮工作区改动）：gradle 118 个测试类 / 866 用例
+0 失败、tsc 0 错误、vitest `173 文件 / 1512 测试` 全通过、
+`checkLegacyPatterns` 0 forbidden / 0 debt。
 
 ## 二、条目明细
 
-| 条目 | 内容 | 状态 | 证据 / 提交 |
+| 条目 | 内容 | 状态 | 证据 / 差距 |
 |---|---|---|---|
-| A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload |
-| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 已完成 | `e4643df`：5 处 `load_subagent_session` 已迁为 `subagent.history`；宿主从父会话工具元数据解析子会话并读取 transcript，Core `8d882cc` 补 `parentID` / `limit` |
-| A3 | 路由表已权威（31 个事件）；约 96 个 `window.*` 全局仍在 | 部分完成 | 路由层已落地；已删除无运行时使用的 `__sessionTransitioning` 测试残留，其余全局清理待做 |
+| A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload，双端目录有交叉校验测试 |
+| A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 会话/标签/附件/提示类已迁入；仍有 **50 个**前端命令直发旧事件名（`get_prompts`、`add_agent`、`set_ui_font_config`、`browse_ui_font_file` 等配置 CRUD），无 requestId 幂等 |
+| A3 | 路由表收口：所有业务事件走 `hostEventRegistry` 权威派发 | 部分完成 | 已登记 **43 个语义键**，但 webview 仍有 **145 个非 `__` 的 `window.*` 全局**（与语义键零交集，注册值直接取自 window）；宿主 **98 处** `callJavaScript("函数名")`，其中 **78 个**只能落回 window；**13 个**宿主调用在 webview 无任何接收方 |
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |
 | B6 | daemon 重启：给所有 STREAMING tab 发 `turn.ended reason=daemon_restart` | 已完成 | `9e191cc` |
-| C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 已完成 | `d3c0542` 落地三件套；本轮 `TabStreamRouter` 成为 adapter/coalescer 的唯一持有者，换 session 时旧输出随旧 session 释放，adapter 按 tab 产出命名事件 |
-| C8 | `TabRecord` 字段：附件、router、eventSink 已归 tab；prompts 由 `PromptBroker` 按 tab 键持有，TabDraft 只在 webview | 已完成 | `17ada18`（附件）、`dc1b76a`（分块上传）、本轮（router + eventSink）；`TabRecord` javadoc 固化 prompts/draft 归属 |
-| C9 | 删除清单：`useSessionTabs.ts`（1641 行）、`sessionTransition.ts`、`PermissionManager` | 部分完成 | `PermissionManager` 及本地权限回退已删除（opencode 权限只走服务端 `per_*` + 注册表）；`useSessionTabs` 拆分与 `sessionTransition` 清理待做 |
+| C7 | `TabSnapshot` / `PendingSend` / `TabStreamRouter` | 部分完成 | 三件套均落地且在引用（`d3c0542`）；但 `SessionCallbackAdapter`（8 个文件）与 `StreamMessageCoalescer`（10 个文件）仍承担主输出，`TabStreamRouter` 是包装而非替换 |
+| C8 | `TabRecord` 字段：附件、router、eventSink 已归 tab；prompts 由 `PromptBroker` 持有，TabDraft 归 webview | 已完成 | `17ada18`、`dc1b76a`、`614e028` |
+| C9 | 巨石 Hook 拆解与清理：`useSessionTabs.ts`、`sessionTransition.ts`、`PermissionManager` | 部分完成 | 已拆成 69 行协调器 + `useTabBarState` / `useTabSessionBinder` / `useTabLifecycle`（1767 行）；`PermissionManager` 已删除；`sessionTransition.ts` 仍有 **6 处引用**未清 |
 | D10 | 附件传输：分块上传，发送只带引用 | 已完成 | `dc1b76a` |
-| D12 | opencode 命令按 tab 寻址 | 已完成 | `99bd04c`（`commands.refresh` 按 tab）；本轮 `commands.list/read/save/delete` 按 tab cwd 解析，列表按 scope+cwd 缓存 2s，写删后失效 |
+| D12 | opencode 命令按 tab 寻址 | 已完成 | `commands.refresh/list/read/save/delete` 按 tab cwd 解析与缓存 |
 | E13 | 每帧参数预算 32KB（单事件超预算单独成帧） | 已完成 | `17ada18` |
-| E14 | 渲染：消息分页 / 窗口化、序列化缓存、Markdown 缓存、引用稳定 | 已完成 | 宿主分页 + `MAX_PAGED_MESSAGES` 上限；`MessageList` 按轮折叠只渲染窗口；`MarkdownBlock`/`MessageItem` 用 `useMemo` 缓存解析；`reconcileMessageKeys` 保持 key 稳定 |
-| E15 | 内存：每 tab 消息单副本（宿主 + webview 镜像目前两份） | 未开始 | — |
-| E16 | 指标上报：queue depth / 丢弃数 / turn 时长 | 已完成 | 本轮：`BridgeScheduler.Metrics` 记录队列深度、合并/丢弃数、成帧数/字节、reload 数；`TabRecord` 记录上一回合时长；tab 关闭与窗口销毁时按 tab/session 写日志 |
+| E14 | 渲染：消息分页 / 窗口化、序列化缓存、Markdown 缓存、引用稳定 | 部分完成 | 按回合分页（每页 5 轮）与 `MessageList` memo / `useMemo` 已有；**未见**专门的序列化缓存与 Markdown 渲染缓存，引用稳定无测试覆盖 |
+| E15 | 内存：每 tab 消息单副本与缓存分区治理 | 部分完成 | `messageMergeCache` 按 tabId 分区、切 tab 复用；视图已直读 tab store（`4748421`）；宿主与 webview 各持一份仍是设计现状 |
+| E16 | 指标上报：queue depth / 丢弃数 / turn 时长 | 部分完成 | `BridgeScheduler.Metrics` 记录 queueDepth / dropped / frames，`TabRecord` 记录回合时长；**没有消费方与上报出口**（不落日志、不出事件） |
 | §13 | JCEF 真实基准与功能矩阵 | 待环境 | 步骤见 `docs/jcef-benchmark.md`、`docs/functional-matrix.md`，需 IDE 运行时 |
 
 ## 三、剩余工作与估算
 
-| 剩余项 | 性质 | 估算 |
-|---|---|---|
-| A2 剩余：无（子会话历史已迁入 `subagent.history`） | 已完成 | 0 |
-| A3 剩余：摘除约 96 个 `window.*` 全局，只保留路由表分发 | 机械、量大 | 0.5–1 天 |
-| C7 剩余：无（`TabStreamRouter` 已持有 adapter/coalescer） | 已完成 | 0 |
-| C9：拆 `useSessionTabs.ts`、删 `sessionTransition.ts`、迁 `PermissionManager` | 结构性、高风险 | 2–3 天 |
-| E15：每 tab 消息单副本 | 结构性 | 2–3 天 |
-| §13：JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工执行） |
+| 优先级 | 剩余项 | 性质 | 估算 |
+|---|---|---|---|
+| P0 | 本轮改动提交；`open_external_url` 断链；13 个宿主死调用与死代码清理 | 止血 + 正确性 | 0.5 天 |
+| P1 | A2：50 个配置类命令迁入 `host_command` | 机械、量大 | 1 天 |
+| P1 | A3：98 处 `callJavaScript` 改发语义事件，删除 145 个 window 全局 | 结构性 | 2 天 |
+| P1 | C7：`SessionCallbackAdapter` / `StreamMessageCoalescer` 退场，`TabStreamRouter` 接管 | 结构性 | 1 天 |
+| P1 | C9：清掉 `sessionTransition.ts` 最后 6 处引用 | 小 | 0.5 天 |
+| P2 | E14 序列化 / Markdown 缓存；E15 单副本收口；E16 指标出口 | 性能与可观测 | 2 天 |
+| P3 | §13 JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工） |
 
-合计约 **5–8 个工作日**。按当前节奏（每次一个可提交的块 + 四项验证全绿再提交），
-约 **7–10 个推进轮次**。
+合计约 **7–8 个工作日**。
 
 ## 四、结论
 
-- 命名事件主路径（A1）与会话命令主路径已经收口；A2 的子会话历史也已迁入
-  `subagent.history`，webview 不再直接发送 `load_subagent_session`。
-- 附件链路（C8 附件部分 / D10）已经完整，且不依赖 core 改动。
-- 新会话引导（C7 的 `PendingSend` / `TabSnapshot`）已落地；core 现在先播报
-  `[SESSION_ID]` 再绑定身份，v1/v2 共用。
-- 剩余工作集中在**状态归属**（C9 / E15）与少量旧全局清理（A3）；
-  这两块必须分步落地，不能一次重写。
+- 协议新通道（具名事件 + 语义目录）与命令信封的主体已经落地，测试与门禁全绿，
+  功能路径可用。
+- **但"单一权威"尚未达成**：旧函数名通道与 145 个 window 全局仍在运行，
+  A2 / A3 是"双轨并行"而非"只剩一条路"；C7 是包装而非替换。
+- 上一版本文档写的"100% 落地、无折中残留"与代码事实不符，已按实测数据更正。

@@ -57,12 +57,13 @@ headers['x-opencode-directory'] = encodeURIComponent(projectDirectory);
 ```
 
 ### 2.3 版本探活判断
-调用 `GET /api/info`：若返回 HTTP 200 则为 v2 架构；若 404 或无响应则退回 v1。
+调用 `GET /global/health`（官方推荐接口）或备选端点（`/api/health`、`/api/info`）：必须校验 HTTP 200 且 `Content-Type: application/json`（防止 SPA 通配路由返回 HTML 误判）。若包含 JSON 健康数据则为 v2 架构；若无响应或只有 `/config` 则退回 v1。
 ```javascript
 export async function isV2Server(baseUrl) {
   try {
-    const res = await fetch(`${baseUrl}/api/info`, { headers: getAuthHeader() });
-    return res.status === 200;
+    const res = await fetch(`${baseUrl}/global/health`, { headers: getAuthHeader() });
+    const isJson = (res.headers.get('content-type') || '').includes('json');
+    return res.status === 200 && isJson;
   } catch {
     return false;
   }

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  DEFAULT_REASONING_LEVEL,
   REASONING_LEVELS,
   getAvailableReasoningLevels,
+  getRecommendedReasoningEffort,
   type ReasoningEffort,
 } from '../types';
 import { useDropdownPosition } from '../../../hooks/useDropdownPosition';
@@ -20,6 +20,12 @@ const DROPDOWN_STYLE: React.CSSProperties = {
   overflowX: 'hidden',
 };
 const LEVEL_INFO_STYLE: React.CSSProperties = { display: 'flex', flexDirection: 'column', flex: 1 };
+const RECOMMENDED_TEXT_STYLE: React.CSSProperties = {
+  marginLeft: '6px',
+  fontSize: '11px',
+  opacity: 0.65,
+  fontWeight: 'normal',
+};
 
 /** 下拉顶部的快捷键提示行（非可点选项）。 */
 const CYCLE_HINT_STYLE: React.CSSProperties = {
@@ -58,11 +64,6 @@ interface ReasoningSelectProps {
 /**
  * ReasoningSelect - Reasoning Effort Selector
  * Controls the depth of reasoning for AI models.
- * Visibility and available levels depend on the selected model:
- * - Codex GPT-5.6: low/medium/high/xhigh/max; other Codex models: up to xhigh
- * - Claude Opus 5 and Opus 4.8: low/medium/high/xhigh/max
- * - Claude Sonnet 5, Sonnet 4.7, Opus 4.6, and Sonnet 4.6: low/medium/high/max
- * - Claude Haiku 4.5 and legacy models: hidden (no adaptive thinking support)
  */
 export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, currentProvider, modelVariants }: ReasoningSelectProps) => {
   const { t } = useTranslation();
@@ -76,7 +77,6 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
   });
 
   // Build the list of available levels for the current model.
-  // opencode：按所选模型的 variants 动态取档；其他 provider 回退静态规则。
   const availableLevels = getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants);
 
   // Determine visibility:
@@ -84,14 +84,16 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
   //   - If availableLevels has entries, show the selector.
   const isVisible = availableLevels.length > 0;
 
-  // When the model changes, the previously selected level may not exist in the
-  // new catalog. Fall back to Default (send no variant) — it is valid for every
-  // model, unlike an arbitrary positional pick from the list.
+  const recommendedEffort = useMemo(() => {
+    return getRecommendedReasoningEffort(availableLevels.map(l => l.id));
+  }, [availableLevels]);
+
+  // When the model changes or effort is invalid, fall back to recommended effort
   const currentLevel = useMemo(
     () => availableLevels.find(l => l.id === value)
-      ?? availableLevels.find(l => l.id === DEFAULT_REASONING_LEVEL.id)
+      ?? availableLevels.find(l => l.id === recommendedEffort)
       ?? availableLevels[0],
-    [availableLevels, value],
+    [availableLevels, value, recommendedEffort],
   );
 
   useEffect(() => {
@@ -113,13 +115,8 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
    * Get translated text for reasoning level
    */
   const getReasoningText = (levelId: ReasoningEffort, field: 'label' | 'description') => {
-    if (field === 'label' && levelId === 'default') {
-      return 'default';
-    }
     const key = `reasoning.${levelId}.${field}`;
-    const fallback = (REASONING_LEVELS.find(l => l.id === levelId)
-      ?? (levelId === DEFAULT_REASONING_LEVEL.id ? DEFAULT_REASONING_LEVEL : null))?.[field]
-      || levelId;
+    const fallback = REASONING_LEVELS.find(l => l.id === levelId)?.[field] || levelId;
     return t(key, { defaultValue: fallback });
   };
 
@@ -177,7 +174,7 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
     }
   }, [isOpen, recalculate]);
 
-  if (!isVisible) return null;
+  if (!isVisible || !currentLevel) return null;
 
   return (
     <div style={RELATIVE_INLINE_BLOCK_STYLE}>
@@ -213,16 +210,21 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
           {availableLevels.map((level) => (
             <div
               key={level.id}
-              className={`selector-option ${level.id === value ? 'selected' : ''}`}
+              className={`selector-option ${level.id === currentLevel.id ? 'selected' : ''}`}
               onClick={() => handleSelect(level.id)}
               title={getReasoningText(level.id, 'description')}
             >
               <span className={`codicon ${level.icon}`} />
               <div style={LEVEL_INFO_STYLE}>
-                <span>{getReasoningText(level.id, 'label')}</span>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span>{getReasoningText(level.id, 'label')}</span>
+                  {level.id === recommendedEffort && (
+                    <span style={RECOMMENDED_TEXT_STYLE}>({t('common.recommended', { defaultValue: '推荐' })})</span>
+                  )}
+                </div>
                 <span className="mode-description">{getReasoningText(level.id, 'description')}</span>
               </div>
-              {level.id === value && (
+              {level.id === currentLevel.id && (
                 <span className="codicon codicon-check check-mark" />
               )}
             </div>

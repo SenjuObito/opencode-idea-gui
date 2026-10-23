@@ -581,6 +581,16 @@
     100% { opacity: 1; transform: scale(1); }
 }
 
+.session-tab-overflow-drop-indicator {
+    height: 2px;
+    background: var(--accent-primary, #007acc);
+    border-radius: 1px;
+    margin: 2px 4px;
+    position: relative;
+    z-index: 10;
+    animation: session-tab-drop-pulse 0.8s ease-in-out infinite alternate;
+}
+
 .session-tab-overflow-menu {
     position: fixed;
     min-width: 180px;
@@ -604,6 +614,17 @@
         color: var(--text-secondary);
         cursor: pointer;
         transition: background 0.12s ease;
+
+        &.is-dragging {
+            opacity: 0.4;
+        }
+
+        &.session-tab-item-following {
+            background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-secondary);
+            border-radius: 6px;
+        }
 
         &:hover {
             background: var(--color-chat-bars-hover-bg, var(--bg-hover));

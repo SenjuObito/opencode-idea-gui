@@ -40,8 +40,6 @@ public class AgentHandler extends BaseMessageHandler {
         "add_agent",
         "update_agent",
         "delete_agent",
-        "get_selected_agent",
-        "set_selected_agent",
         "export_agents",
         "import_agents_file",
         "save_imported_agents"
@@ -76,12 +74,6 @@ public class AgentHandler extends BaseMessageHandler {
                 return true;
             case "delete_agent":
                 handleDeleteAgent(content);
-                return true;
-            case "get_selected_agent":
-                handleGetSelectedAgent();
-                return true;
-            case "set_selected_agent":
-                handleSetSelectedAgent(content);
                 return true;
             case "export_agents":
                 handleExportAgents(content);
@@ -227,8 +219,6 @@ public class AgentHandler extends BaseMessageHandler {
                     String selectedId = settingsService.getSelectedAgentId();
                     if (id.equals(selectedId)) {
                         settingsService.setSelectedAgentId(null);
-                        // Notify frontend to clear the selection
-                        callJavaScript("window.onSelectedAgentChanged", escapeJs("null"));
                     }
                 } catch (Exception e) {
                     LOG.warn("[AgentHandler] Failed to check/clear selected agent: " + e.getMessage());
@@ -256,94 +246,6 @@ public class AgentHandler extends BaseMessageHandler {
             errorResult.addProperty("error", e.getMessage());
             ApplicationManager.getApplication().invokeLater(() -> {
                 callJavaScript("window.agentOperationResult", escapeJs(gson.toJson(errorResult)));
-            });
-        }
-    }
-
-    /**
-     * Get the currently selected agent.
-     */
-    private void handleGetSelectedAgent() {
-        try {
-            String selectedId = settingsService.getSelectedAgentId();
-            JsonObject result = new JsonObject();
-
-            if (selectedId != null && !selectedId.isEmpty()) {
-                JsonObject agent = settingsService.getAgent(selectedId);
-                if (agent != null) {
-                    result.addProperty("selectedAgentId", selectedId);
-                    result.add("agent", agent);
-                } else {
-                    // Agent was deleted, clear the selection
-                    settingsService.setSelectedAgentId(null);
-                    result.addProperty("selectedAgentId", (String) null);
-                }
-            } else {
-                result.addProperty("selectedAgentId", (String) null);
-            }
-
-            String resultJson = gson.toJson(result);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.onSelectedAgentReceived", escapeJs(resultJson));
-            });
-        } catch (Exception e) {
-            LOG.error("[AgentHandler] Failed to get selected agent: " + e.getMessage(), e);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.onSelectedAgentReceived", escapeJs("{\"selectedAgentId\":null}"));
-            });
-        }
-    }
-
-    /**
-     * Set the selected agent.
-     */
-    private void handleSetSelectedAgent(String content) {
-        try {
-            String agentId = null;
-
-            // Handle empty content (deselect agent)
-            if (content != null && !content.isEmpty() && !content.equals("null")) {
-                JsonObject data = gson.fromJson(content, JsonObject.class);
-                if (data != null) {
-                    // Support both field names: frontend sends "id", but "agentId" is also accepted
-                    if (data.has("id") && !data.get("id").isJsonNull()) {
-                        agentId = data.get("id").getAsString();
-                    } else if (data.has("agentId") && !data.get("agentId").isJsonNull()) {
-                        agentId = data.get("agentId").getAsString();
-                    }
-                }
-            }
-
-            LOG.info("[AgentHandler] Setting selected agent: " + (agentId != null ? agentId : "null"));
-            settingsService.setSelectedAgentId(agentId);
-
-            JsonObject result = new JsonObject();
-            result.addProperty("success", true);
-
-            if (agentId != null) {
-                JsonObject agent = settingsService.getAgent(agentId);
-                if (agent != null) {
-                    result.add("agent", agent);
-                    String agentName = agent.has("name") ? agent.get("name").getAsString() : "Unknown Agent";
-                    com.opencodebuddy.notifications.OpencodeNotifier.setAgent(context.getProject(), agentName);
-                } else {
-                    com.opencodebuddy.notifications.OpencodeNotifier.setAgent(context.getProject(), "");
-                }
-            } else {
-                com.opencodebuddy.notifications.OpencodeNotifier.setAgent(context.getProject(), "");
-            }
-
-            String resultJson = gson.toJson(result);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.onSelectedAgentChanged", escapeJs(resultJson));
-            });
-        } catch (Exception e) {
-            LOG.error("[AgentHandler] Failed to set selected agent: " + e.getMessage(), e);
-            JsonObject errorResult = new JsonObject();
-            errorResult.addProperty("success", false);
-            errorResult.addProperty("error", e.getMessage());
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.onSelectedAgentChanged", escapeJs(gson.toJson(errorResult)));
             });
         }
     }

@@ -35,7 +35,7 @@ cd webview && npx vitest run
 |---|---|---|---|
 | A1 | 事件具名化：`TabEvent` / `TabEventSink` / `TabEventBus`，信封 `{v, type, tabId, sessionId, turnId, seq, epoch, payload}` | 已完成 | 宿主会话级事件与 webview 处理器全部具名 payload，双端目录有交叉校验测试 |
 | A2 | 命令目录：全部命令走单一 `host_command` 信封，类型统一 `域.动作` | 部分完成 | 会话/标签/附件/提示类已迁入；仍有 **50 个**前端命令直发旧事件名（`get_prompts`、`add_agent`、`set_ui_font_config`、`browse_ui_font_file` 等配置 CRUD），无 requestId 幂等 |
-| A3 | 路由表收口：所有业务事件走 `hostEventRegistry` 权威派发 | 部分完成 | 已登记 **43 个语义键**，但 webview 仍有 **145 个非 `__` 的 `window.*` 全局**（与语义键零交集，注册值直接取自 window）；宿主 **98 处** `callJavaScript("函数名")`，其中 **78 个**只能落回 window；**13 个**宿主调用在 webview 无任何接收方 |
+| A3 | 路由表收口：所有业务事件走 `hostEventRegistry` 权威派发 | 部分完成 | 已登记 **43 个语义键**，但 webview 仍有 **145 个非 `__` 的 `window.*` 全局**（与语义键零交集，注册值直接取自 window）；宿主 **84 处** `callJavaScript("函数名")`，其中 **79 个**只能落回 window。原先 **13 个宿主调用在 webview 无接收方**，已在本轮清理完毕（见 P0 记录） |
 | B4 | 权限 / 提问 / 计划回复三重校验（tabId + sessionId + requestId） | 已完成 | `b78cbc9` 及 `PermissionHandler` 校验链 |
 | B5 | 计划审批 per-tab 队列（`pendingPlans`） | 已完成 | 对话式审批不再串 tab |
 | B6 | daemon 重启：给所有 STREAMING tab 发 `turn.ended reason=daemon_restart` | 已完成 | `9e191cc` |
@@ -54,8 +54,9 @@ cd webview && npx vitest run
 
 | 优先级 | 剩余项 | 性质 | 估算 |
 |---|---|---|---|
-| P0 | 本轮改动提交；`open_external_url` 断链；13 个宿主死调用与死代码清理 | 止血 + 正确性 | 0.5 天 |
+| P0 | ~~本轮改动提交；`open_external_url` 断链；13 个宿主死调用与死代码清理~~ | 已完成 | — |
 | P1 | A2：50 个配置类命令迁入 `host_command` | 机械、量大 | 1 天 |
+| P1 | 死链清理（P0 发现的遗留）：`usePromptManagement` 整条链未挂载、`PromptHandler` 无前端调用、`AgentHandler` 选中段已删但 `settingsService` 选中状态仍需确认用途 | 小 | 0.5 天 |
 | P1 | A3：98 处 `callJavaScript` 改发语义事件，删除 145 个 window 全局 | 结构性 | 2 天 |
 | P1 | C7：`SessionCallbackAdapter` / `StreamMessageCoalescer` 退场，`TabStreamRouter` 接管 | 结构性 | 1 天 |
 | P1 | C9：清掉 `sessionTransition.ts` 最后 6 处引用 | 小 | 0.5 天 |

@@ -593,3 +593,34 @@
 - `cd webview && npx vitest run`：173 文件 / 1512 测试全部通过。
 - `./gradlew checkLegacyPatterns -PstrictLegacy=true`：0 forbidden hits, 0 remaining debt lines。
 
+
+
+## P0：断链修复与死调用清理
+
+排查方式：把宿主 `callJavaScript("名字")` 的集合与 webview 实际接收方求差，
+逐个确认"有没有替代通道"。
+
+### 修复的断链
+
+- `open_external_url`（CLI 安装对话框的"打开外部链接"）宿主没有处理器，
+  改发既有的 `open_browser`。
+- `insertFileReferencesAtCursor`（从 IDE 向输入框添加文件引用）webview 从未实现，
+  宿主改调既有的 `handleFilePathFromJava`，两条通道语义一致。
+
+### 删除的死调用（webview 已无接收方）
+
+- `mcpServerAdded` / `mcpServerUpdated` / `mcpServerDeleted` / `mcpServerValidated`
+  ——列表由随后的 `updateMcpServers` 兜底刷新。
+- `checkNodeEnvironment`（前端用 `updateNodePath`）。
+- `onUserLanguage`（权威通道是 `applyIdeaLanguageConfig`）。
+- `onSelectedAgentChanged` / `onSelectedAgentReceived`（前端不使用宿主选中态）。
+- `onRewindResult` —— 连同 `RewindHandler` 整个删除：前端从不发 `rewind_files`。
+- `onInputHistoryLoaded` / `Recorded` / `Cleared` / `Deleted` —— 连同
+  `InputHistoryHandler` 整个删除：输入历史早已改为 webview 本地存储。
+
+### 发现但未处理（P1）
+
+- `usePromptManagement` 没有被任何组件使用，它发出的 `get_prompts` /
+  `add_prompt` / `import_prompts_file` 等命令因此无人触发；`PromptHandler`
+  整体进入死代码候选。旧的 prompt 导入/导出/预览 UI 已被 `PromptSection`
+  的 `commands.*` 通道取代。

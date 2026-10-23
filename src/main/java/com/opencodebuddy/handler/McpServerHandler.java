@@ -272,7 +272,6 @@ public class McpServerHandler extends BaseMessageHandler {
             context.getSettingsService().upsertMcpServer(server);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.mcpServerAdded", escapeJs(content));
                 handleGetMcpServers();
             });
         } catch (Exception e) {
@@ -295,7 +294,6 @@ public class McpServerHandler extends BaseMessageHandler {
             context.getSettingsService().upsertMcpServer(server);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.mcpServerUpdated", escapeJs(content));
                 handleGetMcpServers();
             });
         } catch (Exception e) {
@@ -320,7 +318,6 @@ public class McpServerHandler extends BaseMessageHandler {
 
             if (success) {
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    callJavaScript("window.mcpServerDeleted", escapeJs(serverId));
                     handleGetMcpServers();
                 });
             } else {
@@ -386,7 +383,6 @@ public class McpServerHandler extends BaseMessageHandler {
             String validationJson = gson.toJson(validation);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.mcpServerValidated", escapeJs(validationJson));
             });
         } catch (Exception e) {
             LOG.error("[McpServerHandler] Failed to validate MCP server: " + e.getMessage(), e);

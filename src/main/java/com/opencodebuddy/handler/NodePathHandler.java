@@ -188,7 +188,6 @@ public class NodePathHandler {
                     if (successFlag) {
                         context.broadcastToAll("window.updateNodePath", context.escapeJs(gson.toJson(response)));
                         context.callJavaScript("window.showSwitchSuccess", context.escapeJs("Node.js 路径已保存并生效,无需重启IDE"));
-                        context.callJavaScript("window.checkNodeEnvironment");
                         // The daemon runs on a fixed Node runtime chosen at spawn, so a
                         // Node path change can only take effect by restarting the daemon
                         // (which re-launches it via NodeDetector#findNodeExecutable()).

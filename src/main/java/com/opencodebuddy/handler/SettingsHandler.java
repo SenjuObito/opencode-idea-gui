@@ -20,7 +20,6 @@ public class SettingsHandler extends BaseMessageHandler {
     private static final Logger LOG = Logger.getInstance(SettingsHandler.class);
     private final Gson gson = new Gson();
 
-    private final InputHistoryHandler inputHistoryHandler;
     private final SoundSettingsHandler soundSettingsHandler;
     private final UsagePushService usagePushService;
     private final PermissionModeHandler permissionModeHandler;
@@ -97,10 +96,6 @@ public class SettingsHandler extends BaseMessageHandler {
         "set_prompt_enhancer_config",
         "get_project_commit_prompt",
         "set_project_commit_prompt",
-        "get_input_history",
-        "record_input_history",
-        "delete_input_history_item",
-        "clear_input_history",
         // Sound notification configuration
         "get_sound_notification_config",
         "set_sound_notification_enabled",
@@ -127,7 +122,6 @@ public class SettingsHandler extends BaseMessageHandler {
 
     public SettingsHandler(HandlerContext context) {
         super(context);
-        this.inputHistoryHandler = new InputHistoryHandler(context);
         this.soundSettingsHandler = new SoundSettingsHandler(context);
         this.usagePushService = new UsagePushService(context);
         this.permissionModeHandler = new PermissionModeHandler(context);
@@ -346,18 +340,6 @@ public class SettingsHandler extends BaseMessageHandler {
                 projectConfigHandler.handleSetProjectCommitPrompt(content);
                 return true;
             // Input history
-            case "get_input_history":
-                inputHistoryHandler.handleGetInputHistory();
-                return true;
-            case "record_input_history":
-                inputHistoryHandler.handleRecordInputHistory(content);
-                return true;
-            case "delete_input_history_item":
-                inputHistoryHandler.handleDeleteInputHistoryItem(content);
-                return true;
-            case "clear_input_history":
-                inputHistoryHandler.handleClearInputHistory();
-                return true;
             // Sound notification configuration
             case "get_sound_notification_config":
                 soundSettingsHandler.handleGetSoundNotificationConfig();
@@ -494,7 +476,6 @@ public class SettingsHandler extends BaseMessageHandler {
         JsonObject response = new JsonObject();
         response.addProperty("language", userLanguage != null ? userLanguage : "");
         response.addProperty("manuallySet", userLanguage != null);
-        callJavaScript("window.onUserLanguage", escapeJs(response.toString()));
     }
 
     /**

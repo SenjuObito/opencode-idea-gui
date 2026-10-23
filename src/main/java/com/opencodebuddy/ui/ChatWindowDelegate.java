@@ -20,7 +20,6 @@ import com.opencodebuddy.handler.core.MessageDispatcher;
 import com.opencodebuddy.handler.NodeProcessHandler;
 import com.opencodebuddy.handler.PermissionHandler;
 import com.opencodebuddy.handler.CommandsHandler;
-import com.opencodebuddy.handler.RewindHandler;
 import com.opencodebuddy.handler.AttachmentHandler;
 import com.opencodebuddy.handler.SessionHandler;
 import com.opencodebuddy.handler.SettingsHandler;
@@ -355,7 +354,6 @@ public class ChatWindowDelegate {
         messageDispatcher.registerHandler(new AgentHandler(handlerContext));
         messageDispatcher.registerHandler(new CommandsHandler(handlerContext));
         messageDispatcher.registerHandler(new TabHandler(handlerContext, host::updateTabTitle));
-        messageDispatcher.registerHandler(new RewindHandler(handlerContext));
         messageDispatcher.registerHandler(new UndoFileHandler(handlerContext));
         messageDispatcher.registerHandler(new CliModelsHandler(handlerContext));
         this.daemonStatusHandler = new DaemonStatusHandler(handlerContext);

@@ -1863,11 +1863,6 @@ public class OpencodeBuddyChatWindow {
         if (existing != null && existing.getSession() != null) {
             return existing.getSession();
         }
-        if (activeTabId == null) {
-            activeTabId = tabId;
-            tabRegistry.activate(stableTabId);
-        }
-
         // Preferences are inherited from the tab the user was looking at, never
         // from the (possibly brand-new, empty) tab being created.
         TabRecord activeRecord = tabRegistry.get(tabRegistry.getActiveTabId());
@@ -1886,6 +1881,10 @@ public class OpencodeBuddyChatWindow {
                         session.setModel(previousModel);
                     }
                 });
+        if (activeTabId == null) {
+            activeTabId = tabId;
+            tabRegistry.activate(stableTabId);
+        }
         if (prepared.created() && handlerContext != null && prepared.session() != null) {
             handlerContext.registerSession(tabId, prepared.session());
         }
@@ -2016,6 +2015,14 @@ public class OpencodeBuddyChatWindow {
                     }
                     if (getActiveSessionId() == null || targetSessionId.equals(getActiveSessionId())) {
                     }
+                } else {
+                    OpencodeSession cur = getSession(newSessionId);
+                    if (cur == null) {
+                        cur = getSession();
+                    }
+                    if (cur != null) {
+                        bindSessionSink(newSessionId, cur);
+                    }
                 }
             }
 
@@ -2142,6 +2149,13 @@ public class OpencodeBuddyChatWindow {
         TabId stableTabId = TabId.of(tabId);
         TabRecord record = tabRegistry.get(stableTabId);
         if (record == null || record.isClosed()) {
+            OpencodeSession orphanSession = getSession(tabId);
+            if (orphanSession == null) {
+                orphanSession = getSession();
+            }
+            if (orphanSession != null) {
+                bindSessionSink(canonicalSessionId, orphanSession);
+            }
             return;
         }
         OpencodeSession boundSession = record.getSession() != null ? record.getSession() : getSession(tabId);
@@ -3313,6 +3327,13 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void onSessionIdReceived(String newSessionId) {
                 super.onSessionIdReceived(newSessionId);
+                String activeTab = activeTabId != null ? activeTabId
+                        : (tabRegistry.getActiveTabId() != null ? tabRegistry.getActiveTabId().value() : null);
+                if (activeTab != null) {
+                    bindTabSession(activeTab, newSessionId, this);
+                } else {
+                    bindSessionSink(newSessionId, curSession);
+                }
             }
         };
         curSession.setCallback(sessionCallbackAdapter);
@@ -3801,7 +3822,10 @@ public class OpencodeBuddyChatWindow {
                 targetBrowser.getComponent().requestFocus();
             }
         });
-        callJavaScript("window.insertFileReferencesAtCursor", pathsJson);
+        // The webview channel that inserts Java-supplied paths into the input
+        // is `handleFilePathFromJava`; `insertFileReferencesAtCursor` was never
+        // implemented on the webview, so the call used to disappear.
+        callJavaScript("window.handleFilePathFromJava", pathsJson);
     }
 
     /**

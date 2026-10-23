@@ -50,9 +50,10 @@ const parseCliStatusPayload = (json: string): CliStatusMap | null => {
 };
 
 const openExternalUrl = (url: string) => {
-  // VS Code webview 会拦截 window.open / 外链 <a>，改由宿主 openExternal 打开
+  // JCEF 会拦截 window.open / 外链 <a>，改由宿主打开。
+  // 用既有的 `open_browser` 通道：`open_external_url` 从未有宿主处理器。
   if (window.sendToJava) {
-    window.sendToJava(`open_external_url:${url}`);
+    window.sendToJava(`open_browser:${url}`);
   }
 };
 

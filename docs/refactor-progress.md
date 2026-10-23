@@ -637,3 +637,16 @@
 - `PromptHandler.java` 删除：上一条的直接结果。旧的 prompt 导入/导出/预览
   通道（含 `promptImportPreviewResult` / `promptOperationResult`）整体退场，
   命令管理只保留 `PromptSection` 的 `commands.*`。
+
+
+## P1：A2 收口（配置类命令进信封）
+
+- `HostCommand.parse` 允许 payload 是任意 JSON：字符串类命令（`open_file`、
+  `open_class`、`delete_session`…）取裸值交给 handler，与旧通道字节一致；
+  对象类命令照旧合并信封身份；`sendWindowCommand` 的 payload 类型放宽到
+  `unknown`。
+- 49 处 `sendToJava("name:...")` / `sendBridgeEvent("name", ...)` 全部改为
+  `sendWindowCommand("name", payload)`：字体、语言、通知、声音、权限超时、
+  agent CRUD、CLI 状态、IDE 主题、文件打开、JSON 导出。
+- 至此前端不再有直发旧事件名的命令（`cardDebug` 是日志，保留原样），
+  每条命令都带 `requestId`、走同一传输、由宿主统一幂等。

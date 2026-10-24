@@ -26,7 +26,7 @@ cd webview && npx vitest run
 ```
 
 当前基线（`dcbc623` + 本轮工作区改动）：gradle 117 个测试类 / 871 用例
-0 失败、tsc 0 错误、vitest `173 文件 / 1520 测试` 全通过、
+0 失败、tsc 0 错误、vitest `173 文件 / 1522 测试` 全通过、
 `checkLegacyPatterns` 0 forbidden / 0 debt；opencode-buddy-core
 `node --test` 228 用例 0 失败。
 

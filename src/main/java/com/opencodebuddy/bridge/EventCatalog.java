@@ -45,6 +45,7 @@ public final class EventCatalog {
         byType.put("turn.ended", "onStreamEnd");
         byType.put("turn.settled", "onTurnEnd");
         byType.put("turn.retry", "updateRetryStatus");
+        byType.put("turn.error", "onTerminalError");
         byType.put("turn.heartbeat", "onStreamingHeartbeat");
         byType.put("content.delta", "onContentDelta");
         byType.put("thinking.delta", "onThinkingDelta");

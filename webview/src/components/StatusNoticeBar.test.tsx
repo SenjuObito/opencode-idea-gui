@@ -4,7 +4,9 @@ import StatusNoticeBar, {
   __resetNoticeStateForTest,
   getRetryStatus,
   onRetryStatusFromHost,
+  onTerminalErrorFromHost,
   setRetryStatus,
+  setTerminalError,
 } from './StatusNoticeBar';
 import type { ClaudeMessage } from '../types';
 
@@ -174,6 +176,36 @@ describe('StatusNoticeBar — terminal quota notice', () => {
     expect(screen.getByText('Free usage exceeded, subscribe to Go')).toBeTruthy();
     // No inline diagnostic card, no retry chrome.
     expect(container.querySelector('.status-notice-bar--warning')).toBeNull();
+  });
+
+  it('renders the quota notice from the semantic turn.error event even with no transcript error', () => {
+    act(() => {
+      onTerminalErrorFromHost(
+        { error: 'Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go' },
+        { v: 2, sessionId: 'ses_a' },
+      );
+    });
+
+    const { container } = renderBar([]);
+
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+    expect(screen.getByText(/Free usage limit reached/)).toBeTruthy();
+    const action = container.querySelector('.status-notice-action') as HTMLElement;
+    expect(action).toBeTruthy();
+    fireEvent.click(action);
+    expect(sendToJava).toHaveBeenCalledWith('open_browser', 'https://opencode.ai/go');
+  });
+
+  it('ignores a semantic turn.error for another session', () => {
+    setTerminalError({
+      sessionId: 'ses_other',
+      message: 'Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go',
+      timestamp: Date.now(),
+    });
+
+    const { container } = renderBar([]);
+
+    expect(container.querySelector('.status-notice-bar')).toBeNull();
   });
 
   it('prioritizes dynamic title and message from opencode server action', () => {

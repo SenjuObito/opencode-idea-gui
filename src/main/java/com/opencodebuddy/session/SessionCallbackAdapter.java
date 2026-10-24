@@ -48,6 +48,8 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     private final Object lifecycleLock = new Object();
     /** Guards against duplicate onStreamEnd delivery from dual-path dispatch. */
     private volatile boolean streamEndSignalSent = false;
+    /** Last terminal error text already pushed as `turn.error`, to avoid duplicate notices. */
+    private volatile String lastTerminalError;
     /** One-shot warn when a call has to be dropped for lack of a session id. */
     private volatile boolean unattributedSessionWarned = false;
 
@@ -259,6 +261,17 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 return;
             }
             publish("session.loading", getTargetSessionId(), b -> b.field("loading", loading));
+            if (error != null && !error.isBlank()) {
+                if (!error.equals(lastTerminalError)) {
+                    lastTerminalError = error;
+                    // Terminal provider errors are semantic events, not message-
+                    // snapshot state. Publishing them separately keeps the quota
+                    // notice alive even if a later shorter snapshot loses the row.
+                    publish("turn.error", getTargetSessionId(), b -> b.field("error", error));
+                }
+            } else {
+                lastTerminalError = null;
+            }
             // The primary error display is the ERROR message in chat list and StatusNoticeBar banner.
             // Do not call updateStatus here to avoid redundant notifications/toasts.
             if (!busy && !loading) {

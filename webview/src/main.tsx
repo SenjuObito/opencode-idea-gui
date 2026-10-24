@@ -8,7 +8,7 @@ import './vscodeBridge';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
-import { onRetryStatusFromHost } from './components/StatusNoticeBar';
+import { onRetryStatusFromHost, onTerminalErrorFromHost } from './components/StatusNoticeBar';
 import { MessagesProvider } from './contexts/MessagesContext';
 import { SessionProvider } from './contexts/SessionContext';
 import { UIStateProvider } from './contexts/UIStateContext';
@@ -461,6 +461,7 @@ registerHostEvents({
     window.dispatchEvent(new CustomEvent('updateDaemonStatus', { detail: json }));
   },
   'turn.retry': onRetryStatusFromHost,
+  'turn.error': onTerminalErrorFromHost,
   'linkify.capabilities': (json: string) => {
     applyLinkifyCapabilitiesPayload(json);
   },

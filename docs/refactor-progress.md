@@ -773,4 +773,4 @@ IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与
   - webview 新增 shrink 保留额度错误、新轮次丢弃旧错误、minimal/full
     pending error flush 测试。
 - 验证：core 228 用例、gradle 117 类 / 871 用例、tsc 0 错误、
-  vitest 173 文件 / 1520 测试、legacy 0 forbidden / 0 debt。
+  vitest 173 文件 / 1522 测试、legacy 0 forbidden / 0 debt。

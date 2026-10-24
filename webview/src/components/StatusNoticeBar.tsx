@@ -31,6 +31,7 @@ import { useMessages } from '../contexts/MessagesContext';
 import { useSession } from '../contexts/SessionContext';
 import { matchErrorPattern, type DiagnosticPattern } from '../utils/errorMatcher';
 import type { ClaudeMessage } from '../types';
+import type { HostEventEnvelope } from '../utils/hostEventTypes';
 import { sendToJava } from '../utils/bridge';
 import './StatusNoticeBar.less';
 
@@ -112,6 +113,66 @@ const dismissedNoticeKeys = new Set<string>();
 let pendingRetryAction: (NoticeAction & { sessionID?: string }) | null = null;
 
 /**
+ * Terminal error pushed directly by the host (`turn.error`).
+ *
+ * <p>The transcript snapshot can briefly shrink while a turn settles, and a
+ * quota error that only exists in a message row can disappear before the user
+ * sees it. The host therefore publishes the same error as a semantic event; it
+ * is the authoritative source for the terminal notice.</p>
+ */
+interface TerminalErrorPayload {
+  sessionId: string | null;
+  message: string;
+  timestamp: number;
+}
+
+let latestTerminalError: TerminalErrorPayload | null = null;
+const terminalErrorListeners = new Set<(payload: TerminalErrorPayload | null) => void>();
+
+export const setTerminalError = (payload: TerminalErrorPayload | null): void => {
+  latestTerminalError = payload;
+  terminalErrorListeners.forEach((listener) => listener(payload));
+};
+
+export const getTerminalError = (): TerminalErrorPayload | null => latestTerminalError;
+
+/**
+ * Bridge entry point for `turn.error`.
+ *
+ * The host sends `{ error: "<message>" }`; older payloads may carry the JSON
+ * string directly. Both forms are reduced to the human-readable message here.
+ */
+export const onTerminalErrorFromHost = (payload?: unknown, env?: HostEventEnvelope): void => {
+  const record = payload && typeof payload === 'object'
+    ? payload as Record<string, unknown>
+    : null;
+  const raw = typeof payload === 'string'
+    ? payload
+    : (record?.error ?? record?.message);
+  let message = typeof raw === 'string' ? raw.trim() : '';
+  if (message.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(message) as Record<string, unknown>;
+      const nested = parsed.message ?? (parsed.error as Record<string, unknown> | undefined)?.message;
+      if (typeof nested === 'string' && nested.trim()) {
+        message = nested.trim();
+      }
+    } catch {
+      // Keep the raw message; it is still better than hiding the failure.
+    }
+  }
+  if (!message) {
+    setTerminalError(null);
+    return;
+  }
+  setTerminalError({
+    sessionId: env?.sessionId ?? null,
+    message,
+    timestamp: Date.now(),
+  });
+};
+
+/**
  * Per-notice pinned action. Pinning (rather than reading `pendingRetryAction`
  * at render time) prevents a link captured during one turn from leaking into a
  * later notice.
@@ -187,6 +248,7 @@ export const onRetryStatusFromHost = (arg0?: string, arg1?: string): void => {
 export const __resetNoticeStateForTest = (): void => {
   latestRetryStatus = null;
   pendingRetryAction = null;
+  latestTerminalError = null;
   dismissedNoticeKeys.clear();
   noticeActionLinks.clear();
 };
@@ -286,6 +348,7 @@ export const StatusNoticeBar = ({
   const currentSessionId = sessionCtx?.currentSessionId ?? null;
 
   const [payload, setPayload] = useState<RetryStatusPayload | null>(getRetryStatus);
+  const [directTerminalError, setDirectTerminalErrorState] = useState<TerminalErrorPayload | null>(getTerminalError);
   const [now, setNow] = useState(() => Date.now());
   // The dismissed set lives module-side and is not reactive; bumping this
   // counter is what makes a dismissal re-evaluate the notice.
@@ -297,6 +360,23 @@ export const StatusNoticeBar = ({
     // A notice raised by a transcript that is still being restored is not
     // something the user can act on yet.
     if (sessionLoading) return null;
+
+    // Prefer the semantic `turn.error` event. It is not tied to a transcript
+    // snapshot and therefore survives a shorter user-only snapshot.
+    const direct = directTerminalError;
+    if (direct && (!direct.sessionId || direct.sessionId === currentSessionId)) {
+      const pattern = matchErrorPattern(direct.message);
+      if (pattern?.presentation === 'bar') {
+        const pseudo: ClaudeMessage = {
+          type: 'error',
+          content: direct.message,
+          timestamp: String(direct.timestamp),
+        };
+        const key = noticeKeyFor(currentSessionId, pseudo, direct.message);
+        if (dismissedNoticeKeys.has(key)) return null;
+        return { key, pattern, serverText: direct.message };
+      }
+    }
 
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const message = messages[i];
@@ -318,13 +398,21 @@ export const StatusNoticeBar = ({
 
     return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- dismissVersion is a re-evaluation trigger, not an input
-  }, [messages, getMessageText, sessionLoading, currentSessionId, dismissVersion]);
+  }, [messages, getMessageText, sessionLoading, currentSessionId, dismissVersion, directTerminalError]);
 
   useEffect(() => {
     const listener = (next: RetryStatusPayload | null) => setPayload(next);
     retryStatusListeners.add(listener);
     return () => {
       retryStatusListeners.delete(listener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const listener = (next: TerminalErrorPayload | null) => setDirectTerminalErrorState(next);
+    terminalErrorListeners.add(listener);
+    return () => {
+      terminalErrorListeners.delete(listener);
     };
   }, []);
 

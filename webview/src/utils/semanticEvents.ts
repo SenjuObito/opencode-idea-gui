@@ -24,6 +24,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   'turn.ended': 'onStreamEnd',
   'turn.settled': 'onTurnEnd',
   'turn.retry': 'updateRetryStatus',
+  'turn.error': 'onTerminalError',
   'turn.heartbeat': 'onStreamingHeartbeat',
   'content.delta': 'onContentDelta',
   'thinking.delta': 'onThinkingDelta',

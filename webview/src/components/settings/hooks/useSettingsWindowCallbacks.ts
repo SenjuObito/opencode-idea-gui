@@ -7,6 +7,7 @@ import type { UiFontConfig, CodeFontConfig } from './useSettingsBasicActions';
 import type { AlertType } from '../../AlertDialog';
 import type { ToastMessage } from '../../Toast';
 import { scheduleBatchedBridgeRequests } from './scheduleBatchedBridgeRequests';
+import { registerSemanticWindowHandlers, unregisterSemanticWindowHandlers } from '../../../utils/hostEventRegistry';
 
 const sendToJava = (message: string) => {
   if (window.sendToJava) {
@@ -343,6 +344,10 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
     };
 
+    // Settings is a second callback surface: bind its handlers to the same
+    // semantic registry so a settings event never relies on the window path.
+    registerSemanticWindowHandlers();
+
     // Initial data loading for the default (basic) settings surface only.
     // Provider / agent / prompt lists are fetched when their tabs first mount.
     // Bootstrap messages are batched so open-settings does not stampede CEF.
@@ -356,6 +361,18 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     return () => {
       bootstrapRequests.cancel();
       d().cleanupAgentsTimeout();
+
+      unregisterSemanticWindowHandlers([
+        'showError', 'showSwitchSuccess', 'updateNodePath', 'updateOpencodeCliPath',
+        'updateWorkingDirectory', 'showSuccess', 'showSuccessI18n',
+        'onEditorFontConfigReceived', 'onUiFontConfigReceived', 'onCodeFontConfigReceived',
+        'onSystemFontListReceived', 'onIdeThemeReceived', 'updateSendShortcut',
+        'updateSoundNotificationConfig', 'onSoundFileSelected',
+        'updateTaskCompletionNotificationEnabled', 'updateAskUserQuestionNotificationEnabled',
+        'updateSystemNotificationOnlyWhenUnfocused',
+        'updateAskUserQuestionSoundNotificationEnabled', 'updateAgents',
+        'agentOperationResult', 'agentImportPreviewResult', 'agentImportResult',
+      ]);
 
       window.showError = undefined;
       window.showSwitchSuccess = undefined;
@@ -382,6 +399,9 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       window.agentOperationResult = undefined;
       window.agentImportPreviewResult = undefined;
       window.agentImportResult = undefined;
+
+      // Restore the handlers that belonged to the chat surface.
+      registerSemanticWindowHandlers();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t]);

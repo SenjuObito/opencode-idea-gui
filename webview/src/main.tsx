@@ -37,7 +37,7 @@ import {
 } from './utils/surfaceDamagePulse';
 import { forceWebviewRepaint } from './utils/forceWebviewRepaint';
 import type { HostEventPayload } from './utils/hostEventTypes';
-import { registerHostEvents } from './utils/hostEventRegistry';
+import { registerHostEvents, registerSemanticWindowHandlers } from './utils/hostEventRegistry';
 
 // Silence noisy console output in production (including third-party libs).
 // console.error is preserved so ErrorBoundary and unhandled exceptions still
@@ -710,6 +710,11 @@ if (typeof window !== 'undefined') {
     forceWebviewRepaint('tab-activated');
   };
 }
+
+// Bind the catalog to the module-scope handlers (pre-mount placeholders and
+// the frame fence) before React starts. React replaces several of them later
+// and re-registers from registerWindowCallbacks.
+registerSemanticWindowHandlers();
 
 // UI preferences (theme / font scale / colors / behaviour toggles) are owned by
 // the extension host; register the push callback before React mounts so an early

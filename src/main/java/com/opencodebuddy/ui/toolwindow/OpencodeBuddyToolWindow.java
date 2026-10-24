@@ -499,7 +499,11 @@ public class OpencodeBuddyToolWindow implements ToolWindowFactory, DumbAware {
     public static void createNewTab(@NotNull Project project) {
         OpencodeBuddyChatWindow mainWindow = instances.get(project);
         if (mainWindow != null && !mainWindow.isDisposed()) {
-            mainWindow.callJavaScript("window.createSessionTab ? window.createSessionTab() : (window.onNewSession && window.onNewSession())");
+            // A lifecycle request, not a JavaScript expression: the old raw call
+            // was rejected by the function-name guard and the tab was never
+            // created.
+            mainWindow.publishTabEvent(
+                    com.opencodebuddy.tab.TabEvent.of("tab.create.requested").build());
         }
     }
 

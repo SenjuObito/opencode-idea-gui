@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { dispatchHostEnvelope } from './hostDispatcher';
-import { hostEventHandler, hostEventCount, registerHostEvents, resetHostEvents } from './hostEventRegistry';
+import {
+  hostEventHandler,
+  hostEventCount,
+  registerHostEvents,
+  registerSemanticWindowHandlers,
+  resetHostEvents,
+  unregisterSemanticWindowHandlers,
+} from './hostEventRegistry';
 
 describe('host event registry', () => {
   beforeEach(() => {
@@ -49,5 +56,18 @@ describe('host event registry', () => {
     });
 
     expect(legacy).toHaveBeenCalledWith('ses_a', 'hi');
+  });
+
+  it('binds mounted window handlers and drops them on unmount', () => {
+    const handler = vi.fn();
+    (window as any).onContentDelta = handler;
+
+    registerSemanticWindowHandlers();
+    expect(hostEventHandler('content.delta')).toBe(handler);
+
+    unregisterSemanticWindowHandlers(['onContentDelta']);
+    expect(hostEventHandler('content.delta')).toBeNull();
+
+    delete (window as any).onContentDelta;
   });
 });

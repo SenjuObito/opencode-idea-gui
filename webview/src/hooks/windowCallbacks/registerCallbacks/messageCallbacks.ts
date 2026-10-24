@@ -1105,7 +1105,7 @@ export function registerMessageCallbacks(
     setMessages([]);
   };
 
-  window.addErrorMessage = (message) => {
+  const addErrorMessage = (message: string) => {
     addToast(message, 'error');
   };
 
@@ -1472,5 +1472,6 @@ export function registerMessageCallbacks(
   'message.snapshot': window.updateMessages,
   'message.prepended': window.updateMessagesPrepend,
   'status.updated': window.updateStatus,
+  'message.error': addErrorMessage,
   });
 }

@@ -12,6 +12,7 @@ import { sendHostCommand, sendInterrupt, sendTabCommand } from '../../utils/brid
 import { clearSessionSequenceBarrier } from '../windowCallbacks/sequenceBarrier';
 import { clearTransition } from '../windowCallbacks/tabTransition';
 import { clearTabMergeCache } from '../../utils/messageMergeCache';
+import { registerHostEvents } from '../../utils/hostEventRegistry';
 import type { UseSessionTabsOptions } from './types';
 import type { useTabBarState } from './useTabBarState';
 
@@ -468,10 +469,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
   );
 
   useEffect(() => {
-    (window as any).createSessionTab = createTab;
-    return () => {
-      delete (window as any).createSessionTab;
-    };
+    registerHostEvents({ 'tab.create.requested': createTab });
   }, [createTab]);
 
   return {

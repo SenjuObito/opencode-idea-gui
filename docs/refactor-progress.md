@@ -650,3 +650,22 @@
   agent CRUD、CLI 状态、IDE 主题、文件打开、JSON 导出。
 - 至此前端不再有直发旧事件名的命令（`cardDebug` 是日志，保留原样），
   每条命令都带 `requestId`、走同一传输、由宿主统一幂等。
+
+## 第四轮补 15：A3 宿主侧收口
+
+- 把宿主最后 18 个只以函数名存在的事件补进双端语义目录：
+  `selection.*`、`message.error`、`toast.*`、`context.usage.dialog`、`cli.models`、
+  `history.data`、`chat.focus`、`files.*`、`tab.create.requested`。
+- 新增 `EventCatalogTest.everyHostCallJavaScriptHasASemanticName`：扫描
+  `src/main/java` 的 `callJavaScript("...")`，任何不在目录里的函数名直接失败。
+  当前宿主 71 处调用、21 个不同名称，全部命中语义目录。
+- `registerSemanticWindowHandlers()`：在 `main.tsx`、`registerWindowCallbacks`、
+  设置窗口挂载后，把已挂载的 handler 绑定到 `hostEventRegistry`，避免业务事件
+  依赖 dispatcher 的 window 回退。
+- 修掉 `OpencodeBuddyToolWindow.createNewTab` 的真实断链：原先把一整段三元表达式
+  当函数名传给 `callJavaScript`，被函数名守卫拒绝，新标签实际不会创建；现在发
+  `tab.create.requested` 事件。
+- 删除 `window.addSelectionInfo` / `addCodeSnippet` / `clearSelectionInfo` /
+  `addErrorMessage` / `createSessionTab` 五个全局，对应 handler 直接注册。
+- 验证：gradle 117 个测试类 / 864 用例 0 失败、tsc 0 错误、
+  vitest `173 文件 / 1513 测试`、`checkLegacyPatterns` 0 forbidden / 0 debt。

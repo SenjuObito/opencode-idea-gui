@@ -5,6 +5,7 @@ import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor 
 import type { UseWindowCallbacksOptions } from './useWindowCallbacks.js';
 import type { ClaudeMessage } from '../types/index.js';
 import { boundEvent, deltaEvent, sessionEvent, snapshotEvent, tailEvent } from '../utils/testEvents';
+import { hostEventHandler } from '../utils/hostEventRegistry';
 
 /**
  * Integration tests for useWindowCallbacks — verifies the real window callback
@@ -1344,7 +1345,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.addErrorMessage!('Something went wrong');
+      hostEventHandler('message.error')?.('Something went wrong');
     });
 
     expect(opts.addToast).toHaveBeenCalledWith('Something went wrong', 'error');
@@ -1426,7 +1427,7 @@ describe('useWindowCallbacks integration', () => {
 
     // Step 4: Java calls addErrorMessage
     act(() => {
-      window.addErrorMessage!('Failed to load session: network error');
+      hostEventHandler('message.error')?.('Failed to load session: network error');
     });
     expect(opts.addToast).toHaveBeenCalledWith('Failed to load session: network error', 'error');
 

@@ -34,7 +34,7 @@ import { registerUsageModeCallbacks } from './registerCallbacks/usageModeCallbac
 import { registerPermissionCallbacks } from './registerCallbacks/permissionCallbacks';
 import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCallbacks';
 import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../utils/hostEventTypes';
-import { registerHostEvents } from '../../utils/hostEventRegistry';
+import { registerHostEvents, registerSemanticWindowHandlers } from '../../utils/hostEventRegistry';
 
 function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, nextMessages: unknown[] | undefined): boolean {
   if (previousMessages === nextMessages) return true;
@@ -336,6 +336,9 @@ export function registerWindowCallbacks(
     'task.event': window.onTaskEvent,
     'todos.updated': window.onTodoUpdated,
   });
+  // Every semantic handler that is mounted now becomes part of the registry,
+  // so a host event never has to fall back to a `window.<fn>` lookup.
+  registerSemanticWindowHandlers();
 
   // =========================================================================
   // Slash Commands Setup

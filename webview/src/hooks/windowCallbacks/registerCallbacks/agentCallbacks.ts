@@ -41,10 +41,6 @@ export function registerAgentAndSelectionCallbacks(options: UseWindowCallbacksOp
     setContextInfo(null);
   };
 
-  window.addSelectionInfo = addSelectionInfo;
-  window.addCodeSnippet = addCodeSnippet;
-  window.clearSelectionInfo = clearSelectionInfo;
-
   registerHostEvents({
     'selection.info': addSelectionInfo,
     'selection.snippet': addCodeSnippet,

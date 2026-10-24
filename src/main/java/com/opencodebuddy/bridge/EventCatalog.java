@@ -144,6 +144,24 @@ public final class EventCatalog {
         byType.put("slash.commands", "updateSlashCommands");
         byType.put("settings.sound", "updateSoundNotificationConfig");
         byType.put("project.working.directory", "updateWorkingDirectory");
+        byType.put("selection.info", "addSelectionInfo");
+        byType.put("selection.snippet", "addCodeSnippet");
+        byType.put("selection.clear", "clearSelectionInfo");
+        byType.put("message.error", "addErrorMessage");
+        byType.put("toast.shown", "addToast");
+        byType.put("toast.error", "showToast");
+        byType.put("toast.operation.error", "showError");
+        byType.put("toast.operation.success", "showSuccess");
+        byType.put("toast.operation.success.i18n", "showSuccessI18n");
+        byType.put("toast.switch.success", "showSwitchSuccess");
+        byType.put("context.usage.dialog", "showContextUsageDialog");
+        byType.put("cli.models", "setCliModels");
+        byType.put("history.data", "setHistoryData");
+        byType.put("chat.focus", "focusChatInput");
+        byType.put("files.path.from.ide", "handleFilePathFromJava");
+        byType.put("files.diff.result", "handleDiffResult");
+        byType.put("files.edits.remove", "handleRemoveFileFromEdits");
+        byType.put("tab.create.requested", "createSessionTab");
 
         Map<String, String> byFunction = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : byType.entrySet()) {

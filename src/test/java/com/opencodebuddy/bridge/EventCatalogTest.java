@@ -10,8 +10,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -88,6 +90,25 @@ public class EventCatalogTest {
 
         assertEquals("the host and the webview disagree about the catalog",
                 EventCatalog.catalog(), webview);
+    }
+
+    @Test
+    public void everyHostCallJavaScriptHasASemanticName() throws IOException {
+        Pattern call = Pattern.compile("callJavaScript\\(\"((?:window\\.)?[A-Za-z_$][A-Za-z0-9_$.]*)\"");
+        Set<String> missing = new TreeSet<>();
+        try (Stream<Path> files = Files.walk(Path.of("src/main/java"))) {
+            for (Path file : (Iterable<Path>) files.filter(path -> path.toString().endsWith(".java"))::iterator) {
+                Matcher matcher = call.matcher(Files.readString(file, StandardCharsets.UTF_8));
+                while (matcher.find()) {
+                    String functionName = matcher.group(1).replaceFirst("^window\\.", "");
+                    if (!EventCatalog.catalog().containsValue(functionName)) {
+                        missing.add(functionName);
+                    }
+                }
+            }
+        }
+        assertTrue("these host calls still address a window function outside the catalog: " + missing,
+                missing.isEmpty());
     }
 
     @Test

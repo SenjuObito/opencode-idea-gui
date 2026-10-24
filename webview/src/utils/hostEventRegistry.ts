@@ -14,6 +14,8 @@
  * <p>The handlers have their own argument shapes (a session id and a payload,
  * a request id and a decision, …); the registry only forwards them.</p>
  */
+import { SEMANTIC_HANDLERS } from './semanticEvents';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type HostEventHandler = (...args: any[]) => void;
 
@@ -37,6 +39,35 @@ export function registerHostEvents(events: Record<string, HostEventHandler | und
 /** The handler of a semantic event type, or {@code null}. */
 export function hostEventHandler(type: string): HostEventHandler | null {
   return handlers.get(type) ?? null;
+}
+
+/**
+ * Register every semantic handler that the current window exposes.
+ *
+ * <p>The callback modules still assign legacy `window.<name>` functions while
+ * their internals are migrated. This helper binds the catalog entries to those
+ * functions once they are mounted, so the dispatcher's first lookup already
+ * finds them and only unmigrated paths use the window fallback.</p>
+ */
+export function registerSemanticWindowHandlers(): void {
+  if (typeof window === 'undefined') return;
+  const scope = window as unknown as Record<string, unknown>;
+  for (const [type, functionName] of Object.entries(SEMANTIC_HANDLERS)) {
+    const handler = scope[functionName];
+    if (typeof handler === 'function') {
+      handlers.set(type, handler as HostEventHandler);
+    }
+  }
+}
+
+/** Drop the registry entries that resolve to the given window function names. */
+export function unregisterSemanticWindowHandlers(functionNames: readonly string[]): void {
+  const names = new Set(functionNames);
+  for (const [type, functionName] of Object.entries(SEMANTIC_HANDLERS)) {
+    if (names.has(functionName)) {
+      handlers.delete(type);
+    }
+  }
 }
 
 /** How many event types are registered. */

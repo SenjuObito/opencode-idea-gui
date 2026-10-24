@@ -669,3 +669,28 @@
   `addErrorMessage` / `createSessionTab` 五个全局，对应 handler 直接注册。
 - 验证：gradle 117 个测试类 / 864 用例 0 失败、tsc 0 错误、
   vitest `173 文件 / 1513 测试`、`checkLegacyPatterns` 0 forbidden / 0 debt。
+
+## 第四轮补 16：A3 单一权威收口
+
+- `hostDispatcher` 删除 `window.<fn>` 回退：只查 `hostEventRegistry`，未注册事件
+  排队后按超时丢弃。`registerSemanticWindowHandlers()` 及其扫描逻辑一并删除。
+- 宿主目录补齐字体/语言/设置类事件：`font.ui.*`、`font.code.*`、`language.apply`、
+  `settings.auto.open.file`、`settings.permission.timeout`、`settings.send.shortcut`、
+  `settings.streaming`、`settings.commit.*`、`settings.ai.title.generation`、
+  `settings.statusbar.widget`、`settings.prompt.enhancer`。
+- `EventCatalogTest` 现在同时扫描 `callJavaScript("name")` 和 `"window.name"`
+  两种宿主写法，目录外的函数名直接失败。
+- 修复权限失败路径：`invalidateQuestionCard` 之前被 `forceCloseFrontendDialog`
+  误映射成 `prompt.closed`，现在发 `question.invalidated`，不再关闭错误弹窗。
+- webview 非 `__` 的 window 全局从 141 降到 12：消息、流式、权限、会话、用量、
+  MCP、技能、命令、设置、文件、剪贴板、节点进程、主题、CLI 模型、标签页重同步
+  等宿主回调全部改为 `registerHostEvents` 局部 handler；内部调用改为
+  `hostEventHandler(type)`。
+- 删除重复的 `onStreamingHeartbeat` 旧实现，保留带 tab 归属判断的版本。
+- `ClipboardHandlerTest` 改用内存 clipboard，避免 CI/锁屏机器上系统剪贴板不可用
+  导致与业务无关的失败。
+- 验证：gradle 117 个测试类 / 864 用例 0 失败、tsc 0 错误、
+  vitest `173 文件 / 1512 测试`、`checkLegacyPatterns` 0 forbidden / 0 debt。
+
+剩余 12 个 window 全局全部是组件内部动作（输入框引用/片段、Codex 分页、
+IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与宿主派发。

@@ -1,3 +1,4 @@
+import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   slashCommandProvider,
@@ -21,14 +22,13 @@ vi.mock('../../../utils/bridge', () => ({
 describe('slashCommandProvider', () => {
   beforeEach(() => {
     resetSlashCommandsState();
-    delete (window as any).updateSlashCommands;
   });
 
   it('filters builtin commands by query', async () => {
     setupSlashCommandsCallback();
     // Simulate backend sending commands list
-    if (typeof (window as any).updateSlashCommands === 'function') {
-      (window as any).updateSlashCommands(JSON.stringify([
+    if (typeof hostEventHandler('slash.commands') === 'function') {
+      hostEventHandler('slash.commands')?.(JSON.stringify([
         { name: 'init', description: 'Initialize repository' },
         { name: 'compact', description: 'Compact conversation' },
       ]));
@@ -43,8 +43,8 @@ describe('slashCommandProvider', () => {
 
   it('always includes local /clear command', async () => {
     setupSlashCommandsCallback();
-    if (typeof (window as any).updateSlashCommands === 'function') {
-      (window as any).updateSlashCommands(JSON.stringify([]));
+    if (typeof hostEventHandler('slash.commands') === 'function') {
+      hostEventHandler('slash.commands')?.(JSON.stringify([]));
     }
 
     const controller = new AbortController();

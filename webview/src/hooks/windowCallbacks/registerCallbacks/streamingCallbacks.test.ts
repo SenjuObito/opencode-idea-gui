@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { registerStreamingCallbacks } from './streamingCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
+import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import { sessionEvent } from '../../../utils/testEvents';
 
 type Ref<T> = { current: T };
@@ -80,7 +81,7 @@ describe('onStreamStart bubble routing', () => {
       1,
     );
 
-    window.onStreamStart!();
+    hostEventHandler('turn.started')!();
 
     const messages = getMessages();
     expect(messages).toHaveLength(3);
@@ -104,7 +105,7 @@ describe('onStreamStart bubble routing', () => {
       1,
     );
 
-    window.onStreamStart!(...sessionEvent(null, { mode: 'replay' }));
+    hostEventHandler('turn.started')!(...sessionEvent(null, { mode: 'replay' }));
 
     const messages = getMessages();
     expect(messages).toHaveLength(2);
@@ -123,7 +124,7 @@ describe('onStreamStart bubble routing', () => {
       1,
     );
 
-    window.onStreamStart!();
+    hostEventHandler('turn.started')!();
 
     const messages = getMessages();
     expect(messages).toHaveLength(3);
@@ -142,7 +143,7 @@ describe('onStreamStart bubble routing', () => {
       1,
     );
 
-    window.onStreamStart!();
+    hostEventHandler('turn.started')!();
 
     const messages = getMessages();
     expect(messages).toHaveLength(2);
@@ -164,7 +165,7 @@ describe('onStreamStart bubble routing', () => {
       1,
     );
 
-    window.onStreamStart!();
+    hostEventHandler('turn.started')!();
 
     const messages = getMessages();
     // No extra bubble: the empty placeholder is reused for turn 2.
@@ -184,8 +185,8 @@ describe('onStreamStart bubble routing', () => {
       0,
     );
 
-    window.onStreamStart!(); // turn 1 bubble (empty)
-    window.onStreamStart!(); // duplicate — must reuse, not append
+    hostEventHandler('turn.started')!(); // turn 1 bubble (empty)
+    hostEventHandler('turn.started')!(); // duplicate — must reuse, not append
 
     const messages = getMessages();
     const assistantBubbles = messages.filter((m) => m.type === 'assistant');
@@ -226,7 +227,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
     );
 
     // No onStreamStart happened; streaming refs are at their idle defaults.
-    window.onStreamEnd!(...sessionEvent('ses_test', {}));
+    hostEventHandler('turn.ended')!(...sessionEvent('ses_test', {}));
 
     expect(window.__deniedToolIds).toBeDefined();
     expect(window.__deniedToolIds!.has('tool-1')).toBe(true);
@@ -249,7 +250,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
     );
     const before = getMessages();
 
-    window.onStreamEnd!(...sessionEvent('ses_test', {}));
+    hostEventHandler('turn.ended')!(...sessionEvent('ses_test', {}));
 
     // Nothing dangling → no id denied, and the list reference is unchanged.
     expect(window.__deniedToolIds?.has('tool-2') ?? false).toBe(false);
@@ -291,7 +292,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
       },
     ]);
 
-    window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '99' }));
+    hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '99' }));
 
     const messages = getMessages();
     expect(messages).toHaveLength(3);

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerWindowCallbacks } from '../registerCallbacks';
+import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 
 type Ref<T> = { current: T };
@@ -51,11 +52,11 @@ describe('StatusPanel subagent history routing', () => {
       selectedModelRef: ref('default'),
     } as unknown as UseWindowCallbacksOptions;
 
-    registerWindowCallbacks(options, ref(vi.fn() as any), vi.fn());
+    registerWindowCallbacks(options, vi.fn());
   });
 
   it('writes the active tab transcript into active state', () => {
-    window.onSubagentHistoryLoaded?.(payload('ses_active'));
+    hostEventHandler('subagent.history')?.(payload('ses_active'));
 
     expect(updateTab).not.toHaveBeenCalled();
     expect(setSubagentHistories).toHaveBeenCalledTimes(1);
@@ -64,7 +65,7 @@ describe('StatusPanel subagent history routing', () => {
   });
 
   it('writes a background tab transcript into that tab only', () => {
-    window.onSubagentHistoryLoaded?.(payload('ses_bg', 'tool-bg'));
+    hostEventHandler('subagent.history')?.(payload('ses_bg', 'tool-bg'));
 
     expect(setSubagentHistories).not.toHaveBeenCalled();
     expect(updateTab).toHaveBeenCalledTimes(1);
@@ -76,7 +77,7 @@ describe('StatusPanel subagent history routing', () => {
   });
 
   it('accepts the named subagent.history payload', () => {
-    window.onSubagentHistoryLoaded?.({ history: JSON.parse(payload('ses_active')) });
+    hostEventHandler('subagent.history')?.({ history: JSON.parse(payload('ses_active')) });
 
     expect(setSubagentHistories).toHaveBeenCalledTimes(1);
     const updater = setSubagentHistories.mock.calls[0][0] as (prev: Record<string, any>) => Record<string, any>;
@@ -84,7 +85,7 @@ describe('StatusPanel subagent history routing', () => {
   });
 
   it('drops a transcript whose session has no tab instead of leaking it', () => {
-    window.onSubagentHistoryLoaded?.(payload('ses_unknown', 'tool-unknown'));
+    hostEventHandler('subagent.history')?.(payload('ses_unknown', 'tool-unknown'));
 
     expect(updateTab).not.toHaveBeenCalled();
     expect(setSubagentHistories).not.toHaveBeenCalled();

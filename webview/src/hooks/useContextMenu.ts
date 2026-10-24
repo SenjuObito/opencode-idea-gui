@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { sendToJava } from '../utils/bridge.js';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../utils/hostEventRegistry';
 
 interface ContextMenuState {
   visible: boolean;
@@ -122,9 +123,7 @@ export function pasteAtCursor(savedRange: Range | null, el: HTMLElement, onCompl
   // preventing accidental cancellation of a concurrent paste call.
   const handler = (text: string) => {
     clearTimeout(timeoutId);
-    if (window.onClipboardRead === handler) {
-      window.onClipboardRead = undefined;
-    }
+    clearHandler();
     if (!text || !el.isConnected) return;
     el.focus();
     restoreRange(savedRange);
@@ -132,13 +131,15 @@ export function pasteAtCursor(savedRange: Range | null, el: HTMLElement, onCompl
     onComplete?.();
   };
 
-  const timeoutId = setTimeout(() => {
-    if (window.onClipboardRead === handler) {
-      window.onClipboardRead = undefined;
+  const clearHandler = () => {
+    if (hostEventHandler('clipboard.read') === handler) {
+      unregisterHostEvents(['clipboard.read']);
     }
-  }, 3000);
+  };
 
-  window.onClipboardRead = handler;
+  const timeoutId = setTimeout(clearHandler, 3000);
+
+  registerHostEvents({ 'clipboard.read': handler });
   sendToJava('read_clipboard', '');
 }
 

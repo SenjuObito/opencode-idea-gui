@@ -10,6 +10,7 @@ import type { PermissionMode, ReasoningEffort } from '../../components/ChatInput
 import { resolveSessionModel } from '../../components/ChatInputBox/modelSelectUtils';
 import { sendSessionCommand, sendHostCommand, sendTabCommand, cardDebugLog } from '../../utils/bridge';
 import { observeHostEpoch, resetHostDispatcherEpochs } from '../../utils/hostDispatcher';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 import { endTransition, transitionTargetFor } from '../windowCallbacks/tabTransition';
 import type { UseSessionTabsOptions } from './types';
 import type { useTabBarState } from './useTabBarState';
@@ -343,9 +344,11 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setCustomSessionTitle(target.title || null);
     };
 
-    window.onTabResync = resync;
+    registerHostEvents({ 'tab.resync': resync });
     return () => {
-      delete window.onTabResync;
+      if (hostEventHandler('tab.resync') === resync) {
+        unregisterHostEvents(['tab.resync']);
+      }
     };
   }, [
     setCurrentSessionId,

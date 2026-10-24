@@ -41,12 +41,11 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     forceCloseAskUserQuestionDialog,
     forceClosePlanApprovalDialog,
     invalidateQuestionCard,
-    invalidatePermissionCard,
   } = options;
 
   // Host-side failures (e.g. opencode.replyQuestion / replyPermission errors
   // surfaced by PermissionHandler, or daemon startup errors) land here as a user-visible toast.
-  window.showToast = (message) => {
+  const showToast = (message: unknown) => {
     cardDebugLog(`[PCard][webview] showToast: ${message}`);
     addToast(String(message ?? ''), 'error');
   };
@@ -61,7 +60,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
 
   // A question reply failed server-side — flip the optimistic "answered"
   // record back to an honest skipped state.
-  window.invalidateQuestionCard = (requestId) => {
+  const handleInvalidateQuestionCard = (requestId: string) => {
     cardDebugLog(`[PCard][webview] invalidateQuestionCard called: requestId=${requestId}`);
     if (requestId) {
       removeQuestionAnswerByRequestId(requestId);
@@ -71,12 +70,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
 
   // A permission reply failed server-side — flip the optimistic
   // approved/denied record back to a denied state.
-  window.invalidatePermissionCard = (channelId) => {
-    cardDebugLog(`[PCard][webview] invalidatePermissionCard called: channelId=${channelId}`);
-    invalidatePermissionCard?.(channelId ?? '');
-  };
-
-  window.showPermissionDialog = (payload: HostEventPayload | undefined) => {
+  const showPermissionDialog = (payload: HostEventPayload | undefined) => {
     try {
       const request = payload as any;
       if (!request || !request.channelId) {
@@ -144,7 +138,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   // openRefs stay true, every subsequent show*Dialog enqueues silently behind
   // the orphaned dialog, and the user appears to "lose" all further prompts
   // until they reload the tab — see issue #1360.
-  window.forceClosePermissionDialog = (payload: HostEventPayload) => {
+  const handleForceClosePermissionDialog = (payload: HostEventPayload) => {
     const channelId = String(payload?.requestId ?? '');
     forceClosePermissionDialog(channelId || null);
     if (channelId && window.__sessionTabsStore) {
@@ -156,7 +150,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     }
   };
 
-  window.forceCloseAskUserQuestionDialog = (payload: HostEventPayload) => {
+  const handleForceCloseAskUserQuestionDialog = (payload: HostEventPayload) => {
     const requestId = String(payload?.requestId ?? '');
     forceCloseAskUserQuestionDialog(requestId || null);
     if (requestId && window.__sessionTabsStore) {
@@ -168,7 +162,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     }
   };
 
-  window.forceClosePlanApprovalDialog = (payload: HostEventPayload) => {
+  const handleForceClosePlanApprovalDialog = (payload: HostEventPayload) => {
     const requestId = String(payload?.requestId ?? '');
     forceClosePlanApprovalDialog(requestId || null);
   };
@@ -180,11 +174,11 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     const pending = window.__pendingPermissionDialogRequests.slice();
     window.__pendingPermissionDialogRequests = [];
     for (const payload of pending) {
-      window.showPermissionDialog?.(parseQueuedPrompt(payload));
+      showPermissionDialog(parseQueuedPrompt(payload));
     }
   }
 
-  window.showAskUserQuestionDialog = (payload: HostEventPayload | undefined) => {
+  const showAskUserQuestionDialog = (payload: HostEventPayload | undefined) => {
     try {
       const request = payload as any;
       if (!request || !request.requestId) {
@@ -236,7 +230,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   };
 
   // Host sends complete Q&A data after the user answers.
-  window.onQuestionAnswered = (json) => {
+  const onQuestionAnswered = (json: string) => {
     try {
       const data = typeof json === 'string' ? JSON.parse(json) : json;
       cardDebugLog(`[PCard][webview] onQuestionAnswered callId="${data.callId}" requestId="${data.requestId}" questions=${data.questions?.length ?? 0} answers=`, data.answers);
@@ -254,11 +248,11 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     const pending = window.__pendingAskUserQuestionDialogRequests.slice();
     window.__pendingAskUserQuestionDialogRequests = [];
     for (const payload of pending) {
-      window.showAskUserQuestionDialog?.(parseQueuedPrompt(payload));
+      showAskUserQuestionDialog(parseQueuedPrompt(payload));
     }
   }
 
-  window.showPlanApprovalDialog = (payload: HostEventPayload) => {
+  const showPlanApprovalDialog = (payload: HostEventPayload | undefined) => {
     try {
       const request = payload as any;
       if (!request || !request.requestId) {
@@ -294,18 +288,20 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     const pending = window.__pendingPlanApprovalDialogRequests.slice();
     window.__pendingPlanApprovalDialogRequests = [];
     for (const payload of pending) {
-      window.showPlanApprovalDialog?.(parseQueuedPrompt(payload));
+      showPlanApprovalDialog(parseQueuedPrompt(payload));
     }
   }
 
-  // The semantic catalog is the routing table: the dispatcher looks the
-  // handler up here first, the window globals stay for the legacy path.
+  // The semantic catalog is the routing table.
   registerHostEvents({
-  'prompt.question.closed': window.forceCloseAskUserQuestionDialog,
-  'prompt.closed': window.forceClosePermissionDialog,
-  'prompt.plan.closed': window.forceClosePlanApprovalDialog,
-  'question.requested': window.showAskUserQuestionDialog,
-  'permission.requested': window.showPermissionDialog,
-  'plan.requested': window.showPlanApprovalDialog,
+    'prompt.question.closed': handleForceCloseAskUserQuestionDialog,
+    'prompt.closed': handleForceClosePermissionDialog,
+    'prompt.plan.closed': handleForceClosePlanApprovalDialog,
+    'question.requested': showAskUserQuestionDialog,
+    'permission.requested': showPermissionDialog,
+    'plan.requested': showPlanApprovalDialog,
+    'question.answered': onQuestionAnswered,
+    'question.invalidated': handleInvalidateQuestionCard,
+    'toast.error': showToast,
   });
 }

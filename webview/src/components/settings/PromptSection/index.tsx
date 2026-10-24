@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { sendHostCommand, sendWindowCommand } from '../../../utils/bridge';
+import { registerHostEvents, unregisterHostEvents } from '../../../utils/hostEventRegistry';
 import { getTabStore } from '../../../store/tabStore';
 import styles from './style.module.less';
 
@@ -189,21 +190,15 @@ const PromptSection = () => {
       }
     };
 
-    window.onCommandsList = onList;
-    window.__onCommandsList = onList;
-    window.onCommandsSaved = onSaved;
-    window.__onCommandsSaved = onSaved;
-    window.onCommandsDeleted = onDeleted;
-    window.__onCommandsDeleted = onDeleted;
+    registerHostEvents({
+      'commands.listed': onList,
+      'commands.saved': onSaved,
+      'commands.deleted': onDeleted,
+    });
 
     return () => {
       window.removeEventListener('on-commands-list', handler as EventListener);
-      window.onCommandsList = undefined;
-      window.__onCommandsList = undefined;
-      window.onCommandsSaved = undefined;
-      window.__onCommandsSaved = undefined;
-      window.onCommandsDeleted = undefined;
-      window.__onCommandsDeleted = undefined;
+      unregisterHostEvents(['commands.listed', 'commands.saved', 'commands.deleted']);
     };
   }, [scope]);
 
@@ -220,9 +215,9 @@ const PromptSection = () => {
     window.addEventListener('on-commands-read', handler as EventListener);
     const onRead = (json: string) => {
       window.dispatchEvent(new CustomEvent('on-commands-read', { detail: json }));
+      unregisterHostEvents(['commands.detail']);
     };
-    window.onCommandsRead = onRead;
-    window.__onCommandsRead = onRead;
+    registerHostEvents({ 'commands.detail': onRead });
     sendCommandsCommand('commands.read', { scope, name });
   };
 

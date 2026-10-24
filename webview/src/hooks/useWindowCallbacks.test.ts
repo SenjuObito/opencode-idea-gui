@@ -163,7 +163,7 @@ describe('useWindowCallbacks integration', () => {
     const bridgeCallsBeforeRestore = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.length;
 
     act(() => {
-      window.applyBackendTabState?.(JSON.stringify({
+      hostEventHandler('tab.state')?.(JSON.stringify({
         provider: 'claude',
         model: 'claude-opus-4-8[1m]',
         permissionMode: 'default',
@@ -234,7 +234,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.onUsageUpdate!(...sessionEvent('session-bg', { usage: JSON.stringify({
+      hostEventHandler('usage.updated')!(...sessionEvent('session-bg', { usage: JSON.stringify({
         percentage: 1,
         usedTokens: 2000,
         maxTokens: 200000,
@@ -254,7 +254,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.onUsageUpdate!(...sessionEvent(null, { usage: JSON.stringify({
+      hostEventHandler('usage.updated')!(...sessionEvent(null, { usage: JSON.stringify({
         percentage: 1,
         usedTokens: 2000,
         maxTokens: 200000,
@@ -317,7 +317,7 @@ describe('useWindowCallbacks integration', () => {
 
     // Simulate: Java calls historyLoadComplete on success
     act(() => {
-      window.historyLoadComplete!();
+      hostEventHandler('session.loaded')!();
     });
 
     expect(isTabTransitioning('tab-active')).toBe(false);
@@ -348,7 +348,7 @@ describe('useWindowCallbacks integration', () => {
     };
 
     act(() => {
-      window.historyLoadComplete!();
+      hostEventHandler('session.loaded')!();
     });
 
     expect(opts.addToast).toHaveBeenCalledWith('history.sessionDeleted', 'success');
@@ -367,7 +367,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.historyLoadComplete!();
+      hostEventHandler('session.loaded')!();
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -389,7 +389,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.historyLoadComplete!();
+      hostEventHandler('session.loaded')!();
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -417,7 +417,7 @@ describe('useWindowCallbacks integration', () => {
     beginTransition('tab-new', null, 'transition-2');
 
     act(() => {
-      window.setSessionId!(...boundEvent('new-session-123', undefined, 'tab-new'));
+      hostEventHandler('session.bound')!(...boundEvent('new-session-123', undefined, 'tab-new'));
     });
 
     expect(isTabTransitioning('tab-new')).toBe(false);
@@ -440,7 +440,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!(...boundEvent('sess-bg', undefined, 'tab-bg'));
+      hostEventHandler('session.bound')!(...boundEvent('sess-bg', undefined, 'tab-bg'));
     });
 
     expect(updateTabSessionId).toHaveBeenCalledWith('tab-bg', 'sess-bg');
@@ -463,7 +463,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!(...boundEvent('sess-bg', undefined, 'tab-bg'));
+      hostEventHandler('session.bound')!(...boundEvent('sess-bg', undefined, 'tab-bg'));
     });
 
     expect(updateTabSessionId).toHaveBeenCalledWith('tab-bg', 'sess-bg');
@@ -483,7 +483,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!(...boundEvent('sess-unknown', undefined, 'tab-missing'));
+      hostEventHandler('session.bound')!(...boundEvent('sess-unknown', undefined, 'tab-missing'));
     });
 
     expect(updateTabSessionId).not.toHaveBeenCalled();
@@ -504,7 +504,7 @@ describe('useWindowCallbacks integration', () => {
 
     beginTransition('tab-active', 'sess-target', 'transition-unknown');
     act(() => {
-      window.setSessionId!(...boundEvent('sess-unknown', 'sess-other'));
+      hostEventHandler('session.bound')!(...boundEvent('sess-unknown', 'sess-other'));
     });
 
     expect(updateTabSessionId).not.toHaveBeenCalled();
@@ -525,7 +525,7 @@ describe('useWindowCallbacks integration', () => {
     const longAiTitle = 'A very long AI-generated session title that exceeds fifty characters easily';
 
     act(() => {
-      window.updateSessionTitle!(...sessionEvent('sess-123', { title: longAiTitle }));
+      hostEventHandler('tab.title.changed')!(...sessionEvent('sess-123', { title: longAiTitle }));
     });
 
     expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-123', longAiTitle);
@@ -540,7 +540,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateSessionTitle!(...sessionEvent('sess-stale', { title: 'Stale AI title' }));
+      hostEventHandler('tab.title.changed')!(...sessionEvent('sess-stale', { title: 'Stale AI title' }));
     });
 
     // The history list entry is still synced so a background session shows its
@@ -557,7 +557,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateSessionTitle!(...sessionEvent('sess-running', { title: 'Title from the previous session' }));
+      hostEventHandler('tab.title.changed')!(...sessionEvent('sess-running', { title: 'Title from the previous session' }));
     });
 
     // A newly created tab has no session yet; a title generated for the
@@ -573,7 +573,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateSessionTitle!(...sessionEvent('sess-123', { title: '   ' }));
+      hostEventHandler('tab.title.changed')!(...sessionEvent('sess-123', { title: '   ' }));
     });
 
     expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
@@ -596,7 +596,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!(...boundEvent('sess-new', undefined, 'tab-new'));
+      hostEventHandler('session.bound')!(...boundEvent('sess-new', undefined, 'tab-new'));
     });
 
     expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-new', longTitle);
@@ -617,7 +617,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.setSessionId!(...boundEvent('sess-new', undefined, 'tab-new'));
+      hostEventHandler('session.bound')!(...boundEvent('sess-new', undefined, 'tab-new'));
     });
 
     expect(opts.updateHistoryTitle).toHaveBeenCalledWith('sess-new', shortTitle);
@@ -638,7 +638,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify(staleMessages)));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify(staleMessages)));
     });
 
     // setMessages should NOT be called because guard is active
@@ -657,7 +657,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify(freshMessages)));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify(freshMessages)));
     });
 
     // setMessages SHOULD be called
@@ -677,7 +677,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_target_123', JSON.stringify(freshMessages), '1'));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_target_123', JSON.stringify(freshMessages), '1'));
     });
 
     expect(opts.setMessages).toHaveBeenCalled();
@@ -689,14 +689,14 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([]), 1));
-      window.historyLoadComplete!(...sessionEvent('ses_test', { messageCount: '1' }));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([]), 1));
+      hostEventHandler('session.loaded')!(...sessionEvent('ses_test', { messageCount: '1' }));
     });
 
     expect(window.__pendingHistoryRefreshMessageCount).toBe(1);
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'user', content: 'restored history' },
       ])));
     });
@@ -706,7 +706,7 @@ describe('useWindowCallbacks integration', () => {
     expect(historyCommitCalls().length).toBeGreaterThan(0);
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'user', content: 'normal follow-up' },
       ])));
     });
@@ -769,12 +769,12 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'assistant', content: 'already restored' },
       ])));
     });
     act(() => {
-      window.historyLoadComplete!(...sessionEvent('ses_test', { messageCount: 1 }));
+      hostEventHandler('session.loaded')!(...sessionEvent('ses_test', { messageCount: 1 }));
     });
 
     expect(window.__pendingHistoryRefreshMessageCount).toBeUndefined();
@@ -792,8 +792,8 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.historyLoadComplete!(...sessionEvent('ses_test', { messageCount: 1 }));
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('session.loaded')!(...sessionEvent('ses_test', { messageCount: 1 }));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'assistant', content: 'stale history' },
       ]), 4));
     });
@@ -801,7 +801,7 @@ describe('useWindowCallbacks integration', () => {
     expect(window.__pendingHistoryRefreshMessageCount).toBe(1);
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'assistant', content: 'current history' },
       ]), 6));
     });
@@ -818,9 +818,9 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.historyLoadComplete!(...sessionEvent('ses_test', { messageCount: 1 }));
-      window.clearMessages!();
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('session.loaded')!(...sessionEvent('ses_test', { messageCount: 1 }));
+      hostEventHandler('session.cleared')!();
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'assistant', content: 'new session' },
       ])));
     });
@@ -975,7 +975,7 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages(initial);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'new-398' },
       { type: 'assistant', content: 'new-399' },
     ]), 398, 7)));
@@ -1016,7 +1016,7 @@ describe('useWindowCallbacks integration', () => {
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 100,
       }));
-      window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+      hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
         { type: 'user', content: 'updated-398' },
         { type: 'assistant', content: 'updated-399' },
       ]), 398));
@@ -1056,7 +1056,7 @@ describe('useWindowCallbacks integration', () => {
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
       }));
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
         { type: 'user', content: 'current-user' },
         { type: 'assistant', content: 'updated-answer' },
         { type: 'user', content: 'new-user' },
@@ -1074,7 +1074,7 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
       {
         type: 'user',
         content: 'question',
@@ -1108,21 +1108,21 @@ describe('useWindowCallbacks integration', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'message-220' },
       { type: 'assistant', content: 'message-221' },
     ]), 220)));
     expect(buffer.current.map((message) => message.content)).toEqual(['message-220', 'message-221']);
     expect(window.__messageBaseIndex).toBe(220);
 
-    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'message-221' },
       { type: 'assistant', content: 'message-222' },
     ]), 221)));
     expect(buffer.current.map((message) => message.content)).toEqual(['message-221', 'message-222']);
     expect(window.__messageBaseIndex).toBe(221);
 
-    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'compacted-170' },
       { type: 'assistant', content: 'compacted-171' },
     ]), 170)));
@@ -1138,10 +1138,10 @@ describe('useWindowCallbacks integration', () => {
     window.__sessionMinAcceptedUpdateSequence = new Map([['ses_test', 8]]);
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
       { type: 'assistant', content: 'stale' },
     ]), 1, 7)));
-    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
       { type: 'assistant', content: 'invalid-base' },
     ]), '1oops', 9)));
 
@@ -1152,11 +1152,11 @@ describe('useWindowCallbacks integration', () => {
   it('resets the tail base when a full snapshot arrives', () => {
     const { opts, buffer } = createOptsWithMessages([]);
     renderHook(() => useWindowCallbacks(opts));
-    act(() => window.updateMessageTail!(...tailEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.tail')!(...tailEvent('ses_test', JSON.stringify([
       { type: 'assistant', content: 'tail-only' },
     ]), 220)));
 
-    act(() => window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+    act(() => hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
       { type: 'user', content: 'full-user' },
       { type: 'assistant', content: 'full-answer' },
     ]))));
@@ -1176,7 +1176,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.patchMessageUuid?.(...sessionEvent('sess-123', { content: 'Generated attachment summary', uuid: 'uuid-123' }));
+      hostEventHandler('message.uuid.patched')?.(...sessionEvent('sess-123', { content: 'Generated attachment summary', uuid: 'uuid-123' }));
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1217,7 +1217,7 @@ describe('useWindowCallbacks integration', () => {
     beginTransition('tab-active', 'ses_target', 'transition-uuid');
 
     act(() => {
-      window.patchMessageUuid?.(...sessionEvent('sess-123', { content: 'hello', uuid: 'uuid-guarded' }));
+      hostEventHandler('message.uuid.patched')?.(...sessionEvent('sess-123', { content: 'hello', uuid: 'uuid-guarded' }));
     });
 
     expect(opts.setMessages).not.toHaveBeenCalled();
@@ -1231,7 +1231,7 @@ describe('useWindowCallbacks integration', () => {
     beginTransition('tab-active', 'ses_target', 'transition-status');
 
     act(() => {
-      window.updateStatus!(...sessionEvent(null, { status: 'warming runtime' }));
+      hostEventHandler('status.updated')!(...sessionEvent(null, { status: 'warming runtime' }));
     });
 
     expect(isTabTransitioning('tab-active')).toBe(true);
@@ -1245,7 +1245,7 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
     act(() => {
-      window.updatePermissionDialogTimeout!(JSON.stringify({ permissionDialogTimeoutSeconds: 120 }));
+      hostEventHandler('settings.permission.timeout')!(JSON.stringify({ permissionDialogTimeoutSeconds: 120 }));
     });
     expect(opts.setPermissionDialogTimeoutSeconds).toHaveBeenCalledWith(120);
   });
@@ -1254,7 +1254,7 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
     act(() => {
-      window.updatePermissionDialogTimeout!('not-json');
+      hostEventHandler('settings.permission.timeout')!('not-json');
     });
     expect(opts.setPermissionDialogTimeoutSeconds).not.toHaveBeenCalled();
   });
@@ -1264,12 +1264,12 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updatePermissionDialogTimeout!(JSON.stringify({ permissionDialogTimeoutSeconds: 1 }));
+      hostEventHandler('settings.permission.timeout')!(JSON.stringify({ permissionDialogTimeoutSeconds: 1 }));
     });
     expect(opts.setPermissionDialogTimeoutSeconds).toHaveBeenLastCalledWith(30);
 
     act(() => {
-      window.updatePermissionDialogTimeout!(JSON.stringify({ permissionDialogTimeoutSeconds: 99999 }));
+      hostEventHandler('settings.permission.timeout')!(JSON.stringify({ permissionDialogTimeoutSeconds: 99999 }));
     });
     expect(opts.setPermissionDialogTimeoutSeconds).toHaveBeenLastCalledWith(3600);
   });
@@ -1279,12 +1279,12 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.updatePermissionDialogTimeout!(JSON.stringify({ otherField: 123 }));
+      hostEventHandler('settings.permission.timeout')!(JSON.stringify({ otherField: 123 }));
     });
     expect(opts.setPermissionDialogTimeoutSeconds).toHaveBeenLastCalledWith(300);
 
     act(() => {
-      window.updatePermissionDialogTimeout!(JSON.stringify({ permissionDialogTimeoutSeconds: 'bad' }));
+      hostEventHandler('settings.permission.timeout')!(JSON.stringify({ permissionDialogTimeoutSeconds: 'bad' }));
     });
     expect(opts.setPermissionDialogTimeoutSeconds).toHaveBeenLastCalledWith(300);
   });
@@ -1367,7 +1367,7 @@ describe('useWindowCallbacks integration', () => {
     window.__prependedHistoryMessageCount = 12;
 
     act(() => {
-      window.clearMessages!();
+      hostEventHandler('session.cleared')!();
     });
 
     expect(opts.setMessages).toHaveBeenCalledWith([]);
@@ -1394,7 +1394,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.clearMessages!();
+      hostEventHandler('session.cleared')!();
     });
 
     // Turn ID should be reset to -1 (no active streaming turn)
@@ -1415,13 +1415,13 @@ describe('useWindowCallbacks integration', () => {
 
     // Step 2: During transition, stale messages are blocked
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'stale' }])));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'stale' }])));
     });
     expect(opts.setMessages).not.toHaveBeenCalled();
 
     // Step 3: Java calls historyLoadComplete (failure path also calls this before addErrorMessage)
     act(() => {
-      window.historyLoadComplete!();
+      hostEventHandler('session.loaded')!();
     });
     expect(isTabTransitioning('tab-active')).toBe(false);
 
@@ -1433,7 +1433,7 @@ describe('useWindowCallbacks integration', () => {
 
     // Step 5: After guard release, new messages work
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'user', content: 'new message' }])));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'user', content: 'new message' }])));
     });
     expect(opts.setMessages).toHaveBeenCalled();
   });
@@ -1443,24 +1443,24 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.onStreamStart?.();
+      hostEventHandler('turn.started')?.();
     });
 
     act(() => {
-      window.onStreamEnd?.(...sessionEvent('ses_test', { sequence: '10' }));
+      hostEventHandler('turn.ended')?.(...sessionEvent('ses_test', { sequence: '10' }));
     });
 
     opts.isStreamingRef.current = false;
     (opts.setMessages as any).mockClear();
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'stale backlog', timestamp: new Date().toISOString() }]), '9'));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'stale backlog', timestamp: new Date().toISOString() }]), '9'));
     });
 
     expect(opts.setMessages).not.toHaveBeenCalled();
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'final snapshot', timestamp: new Date().toISOString() }])));
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([{ type: 'assistant', content: 'final snapshot', timestamp: new Date().toISOString() }])));
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1505,7 +1505,7 @@ describe('useWindowCallbacks integration', () => {
     ];
 
     act(() => {
-      window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
         {
           type: 'assistant',
           content: 'Working',
@@ -1541,7 +1541,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.onStreamStart?.(...sessionEvent(null, { mode: 'replay' }));
+      hostEventHandler('turn.started')?.(...sessionEvent(null, { mode: 'replay' }));
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1567,7 +1567,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.onStreamStart?.();
+      hostEventHandler('turn.started')?.();
     });
 
     expect(opts.setMessages).toHaveBeenCalledTimes(1);
@@ -1610,7 +1610,7 @@ describe('useWindowCallbacks integration', () => {
     };
 
     act(() => {
-      window.onSubagentHistoryLoaded?.(JSON.stringify(firstPayload));
+      hostEventHandler('subagent.history')?.(JSON.stringify(firstPayload));
     });
 
     expect(opts.setSubagentHistories).toHaveBeenCalledTimes(1);
@@ -1618,14 +1618,14 @@ describe('useWindowCallbacks integration', () => {
     const initialState = firstUpdater({});
 
     act(() => {
-      window.onSubagentHistoryLoaded?.(JSON.stringify(firstPayload));
+      hostEventHandler('subagent.history')?.(JSON.stringify(firstPayload));
     });
 
     const secondUpdater = (opts.setSubagentHistories as any).mock.calls[1][0] as (prev: Record<string, unknown>) => Record<string, unknown>;
     expect(secondUpdater(initialState)).toBe(initialState);
 
     act(() => {
-      window.onSubagentHistoryLoaded?.(JSON.stringify({
+      hostEventHandler('subagent.history')?.(JSON.stringify({
         ...firstPayload,
         messages: [{ type: 'assistant', content: [{ type: 'text', text: 'final result' }] }],
       }));
@@ -1676,14 +1676,14 @@ describe('useWindowCallbacks integration', () => {
 
       // Simulate onStreamStart to set up streaming state
       act(() => {
-        window.onStreamStart!();
+        hostEventHandler('turn.started')!();
       });
 
       const turnId = opts.streamingTurnIdRef.current;
 
       // First onStreamEnd — should process
       act(() => {
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '10' }));
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '10' }));
       });
       expect(window.__streamEndProcessedTurnId).toBe(turnId);
 
@@ -1692,7 +1692,7 @@ describe('useWindowCallbacks integration', () => {
 
       // Second onStreamEnd with same turn — should be no-op
       act(() => {
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '10' }));
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '10' }));
       });
 
       // setStreamingActive should not have been called again (idempotency)
@@ -1708,7 +1708,7 @@ describe('useWindowCallbacks integration', () => {
 
       // New turn starts
       act(() => {
-        window.onStreamStart!();
+        hostEventHandler('turn.started')!();
       });
 
       expect(window.__streamEndProcessedTurnId).toBeUndefined();
@@ -1744,8 +1744,8 @@ describe('useWindowCallbacks integration', () => {
       const { opts } = createOptsWithMessages([assistantWithThreeTools, userWithOneResult]);
       renderHook(() => useWindowCallbacks(opts));
 
-      act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '5' })); });
+      act(() => { hostEventHandler('turn.started')!(); });
+      act(() => { hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '5' })); });
 
       expect(window.__deniedToolIds?.has('tool-1')).toBe(false);
       expect(window.__deniedToolIds?.has('tool-2')).toBe(true);
@@ -1774,8 +1774,8 @@ describe('useWindowCallbacks integration', () => {
       const { opts } = createOptsWithMessages([assistant, user]);
       renderHook(() => useWindowCallbacks(opts));
 
-      act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '5' })); });
+      act(() => { hostEventHandler('turn.started')!(); });
+      act(() => { hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '5' })); });
 
       expect(window.__deniedToolIds?.has('tool-x')).toBe(false);
     });
@@ -1807,8 +1807,8 @@ describe('useWindowCallbacks integration', () => {
       const { opts } = createOptsWithMessages([assistant, resultFor('tool-1'), resultFor('tool-2'), resultFor('tool-3')]);
       renderHook(() => useWindowCallbacks(opts));
 
-      act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '5' })); });
+      act(() => { hostEventHandler('turn.started')!(); });
+      act(() => { hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '5' })); });
 
       expect(window.__deniedToolIds?.has('tool-1')).toBe(false);
       expect(window.__deniedToolIds?.has('tool-2')).toBe(false);
@@ -1857,7 +1857,7 @@ describe('useWindowCallbacks integration', () => {
       const opts = createOptions({ setMessages: setMessages as never });
       renderHook(() => useWindowCallbacks(opts));
 
-      act(() => { window.historyLoadComplete!(); });
+      act(() => { hostEventHandler('session.loaded')!(); });
 
       // A-1 is resolved (has tool_result), A-2 and B-1 are orphans from two turns
       expect(window.__deniedToolIds?.has('A-1')).toBe(false);
@@ -1897,8 +1897,8 @@ describe('useWindowCallbacks integration', () => {
       const { opts } = createOptsWithMessages([turnA, turnB]);
       renderHook(() => useWindowCallbacks(opts));
 
-      act(() => { window.onStreamStart!(); });
-      act(() => { window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '5' })); });
+      act(() => { hostEventHandler('turn.started')!(); });
+      act(() => { hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '5' })); });
 
       // last-B (most recent turn) is flagged; old-A (earlier turn) is intentionally NOT.
       expect(window.__deniedToolIds?.has('last-B')).toBe(true);
@@ -1949,7 +1949,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       // --- Turn 2: onStreamStart creates new assistant at the end ---
-      act(() => { window.onStreamStart!(); });
+      act(() => { hostEventHandler('turn.started')!(); });
 
       // Verify the updater appended the new assistant with __turnId=2
       expect(buffer.current.length).toBe(4);
@@ -1984,7 +1984,7 @@ describe('useWindowCallbacks integration', () => {
       ];
 
       act(() => {
-        window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify(staleSnapshot)));
+        hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify(staleSnapshot)));
       });
 
       // streamingMessageIndexRef must NOT be redirected to index 1 (assistant1)
@@ -2018,7 +2018,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       // --- Turn 2: onStreamStart creates new assistant at the end ---
-      act(() => { window.onStreamStart!(); });
+      act(() => { hostEventHandler('turn.started')!(); });
 
       expect(buffer.current.length).toBe(3);
       expect(buffer.current[2]).toMatchObject({
@@ -2049,7 +2049,7 @@ describe('useWindowCallbacks integration', () => {
       ];
 
       act(() => {
-        window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify(staleSnapshot)));
+        hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify(staleSnapshot)));
       });
 
       // streamingMessageIndexRef must NOT be redirected to index 1 (assistant1)
@@ -2069,19 +2069,19 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       // Start streaming
-      act(() => { window.onStreamStart!(); });
+      act(() => { hostEventHandler('turn.started')!(); });
       expect(opts.isStreamingRef.current).toBe(true);
 
       // Simulate first turn's thinking + content deltas
-      act(() => { window.onThinkingDelta!(...deltaEvent('ses_test', 'Turn1Thinking')); });
-      act(() => { window.onContentDelta!(...deltaEvent('ses_test', 'Turn1Content')); });
+      act(() => { hostEventHandler('thinking.delta')!(...deltaEvent('ses_test', 'Turn1Thinking')); });
+      act(() => { hostEventHandler('content.delta')!(...deltaEvent('ses_test', 'Turn1Content')); });
 
       // Block reset signal arrives (a new assistant turn within the same
       // stream). The Java layer keeps ONE assistant message for the whole
       // turn and appends each turn's text/thinking as additional raw blocks,
       // so the frontend must keep accumulating to preserve the prefix earlier
       // turns contributed. Clearing here would break prefix reconciliation.
-      act(() => { window.onBlockReset!(); });
+      act(() => { hostEventHandler('message.block.reset')!(); });
 
       // Refs are intentionally retained, NOT cleared.
       expect(opts.streamingThinkingRef.current).toBe('Turn1Thinking');
@@ -2089,10 +2089,10 @@ describe('useWindowCallbacks integration', () => {
       expect(opts.isStreamingRef.current).toBe(true);
 
       // Second turn's deltas append to the cumulative buffer.
-      act(() => { window.onThinkingDelta!(...deltaEvent('ses_test', 'Turn2Thinking')); });
+      act(() => { hostEventHandler('thinking.delta')!(...deltaEvent('ses_test', 'Turn2Thinking')); });
       expect(opts.streamingThinkingRef.current).toBe('Turn1ThinkingTurn2Thinking');
 
-      act(() => { window.onContentDelta!(...deltaEvent('ses_test', 'Turn2Content')); });
+      act(() => { hostEventHandler('content.delta')!(...deltaEvent('ses_test', 'Turn2Content')); });
       expect(opts.streamingContentRef.current).toBe('Turn1ContentTurn2Content');
 
       // Cross-turn separation is enforced downstream by the sync functions'
@@ -2119,7 +2119,7 @@ describe('useWindowCallbacks integration', () => {
       opts.streamingContentRef.current = 'StaleContent';
 
       // Block reset arrives when stream is not active
-      act(() => { window.onBlockReset!(); });
+      act(() => { hostEventHandler('message.block.reset')!(); });
 
       // Refs should NOT be cleared (stale signal ignored)
       expect(opts.streamingThinkingRef.current).toBe('StaleThinking');
@@ -2142,7 +2142,7 @@ describe('useWindowCallbacks integration', () => {
     ): ((prev: ClaudeMessage[]) => ClaudeMessage[]) => {
       window.__pendingUpdateJson = JSON.stringify(pendingSnapshot);
       act(() => {
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '10' }));
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '10' }));
       });
       delete (window as unknown as Record<string, unknown>).__pendingUpdateJson;
       return (opts.setMessages as any).mock.calls[0][0];
@@ -2303,7 +2303,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '20' }));
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '20' }));
       });
 
       // The buffer holds the state React would have committed.
@@ -2376,7 +2376,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '30' }));
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '30' }));
       });
 
       const result = buffer.current;
@@ -2432,8 +2432,8 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => {
-        window.onStreamStart!();
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '40' }));
+        hostEventHandler('turn.started')!();
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '40' }));
       });
 
       // Verify: no tools should be marked as interrupted.
@@ -2497,8 +2497,8 @@ describe('useWindowCallbacks integration', () => {
       // Simulate the real backend sequence: onPermissionDenied THEN onStreamEnd
       // in the same synchronous EDT block (same React batch).
       act(() => {
-        window.onPermissionDenied!();
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '50' }));
+        hostEventHandler('permission.denied')!();
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '50' }));
       });
 
       const result = buffer.current;
@@ -2544,7 +2544,7 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => {
-        window.onPermissionDenied!();
+        hostEventHandler('permission.denied')!();
       });
 
       // No scan ran — the id is NOT marked.
@@ -2609,7 +2609,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '60' }));
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '60' }));
       });
 
       const result = buffer.current;
@@ -2648,7 +2648,7 @@ describe('useWindowCallbacks integration', () => {
 
       expect(() => {
         act(() => {
-          window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '70' }));
+          hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '70' }));
         });
       }).not.toThrow();
 
@@ -2706,7 +2706,7 @@ describe('useWindowCallbacks integration', () => {
       ]);
 
       act(() => {
-        window.onStreamEnd!(...sessionEvent('ses_test', { sequence: '80' }));
+        hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '80' }));
       });
 
       const result = buffer.current;
@@ -2748,7 +2748,7 @@ describe('useWindowCallbacks integration', () => {
 
       // Background session receives tail update
       act(() => {
-        window.updateMessageTail!(...tailEvent('session-bg', JSON.stringify([
+        hostEventHandler('message.tail')!(...tailEvent('session-bg', JSON.stringify([
           { type: 'user', content: 'bg-tail-30' },
         ]), 30, 1));
       });
@@ -2758,7 +2758,7 @@ describe('useWindowCallbacks integration', () => {
 
       // Active session receives tail update at baseIndex 40
       act(() => {
-        window.updateMessageTail!(...tailEvent('session-active', JSON.stringify([
+        hostEventHandler('message.tail')!(...tailEvent('session-active', JSON.stringify([
           { type: 'user', content: 'active-tail-40' },
           { type: 'assistant', content: 'active-tail-41' },
         ]), 40, 2));
@@ -2785,7 +2785,7 @@ describe('useWindowCallbacks integration', () => {
 
       // Push an empty snapshot mid-stream (e.g. backend race)
       act(() => {
-        window.updateMessages!(...snapshotEvent('ses_test', JSON.stringify([]), 1));
+        hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([]), 1));
       });
 
       // Conversation must NOT be wiped to empty []

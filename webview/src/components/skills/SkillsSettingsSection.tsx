@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Skill, SkillsConfig, SkillScope, SkillFilter, SkillEnabledFilter } from '../../types/skill';
 import { sendToJava } from '../../utils/bridge';
+import { registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 import { SkillHelpDialog } from './SkillHelpDialog';
 import { SkillConfirmDialog } from './SkillConfirmDialog';
 import { ToastContainer, type ToastMessage } from '../Toast';
@@ -131,7 +132,7 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
   // Initialization
   useEffect(() => {
     // Register callback: Java side returns Skills list
-    window.updateSkills = (jsonStr: string) => {
+    const updateSkills = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         // Normalize: host may send array or partial object
@@ -148,7 +149,7 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
     };
 
     // Register callback: import result
-    window.skillImportResult = (jsonStr: string) => {
+    const skillImportResult = (jsonStr: string) => {
       try {
         const result = JSON.parse(jsonStr);
         if (result.success) {
@@ -172,7 +173,7 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
     };
 
     // Register callback: delete result
-    window.skillDeleteResult = (jsonStr: string) => {
+    const skillDeleteResult = (jsonStr: string) => {
       try {
         const result = JSON.parse(jsonStr);
         if (result.success) {
@@ -187,7 +188,7 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
     };
 
     // Register callback: enable/disable result
-    window.skillToggleResult = (jsonStr: string) => {
+    const skillToggleResult = (jsonStr: string) => {
       try {
         const result = JSON.parse(jsonStr);
         // Remove in-progress state
@@ -231,11 +232,15 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
     };
     document.addEventListener('click', handleClickOutside);
 
+    registerHostEvents({
+      'skills.updated': updateSkills,
+      'skills.import': skillImportResult,
+      'skills.delete': skillDeleteResult,
+      'skills.toggle': skillToggleResult,
+    });
+
     return () => {
-      window.updateSkills = undefined;
-      window.skillImportResult = undefined;
-      window.skillDeleteResult = undefined;
-      window.skillToggleResult = undefined;
+      unregisterHostEvents(['skills.updated', 'skills.import', 'skills.delete', 'skills.toggle']);
       document.removeEventListener('click', handleClickOutside);
     };
   }, [loadSkills, addToast]);

@@ -6,11 +6,10 @@
  * first host events arrived before React mounted and were silently dropped.
  *
  * Every host event now goes through this single entry point. Unknown events are
- * queued until their handler appears, then flushed in arrival order. The direct
- * call remains the fallback for older hosts and for raw scripts.
+ * queued until their handler appears, then flushed in arrival order. The
+ * registry is the only routing table; there is no direct `window.<fn>` path.
  */
 
-import { handlerForSemanticType } from './semanticEvents';
 import { hostEventHandler } from './hostEventRegistry';
 
 interface PendingHostEvent {
@@ -35,66 +34,12 @@ const pending: PendingHostEvent[] = [];
 const lastEpochByTab = new Map<string, number>();
 let flushTimer: number | null = null;
 
-function resolveWindowFunction(path: string): ((...args: unknown[]) => void) | null {
-  if (!path) return null;
-  let target: unknown = window;
-  for (const part of path.split('.')) {
-    if (!part) return null;
-    if (target == null) return null;
-    target = (target as Record<string, unknown>)[part];
-  }
-  return typeof target === 'function'
-    ? (target as (...args: unknown[]) => void)
-    : null;
-}
-
-/**
- * Adapt a named-payload event to a handler that still takes its old arguments.
- *
- * <p>The catalog maps a semantic type to a handler implemented for the legacy
- * string protocol: one JSON string, or two positional strings. The event
- * carries `data` (one value) or `args` (positional values), so the adapter
- * hands the handler exactly what it used to receive.</p>
- */
-function adaptLegacyPayload(
-  handler: (...args: unknown[]) => void,
-): (...args: unknown[]) => void {
-  return (...incoming: unknown[]) => {
-    // Positional legacy calls (a type with several arguments) pass straight
-    // through: the dispatcher already spread them.
-    if (incoming.length > 1) {
-      return handler(...incoming);
-    }
-    const payload = incoming[0];
-    if (payload && typeof payload === 'object') {
-      const record = payload as { args?: unknown; data?: unknown };
-      if (Array.isArray(record.args)) {
-        return handler(...record.args);
-      }
-      if (typeof record.data === 'string') {
-        return handler(record.data);
-      }
-    }
-    return handler(payload);
-  };
-}
-
 function resolveHandler(type: string): ((...args: unknown[]) => void) | null {
   if (!type) return null;
-  // The registry is the routing table: the handler of a semantic event is
-  // registered under its semantic name.
-  const registered = hostEventHandler(type);
-  if (registered) return registered;
-  // A semantic event name (content.delta, message.snapshot, …) is the
-  // protocol; the catalog says which handler answers it.
-  const semantic = handlerForSemanticType(type);
-  if (semantic) {
-    const handler = resolveWindowFunction(semantic);
-    if (handler) return adaptLegacyPayload(handler);
-  }
-  // Fallback: the legacy function name, which is also what the host sends
-  // next to the semantic type.
-  return resolveWindowFunction(type.startsWith('window.') ? type.slice('window.'.length) : type);
+  // The registry is the only routing table. An event whose handler is not
+  // registered yet stays queued; an event whose handler never registers is
+  // dropped. There is no `window.<fn>` fallback.
+  return hostEventHandler(type);
 }
 
 function scheduleFlush(): void {
@@ -154,6 +99,16 @@ export function dispatchHostEvent(type: string, args: unknown[] = []): void {
 
 export function pendingHostEventCount(): number {
   return pending.length;
+}
+
+/** Test hook: clear the queue, epochs, and the scheduled flush. */
+export function resetHostDispatcher(): void {
+  pending.length = 0;
+  lastEpochByTab.clear();
+  if (flushTimer !== null && typeof window !== 'undefined') {
+    window.clearTimeout(flushTimer);
+    flushTimer = null;
+  }
 }
 
 /**

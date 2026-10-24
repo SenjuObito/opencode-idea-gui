@@ -6,6 +6,7 @@
 import { useEffect } from 'react';
 import type { ServerToolsState, McpTool, RefreshLog, CacheKeys } from '../types';
 import { writeToolsCache } from '../utils';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../../utils/hostEventRegistry';
 
 export interface UseToolsUpdateOptions {
   cacheKeys: CacheKeys;
@@ -102,11 +103,11 @@ export function useToolsUpdate({
       }
     };
 
-    window.updateMcpServerTools = handleToolsUpdate;
+    registerHostEvents({ 'mcp.tools': handleToolsUpdate });
 
     return () => {
-      if (window.updateMcpServerTools === handleToolsUpdate) {
-        window.updateMcpServerTools = undefined;
+      if (hostEventHandler('mcp.tools') === handleToolsUpdate) {
+        unregisterHostEvents(['mcp.tools']);
       }
     };
   }, [cacheKeys, setServerTools, onLog]);

@@ -5,6 +5,7 @@ import {
   useSettingsWindowCallbacks,
   type SettingsWindowCallbacksDeps,
 } from './useSettingsWindowCallbacks';
+import { hostEventHandler, registerHostEvents, resetHostEvents } from '../../../utils/hostEventRegistry';
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -46,12 +47,16 @@ describe('useSettingsWindowCallbacks', () => {
     delete (window as { requestIdleCallback?: unknown }).requestIdleCallback;
     delete (window as { cancelIdleCallback?: unknown }).cancelIdleCallback;
     window.sendToJava = vi.fn();
-    window.applyUiFontConfig = vi.fn();
-    window.applyCodeFontConfig = vi.fn();
+    resetHostEvents();
+    registerHostEvents({
+      'font.ui.apply': vi.fn(),
+      'font.code.apply': vi.fn(),
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    resetHostEvents();
   });
 
   it('loads basic settings in batches without stamping providers/agents or CLI-probe configs', () => {
@@ -86,7 +91,7 @@ describe('useSettingsWindowCallbacks', () => {
 
     renderHook(() => useSettingsWindowCallbacks(deps));
 
-    window.onUiFontConfigReceived?.(JSON.stringify({
+    hostEventHandler('font.ui.received')?.(JSON.stringify({
       mode: 'customFile',
       effectiveMode: 'customFile',
       customFontPath: '/tmp/MapleMono.ttf',
@@ -107,7 +112,7 @@ describe('useSettingsWindowCallbacks', () => {
 
     renderHook(() => useSettingsWindowCallbacks(deps));
 
-    window.onCodeFontConfigReceived?.(JSON.stringify({
+    hostEventHandler('font.code.received')?.(JSON.stringify({
       mode: 'customFile',
       effectiveMode: 'customFile',
       customFontPath: '/tmp/FiraCode.ttf',
@@ -139,9 +144,9 @@ describe('useSettingsWindowCallbacks', () => {
       fontFormat: 'truetype',
     };
 
-    window.onUiFontConfigReceived?.(JSON.stringify(payload));
+    hostEventHandler('font.ui.received')?.(JSON.stringify(payload));
 
-    expect(window.applyUiFontConfig).toHaveBeenCalledWith(expect.objectContaining({
+    expect(hostEventHandler('font.ui.apply')).toHaveBeenCalledWith(expect.objectContaining({
       mode: 'customFile',
       customFontPath: '/tmp/MapleMono.ttf',
       fontBase64: 'AAECA',
@@ -165,9 +170,9 @@ describe('useSettingsWindowCallbacks', () => {
       fontFormat: 'truetype',
     };
 
-    window.onCodeFontConfigReceived?.(JSON.stringify(payload));
+    hostEventHandler('font.code.received')?.(JSON.stringify(payload));
 
-    expect(window.applyCodeFontConfig).toHaveBeenCalledWith(expect.objectContaining({
+    expect(hostEventHandler('font.code.apply')).toHaveBeenCalledWith(expect.objectContaining({
       mode: 'customFile',
       customFontPath: '/tmp/FiraCode.ttf',
       fontBase64: 'AAECA',
@@ -180,7 +185,7 @@ describe('useSettingsWindowCallbacks', () => {
 
     renderHook(() => useSettingsWindowCallbacks(deps));
 
-    window.updateSystemNotificationOnlyWhenUnfocused?.(JSON.stringify({
+    hostEventHandler('settings.system.notification')?.(JSON.stringify({
       systemNotificationOnlyWhenUnfocused: true,
     }));
 

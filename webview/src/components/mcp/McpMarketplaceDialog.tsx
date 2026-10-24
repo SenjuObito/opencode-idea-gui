@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { McpInstallOption, McpMarketplaceEntry, McpMarketplaceSearchResponse, McpMarketplaceSource, McpServer, McpServerSpec } from '../../types/mcp';
 import { sendToJava } from '../../utils/bridge';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 
 interface McpMarketplaceDialogProps {
   existingIds?: string[];
@@ -119,18 +120,32 @@ export function McpMarketplaceDialog({ existingIds = [], onClose, onSelect }: Mc
       }
     };
 
-    const previousSourcesHandler = window.updateMcpMarketplaceSources;
-    const previousEntriesHandler = window.updateMcpMarketplaceEntries;
-    window.updateMcpMarketplaceSources = handleSources;
-    window.updateMcpMarketplaceEntries = handleEntries;
+    const previousSourcesHandler = hostEventHandler('mcp.marketplace.sources');
+    const previousEntriesHandler = hostEventHandler('mcp.marketplace.entries');
+    registerHostEvents({
+      'mcp.marketplace.sources': handleSources,
+      'mcp.marketplace.entries': handleEntries,
+    });
 
     // The debounced effect below performs the initial search (using the persisted
     // source), so only the source list needs to be requested here.
     sendToJava('get_mcp_marketplace_sources', {});
 
     return () => {
-      window.updateMcpMarketplaceSources = previousSourcesHandler;
-      window.updateMcpMarketplaceEntries = previousEntriesHandler;
+      if (hostEventHandler('mcp.marketplace.sources') === handleSources) {
+        if (previousSourcesHandler) {
+          registerHostEvents({ 'mcp.marketplace.sources': previousSourcesHandler });
+        } else {
+          unregisterHostEvents(['mcp.marketplace.sources']);
+        }
+      }
+      if (hostEventHandler('mcp.marketplace.entries') === handleEntries) {
+        if (previousEntriesHandler) {
+          registerHostEvents({ 'mcp.marketplace.entries': previousEntriesHandler });
+        } else {
+          unregisterHostEvents(['mcp.marketplace.entries']);
+        }
+      }
     };
   }, []);
 

@@ -36,8 +36,7 @@ import {
   cancelSurfaceDamagePulse,
 } from './utils/surfaceDamagePulse';
 import { forceWebviewRepaint } from './utils/forceWebviewRepaint';
-import type { HostEventPayload } from './utils/hostEventTypes';
-import { registerHostEvents, registerSemanticWindowHandlers } from './utils/hostEventRegistry';
+import { registerHostEvents } from './utils/hostEventRegistry';
 
 // Silence noisy console output in production (including third-party libs).
 // console.error is preserved so ErrorBoundary and unhandled exceptions still
@@ -362,10 +361,9 @@ function applyCodeFontConfig(config: CodeFontConfig | string) {
   syncFontFamilies();
 }
 
-// Register the applyIdeaFontConfig function
-window.applyIdeaFontConfig = applyEditorTypographyConfig;
-window.applyUiFontConfig = applyUiFontConfig;
-window.applyCodeFontConfig = applyCodeFontConfig;
+// Register the font and language apply handlers in the semantic registry.
+// The host addresses these by function name; the catalog maps them to the
+// semantic types below.
 
 // Check for pending font config (Java side may execute before JS)
 if (window.__pendingFontConfig) {
@@ -432,11 +430,10 @@ function applyLanguageConfig(rawConfig: { language: string; source?: string; ide
     });
 }
 
-// Register the applyIdeaLanguageConfig function
-window.applyIdeaLanguageConfig = applyLanguageConfig;
+// Register the applyIdeaLanguageConfig handler in the semantic registry.
 
 registerHostEvents({
-  'font.editor.apply': applyEditorTypographyConfig,
+  'font.idea': applyEditorTypographyConfig,
   'font.ui.apply': applyUiFontConfig,
   'font.code.apply': applyCodeFontConfig,
   'language.apply': applyLanguageConfig,
@@ -449,245 +446,28 @@ registerHostEvents({
     }
   },
   'daemon.status': (json: string) => {
+    // Keep the latest payload available for useUsageTracking to drain on mount.
+    // CustomEvents dispatched before the listener is attached are lost.
+    window.__pendingDaemonStatus = json;
     window.dispatchEvent(new CustomEvent('updateDaemonStatus', { detail: json }));
   },
   'turn.retry': onRetryStatusFromHost,
+  'linkify.capabilities': (json: string) => {
+    applyLinkifyCapabilitiesPayload(json);
+  },
+  'tab.activated': () => {
+    forceWebviewRepaint('tab-activated');
+  },
 });
 
 // 通知提示音播放器（全局常驻）：判定在宿主 NotificationService，
 // 这里只负责发声。payload: { soundId?, variant?, customDataBase64? }
-window.playNotificationSound = (json: string) => {
-  try {
-    const payload = JSON.parse(json) as { soundId?: string; variant?: string; customDataBase64?: string };
-    cardDebugLog(`[Main] playNotificationSound received payload=${json.slice(0, 140)}`);
-    playNotificationSound(payload);
-  } catch {
-    // ignore malformed payloads
-  }
-};
 
 // Check for pending language config (Java side may execute before JS)
 if (window.__pendingLanguageConfig) {
   debugLog('[Main] Found pending language config, applying...');
   applyLanguageConfig(window.__pendingLanguageConfig);
   delete window.__pendingLanguageConfig;
-}
-
-// Pre-register updateMessages to handle backend message snapshots that arrive before React initializes
-if (typeof window !== 'undefined' && !window.updateMessages) {
-  debugLog('[Main] Pre-registering updateMessages placeholder');
-  window.updateMessages = (json: string, sequence?: string | number) => {
-    const parsedSequence =
-      typeof sequence === 'number'
-        ? sequence
-        : typeof sequence === 'string' && sequence.trim().length > 0
-          ? Number.parseInt(sequence, 10)
-          : null;
-    window.__pendingUpdateMessages = {
-      json,
-      sequence: Number.isFinite(parsedSequence) ? parsedSequence : null,
-    };
-  };
-}
-
-// Pre-register historyLoadComplete for fast history restores that finish before
-// React installs the real callback. Keep an object wrapper so an explicit zero
-// message count is distinguishable from no pending callback.
-if (typeof window !== 'undefined' && !window.historyLoadComplete) {
-  debugLog('[Main] Pre-registering historyLoadComplete placeholder');
-  window.historyLoadComplete = (payload: HostEventPayload | undefined) => {
-    window.__pendingHistoryLoadComplete = { expectedMessageCount: payload?.messageCount as string | number | undefined };
-  };
-}
-
-// Pre-register updateStatus to handle backend status text that arrives before React initializes
-if (typeof window !== 'undefined' && !window.updateStatus) {
-  debugLog('[Main] Pre-registering updateStatus placeholder');
-  window.updateStatus = (text: string) => {
-    window.__pendingStatusText = text;
-  };
-}
-
-// Pre-register showLoading to handle backend loading state that arrives before React initializes
-if (typeof window !== 'undefined' && !window.showLoading) {
-  debugLog('[Main] Pre-registering showLoading placeholder');
-  window.showLoading = (value: string | boolean) => {
-    window.__pendingLoadingState = value === true || value === 'true';
-  };
-}
-
-// Register the retry/quota notice sink once, at module scope. It must exist even
-// when no chat view is mounted (the host emits it during a running turn), and it
-// feeds a module-level buffer that StatusNoticeBar hydrates from on mount.
-if (typeof window !== 'undefined') {
-  window.updateRetryStatus = onRetryStatusFromHost;
-}
-
-// Pre-register addUserMessage to handle backend-inserted user messages before React initializes
-if (typeof window !== 'undefined' && !window.addUserMessage) {
-  debugLog('[Main] Pre-registering addUserMessage placeholder');
-  window.addUserMessage = (content: string) => {
-    window.__pendingUserMessage = content;
-  };
-}
-
-// Pre-register showSummary to handle backend summary text that arrives before React initializes
-if (typeof window !== 'undefined' && !window.showSummary) {
-  debugLog('[Main] Pre-registering showSummary placeholder');
-  window.showSummary = (summary: string) => {
-    window.__pendingSummaryText = summary;
-  };
-}
-
-// Pre-register updateSlashCommands to handle backend calls that arrive before React initializes
-if (typeof window !== 'undefined' && !window.updateSlashCommands) {
-  debugLog('[Main] Pre-registering updateSlashCommands placeholder');
-  window.updateSlashCommands = (json: string) => {
-    debugLog('[Main] Storing pending slash commands, length=' + json.length);
-    window.__pendingSlashCommands = json;
-  };
-}
-
-// Pre-register updateDollarCommands to handle backend calls that arrive before React initializes
-if (typeof window !== 'undefined' && !window.updateDollarCommands) {
-  window.updateDollarCommands = (json: string) => {
-    window.__pendingDollarCommands = json;
-  };
-}
-
-// Pre-register updateSendShortcut to handle backend status responses that arrive before React initializes
-if (typeof window !== 'undefined' && !window.updateSendShortcut) {
-  debugLog('[Main] Pre-registering updateSendShortcut placeholder');
-  window.updateSendShortcut = (json: string) => {
-    debugLog('[Main] Storing pending send shortcut status, length=' + (json ? json.length : 0));
-    window.__pendingSendShortcut = json;
-  };
-}
-
-// Pre-register updateDaemonStatus to bridge vscodeBridge function calls to CustomEvent
-// vscodeBridge dispatches host messages as window[type](...args) function calls,
-// but useUsageTracking listens for a DOM CustomEvent. This adapter converts the
-// function call into a CustomEvent so the hook receives the daemon alive status.
-if (typeof window !== 'undefined' && !window.updateDaemonStatus) {
-  debugLog('[Main] Pre-registering updateDaemonStatus bridge');
-  window.updateDaemonStatus = (json: string) => {
-    // Keep the latest payload available for useUsageTracking to drain on mount.
-    // CustomEvents dispatched before the listener is attached are lost, so this
-    // slot prevents early daemon status pushes from being dropped.
-    window.__pendingDaemonStatus = json;
-    cardDebugLog('[Probe] updateDaemonStatus dispatcher called:', json);
-    window.dispatchEvent(new CustomEvent('updateDaemonStatus', { detail: json }));
-  };
-}
-
-// Pre-register updatePermissionDialogTimeout to handle backend responses that arrive before React initializes
-if (typeof window !== 'undefined' && !window.updatePermissionDialogTimeout) {
-  debugLog('[Main] Pre-registering updatePermissionDialogTimeout placeholder');
-  window.updatePermissionDialogTimeout = (json: string) => {
-    debugLog('[Main] Storing pending permission dialog timeout, length=' + (json ? json.length : 0));
-    window.__pendingPermissionDialogTimeout = json;
-  };
-}
-
-// Pre-register showToast to handle backend error toasts that arrive before React initializes
-if (typeof window !== 'undefined' && !window.showToast) {
-  debugLog('[Main] Pre-registering showToast placeholder');
-  window.showToast = (message: string) => {
-    debugLog('[Main] Storing pending toast:', message);
-    if (!window.__pendingToasts) {
-      window.__pendingToasts = [];
-    }
-    window.__pendingToasts.push(message);
-  };
-}
-
-// Pre-register commandRejected so a rejection that arrives before React mounts
-// is not lost. The real handler drains the queue when it registers.
-if (typeof window !== 'undefined' && !window.commandRejected) {
-  debugLog('[Main] Pre-registering commandRejected placeholder');
-  window.commandRejected = (payload: HostEventPayload) => {
-    const tabId = String(payload.tabId ?? '');
-    const requestId = String(payload.requestId ?? '');
-    const code = String(payload.code ?? '');
-    const message = String(payload.message ?? '');
-    debugLog('[Main] Storing pending command rejection:', code, 'tab:', tabId);
-    if (!window.__pendingCommandRejections) {
-      window.__pendingCommandRejections = [];
-    }
-    window.__pendingCommandRejections.push({ tabId, requestId, code, message });
-  };
-}
-
-// Pre-register onModeReceived to avoid losing early backend push before React callbacks are ready.
-if (typeof window !== 'undefined' && !window.onModeReceived) {
-  debugLog('[Main] Pre-registering onModeReceived placeholder');
-  window.onModeReceived = (mode: string) => {
-    debugLog('[Main] Storing pending mode:', mode);
-    window.__pendingModeReceived = mode;
-  };
-}
-
-// Java may refresh recovery usage immediately after frontend_ready, before
-// React's callback effect mounts. Retain the latest snapshot until registration.
-if (typeof window !== 'undefined' && !window.onUsageUpdate) {
-  window.onUsageUpdate = (payload, env) => { window.__pendingUsageUpdate = { payload, env }; };
-}
-
-// Java can answer frontend_ready before React's callback effect mounts. Keep
-// the authoritative recovery snapshot until the real callback is registered.
-if (typeof window !== 'undefined' && !window.applyBackendTabState) {
-  window.applyBackendTabState = (json: string) => {
-    window.__pendingBackendTabState = json;
-  };
-}
-
-if (typeof window !== 'undefined' && !window.showPermissionDialog) {
-  debugLog('[Main] Pre-registering showPermissionDialog placeholder');
-  window.showPermissionDialog = (json: string) => {
-    const pending = window.__pendingPermissionDialogRequests || [];
-    pending.push(json);
-    window.__pendingPermissionDialogRequests = pending;
-  };
-}
-
-if (typeof window !== 'undefined' && !window.showAskUserQuestionDialog) {
-  debugLog('[Main] Pre-registering showAskUserQuestionDialog placeholder');
-  window.showAskUserQuestionDialog = (json: string) => {
-    const pending = window.__pendingAskUserQuestionDialogRequests || [];
-    pending.push(json);
-    window.__pendingAskUserQuestionDialogRequests = pending;
-  };
-}
-
-if (typeof window !== 'undefined' && !window.showPlanApprovalDialog) {
-  debugLog('[Main] Pre-registering showPlanApprovalDialog placeholder');
-  window.showPlanApprovalDialog = (json: string) => {
-    const pending = window.__pendingPlanApprovalDialogRequests || [];
-    pending.push(json);
-    window.__pendingPlanApprovalDialogRequests = pending;
-  };
-}
-
-if (typeof window !== 'undefined' && !window.setCliModels) {
-  debugLog('[Main] Pre-registering setCliModels placeholder');
-  window.setCliModels = (dataOrStr: any) => {
-    debugLog('[Main] Storing pending CLI models payload');
-    window.__pendingCliModels = dataOrStr;
-  };
-}
-
-if (typeof window !== 'undefined' && !window.setHistoryData) {
-  debugLog('[Main] Pre-registering setHistoryData placeholder');
-  window.setHistoryData = (dataOrStr: any) => {
-    debugLog('[Main] Storing pending history data payload');
-    window.__pendingHistoryData = dataOrStr;
-  };
-}
-
-if (typeof window !== 'undefined') {
-  window.updateLinkifyCapabilities = (json: string) => {
-    applyLinkifyCapabilitiesPayload(json);
-  };
 }
 
 // OSR surface publication fence. Java's SurfaceFrameFence drives a tokenized
@@ -702,19 +482,7 @@ if (typeof window !== 'undefined') {
   window.__ccguiSurfaceDamageReplace = replaceSurfaceDamagePulse;
   window.__ccguiSurfaceDamageFinish = finishSurfaceDamagePulse;
   window.__ccguiSurfaceDamageCancel = cancelSurfaceDamagePulse;
-
-  // Windowed (non-OSR) JCEF keeps its legacy activation repaint path: Java
-  // re-applies native bounds and then asks the frontend to nudge its own
-  // compositing, which clears the ghosting left behind by the previous tab.
-  window.onTabActivated = () => {
-    forceWebviewRepaint('tab-activated');
-  };
 }
-
-// Bind the catalog to the module-scope handlers (pre-mount placeholders and
-// the frame fence) before React starts. React replaces several of them later
-// and re-registers from registerWindowCallbacks.
-registerSemanticWindowHandlers();
 
 // UI preferences (theme / font scale / colors / behaviour toggles) are owned by
 // the extension host; register the push callback before React mounts so an early

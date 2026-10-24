@@ -4,6 +4,7 @@ import type { McpServer } from '../types';
 import type { CacheKeys } from '../types';
 import { readToolsCache, writeCache, writeToolsCache } from '../utils';
 import { useServerData } from './useServerData';
+import { hostEventHandler, resetHostEvents } from '../../../utils/hostEventRegistry';
 
 const sendToJavaMock = vi.hoisted(() => vi.fn());
 
@@ -43,8 +44,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete window.updateMcpServers;
-  delete window.updateMcpServerStatus;
+  resetHostEvents();
 });
 
 describe('useServerData terminal MCP status handling', () => {
@@ -52,7 +52,7 @@ describe('useServerData terminal MCP status handling', () => {
     const hook = renderServerData();
 
     act(() => {
-      window.updateMcpServers?.(JSON.stringify([server]));
+      hostEventHandler('mcp.servers')?.(JSON.stringify([server]));
       hook.result.current.setServerTools({
         [server.id]: { tools: [{ name: 'stale-tool' }], loading: false },
       });
@@ -60,7 +60,7 @@ describe('useServerData terminal MCP status handling', () => {
     });
 
     act(() => {
-      window.updateMcpServerStatus?.(JSON.stringify([{
+      hostEventHandler('mcp.status')?.(JSON.stringify([{
         name: server.name,
         status: 'failed',
       }]));
@@ -75,7 +75,7 @@ describe('useServerData terminal MCP status handling', () => {
     writeToolsCache(server.id, [{ name: 'stale-tool' }], cacheKeys);
 
     act(() => {
-      window.updateMcpServerStatus?.(JSON.stringify([{
+      hostEventHandler('mcp.status')?.(JSON.stringify([{
         name: server.name,
         status: 'needs-auth',
       }]));
@@ -84,7 +84,7 @@ describe('useServerData terminal MCP status handling', () => {
     expect(readToolsCache(server.id, cacheKeys)).not.toBeNull();
 
     act(() => {
-      window.updateMcpServers?.(JSON.stringify([server]));
+      hostEventHandler('mcp.servers')?.(JSON.stringify([server]));
     });
 
     expect(readToolsCache(server.id, cacheKeys)).toBeNull();
@@ -110,11 +110,11 @@ describe('useServerData terminal MCP status handling', () => {
     const hook = renderServerData();
 
     act(() => {
-      window.updateMcpServers?.(JSON.stringify([server]));
+      hostEventHandler('mcp.servers')?.(JSON.stringify([server]));
     });
 
     act(() => {
-      window.updateMcpServerStatus?.(JSON.stringify({
+      hostEventHandler('mcp.status')?.(JSON.stringify({
         success: true,
         provider: 'opencode',
         statuses: [{
@@ -136,7 +136,7 @@ describe('useServerData terminal MCP status handling', () => {
     const hook = renderServerData();
 
     act(() => {
-      window.updateMcpServers?.(JSON.stringify({
+      hostEventHandler('mcp.servers')?.(JSON.stringify({
         success: true,
         servers: [server],
       }));

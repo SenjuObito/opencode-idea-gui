@@ -3,6 +3,7 @@ import type { AgentConfig } from '../../../types/agent';
 import { sendWindowCommand } from '../../../utils/bridge';
 import i18n from '../../../i18n/config';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
+import { hostEventHandler, registerHostEvents } from '../../../utils/hostEventRegistry';
 
 // ============================================================================
 // Type Definitions
@@ -89,7 +90,7 @@ export function unsubscribeAgents(callback: () => void): void {
 
 export function setupAgentsCallback() {
   if (typeof window === 'undefined') return;
-  if (callbackRegistered && window.updateAgents) return;
+  if (callbackRegistered && hostEventHandler('agents.updated')) return;
 
   const handler = (json: string) => {
     debugLog('[AgentProvider] Received data from backend, length=' + json.length);
@@ -131,14 +132,14 @@ export function setupAgentsCallback() {
   };
 
   // Save original callback
-  const originalHandler = window.updateAgents;
+  const originalHandler = hostEventHandler('agents.updated');
 
-  window.updateAgents = (json: string) => {
-    // Call our handler
-    handler(json);
-    // Also call original handler (if exists)
-    originalHandler?.(json);
-  };
+  registerHostEvents({
+    'agents.updated': (json: string) => {
+      handler(json);
+      originalHandler?.(json);
+    },
+  });
 
   callbackRegistered = true;
   debugLog('[AgentProvider] Callback registered');

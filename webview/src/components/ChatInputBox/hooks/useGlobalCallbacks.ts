@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createTextFragment } from '../utils/selectionUtils.js';
 import { makeQuoteToken, registerQuote } from '../utils/quoteRegistry.js';
+import { registerHostEvents, unregisterHostEvents } from '../../../utils/hostEventRegistry';
 
 interface UseGlobalCallbacksOptions {
   editableRef: React.RefObject<HTMLDivElement | null>;
@@ -87,7 +88,7 @@ export function useGlobalCallbacks({
       }
     };
 
-    window.handleFilePathFromJava = (filePathInput: string | string[]) => {
+    const handleFilePathFromJava = (filePathInput: string | string[]) => {
       try {
         if (!editableRef.current) return;
 
@@ -136,6 +137,8 @@ export function useGlobalCallbacks({
       }
     };
 
+    registerHostEvents({ 'files.path.from.ide': handleFilePathFromJava });
+
     // Initial focus — but only if no other input/editable element is focused (B-013)
     const active = document.activeElement;
     const isOtherInputFocused = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ||
@@ -146,7 +149,7 @@ export function useGlobalCallbacks({
 
     // Cleanup function
     return () => {
-      delete window.handleFilePathFromJava;
+      unregisterHostEvents(['files.path.from.ide']);
     };
   }, [
     editableRef,
@@ -249,9 +252,11 @@ export function useGlobalCallbacks({
       }
     };
 
-    window.focusChatInput = () => {
+    const focusChatInput = () => {
       focusInput();
     };
+
+    registerHostEvents({ 'chat.focus': focusChatInput });
 
     // Insert an inline quote chip. Payload: JSON { text }.
     // The chip renders a compact preview; the full Markdown blockquote is
@@ -316,7 +321,7 @@ export function useGlobalCallbacks({
 
     return () => {
       delete window.insertCodeSnippetAtCursor;
-      delete window.focusChatInput;
+      unregisterHostEvents(['chat.focus']);
       delete window.addQuotedSnippet;
     };
   }, [editableRef, getTextContent, renderFileTags, renderQuoteTags, adjustHeight, onInput, setHasContent, focusInput]);

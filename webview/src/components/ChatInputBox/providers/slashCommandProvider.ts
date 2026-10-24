@@ -2,6 +2,7 @@ import type { CommandItem, DropdownItemData } from '../types';
 import { sendHostCommand, sendWindowCommand } from '../../../utils/bridge';
 import i18n from '../../../i18n/config';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
+import { hostEventHandler, registerHostEvents } from '../../../utils/hostEventRegistry';
 
 /**
  * Local command list (commands to be filtered out)
@@ -134,7 +135,7 @@ interface SDKSlashCommand {
 
 export function setupSlashCommandsCallback() {
   if (typeof window === 'undefined') return;
-  if (callbackRegistered && window.updateSlashCommands) return;
+  if (callbackRegistered && hostEventHandler('slash.commands')) return;
 
   const handler = (json: string) => {
     debugLog('[SlashCommand] Received data from backend, length=' + json.length);
@@ -185,12 +186,14 @@ export function setupSlashCommandsCallback() {
     }
   };
 
-  const originalHandler = window.updateSlashCommands;
+  const originalHandler = hostEventHandler('slash.commands');
 
-  window.updateSlashCommands = (json: string) => {
-    handler(json);
-    originalHandler?.(json);
-  };
+  registerHostEvents({
+    'slash.commands': (json: string) => {
+      handler(json);
+      originalHandler?.(json);
+    },
+  });
   callbackRegistered = true;
   debugLog('[SlashCommand] Callback registered');
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { ClaudeMessage, ToolResultBlock } from '../types';
 import { debugLog } from '../utils/debug';
+import { registerHostEvents, unregisterHostEvents } from '../utils/hostEventRegistry';
 
 export interface UseFileChangesManagementOptions {
   currentSessionId: string | null;
@@ -116,10 +117,10 @@ export function useFileChangesManagement({
     }
   }, [currentSessionId]);
 
-  // Register window callbacks for editable diff operations from Java backend
+  // Register editable diff operations from Java backend
   useEffect(() => {
     // Handle remove file from edits list (legacy callback)
-    window.handleRemoveFileFromEdits = (jsonStr: string) => {
+    const handleRemoveFileFromEdits = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         const filePath = data.filePath;
@@ -132,7 +133,7 @@ export function useFileChangesManagement({
     };
 
     // Handle interactive diff result (Apply/Reject from the new interactive diff view)
-    window.handleDiffResult = (jsonStr: string) => {
+    const handleDiffResult = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         const { filePath, action, error } = data;
@@ -151,9 +152,13 @@ export function useFileChangesManagement({
       }
     };
 
+    registerHostEvents({
+      'files.edits.remove': handleRemoveFileFromEdits,
+      'files.diff.result': handleDiffResult,
+    });
+
     return () => {
-      delete window.handleRemoveFileFromEdits;
-      delete window.handleDiffResult;
+      unregisterHostEvents(['files.edits.remove', 'files.diff.result']);
     };
   }, [addFileToProcessed]);
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { McpImportPreviewResponse, McpServer } from '../../types/mcp';
 import { sendToJava } from '../../utils/bridge';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 
 interface McpImportDialogProps {
   existingIds?: string[];
@@ -62,8 +63,8 @@ export function McpImportDialog({ existingIds = [], onClose, onImport }: McpImpo
   }, [onClose]);
 
   useEffect(() => {
-    const previousHandler = window.updateCopilotImportPreview;
-    window.updateCopilotImportPreview = (json: string) => {
+    const previousHandler = hostEventHandler('copilot.import.preview');
+    const handler = (json: string) => {
       setLoading(false);
       try {
         const response = JSON.parse(json) as McpImportPreviewResponse;
@@ -79,8 +80,14 @@ export function McpImportDialog({ existingIds = [], onClose, onImport }: McpImpo
         setPreview([]);
       }
     };
+    registerHostEvents({ 'copilot.import.preview': handler });
     return () => {
-      window.updateCopilotImportPreview = previousHandler;
+      if (hostEventHandler('copilot.import.preview') !== handler) return;
+      if (previousHandler) {
+        registerHostEvents({ 'copilot.import.preview': previousHandler });
+      } else {
+        unregisterHostEvents(['copilot.import.preview']);
+      }
     };
   }, [buildPreview]);
 

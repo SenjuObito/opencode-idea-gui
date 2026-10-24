@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { copyViaHost, extractMarkdownContent } from './copyUtils';
+import { hostEventHandler } from './hostEventRegistry';
 import type { ClaudeMessage } from '../types';
 
 describe('copyUtils', () => {
@@ -24,7 +25,7 @@ describe('copyUtils', () => {
       expect(envelope.payload.text).toBe('https://opencode.ai/share/123');
 
       // Simulate host callback
-      window.onCopyToClipboardResult?.('true');
+      hostEventHandler('clipboard.copied')?.('true');
 
       const result = await promise;
       expect(result).toBe(true);
@@ -40,7 +41,7 @@ describe('copyUtils', () => {
       expect(envelope.payload.text).toBe('https://opencode.ai/share/123');
 
       // Simulate host failure callback
-      window.onCopyToClipboardResult?.('false');
+      hostEventHandler('clipboard.copied')?.('false');
 
       const result = await promise;
       expect(result).toBe(false);

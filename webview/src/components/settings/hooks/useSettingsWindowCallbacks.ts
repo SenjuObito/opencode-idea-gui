@@ -7,7 +7,7 @@ import type { UiFontConfig, CodeFontConfig } from './useSettingsBasicActions';
 import type { AlertType } from '../../AlertDialog';
 import type { ToastMessage } from '../../Toast';
 import { scheduleBatchedBridgeRequests } from './scheduleBatchedBridgeRequests';
-import { registerSemanticWindowHandlers, unregisterSemanticWindowHandlers } from '../../../utils/hostEventRegistry';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../../utils/hostEventRegistry';
 
 const sendToJava = (message: string) => {
   if (window.sendToJava) {
@@ -24,7 +24,6 @@ export const SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES = [
   'get_node_path:',
   'get_opencode_cli_path:',
   'get_working_directory:',
-  'get_streaming_enabled:',
   'get_permission_dialog_timeout:',
   // Appearance fonts
   'get_editor_font_config:',
@@ -99,18 +98,18 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
   useEffect(() => {
     const d = () => depsRef.current;
 
-    window.showError = (message: string) => {
+    const showError = (message: string) => {
       d().showAlert('error', t('toast.operationFailed'), message);
       d().setSavingNodePath(false);
       d().setSavingOpencodeCliPath(false);
       d().setSavingWorkingDirectory(false);
     };
 
-    window.showSwitchSuccess = (message: string) => {
+    const showSwitchSuccess = (message: string) => {
       d().showAlert('success', t('toast.switchSuccess'), message);
     };
 
-    window.updateNodePath = (jsonStr: string) => {
+    const updateNodePath = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         d().setNodePath(data.path || '');
@@ -126,7 +125,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       window.dispatchEvent(new CustomEvent('nodePathReady'));
     };
 
-    window.updateOpencodeCliPath = (jsonStr: string) => {
+    const updateOpencodeCliPath = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         d().setOpencodeCliPath(data.path || '');
@@ -137,7 +136,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       d().setSavingOpencodeCliPath(false);
     };
 
-    window.updateWorkingDirectory = (jsonStr: string) => {
+    const updateWorkingDirectory = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         d().setWorkingDirectory(data.customWorkingDir || '');
@@ -148,19 +147,19 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
     };
 
-    window.showSuccess = (message: string) => {
+    const showSuccess = (message: string) => {
       d().showAlert('success', t('toast.operationSuccess'), message);
       d().setSavingNodePath(false);
       d().setSavingOpencodeCliPath(false);
       d().setSavingWorkingDirectory(false);
     };
 
-    window.showSuccessI18n = (i18nKey: string) => {
+    const showSuccessI18n = (i18nKey: string) => {
       const message = t(i18nKey);
       d().addToast(message, 'success');
     };
 
-    window.onEditorFontConfigReceived = (jsonStr: string) => {
+    const onEditorFontConfigReceived = (jsonStr: string) => {
       try {
         const config = JSON.parse(jsonStr);
         d().setEditorFontConfig(config);
@@ -169,27 +168,27 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
     };
 
-    window.onUiFontConfigReceived = (jsonStr: string) => {
+    const onUiFontConfigReceived = (jsonStr: string) => {
       try {
         const config = JSON.parse(jsonStr);
         d().setUiFontConfig(config);
-        window.applyUiFontConfig?.(config);
+        hostEventHandler('font.ui.apply')?.(config);
       } catch {
         // Silently ignore malformed UI font config from backend
       }
     };
 
-    window.onCodeFontConfigReceived = (jsonStr: string) => {
+    const onCodeFontConfigReceived = (jsonStr: string) => {
       try {
         const config = JSON.parse(jsonStr);
         d().setCodeFontConfig(config);
-        window.applyCodeFontConfig?.(config);
+        hostEventHandler('font.code.apply')?.(config);
       } catch {
         // Silently ignore malformed code font config from backend
       }
     };
 
-    window.onSystemFontListReceived = (jsonStr: string) => {
+    const onSystemFontListReceived = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         if (Array.isArray(data.fonts)) {
@@ -201,8 +200,8 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     };
 
     // IDE theme callback
-    const previousOnIdeThemeReceived = window.onIdeThemeReceived;
-    window.onIdeThemeReceived = (jsonStr: string) => {
+    const previousOnIdeThemeReceived = hostEventHandler('theme.received');
+    const onIdeThemeReceived = (jsonStr: string) => {
       try {
         const themeData = JSON.parse(jsonStr);
         const theme = themeData.isDark ? 'dark' : 'light';
@@ -214,9 +213,10 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     };
 
     // Send shortcut configuration callback
-    const previousUpdateSendShortcut = window.updateSendShortcut;
+    const previousUpdateSendShortcut = hostEventHandler('settings.send.shortcut');
+    let updateSendShortcut: ((jsonStr: string) => void) | undefined;
     if (!d().onSendShortcutChangeProp) {
-      window.updateSendShortcut = (jsonStr: string) => {
+      updateSendShortcut = (jsonStr: string) => {
         try {
           const data = JSON.parse(jsonStr);
           d().setLocalSendShortcut(data.sendShortcut ?? 'enter');
@@ -228,7 +228,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
 
     // Task completion notification config callback (opt-in feature, default false)
-    window.updateTaskCompletionNotificationEnabled = (jsonStr: string) => {
+    const updateTaskCompletionNotificationEnabled = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         d().setTaskCompletionNotificationEnabled?.(data.taskCompletionNotificationEnabled ?? false);
@@ -238,7 +238,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     };
 
     // AskUserQuestion reminder notification config callback (opt-in feature, default false)
-    window.updateAskUserQuestionNotificationEnabled = (jsonStr: string) => {
+    const updateAskUserQuestionNotificationEnabled = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         d().setAskUserQuestionNotificationEnabled?.(data.askUserQuestionNotificationEnabled ?? false);
@@ -248,7 +248,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     };
 
     // System notification focus gate config callback (default false)
-    window.updateSystemNotificationOnlyWhenUnfocused = (jsonStr: string) => {
+    const updateSystemNotificationOnlyWhenUnfocused = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         d().setSystemNotificationOnlyWhenUnfocused?.(data.systemNotificationOnlyWhenUnfocused ?? false);
@@ -258,7 +258,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     };
 
     // AskUserQuestion reminder sound notification config callback (opt-in feature, default false)
-    window.updateAskUserQuestionSoundNotificationEnabled = (jsonStr: string) => {
+    const updateAskUserQuestionSoundNotificationEnabled = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         d().setAskUserQuestionSoundNotificationEnabled?.(data.askUserQuestionSoundNotificationEnabled ?? false);
@@ -268,7 +268,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     };
 
     // Sound notification config callback
-    window.updateSoundNotificationConfig = (jsonStr: string) => {
+    const updateSoundNotificationConfig = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
         if (data.enabled !== undefined) {
@@ -289,8 +289,8 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     };
 
     // Agent callbacks
-    const previousUpdateAgents = window.updateAgents;
-    window.updateAgents = (jsonStr: string) => {
+    const previousUpdateAgents = hostEventHandler('agents.updated');
+    const updateAgents = (jsonStr: string) => {
       try {
         const agentsList: AgentConfig[] = JSON.parse(jsonStr);
         d().updateAgents(agentsList);
@@ -302,18 +302,9 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     // 自定义声音"浏览"：宿主 showOpenDialog 选完回填输入框（不自动保存，
     // 保留用户确认语义）。仅设置页挂载期间有效——浏览按钮只在此处出现。
-    window.onSoundFileSelected = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr) as { path?: string };
-        if (typeof data.path === 'string' && data.path.trim()) {
-          d().setCustomSoundPath?.(data.path.trim());
-        }
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse selected sound file:', error);
-      }
-    };
+    // 宿主当前没有对应事件；保留占位会重新制造一条死回调，故不注册。
 
-    window.agentOperationResult = (jsonStr: string) => {
+    const agentOperationResult = (jsonStr: string) => {
       try {
         const result = JSON.parse(jsonStr);
         d().handleAgentOperationResult(result);
@@ -322,7 +313,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
     };
 
-    window.agentImportPreviewResult = (jsonStr: string) => {
+    const agentImportPreviewResult = (jsonStr: string) => {
       try {
         const previewData = JSON.parse(jsonStr);
         if (!Array.isArray(previewData?.items) || typeof previewData?.summary !== 'object') {
@@ -335,7 +326,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
     };
 
-    window.agentImportResult = (jsonStr: string) => {
+    const agentImportResult = (jsonStr: string) => {
       try {
         const result = JSON.parse(jsonStr);
         d().handleAgentImportResult(result);
@@ -346,7 +337,30 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     // Settings is a second callback surface: bind its handlers to the same
     // semantic registry so a settings event never relies on the window path.
-    registerSemanticWindowHandlers();
+    registerHostEvents({
+      'toast.operation.error': showError,
+      'toast.switch.success': showSwitchSuccess,
+      'node.path': updateNodePath,
+      'cli.path': updateOpencodeCliPath,
+      'project.working.directory': updateWorkingDirectory,
+      'toast.operation.success': showSuccess,
+      'toast.operation.success.i18n': showSuccessI18n,
+      'font.editor.received': onEditorFontConfigReceived,
+      'font.ui.received': onUiFontConfigReceived,
+      'font.code.received': onCodeFontConfigReceived,
+      'font.system.list': onSystemFontListReceived,
+      'theme.received': onIdeThemeReceived,
+      'settings.send.shortcut': updateSendShortcut,
+      'settings.task.completion': updateTaskCompletionNotificationEnabled,
+      'settings.question.notification': updateAskUserQuestionNotificationEnabled,
+      'settings.system.notification': updateSystemNotificationOnlyWhenUnfocused,
+      'settings.question.sound': updateAskUserQuestionSoundNotificationEnabled,
+      'settings.sound': updateSoundNotificationConfig,
+      'agents.updated': updateAgents,
+      'agents.operation': agentOperationResult,
+      'agents.import.preview': agentImportPreviewResult,
+      'agents.import.result': agentImportResult,
+    });
 
     // Initial data loading for the default (basic) settings surface only.
     // Provider / agent / prompt lists are fetched when their tabs first mount.
@@ -362,46 +376,27 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       bootstrapRequests.cancel();
       d().cleanupAgentsTimeout();
 
-      unregisterSemanticWindowHandlers([
-        'showError', 'showSwitchSuccess', 'updateNodePath', 'updateOpencodeCliPath',
-        'updateWorkingDirectory', 'showSuccess', 'showSuccessI18n',
-        'onEditorFontConfigReceived', 'onUiFontConfigReceived', 'onCodeFontConfigReceived',
-        'onSystemFontListReceived', 'onIdeThemeReceived', 'updateSendShortcut',
-        'updateSoundNotificationConfig', 'onSoundFileSelected',
-        'updateTaskCompletionNotificationEnabled', 'updateAskUserQuestionNotificationEnabled',
-        'updateSystemNotificationOnlyWhenUnfocused',
-        'updateAskUserQuestionSoundNotificationEnabled', 'updateAgents',
-        'agentOperationResult', 'agentImportPreviewResult', 'agentImportResult',
+      unregisterHostEvents([
+        'toast.operation.error', 'toast.switch.success',
+        'node.path', 'cli.path', 'project.working.directory',
+        'toast.operation.success', 'toast.operation.success.i18n',
+        'font.editor.received', 'font.ui.received', 'font.code.received',
+        'font.system.list', 'theme.received', 'settings.send.shortcut',
+        'settings.task.completion', 'settings.question.notification',
+        'settings.system.notification', 'settings.question.sound',
+        'settings.sound', 'agents.updated', 'agents.operation',
+        'agents.import.preview', 'agents.import.result',
       ]);
 
-      window.showError = undefined;
-      window.showSwitchSuccess = undefined;
-      window.updateNodePath = undefined;
-      window.updateOpencodeCliPath = undefined;
-      window.updateWorkingDirectory = undefined;
-      window.showSuccess = undefined;
-      window.showSuccessI18n = undefined;
-      window.onEditorFontConfigReceived = undefined;
-      window.onUiFontConfigReceived = undefined;
-      window.onCodeFontConfigReceived = undefined;
-      window.onSystemFontListReceived = undefined;
-      window.onIdeThemeReceived = previousOnIdeThemeReceived;
-      if (!d().onSendShortcutChangeProp) {
-        window.updateSendShortcut = previousUpdateSendShortcut;
+      if (previousOnIdeThemeReceived) {
+        registerHostEvents({ 'theme.received': previousOnIdeThemeReceived });
       }
-      window.updateSoundNotificationConfig = undefined;
-      window.onSoundFileSelected = undefined;
-      window.updateTaskCompletionNotificationEnabled = undefined;
-      window.updateAskUserQuestionNotificationEnabled = undefined;
-      window.updateSystemNotificationOnlyWhenUnfocused = undefined;
-      window.updateAskUserQuestionSoundNotificationEnabled = undefined;
-      window.updateAgents = previousUpdateAgents;
-      window.agentOperationResult = undefined;
-      window.agentImportPreviewResult = undefined;
-      window.agentImportResult = undefined;
-
-      // Restore the handlers that belonged to the chat surface.
-      registerSemanticWindowHandlers();
+      if (previousUpdateSendShortcut) {
+        registerHostEvents({ 'settings.send.shortcut': previousUpdateSendShortcut });
+      }
+      if (previousUpdateAgents) {
+        registerHostEvents({ 'agents.updated': previousUpdateAgents });
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t]);

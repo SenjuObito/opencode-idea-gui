@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { formatAsMarkdownQuote, quoteToChatInput } from './quoteUtils';
+import { registerHostEvents, unregisterHostEvents } from './hostEventRegistry';
 
 describe('formatAsMarkdownQuote', () => {
   it('prefixes every line and adds a trailing newline', () => {
@@ -14,14 +15,14 @@ describe('formatAsMarkdownQuote', () => {
 describe('quoteToChatInput', () => {
   afterEach(() => {
     delete window.addQuotedSnippet;
-    delete window.focusChatInput;
+    unregisterHostEvents(['chat.focus']);
   });
 
   it('sends the raw quote as a chip payload and focuses the input', () => {
     const addSnippet = vi.fn();
     const focus = vi.fn();
     window.addQuotedSnippet = addSnippet;
-    window.focusChatInput = focus;
+    registerHostEvents({ 'chat.focus': focus });
 
     expect(quoteToChatInput('text')).toBe(true);
     expect(addSnippet).toHaveBeenCalledWith(JSON.stringify({ text: 'text' }));

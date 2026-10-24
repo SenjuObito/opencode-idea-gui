@@ -51,7 +51,11 @@ public class ClipboardHandlerTest {
     public void handlesSupportedTypesAndEmitsCallback() {
         MockJsCallback jsCallback = new MockJsCallback();
         HandlerContext context = new HandlerContext(null, null, null, jsCallback);
-        ClipboardHandler handler = new ClipboardHandler(context);
+        // The test verifies the handler contract, not the machine's clipboard:
+        // a real system clipboard can be locked or unavailable on CI/headless.
+        java.awt.datatransfer.Clipboard clipboard =
+                new java.awt.datatransfer.Clipboard("ClipboardHandlerTest");
+        ClipboardHandler handler = new ClipboardHandler(context, () -> clipboard);
 
         assertTrue(handler.handle("write_clipboard", "https://opencode.ai/share/123"));
         assertTrue(jsCallback.calls.contains("clipboard.copied:true"));

@@ -1,4 +1,5 @@
 import { isJavaFqcnCandidate, normalizeFileNavigationTarget, parseFileLinkTarget } from './linkify';
+import { registerHostEvents } from './hostEventRegistry';
 
 const BRIDGE_UNAVAILABLE_WARNED = new Set<string>();
 const SAFE_BROWSER_PROTOCOLS = /^(https?|mailto):/i;
@@ -45,16 +46,7 @@ function installResolveFilePathHandler() {
     return;
   }
 
-  const originalHandler = window.onFilePathResolved;
-  window.onFilePathResolved = (json: string) => {
-    if (originalHandler) {
-      try {
-        originalHandler(json);
-      } catch {
-        // Ignore errors from legacy handlers
-      }
-    }
-
+  const handler = (json: string) => {
     try {
       const data = JSON.parse(json) as { path?: string; resolvedPath?: string | null };
       const path = data.path;
@@ -67,6 +59,7 @@ function installResolveFilePathHandler() {
       // Silently ignore malformed JSON from backend
     }
   };
+  registerHostEvents({ 'files.path.resolved': handler });
 
   resolveFilePathHandlerInstalled = true;
 }

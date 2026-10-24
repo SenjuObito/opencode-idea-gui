@@ -7,6 +7,7 @@
 import type { ModelInfo } from './types';
 
 import { sendWindowCommand } from '../../utils/bridge';
+import { registerHostEvents } from '../../utils/hostEventRegistry';
 
 /** Show search once the list is long enough to scroll through. */
 export const MODEL_SEARCH_THRESHOLD = 8;
@@ -104,9 +105,11 @@ export function applyPinnedModelsPayload(payload: unknown): void {
 
 export function installPinnedModelsBridge(): void {
   if (typeof window === 'undefined') return;
-  window.applyPinnedModels = (json: string) => {
-    applyPinnedModelsPayload(json);
-  };
+  registerHostEvents({
+    'settings.pinned.models': (json: string) => {
+      applyPinnedModelsPayload(json);
+    },
+  });
   if (window.__pendingPinnedModels) {
     applyPinnedModelsPayload(window.__pendingPinnedModels);
     delete window.__pendingPinnedModels;

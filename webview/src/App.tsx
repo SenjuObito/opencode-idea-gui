@@ -5,6 +5,7 @@ import SettingsView from './components/settings';
 import { sendHostCommand, sendSessionCommand, sendWindowCommand } from './utils/bridge';
 import { createTabId } from './store/tabStore';
 import { copyViaHost } from './utils/copyUtils';
+import { registerHostEvents, unregisterHostEvents } from './utils/hostEventRegistry';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
 import {
   useScrollBehavior,
@@ -541,7 +542,7 @@ const App = () => {
    * <p>The webview reserved the tab before the daemon answered, so the fork
    * lands in exactly that tab and the source tab stays untouched.</p>
    */
-  window.onForkBound = (targetTabId: string, sessionId: string) => {
+  const onForkBound = (targetTabId: string, sessionId: string) => {
     try {
       if (!targetTabId || !sessionId) return;
       const sourceTab = appTabsRef.current?.find((t) => t.id !== targetTabId);
@@ -553,7 +554,7 @@ const App = () => {
     }
   };
 
-  window.onForkSuccess = (json: string) => {
+  const onForkSuccess = (json: string) => {
       try {
         const payload = JSON.parse(json) as { sessionId?: string; sourceSessionId?: string };
         console.debug('[App] onForkSuccess', payload);
@@ -567,11 +568,11 @@ const App = () => {
         // ignore malformed payloads
       }
     };
-    window.onForkError = (detail?: string) => {
+    const onForkError = (detail?: string) => {
       console.warn('[App] onForkError', detail);
       addToast(`${t('chat.forkFailed')}${detail ? `: ${detail}` : ''}`, 'error');
     };
-    window.onShareSuccess = (url: string) => {
+    const onShareSuccess = (url: string) => {
       if (!url) {
         return;
       }
@@ -596,7 +597,7 @@ const App = () => {
         }
       });
     };
-    window.onShareError = (detail?: string) => {
+    const onShareError = (detail?: string) => {
       console.warn('[App] onShareError', detail);
       setSharePending(false);
       setIsShared(false);
@@ -610,20 +611,20 @@ const App = () => {
       }
       addToast(reason ? `${t('chat.shareFailed')}: ${reason}` : t('chat.shareFailed'), 'error');
     };
-    window.onUnshareSuccess = () => {
+    const onUnshareSuccess = () => {
       console.debug('[App] onUnshareSuccess');
       setSharePending(false);
       setIsShared(false);
       setShareUrl(null);
       addToast(t('chat.unshareSuccess', { defaultValue: '已取消分享会话' }), 'info');
     };
-    window.onUnshareError = (detail?: string) => {
+    const onUnshareError = (detail?: string) => {
       console.warn('[App] onUnshareError', detail);
       setSharePending(false);
       const reason = (detail ?? '').trim();
       addToast(reason ? `${t('chat.unshareFailed', { defaultValue: '取消分享失败' })}: ${reason}` : t('chat.unshareFailed', { defaultValue: '取消分享失败' }), 'error');
     };
-    window.onRevertError = (arg: unknown) => {
+    const onRevertError = (arg: unknown) => {
       let op = 'undo';
       let errorDetail = '';
       try {
@@ -652,7 +653,7 @@ const App = () => {
         loadHistorySession(sessionId);
       }
     };
-    window.onRevertStateUpdate = (...args: unknown[]) => {
+    const onRevertStateUpdate = (...args: unknown[]) => {
       try {
         let jsonStr = '';
         let targetSessionId: string | null = null;
@@ -711,7 +712,7 @@ const App = () => {
     // 并逐条广播 message.removed；宿主镜像删除后转发到这里。先把自己列表里的这些
     // 消息剔除，使随后到达的 updateMessages 快照与 prev 等长 —— 否则
     // preserveLatestMessagesOnShrink 会把它当成「暂时收缩」，把刚删的消息抢救回来。
-    window.onMessagesRemoved = (arg0: unknown, arg1?: unknown) => {
+    const onMessagesRemoved = (arg0: unknown, arg1?: unknown) => {
       try {
         // Host sends (sessionId, json); accept the legacy single-argument form
         // for older builds.
@@ -741,7 +742,7 @@ const App = () => {
         // ignore malformed payloads
       }
     };
-    window.onCompactSuccess = (targetSessionId?: string) => {
+    const onCompactSuccess = (targetSessionId?: string) => {
       if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
         return;
       }
@@ -757,7 +758,7 @@ const App = () => {
         void loadHistorySession(activeSessionId);
       }
     };
-    window.onCompactError = (targetSessionId?: string, detail?: string) => {
+    const onCompactError = (targetSessionId?: string, detail?: string) => {
       if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
         return;
       }
@@ -783,19 +784,29 @@ const App = () => {
         scrollToBottom();
       });
     };
+    registerHostEvents({
+      'session.fork.done': onForkSuccess,
+      'session.fork.bound': onForkBound,
+      'session.fork.failed': onForkError,
+      'session.share.done': onShareSuccess,
+      'session.share.failed': onShareError,
+      'session.unshare.done': onUnshareSuccess,
+      'session.unshare.failed': onUnshareError,
+      'session.revert.failed': onRevertError,
+      'revert.changed': onRevertStateUpdate,
+      'message.removed': onMessagesRemoved,
+      'session.compact.done': onCompactSuccess,
+      'session.compact.failed': onCompactError,
+    });
+
     return () => {
-      delete window.onForkSuccess;
-      delete window.onForkBound;
-      delete window.onForkError;
-      delete window.onShareSuccess;
-      delete window.onShareError;
-      delete window.onUnshareSuccess;
-      delete window.onUnshareError;
-      delete window.onRevertError;
-      delete window.onRevertStateUpdate;
-      delete window.onMessagesRemoved;
-      delete window.onCompactSuccess;
-      delete window.onCompactError;
+      unregisterHostEvents([
+        'session.fork.done', 'session.fork.bound', 'session.fork.failed',
+        'session.share.done', 'session.share.failed',
+        'session.unshare.done', 'session.unshare.failed',
+        'session.revert.failed', 'revert.changed', 'message.removed',
+        'session.compact.done', 'session.compact.failed',
+      ]);
     };
   }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, scrollToBottom]);
 

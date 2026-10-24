@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CacheKeys, ServerToolsState } from '../types';
 import { useToolsUpdate } from './useToolsUpdate';
+import { hostEventHandler, registerHostEvents, resetHostEvents } from '../../../utils/hostEventRegistry';
 
 const cacheKeys: CacheKeys = {
   SERVERS: 'test.servers',
@@ -22,28 +23,28 @@ function renderToolsHook() {
 }
 
 afterEach(() => {
-  delete window.updateMcpServerTools;
+  resetHostEvents();
 });
 
 describe('useToolsUpdate callback', () => {
   it('registers callback on mount and cleans up on unmount', () => {
     const hook = renderToolsHook();
-    const callback = window.updateMcpServerTools;
+    const callback = hostEventHandler('mcp.tools');
 
     expect(callback).toBeTypeOf('function');
 
     hook.unmount();
-    expect(window.updateMcpServerTools).toBeUndefined();
+    expect(hostEventHandler('mcp.tools')).toBeNull();
   });
 
   it('does not clear a callback replaced by a newer owner', () => {
     const firstHook = renderToolsHook();
     const replacement = vi.fn();
-    window.updateMcpServerTools = replacement;
+    registerHostEvents({ 'mcp.tools': replacement });
 
     firstHook.unmount();
 
-    expect(window.updateMcpServerTools).toBe(replacement);
+    expect(hostEventHandler('mcp.tools')).toBe(replacement);
   });
 });
 
@@ -58,7 +59,7 @@ describe('useToolsUpdate empty tool result', () => {
     }));
 
     act(() => {
-      window.updateMcpServerTools?.(JSON.stringify({
+      hostEventHandler('mcp.tools')?.(JSON.stringify({
         serverId: 'empty-server',
         serverName: 'Empty server',
         tools: [],

@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { McpServer, McpServerStatusInfo, ServerToolsState, RefreshLog, CacheKeys } from '../types';
 import { sendToJava } from '../../../utils/bridge';
+import { registerHostEvents, unregisterHostEvents } from '../../../utils/hostEventRegistry';
 import { clearToolsCache, readCache, readToolsCache, writeCache } from '../utils';
 
 const TERMINAL_DISCONNECT_STATUSES = new Set<McpServerStatusInfo['status']>([
@@ -357,12 +358,13 @@ export function useServerData({
     };
 
     // Register callbacks
-    window.updateMcpServers = handleServerListUpdate;
-    window.updateMcpServerStatus = handleServerStatusUpdate;
+    registerHostEvents({
+      'mcp.servers': handleServerListUpdate,
+      'mcp.status': handleServerStatusUpdate,
+    });
 
     return () => {
-      window.updateMcpServers = undefined;
-      window.updateMcpServerStatus = undefined;
+      unregisterHostEvents(['mcp.servers', 'mcp.status']);
     };
   }, [t, onLog, clearToolsForTerminalStatuses, setServers]);
 

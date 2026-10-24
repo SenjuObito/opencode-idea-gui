@@ -1,3 +1,4 @@
+import { hostEventHandler } from '../../utils/hostEventRegistry';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetCliModelsCacheForTests, useCliModels } from './useCliModels';
@@ -11,7 +12,7 @@ vi.mock('../../utils/bridge', () => ({
 
 function emitCliModels(payload: unknown) {
   act(() => {
-    window.setCliModels?.(JSON.stringify(payload));
+    hostEventHandler('cli.models')?.(JSON.stringify(payload));
   });
 }
 
@@ -233,8 +234,8 @@ describe('useCliModels', () => {
     const { result } = renderHook(() => useCliModels('opencode'));
 
     act(() => {
-      window.setCliModels?.('invalid json {');
-      window.setCliModels?.(JSON.stringify({ models: [] })); // missing provider
+      hostEventHandler('cli.models')?.('invalid json {');
+      hostEventHandler('cli.models')?.(JSON.stringify({ models: [] })); // missing provider
     });
 
     // State remains unaffected

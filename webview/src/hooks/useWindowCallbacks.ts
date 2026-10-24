@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { MutableRefObject, RefObject } from 'react';
 import type { ClaudeMessage, ClaudeRawMessage, HistoryData, SubagentHistoryResponse, TaskEventMap } from '../types';
@@ -112,17 +112,10 @@ export interface UseWindowCallbacksOptions {
 }
 
 export function useWindowCallbacks(options: UseWindowCallbacksOptions): void {
-  const { t } = options;
   const [historyRenderCommitEpoch, setHistoryRenderCommitEpoch] = useState(0);
 
-  // Store t in ref to avoid stale closures
-  const tRef = useRef(t);
   useEffect(() => {
-    tRef.current = t;
-  }, [t]);
-
-  useEffect(() => {
-    registerWindowCallbacks(options, tRef, setHistoryRenderCommitEpoch);
+    registerWindowCallbacks(options, setHistoryRenderCommitEpoch);
     // Callbacks are registered once on mount; re-registration would cause duplicate handlers.
     // Options object reference is intentionally excluded from deps.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

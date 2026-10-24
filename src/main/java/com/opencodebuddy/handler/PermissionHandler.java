@@ -160,6 +160,7 @@ public class PermissionHandler extends BaseMessageHandler {
         String type = switch (fnName) {
             case "forceCloseAskUserQuestionDialog" -> "prompt.question.closed";
             case "forceClosePlanApprovalDialog" -> "prompt.plan.closed";
+            case "invalidateQuestionCard" -> "question.invalidated";
             default -> "prompt.closed";
         };
         context.publishEvent(com.opencodebuddy.tab.TabEvent.of(type)

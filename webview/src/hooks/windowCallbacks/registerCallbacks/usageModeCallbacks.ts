@@ -31,7 +31,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     currentProviderRef,
   } = options;
 
-  window.onUsageUpdate = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const onUsageUpdate = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     // Usage is per-session state. An update without a session id is
     // unattributable: guessing "the active tab" is exactly what copied the
     // previous session's tokens onto a freshly created one. resolveSessionId
@@ -117,7 +117,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
       | undefined;
     delete window.__pendingUsageUpdate;
     if (pending && typeof pending === 'object' && 'payload' in pending) {
-      window.onUsageUpdate(pending.payload, pending.env);
+      onUsageUpdate(pending.payload, pending.env);
     }
   }
 
@@ -129,14 +129,14 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  window.onModeChanged = (mode) => updateMode(mode as PermissionMode);
-  window.onModeReceived = (mode) => updateMode(mode as PermissionMode);
+  const onModeChanged = (mode: string) => updateMode(mode as PermissionMode);
+  const onModeReceived = (mode: string) => updateMode(mode as PermissionMode);
 
   window.onModelChanged = (modelId) => {
     setSelectedOpenCodeModel(modelId);
   };
 
-  window.onModelConfirmed = (modelId) => {
+  const onModelConfirmed = (modelId: string) => {
     setSelectedOpenCodeModel(modelId);
   };
 
@@ -169,7 +169,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  window.applyBackendTabState = (json: string) => {
+  const applyBackendTabState = (json: string) => {
     try {
       const state = JSON.parse(json) as Record<string, unknown>;
       // Normalize legacy 'codex' provider to 'opencode' for backward compatibility
@@ -203,10 +203,10 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   if (typeof window.__pendingBackendTabState === 'string') {
     const pending = window.__pendingBackendTabState;
     delete window.__pendingBackendTabState;
-    window.applyBackendTabState(pending);
+    applyBackendTabState(pending);
   }
 
-  window.updateSendShortcut = (jsonStr: string) => {
+  const updateSendShortcut = (jsonStr: string) => {
     try {
       const data = JSON.parse(jsonStr);
       if (data.sendShortcut === 'enter' || data.sendShortcut === 'cmdEnter') {
@@ -217,7 +217,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  window.updateAutoOpenFileEnabled = (jsonStr: string) => {
+  const updateAutoOpenFileEnabled = (jsonStr: string) => {
     try {
       const data = JSON.parse(jsonStr);
       setAutoOpenFileEnabled(data.autoOpenFileEnabled ?? false);
@@ -226,7 +226,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  window.updatePermissionDialogTimeout = (jsonStr: string) => {
+  const updatePermissionDialogTimeout = (jsonStr: string) => {
     try {
       const data = JSON.parse(jsonStr);
       setPermissionDialogTimeoutSeconds(clampPermissionDialogTimeoutSeconds(data.permissionDialogTimeoutSeconds));
@@ -236,15 +236,20 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  // Drain any pending settings that arrived before callback registration
+  // The semantic catalog is the routing table.
+  registerHostEvents({
+    'settings.mode': onModeChanged,
+    'settings.mode.received': onModeReceived,
+    'settings.model.confirmed': onModelConfirmed,
+    'usage.updated': onUsageUpdate,
+    'tab.state': applyBackendTabState,
+    'settings.send.shortcut': updateSendShortcut,
+    'settings.auto.open.file': updateAutoOpenFileEnabled,
+    'settings.permission.timeout': updatePermissionDialogTimeout,
+  });
+
+  // Drain any pending settings that arrived before callback registration.
   drainPendingSettings();
   // Kick off initial settings requests
   startInitialSettingsRequest();
-
-  // The semantic catalog is the routing table: the dispatcher looks the
-  // handler up here first, the window globals stay for the legacy path.
-  registerHostEvents({
-  'settings.mode': window.onModeChanged,
-  'usage.updated': window.onUsageUpdate,
-  });
 }

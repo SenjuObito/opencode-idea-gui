@@ -19,6 +19,7 @@
  * current on-disk choice is never downgraded to a default on upgrade.
  */
 import { sendWindowCommand } from './bridge';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from './hostEventRegistry';
 import { getStoredDiffTheme, type DiffThemeMode } from './diffTheme';
 import { CHAT_BAR_COLOR_STORAGE_KEY } from './chatBarTheme';
 import {
@@ -255,7 +256,7 @@ export function requestUiPreferences(): void {
 }
 
 /**
- * Register `window.applyUiPreferences` (the host callback).
+ * Register the host callback that applies an authoritative preferences snapshot.
  * Safe to call more than once; returns a disposer.
  */
 export function installUiPreferencesBridge(): () => void {
@@ -270,10 +271,14 @@ export function installUiPreferencesBridge(): () => void {
     }
     applyHostUiPreferences(parsed);
   };
-  window.applyUiPreferences = handler;
+  const previous = hostEventHandler('settings.ui.preferences');
+  registerHostEvents({ 'settings.ui.preferences': handler });
   return () => {
-    if (window.applyUiPreferences === handler) {
-      delete window.applyUiPreferences;
+    if (hostEventHandler('settings.ui.preferences') !== handler) return;
+    if (previous) {
+      registerHostEvents({ 'settings.ui.preferences': previous });
+    } else {
+      unregisterHostEvents(['settings.ui.preferences']);
     }
   };
 }

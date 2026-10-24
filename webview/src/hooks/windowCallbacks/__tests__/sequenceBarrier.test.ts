@@ -1,3 +1,4 @@
+import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import {
@@ -153,7 +154,7 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
 
     // 1. In session-active, conversation occurs and sequence reaches 60
     act(() => {
-      window.updateMessages!(...snapshotEvent('session-active', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent('session-active', JSON.stringify([
         { type: 'assistant', content: 'Turn 1 in active session' },
       ]), 60));
     });
@@ -166,13 +167,13 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
 
     // Backend resets stream state and calls clearMessages for session-history with barrier=1
     act(() => {
-      window.clearMessages!(...sessionEvent('session-history', { sequence: 1 }));
+      hostEventHandler('session.cleared')!(...sessionEvent('session-history', { sequence: 1 }));
     });
     expect(currentMessages).toHaveLength(0);
 
     // Backend loads session-history messages from server and flushes sequence=2
     act(() => {
-      window.updateMessages!(...snapshotEvent('session-history', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent('session-history', JSON.stringify([
         { type: 'user', content: 'Historical question' },
         { type: 'assistant', content: 'Historical answer' },
       ]), 2));
@@ -185,7 +186,7 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
 
     // Complete history load
     act(() => {
-      window.historyLoadComplete!(...sessionEvent('session-history', { messageCount: 2 }));
+      hostEventHandler('session.loaded')!(...sessionEvent('session-history', { messageCount: 2 }));
     });
     expect(isTabTransitioning('tab-active')).toBe(false);
   });

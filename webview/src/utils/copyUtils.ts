@@ -1,5 +1,6 @@
 import type { ClaudeMessage, ClaudeContentBlock, ClaudeRawMessage } from '../types';
 import { sendWindowCommand } from './bridge';
+import { registerHostEvents } from './hostEventRegistry';
 import {
   hasCommandMessageTag,
   formatCommandForDisplay,
@@ -164,11 +165,13 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 let hostCopyWaiter: ((ok: boolean) => void) | null = null;
 
 if (typeof window !== 'undefined') {
-  window.onCopyToClipboardResult = (ok: string) => {
-    const waiter = hostCopyWaiter;
-    hostCopyWaiter = null;
-    waiter?.(ok === 'true');
-  };
+  registerHostEvents({
+    'clipboard.copied': (ok: string) => {
+      const waiter = hostCopyWaiter;
+      hostCopyWaiter = null;
+      waiter?.(ok === 'true');
+    },
+  });
 }
 
 /**

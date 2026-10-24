@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { dispatchHostEnvelope, flushHostDispatcher } from './hostDispatcher';
+import { dispatchHostEnvelope, pendingHostEventCount, resetHostDispatcher } from './hostDispatcher';
 import { handlerForSemanticType, SEMANTIC_HANDLERS } from './semanticEvents';
+import { registerHostEvents, resetHostEvents } from './hostEventRegistry';
 
 describe('semantic event catalog', () => {
   beforeEach(() => {
-    flushHostDispatcher();
+    resetHostDispatcher();
+    resetHostEvents();
   });
 
   it('maps the catalog onto the webview handlers', () => {
@@ -17,7 +19,7 @@ describe('semantic event catalog', () => {
 
   it('routes an envelope by its semantic type', () => {
     const handler = vi.fn();
-    (window as any).onContentDelta = handler;
+    registerHostEvents({ 'content.delta': handler });
 
     dispatchHostEnvelope({
       v: 2,
@@ -29,7 +31,7 @@ describe('semantic event catalog', () => {
     expect(handler).toHaveBeenCalledWith('ses_a', 'hello', 'tab-a');
   });
 
-  it('falls back to the legacy function name for types outside the catalog', () => {
+  it('does not fall back to the legacy function name for types outside the catalog', () => {
     const handler = vi.fn();
     (window as any).legacyHandler = handler;
 
@@ -39,7 +41,9 @@ describe('semantic event catalog', () => {
       payload: { args: ['x'] },
     });
 
-    expect(handler).toHaveBeenCalledWith('x');
+    expect(handler).not.toHaveBeenCalled();
+    expect(pendingHostEventCount()).toBe(1);
+    delete (window as any).legacyHandler;
   });
 
   it('keeps every catalog entry pointing at a handler name', () => {

@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { dispatchHostEnvelope } from './hostDispatcher';
+import { dispatchHostEnvelope, pendingHostEventCount } from './hostDispatcher';
 import {
   hostEventHandler,
   hostEventCount,
   registerHostEvents,
-  registerSemanticWindowHandlers,
   resetHostEvents,
-  unregisterSemanticWindowHandlers,
 } from './hostEventRegistry';
 
 describe('host event registry', () => {
@@ -36,6 +34,7 @@ describe('host event registry', () => {
 
     expect(registered).toHaveBeenCalledWith('ses_a', 'hi');
     expect(legacy).not.toHaveBeenCalled();
+    delete (window as any).onContentDelta;
   });
 
   it('skips entries without a handler', () => {
@@ -45,7 +44,7 @@ describe('host event registry', () => {
     expect(hostEventCount()).toBe(0);
   });
 
-  it('falls back to the catalog when nothing is registered', () => {
+  it('does not fall back to a window function', () => {
     const legacy = vi.fn();
     (window as any).onContentDelta = legacy;
 
@@ -55,18 +54,8 @@ describe('host event registry', () => {
       payload: { args: ['ses_a', 'hi'] },
     });
 
-    expect(legacy).toHaveBeenCalledWith('ses_a', 'hi');
-  });
-
-  it('binds mounted window handlers and drops them on unmount', () => {
-    const handler = vi.fn();
-    (window as any).onContentDelta = handler;
-
-    registerSemanticWindowHandlers();
-    expect(hostEventHandler('content.delta')).toBe(handler);
-
-    unregisterSemanticWindowHandlers(['onContentDelta']);
-    expect(hostEventHandler('content.delta')).toBeNull();
+    expect(legacy).not.toHaveBeenCalled();
+    expect(pendingHostEventCount()).toBe(1);
 
     delete (window as any).onContentDelta;
   });

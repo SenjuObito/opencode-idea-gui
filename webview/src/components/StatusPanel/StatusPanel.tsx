@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FileChangeSummary } from '../../types';
 import { undoFileChanges, sendToJava, cardDebugLog } from '../../utils/bridge';
+import { registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 import { getFileName } from '../../utils/helpers';
 import TodoList from './TodoList';
 import SubagentList from './SubagentList';
@@ -180,9 +181,9 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
       }
     };
 
-    window.onUndoFileResult = handleUndoResult;
+    registerHostEvents({ 'files.undo': handleUndoResult });
     return () => {
-      delete window.onUndoFileResult;
+      unregisterHostEvents(['files.undo']);
     };
   }, [onUndoFile, t]);
 
@@ -231,9 +232,9 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
       }
     };
 
-    window.onUndoAllFileResult = handleUndoAllResult;
+    registerHostEvents({ 'files.undo.all': handleUndoAllResult });
     return () => {
-      delete window.onUndoAllFileResult;
+      unregisterHostEvents(['files.undo.all']);
     };
   }, [onDiscardAll, onUndoFile, t]);
 

@@ -255,7 +255,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     window.__lastStreamActivityAt = Date.now();
   };
 
-  window.onStreamStart = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const onStreamStart = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     // The identity travels in the envelope, the content in the payload.
     const targetSessionId: string | null = env?.sessionId ?? null;
     const targetTabId: string | null = env?.tabId ?? null;
@@ -526,7 +526,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  window.onContentDelta = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const onContentDelta = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const delta = String(payload?.delta ?? '');
     // An empty id is NOT "the active session". Routing a delta there is exactly
     // how two concurrently-streaming sessions swapped text.
@@ -556,7 +556,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     scheduleContentRaf();
   };
 
-  window.onThinkingDelta = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const onThinkingDelta = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const delta = String(payload?.delta ?? '');
     const targetSessionId = resolveSessionId(env?.sessionId ?? null, 'onThinkingDelta');
     if (targetSessionId === null) return;
@@ -636,7 +636,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     setTimeout(tick, 50);
   };
 
-  window.onStreamEnd = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const onStreamEnd = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     let targetSessionId: string | null = env?.sessionId ?? null;
     const sequence = payload?.sequence as string | number | undefined;
     // The host names the owning tab: routing by tab id is exact.
@@ -1087,14 +1087,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     window.__streamEndProcessedTurnId = endedStreamingTurnId;
   };
 
-  // Streaming heartbeat — lightweight signal from backend during tool execution
-  // phases where no content deltas arrive.  Keeps the stall watchdog alive.
-  window.onStreamingHeartbeat = (_payload?: HostEventPayload, _env?: HostEventEnvelope) => {
-    if (isStreamingRef.current && window.__lastStreamActivityAt !== undefined) {
-      window.__lastStreamActivityAt = Date.now();
-    }
-  };
-
   // Permission denied callback — kept as a no-op for backward compatibility.
   //
   // The backend (OpencodeBuddyChatWindow.interruptDueToPermissionDenial) always calls
@@ -1104,13 +1096,13 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // could do against pre-finalize state. Running a second setMessages here
   // would only produce a wasted re-render (React 18 batches the two calls, and
   // onStreamEnd is the last writer). See Issue #1315 investigation for details.
-  window.onPermissionDenied = () => {};
+  const onPermissionDenied = () => {};
 
   // Block reset callback — clears streaming content refs when a new assistant
   // message starts within an ongoing stream (e.g., after tool_use loop iteration).
   // This prevents cross-turn content merging where new thinking/text deltas
   // would append to previous turn's buffered content.
-  window.onBlockReset = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
+  const onBlockReset = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
     const targetSessionId = env?.sessionId ?? null;
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       return;
@@ -1147,7 +1139,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     autoExpandedThinkingKeysRef.current.clear();
   };
 
-  window.onStreamingHeartbeat = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
+  const onStreamingHeartbeat = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
     const targetSessionId = env?.sessionId ?? null;
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
       return;
@@ -1170,7 +1162,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // arrive alongside — or instead of — onStreamEnd.
   const processedTurnEndKeys = new Set<string>();
 
-  window.onTurnEnd = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const onTurnEnd = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const sessionId = resolveSessionId(env?.sessionId ?? null, 'onTurnEnd');
     if (sessionId === null) return;
     const json = readJson<{ turnId?: string | number }>(payload?.terminal);
@@ -1218,14 +1210,15 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     finalizeUnresolvedToolUses();
   };
 
-  // The semantic catalog is the routing table: the dispatcher looks the
-  // handler up here first, the window globals stay for the legacy path.
+  // The semantic catalog is the routing table.
   registerHostEvents({
-  'message.block.reset': window.onBlockReset,
-  'content.delta': window.onContentDelta,
-  'turn.ended': window.onStreamEnd,
-  'turn.started': window.onStreamStart,
-  'thinking.delta': window.onThinkingDelta,
-  'turn.settled': window.onTurnEnd,
+    'message.block.reset': onBlockReset,
+    'content.delta': onContentDelta,
+    'turn.ended': onStreamEnd,
+    'turn.started': onStreamStart,
+    'thinking.delta': onThinkingDelta,
+    'turn.heartbeat': onStreamingHeartbeat,
+    'permission.denied': onPermissionDenied,
+    'turn.settled': onTurnEnd,
   });
 }

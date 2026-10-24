@@ -10,7 +10,6 @@
  * sub-modules under registerCallbacks/ for easier navigation and maintenance.
  */
 
-import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../useWindowCallbacks';
 import { cardDebugLog } from '../../utils/bridge';
 import { parseTaskNotification } from '../../utils/taskEventParser';
@@ -34,7 +33,7 @@ import { registerUsageModeCallbacks } from './registerCallbacks/usageModeCallbac
 import { registerPermissionCallbacks } from './registerCallbacks/permissionCallbacks';
 import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCallbacks';
 import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../utils/hostEventTypes';
-import { registerHostEvents, registerSemanticWindowHandlers } from '../../utils/hostEventRegistry';
+import { hostEventHandler, registerHostEvents } from '../../utils/hostEventRegistry';
 
 function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, nextMessages: unknown[] | undefined): boolean {
   if (previousMessages === nextMessages) return true;
@@ -88,7 +87,7 @@ function appendSubagentHistoryChunk(transferId: string, chunk: string, isFinal: 
   chunks.push(chunk);
   if (isFinal === true || isFinal === 'true') {
     pendingSubagentHistoryChunks.delete(transferId);
-    window.onSubagentHistoryLoaded?.(chunks.join(''));
+    hostEventHandler('subagent.history')?.(chunks.join(''));
     return;
   }
   if (pendingSubagentHistoryChunks.size >= MAX_PENDING_SUBAGENT_HISTORY_TRANSFERS) {
@@ -100,7 +99,6 @@ function appendSubagentHistoryChunk(transferId: string, chunk: string, isFinal: 
 
 export function registerWindowCallbacks(
   options: UseWindowCallbacksOptions,
-  tRef: MutableRefObject<UseWindowCallbacksOptions['t']>,
   requestHistoryRenderCommit: (refreshEpoch: number) => void,
 ): void {
   // -------------------------------------------------------------------------
@@ -156,14 +154,14 @@ export function registerWindowCallbacks(
 
   registerMessageCallbacks(options, resetTransientUiState, requestHistoryRenderCommit);
   registerStreamingCallbacks(options);
-  registerSessionCallbacks(options, tRef);
+  registerSessionCallbacks(options);
   registerUsageModeCallbacks(options);
   registerPermissionCallbacks(options);
   registerAgentAndSelectionCallbacks(options);
 
   window.onSubagentHistoryChunk = appendSubagentHistoryChunk;
 
-  window.onSubagentHistoryLoaded = (payload: string | { history?: SubagentHistoryResponse }) => {
+  const onSubagentHistoryLoaded = (payload: string | { history?: SubagentHistoryResponse }) => {
     // 子代理 transcript 属于发起它的 tab，而不是当前窗口。后台 Agent 的
     // 2 秒轮询结果如果直接写进 active state，会把 A tab 的子代理 transcript
     // 显示到 B tab。先按 payload.sessionId 解析目标 tab；解析不到就丢弃，
@@ -228,7 +226,7 @@ export function registerWindowCallbacks(
   //      session switch, so stale entries from the prior session cannot linger.
   //   3. tool_use_ids are globally unique, so even a delayed event can only
   //      update the agent it was emitted for, never mislabel another.
-  window.onTaskEvent = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const onTaskEvent = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     try {
       const taskEvent = parseTaskNotification(readJson<any>(payload?.event));
@@ -266,7 +264,7 @@ export function registerWindowCallbacks(
   };
 
   // opencode todo.updated SSE event — stores authoritative todo list
-  window.onTodoUpdated = (eventPayload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const onTodoUpdated = (eventPayload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     if (!eventPayload?.todos) return;
     try {
@@ -332,13 +330,10 @@ export function registerWindowCallbacks(
   };
 
   registerHostEvents({
-    'subagent.history': window.onSubagentHistoryLoaded,
-    'task.event': window.onTaskEvent,
-    'todos.updated': window.onTodoUpdated,
+    'subagent.history': onSubagentHistoryLoaded,
+    'task.event': onTaskEvent,
+    'todos.updated': onTodoUpdated,
   });
-  // Every semantic handler that is mounted now becomes part of the registry,
-  // so a host event never has to fall back to a `window.<fn>` lookup.
-  registerSemanticWindowHandlers();
 
   // =========================================================================
   // Slash Commands Setup

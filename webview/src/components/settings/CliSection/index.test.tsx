@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CliSection from './index';
+import { hostEventHandler, resetHostEvents } from '../../../utils/hostEventRegistry';
 
 const translations: Record<string, string> = {
   'settings.cli.listTitle': 'Local CLI tools',
@@ -55,13 +56,13 @@ vi.mock('../../shared/ProviderModelIcon', () => ({
 describe('CliSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetHostEvents();
     window.sendToJava = vi.fn();
-    window.updateCliStatus = undefined;
   });
 
   afterEach(() => {
     window.sendToJava = undefined;
-    window.updateCliStatus = undefined;
+    resetHostEvents();
   });
 
   it('requests CLI status on mount', async () => {
@@ -78,7 +79,7 @@ describe('CliSection', () => {
     render(<CliSection />);
 
     await act(async () => {
-      window.updateCliStatus?.(JSON.stringify({
+      hostEventHandler('cli.status')?.(JSON.stringify({
         opencode: {
           id: 'opencode',
           name: 'OpenCode',
@@ -100,7 +101,7 @@ describe('CliSection', () => {
     render(<CliSection />);
 
     await act(async () => {
-      window.updateCliStatus?.(JSON.stringify({
+      hostEventHandler('cli.status')?.(JSON.stringify({
         opencode: { id: 'opencode', name: 'OpenCode', binaryName: 'opencode', installed: false },
       }));
     });

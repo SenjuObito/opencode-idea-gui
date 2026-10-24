@@ -11,6 +11,7 @@ import {
 } from '../../../types/cliTool';
 import styles from './style.module.less';
 import { sendWindowCommand } from '../../../utils/bridge';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../../utils/hostEventRegistry';
 
 interface CliSectionProps {
   addToast?: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
@@ -213,8 +214,8 @@ const CliSection = ({ addToast }: CliSectionProps) => {
   }, [clearStatusTimeout]);
 
   useEffect(() => {
-    const previous = window.updateCliStatus;
-    window.updateCliStatus = (json: string) => {
+    const previous = hostEventHandler('cli.status');
+    const handler = (json: string) => {
       clearStatusTimeout();
       const parsed = parseCliStatusPayload(json);
       // A payload that parses but matches no known tool means the shape is
@@ -228,11 +229,18 @@ const CliSection = ({ addToast }: CliSectionProps) => {
       setStatusError(false);
       setLoading(false);
     };
+    registerHostEvents({ 'cli.status': handler });
 
     requestStatus();
 
     return () => {
-      window.updateCliStatus = previous;
+      if (hostEventHandler('cli.status') === handler) {
+        if (previous) {
+          registerHostEvents({ 'cli.status': previous });
+        } else {
+          unregisterHostEvents(['cli.status']);
+        }
+      }
       clearStatusTimeout();
     };
   }, [requestStatus, clearStatusTimeout]);

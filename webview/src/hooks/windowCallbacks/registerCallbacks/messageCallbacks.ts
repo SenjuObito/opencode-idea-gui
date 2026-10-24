@@ -560,7 +560,7 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.updateMessages = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const updateMessages = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     // A named event: the content is in the payload, the identity in the envelope.
     const targetSessionId: string | null = env?.sessionId ?? null;
     const json = String(payload?.messages ?? '[]');
@@ -685,7 +685,7 @@ export function registerMessageCallbacks(
     processUpdateMessages(json, sequence, baseIndexArg, targetSessionId);
   };
 
-  window.updateMessageTail = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const updateMessageTail = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const json = String(payload?.messages ?? '[]');
     const baseIndexArg = payload?.baseIndex as string | number;
@@ -728,7 +728,7 @@ export function registerMessageCallbacks(
   // __opencodeListStart（列表首条的全局序号），后续窗口快照据此拼接。
   // __prependedHistoryMessageCount 同步累加：基址不变的同代快照走 legacy
   // 合并路径时，靠它保留已前插的页（Codex 既有机制）。
-  window.updateMessagesPrepend = (json, pageStartArg) => {
+  const updateMessagesPrepend = (json: string, pageStartArg?: number | string) => {
     if (isSessionTransitioning(null)) return;
     if (isStreamingRef.current) return;
     let parsed: ClaudeMessage[];
@@ -792,7 +792,7 @@ export function registerMessageCallbacks(
   const pendingMessages = (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
   if (typeof pendingMessages === 'string' && pendingMessages.length > 0) {
     delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
-    window.updateMessages({ messages: pendingMessages });
+    updateMessages({ messages: pendingMessages });
   } else if (
     pendingMessages &&
     typeof pendingMessages === 'object' &&
@@ -800,11 +800,11 @@ export function registerMessageCallbacks(
   ) {
     delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
     const payload = pendingMessages as { json: string; sequence?: number | null; sessionId?: string };
-    window.updateMessages({ messages: payload.json, sequence: payload.sequence ?? undefined },
+    updateMessages({ messages: payload.json, sequence: payload.sequence ?? undefined },
       payload.sessionId ? { sessionId: payload.sessionId } : undefined);
   }
 
-  window.updateStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const updateStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const text = payload?.status as string;
     // The host names the owning tab: routing by tab id is exact.
@@ -851,7 +851,7 @@ export function registerMessageCallbacks(
     addToast(message);
   };
 
-  window.showLoading = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const showLoading = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const value = payload?.loading;
     const targetSessionId = resolveSessionId(env?.sessionId ?? null, 'showLoading');
     const isLoading = isTruthy(value);
@@ -918,7 +918,7 @@ export function registerMessageCallbacks(
     });
   };
 
-  window.showThinkingStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const showThinkingStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const isThinkingVal = isTruthy(payload?.thinking);
     if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
@@ -933,7 +933,7 @@ export function registerMessageCallbacks(
     setIsThinking(isThinkingVal);
   };
 
-  window.showSummary = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const showSummary = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const summary = String(payload?.summary ?? '');
     if (!summary || !summary.trim()) return;
@@ -948,7 +948,7 @@ export function registerMessageCallbacks(
     }
     setStatus(summary);
   };
-  window.setHistoryData = (data) => {
+  const handleHistoryData = (data: any) => {
     if (typeof data === 'string') {
       try {
         setHistoryData(JSON.parse(data));
@@ -959,36 +959,6 @@ export function registerMessageCallbacks(
       setHistoryData(data);
     }
   };
-
-  const pendingHistory = (window as unknown as Record<string, unknown>).__pendingHistoryData;
-  if (pendingHistory !== undefined) {
-    delete (window as unknown as Record<string, unknown>).__pendingHistoryData;
-    window.setHistoryData?.(pendingHistory as any);
-  }
-
-  const pendingStatus = (window as unknown as Record<string, unknown>).__pendingStatusText;
-  if (typeof pendingStatus === 'string' && pendingStatus.length > 0) {
-    delete (window as unknown as Record<string, unknown>).__pendingStatusText;
-    window.updateStatus?.(pendingStatus);
-  }
-
-  const pendingLoading = window.__pendingLoadingState;
-  if (typeof pendingLoading === 'boolean') {
-    delete window.__pendingLoadingState;
-    window.showLoading?.(pendingLoading);
-  }
-
-  const pendingUserMessage = window.__pendingUserMessage;
-  if (typeof pendingUserMessage === 'string' && pendingUserMessage.length > 0) {
-    delete window.__pendingUserMessage;
-    window.addUserMessage?.(pendingUserMessage);
-  }
-
-  const pendingSummary = (window as unknown as Record<string, unknown>).__pendingSummaryText;
-  if (typeof pendingSummary === 'string' && pendingSummary.length > 0) {
-    delete (window as unknown as Record<string, unknown>).__pendingSummaryText;
-    window.showSummary?.(pendingSummary);
-  }
 
   // 宿主多会话约定：(sessionId, content, uuid)。归属先解析：不属于当前活跃
   // 会话的补丁写进对应的后台 tab，绝不落到前台列表——否则又回到「拿归属当投递」
@@ -1028,7 +998,7 @@ export function registerMessageCallbacks(
     return prev;
   };
 
-  window.patchMessageUuid = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const patchMessageUuid = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId = resolveSessionId(env?.sessionId ?? null, 'patchMessageUuid');
     const content = payload?.content as string;
     const uuid = payload?.uuid as string;
@@ -1052,7 +1022,7 @@ export function registerMessageCallbacks(
     setMessages((prev) => patchUuidInList(prev, content, uuid));
   };
 
-  window.clearMessages = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const clearMessages = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const barrierSequenceArg = payload?.sequence as string | number | undefined;
 
@@ -1109,7 +1079,7 @@ export function registerMessageCallbacks(
     addToast(message, 'error');
   };
 
-  window.showContextUsageDialog = (json: string) => {
+  const showContextUsageDialog = (json: string) => {
     try {
       const result = JSON.parse(json);
       const requestId = typeof result.requestId === 'string' ? result.requestId : null;
@@ -1128,13 +1098,13 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.onContextUsageError = (message: string, requestId?: string) => {
+  const onContextUsageError = (message: string, requestId?: string) => {
     if (closeContextUsageDialog(requestId)) {
       addToast(message, 'error');
     }
   };
 
-  window.addHistoryMessage = (message: ClaudeMessage) => {
+  const addHistoryMessage = (message: ClaudeMessage) => {
     if (isSessionTransitioning(null)) return;
     setMessages((prev) => [...prev, message]);
   };
@@ -1171,7 +1141,7 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.historyLoadComplete = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const historyLoadComplete = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const expectedMessageCountArg = payload?.messageCount as string | number | undefined;
 
@@ -1236,7 +1206,7 @@ export function registerMessageCallbacks(
   const pendingHistoryLoadComplete = window.__pendingHistoryLoadComplete;
   if (pendingHistoryLoadComplete) {
     window.__pendingHistoryLoadComplete = undefined;
-    window.historyLoadComplete({ messageCount: pendingHistoryLoadComplete.expectedMessageCount });
+    historyLoadComplete({ messageCount: pendingHistoryLoadComplete.expectedMessageCount });
   }
 
   // Legacy Codex callback — kept as no-op to avoid breaking older Java hosts.
@@ -1353,7 +1323,7 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.addUserMessage = (content: string) => {
+  const addUserMessage = (content: string) => {
     if (isSessionTransitioning(null)) return;
     const userMessage: ClaudeMessage = {
       type: 'user',
@@ -1380,7 +1350,7 @@ export function registerMessageCallbacks(
     });
   };
 
-  window.onSessionHydrated = (packetJson: string) => {
+  const onSessionHydrated = (packetJson: string) => {
     try {
       const packet = JSON.parse(packetJson);
       const {
@@ -1457,21 +1427,56 @@ export function registerMessageCallbacks(
   };
 
 
-  // The semantic catalog is the routing table: the dispatcher looks the
-  // handler up here first, the window globals stay for the legacy path.
+  // The semantic catalog is the routing table.
   registerHostEvents({
-  'message.history': window.addHistoryMessage,
-  'message.added': window.addUserMessage,
-  'session.cleared': window.clearMessages,
-  'session.loaded': window.historyLoadComplete,
-  'message.uuid.patched': window.patchMessageUuid,
-  'session.loading': window.showLoading,
-  'session.summary': window.showSummary,
-  'thinking.status': window.showThinkingStatus,
-  'message.tail': window.updateMessageTail,
-  'message.snapshot': window.updateMessages,
-  'message.prepended': window.updateMessagesPrepend,
-  'status.updated': window.updateStatus,
-  'message.error': addErrorMessage,
+    'message.history': addHistoryMessage,
+    'message.added': addUserMessage,
+    'session.cleared': clearMessages,
+    'session.loaded': historyLoadComplete,
+    'message.uuid.patched': patchMessageUuid,
+    'session.loading': showLoading,
+    'session.summary': showSummary,
+    'thinking.status': showThinkingStatus,
+    'message.tail': updateMessageTail,
+    'message.snapshot': updateMessages,
+    'message.prepended': updateMessagesPrepend,
+    'status.updated': updateStatus,
+    'message.error': addErrorMessage,
+    'context.usage.dialog': showContextUsageDialog,
+    'context.usage.error': onContextUsageError,
+    'history.data': handleHistoryData,
+    'session.hydrated': onSessionHydrated,
   });
+
+  // Drain anything the pre-mount surface buffered. Registration has happened,
+  // so the local handlers and their state setters are all live.
+  const pendingHistory = (window as unknown as Record<string, unknown>).__pendingHistoryData;
+  if (pendingHistory !== undefined) {
+    delete (window as unknown as Record<string, unknown>).__pendingHistoryData;
+    handleHistoryData(pendingHistory);
+  }
+
+  const pendingStatus = (window as unknown as Record<string, unknown>).__pendingStatusText;
+  if (typeof pendingStatus === 'string' && pendingStatus.length > 0) {
+    delete (window as unknown as Record<string, unknown>).__pendingStatusText;
+    updateStatus(pendingStatus as any);
+  }
+
+  const pendingLoading = window.__pendingLoadingState;
+  if (typeof pendingLoading === 'boolean') {
+    delete window.__pendingLoadingState;
+    showLoading(pendingLoading as any);
+  }
+
+  const pendingUserMessage = window.__pendingUserMessage;
+  if (typeof pendingUserMessage === 'string' && pendingUserMessage.length > 0) {
+    delete window.__pendingUserMessage;
+    addUserMessage(pendingUserMessage);
+  }
+
+  const pendingSummary = (window as unknown as Record<string, unknown>).__pendingSummaryText;
+  if (typeof pendingSummary === 'string' && pendingSummary.length > 0) {
+    delete (window as unknown as Record<string, unknown>).__pendingSummaryText;
+    showSummary(pendingSummary as any);
+  }
 }

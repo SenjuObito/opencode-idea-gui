@@ -9,6 +9,7 @@
  * requestId (same pending-map pattern as `resolve_file_path` in utils/bridge).
  */
 import { sendToJava } from '../../utils/bridge';
+import { registerHostEvents } from '../../utils/hostEventRegistry';
 import { debugWarn } from '../../utils/debug';
 
 interface PendingEntry {
@@ -25,29 +26,31 @@ function installResponseHandler() {
   if (responseHandlerInstalled) {
     return;
   }
-  window.onTokenTrackerResponse = (json: string) => {
-    try {
-      const data = JSON.parse(json) as { requestId?: string; ok?: boolean; data?: any; error?: string };
-      const requestId = data.requestId;
-      if (!requestId) {
-        return;
+  registerHostEvents({
+    'tokentracker.response': (json: string) => {
+      try {
+        const data = JSON.parse(json) as { requestId?: string; ok?: boolean; data?: any; error?: string };
+        const requestId = data.requestId;
+        if (!requestId) {
+          return;
+        }
+        const entry = pendingRequests.get(requestId);
+        if (!entry) {
+          return;
+        }
+        pendingRequests.delete(requestId);
+        clearTimeout(entry.timeoutId);
+        if (data.ok) {
+          entry.resolve(data.data);
+        } else {
+          entry.reject(new Error(data.error || 'unknown error'));
+        }
+      } catch {
+        // Ignore malformed responses from the backend, but keep them observable.
+        debugWarn('[tokentrackerBridge] malformed response ignored:', json);
       }
-      const entry = pendingRequests.get(requestId);
-      if (!entry) {
-        return;
-      }
-      pendingRequests.delete(requestId);
-      clearTimeout(entry.timeoutId);
-      if (data.ok) {
-        entry.resolve(data.data);
-      } else {
-        entry.reject(new Error(data.error || 'unknown error'));
-      }
-    } catch {
-      // Ignore malformed responses from the backend, but keep them observable.
-      debugWarn('[tokentrackerBridge] malformed response ignored:', json);
-    }
-  };
+    },
+  });
   responseHandlerInstalled = true;
 }
 

@@ -6,15 +6,14 @@ import {
   flushHostDispatcher,
   observeHostEpoch,
   pendingHostEventCount,
-  resetHostDispatcherEpochs,
+  resetHostDispatcher,
 } from './hostDispatcher';
+import { registerHostEvents, resetHostEvents } from './hostEventRegistry';
 
 describe('hostDispatcher', () => {
   beforeEach(() => {
-    flushHostDispatcher();
-    resetHostDispatcherEpochs();
-    delete (window as any).earlyEvent;
-    delete (window as any).__nested;
+    resetHostDispatcher();
+    resetHostEvents();
   });
 
   it('queues an event until its handler is registered, then replays it in order', () => {
@@ -22,30 +21,32 @@ describe('hostDispatcher', () => {
     dispatchHostEvent('earlyEvent', ['second']);
 
     const handler = vi.fn();
-    (window as any).earlyEvent = handler;
+    registerHostEvents({ earlyEvent: handler });
     flushHostDispatcher();
 
     expect(handler.mock.calls).toEqual([['first'], ['second']]);
     expect(pendingHostEventCount()).toBe(0);
   });
 
-  it('dispatches immediately to an existing handler and supports window-qualified names', () => {
+  it('dispatches immediately to an existing handler', () => {
     const handler = vi.fn();
-    (window as any).earlyEvent = handler;
+    registerHostEvents({ earlyEvent: handler });
 
-    dispatchHostEvent('window.earlyEvent', [42]);
+    dispatchHostEvent('earlyEvent', [42]);
 
     expect(handler).toHaveBeenCalledWith(42);
     expect(pendingHostEventCount()).toBe(0);
   });
 
-  it('resolves nested callback paths', () => {
+  it('does not resolve nested window callback paths', () => {
     const handler = vi.fn();
     (window as any).__nested = { handler };
 
     dispatchHostEvent('__nested.handler', ['x']);
 
-    expect(handler).toHaveBeenCalledWith('x');
+    expect(handler).not.toHaveBeenCalled();
+    expect(pendingHostEventCount()).toBe(1);
+    delete (window as any).__nested;
   });
 
   it('keeps events without handlers queued and does not throw', () => {
@@ -62,14 +63,14 @@ describe('hostDispatcher', () => {
 
     expect(pendingHostEventCount()).toBeLessThanOrEqual(2_000);
     flushHostDispatcher();
-    (window as any).notMountedYet = vi.fn();
+    registerHostEvents({ notMountedYet: vi.fn() });
     flushHostDispatcher();
     expect(pendingHostEventCount()).toBe(0);
   });
 
   it('applies a typed envelope payload and drops events from an older epoch', () => {
     const handler = vi.fn();
-    (window as any).tabScoped = handler;
+    registerHostEvents({ tabScoped: handler });
 
     dispatchHostEnvelope({
       v: 2,
@@ -91,7 +92,7 @@ describe('hostDispatcher', () => {
 
   it('drops pre-reload events after the host resync primes the epoch', () => {
     const handler = vi.fn();
-    (window as any).tabScoped = handler;
+    registerHostEvents({ tabScoped: handler });
 
     observeHostEpoch('tab-a', 3);
     dispatchHostEnvelope({
@@ -114,7 +115,7 @@ describe('hostDispatcher', () => {
 
   it('dispatches a batch in order and tolerates malformed entries', () => {
     const handler = vi.fn();
-    (window as any).batchEvent = handler;
+    registerHostEvents({ batchEvent: handler });
 
     dispatchHostEnvelopeBatch([
       { v: 2, type: 'batchEvent', payload: { args: [1] } },

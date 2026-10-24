@@ -9,6 +9,7 @@ import {
   subscribeNodeProcesses,
   type NodeProcessSnapshot,
 } from './nodeProcessCapabilities';
+import { hostEventHandler, resetHostEvents } from './hostEventRegistry';
 
 describe('nodeProcessCapabilities', () => {
   let sentMessages: string[] = [];
@@ -86,14 +87,14 @@ describe('nodeProcessCapabilities', () => {
           orphan: false,
         }],
       };
-      window.updateNodeProcesses!(JSON.stringify(snapshot));
+      hostEventHandler('node.processes')!(JSON.stringify(snapshot));
 
       expect(listener1).toHaveBeenCalledTimes(1);
       expect(listener2).toHaveBeenCalledTimes(1);
       expect(listener1.mock.calls[0][0]).toEqual(snapshot);
 
       unsub1();
-      window.updateNodeProcesses!(JSON.stringify(snapshot));
+      hostEventHandler('node.processes')!(JSON.stringify(snapshot));
       expect(listener1).toHaveBeenCalledTimes(1); // unchanged
       expect(listener2).toHaveBeenCalledTimes(2); // received again
 
@@ -104,8 +105,8 @@ describe('nodeProcessCapabilities', () => {
       const listener = vi.fn();
       const unsub = subscribeNodeProcessKillResult(listener);
 
-      window.nodeProcessKillResult!(JSON.stringify({ pid: 1, success: true }));
-      window.nodeProcessKillResult!(JSON.stringify({ killed: 3 }));
+      hostEventHandler('node.process.killed')!(JSON.stringify({ pid: 1, success: true }));
+      hostEventHandler('node.process.killed')!(JSON.stringify({ killed: 3 }));
 
       expect(listener).toHaveBeenCalledTimes(2);
       expect(listener.mock.calls[0][0]).toEqual({ pid: 1, success: true });
@@ -117,11 +118,11 @@ describe('nodeProcessCapabilities', () => {
       const listener = vi.fn();
       const unsub = subscribeNodeProcesses(listener);
 
-      expect(() => window.updateNodeProcesses!('this-is-not-json')).not.toThrow();
+      expect(() => hostEventHandler('node.processes')!('this-is-not-json')).not.toThrow();
       expect(listener).not.toHaveBeenCalled();
 
       // Also reject payloads that are JSON but missing the processes array
-      expect(() => window.updateNodeProcesses!('{"totals":{}}')).not.toThrow();
+      expect(() => hostEventHandler('node.processes')!('{"totals":{}}')).not.toThrow();
       expect(listener).not.toHaveBeenCalled();
       unsub();
     });
@@ -129,7 +130,7 @@ describe('nodeProcessCapabilities', () => {
     it('silently drops malformed kill result JSON', () => {
       const listener = vi.fn();
       const unsub = subscribeNodeProcessKillResult(listener);
-      expect(() => window.nodeProcessKillResult!('{invalid')).not.toThrow();
+      expect(() => hostEventHandler('node.process.killed')!('{invalid')).not.toThrow();
       expect(listener).not.toHaveBeenCalled();
       unsub();
     });
@@ -144,7 +145,7 @@ describe('nodeProcessCapabilities', () => {
         snapshotAt: 1, totals: { daemon: 0, channel: 0, orphan: 0, all: 0 }, processes: [],
       };
       // No exception should propagate out
-      expect(() => window.updateNodeProcesses!(JSON.stringify(snapshot))).not.toThrow();
+      expect(() => hostEventHandler('node.processes')!(JSON.stringify(snapshot))).not.toThrow();
 
       expect(throwing).toHaveBeenCalledTimes(1);
       expect(survivor).toHaveBeenCalledTimes(1);

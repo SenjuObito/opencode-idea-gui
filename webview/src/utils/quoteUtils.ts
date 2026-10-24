@@ -1,3 +1,5 @@
+import { hostEventHandler } from './hostEventRegistry';
+
 const QUOTE_PREFIX = '> ';
 
 /** Turn arbitrary text into a Markdown blockquote. */
@@ -16,6 +18,6 @@ export function quoteToChatInput(text: string): boolean {
   if (!text.trim()) return false;
   if (!window.addQuotedSnippet) return false;
   window.addQuotedSnippet(JSON.stringify({ text }));
-  window.focusChatInput?.();
+  hostEventHandler('chat.focus')?.();
   return true;
 }

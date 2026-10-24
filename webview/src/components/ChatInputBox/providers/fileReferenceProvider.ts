@@ -2,6 +2,7 @@ import type { FileItem, DropdownItemData } from '../types';
 import { getFileIcon, getFolderIcon } from '../../../utils/fileIcons';
 import { icon_terminal, icon_server } from '../../../utils/icons';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
 
 interface PendingRequest {
   requestId: number;
@@ -40,7 +41,8 @@ function setupFileListCallback() {
     return;
   }
 
-  window.onFileListResult = (json: string) => {
+  registerHostEvents({
+    'files.listed': (json: string) => {
     let data: { files?: FileItem[]; requestId?: number | string } | FileItem[];
     try {
       data = JSON.parse(json);
@@ -119,7 +121,8 @@ function setupFileListCallback() {
       count: files.length,
     });
     pending.resolve(files);
-  };
+    },
+  });
 }
 
 /**

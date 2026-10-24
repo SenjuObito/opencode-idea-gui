@@ -7,6 +7,7 @@
  */
 
 import { sendWindowCommand } from '../../utils/bridge';
+import { hostEventHandler } from '../../utils/hostEventRegistry';
 
 const MAX_RETRIES = 30;
 
@@ -78,24 +79,24 @@ export const drainPendingSettings = (): void => {
   if (w.__pendingSendShortcut) {
     const pending = w.__pendingSendShortcut as string;
     delete w.__pendingSendShortcut;
-    window.updateSendShortcut?.(pending);
+    hostEventHandler('settings.send.shortcut')?.(pending);
   }
 
   if (w.__pendingAutoOpenFileEnabled) {
     const pending = w.__pendingAutoOpenFileEnabled as string;
     delete w.__pendingAutoOpenFileEnabled;
-    window.updateAutoOpenFileEnabled?.(pending);
+    hostEventHandler('settings.auto.open.file')?.(pending);
   }
 
   if (w.__pendingPermissionDialogTimeout) {
     const pending = w.__pendingPermissionDialogTimeout as string;
     delete w.__pendingPermissionDialogTimeout;
-    window.updatePermissionDialogTimeout?.(pending);
+    hostEventHandler('settings.permission.timeout')?.(pending);
   }
 
   if (w.__pendingModeReceived) {
     const pending = w.__pendingModeReceived as string;
     delete w.__pendingModeReceived;
-    window.onModeReceived?.(pending);
+    hostEventHandler('settings.mode.received')?.(pending);
   }
 };

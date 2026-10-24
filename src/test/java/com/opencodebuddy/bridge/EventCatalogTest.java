@@ -95,12 +95,24 @@ public class EventCatalogTest {
     @Test
     public void everyHostCallJavaScriptHasASemanticName() throws IOException {
         Pattern call = Pattern.compile("callJavaScript\\(\"((?:window\\.)?[A-Za-z_$][A-Za-z0-9_$.]*)\"");
+        Pattern literal = Pattern.compile("\"window\\.([A-Za-z_$][A-Za-z0-9_$]*)\"");
         Set<String> missing = new TreeSet<>();
         try (Stream<Path> files = Files.walk(Path.of("src/main/java"))) {
             for (Path file : (Iterable<Path>) files.filter(path -> path.toString().endsWith(".java"))::iterator) {
-                Matcher matcher = call.matcher(Files.readString(file, StandardCharsets.UTF_8));
+                String source = Files.readString(file, StandardCharsets.UTF_8);
+                Matcher matcher = call.matcher(source);
                 while (matcher.find()) {
                     String functionName = matcher.group(1).replaceFirst("^window\\.", "");
+                    if (!EventCatalog.catalog().containsValue(functionName)) {
+                        missing.add(functionName);
+                    }
+                }
+                Matcher windowLiteral = literal.matcher(source);
+                while (windowLiteral.find()) {
+                    String functionName = windowLiteral.group(1);
+                    if (functionName.startsWith("__") || functionName.equals("myFunction")) {
+                        continue;
+                    }
                     if (!EventCatalog.catalog().containsValue(functionName)) {
                         missing.add(functionName);
                     }

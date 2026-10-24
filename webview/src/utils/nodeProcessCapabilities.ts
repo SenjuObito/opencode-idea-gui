@@ -1,15 +1,15 @@
 /**
  * Node process capabilities subscriber registry.
  *
- * Mirrors runtimeProviderCapabilities.ts — installs single dispatchers on
- * `window.updateNodeProcesses` / `window.nodeProcessKillResult` and routes
- * incoming JSON payloads to subscribed listeners.
+ * Mirrors runtimeProviderCapabilities.ts — installs single dispatchers in the
+ * host event registry and routes incoming JSON payloads to subscribed listeners.
  *
  * Multiple consumers (e.g. the settings menu badge and the panel itself) can
  * subscribe without overwriting each other's callbacks.
  */
 
 import { sendWindowCommand } from './bridge';
+import { hostEventHandler, registerHostEvents } from './hostEventRegistry';
 
 export type NodeProcessKind = 'DAEMON' | 'CHANNEL' | 'ORPHAN';
 
@@ -91,20 +91,21 @@ function safeParseKillResult(json: string): NodeProcessKillResult | null {
 }
 
 export function installNodeProcessDispatchers(): void {
-  window.updateNodeProcesses = (json: string) => {
-    const snapshot = safeParseSnapshot(json);
-    if (snapshot) emit(snapshotListeners, snapshot);
-  };
-
-  window.nodeProcessKillResult = (json: string) => {
-    const result = safeParseKillResult(json);
-    if (result) emit(killResultListeners, result);
-  };
+  registerHostEvents({
+    'node.processes': (json: string) => {
+      const snapshot = safeParseSnapshot(json);
+      if (snapshot) emit(snapshotListeners, snapshot);
+    },
+    'node.process.killed': (json: string) => {
+      const result = safeParseKillResult(json);
+      if (result) emit(killResultListeners, result);
+    },
+  });
 }
 
 function ensureInstalled(): void {
   if (typeof window === 'undefined') return;
-  if (window.updateNodeProcesses && window.nodeProcessKillResult) return;
+  if (hostEventHandler('node.processes') && hostEventHandler('node.process.killed')) return;
   installNodeProcessDispatchers();
 }
 

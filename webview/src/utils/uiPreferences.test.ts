@@ -130,15 +130,17 @@ describe('uiPreferences', () => {
     expect(m.getUiPreferences()).toEqual(m.DEFAULT_UI_PREFERENCES);
   });
 
-  it('installs window.applyUiPreferences and parses its JSON payload', async () => {
+  it('installs the settings.ui.preferences handler and parses its JSON payload', async () => {
     const m = await loadModule();
+    const registry = await import('./hostEventRegistry');
+    registry.resetHostEvents();
     const dispose = m.installUiPreferencesBridge();
-    window.applyUiPreferences?.(JSON.stringify({ theme: 'dark', detailedOutputEnabled: true }));
+    registry.hostEventHandler('settings.ui.preferences')?.(JSON.stringify({ theme: 'dark', detailedOutputEnabled: true }));
 
     expect(m.getUiPreferences().theme).toBe('dark');
     expect(m.getUiPreferences().detailedOutputEnabled).toBe(true);
 
     dispose();
-    expect(window.applyUiPreferences).toBeUndefined();
+    expect(registry.hostEventHandler('settings.ui.preferences')).toBeNull();
   });
 });

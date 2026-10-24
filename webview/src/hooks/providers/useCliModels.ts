@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { sendWindowCommand } from '../../utils/bridge';
+import { registerHostEvents } from '../../utils/hostEventRegistry';
 import type { ModelInfo } from '../../components/ChatInputBox/types';
 import { OPENCODE_MODELS, isKnownNonReasoningModel } from '../../components/ChatInputBox/types';
 
@@ -57,7 +58,7 @@ export function __resetCliModelsCacheForTests() {
   clearPendingLoad();
   hasPluginInitFetched = false;
   if (typeof window !== 'undefined') {
-    window.setCliModels = handleIncomingCliModels;
+    registerHostEvents({ 'cli.models': handleIncomingCliModels });
   }
   notifyListeners();
 }
@@ -210,9 +211,9 @@ function beginLoad(providerId: string) {
   };
 }
 
-// Global window registration
+// Global host event registration
 if (typeof window !== 'undefined') {
-  window.setCliModels = handleIncomingCliModels;
+  registerHostEvents({ 'cli.models': handleIncomingCliModels });
   if (window.__pendingCliModels) {
     const pending = window.__pendingCliModels;
     delete window.__pendingCliModels;

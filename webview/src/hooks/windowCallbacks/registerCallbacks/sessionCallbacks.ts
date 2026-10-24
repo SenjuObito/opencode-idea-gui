@@ -2,12 +2,10 @@
  * sessionCallbacks.ts
  *
  * Registers window bridge callbacks for session management,
- * setSessionId, addToast, onExportSessionData.
+ * setSessionId, addToast.
  */
 
-import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
-import { downloadJSON } from '../../../utils/exportMarkdown';
 import { endTransition } from '../tabTransition';
 import { isTabTransitioning, transitionTargetFor } from '../tabTransition';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
@@ -19,7 +17,6 @@ const CUSTOM_TITLE_MAX_LENGTH = 50;
 
 export function registerSessionCallbacks(
   options: UseWindowCallbacksOptions,
-  tRef: MutableRefObject<UseWindowCallbacksOptions['t']>,
 ): void {
   const {
     addToast,
@@ -31,7 +28,7 @@ export function registerSessionCallbacks(
     setCustomSessionTitle,
   } = options;
 
-  window.setSessionId = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const setSessionId = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const sessionId = String(payload?.sessionId ?? '');
     if (!sessionId) return;
     const previousSessionId = payload?.previousSessionId as string | undefined;
@@ -115,7 +112,7 @@ export function registerSessionCallbacks(
     }
   };
 
-  window.addToast = (message, type) => {
+  const handleAddToast = (message: string, type?: string) => {
     addToast(message, type as 'info' | 'success' | 'warning' | 'error' | undefined);
   };
 
@@ -124,7 +121,7 @@ export function registerSessionCallbacks(
    * §7.1). The rejection is routed back to the tab that sent the command, so a
    * refused send is visible instead of silently swallowed.
    */
-  window.commandRejected = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const commandRejected = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const tabId = String(payload?.tabId ?? env?.tabId ?? '');
     const requestId = String(payload?.requestId ?? '');
     const code = String(payload?.code ?? '');
@@ -141,7 +138,7 @@ export function registerSessionCallbacks(
    * host, so this is the message the user acts on: the file they attached did
    * not make it.
    */
-  window.onAttachmentFailed = (payload: HostEventPayload | undefined) => {
+  const onAttachmentFailed = (payload: HostEventPayload | undefined) => {
     const fileName = String(payload?.fileName ?? '');
     const code = String(payload?.code ?? '');
     const message = String(payload?.message ?? '');
@@ -156,36 +153,10 @@ export function registerSessionCallbacks(
   const pendingRejections = window.__pendingCommandRejections ?? [];
   window.__pendingCommandRejections = [];
   for (const pending of pendingRejections) {
-    window.commandRejected?.(pending, undefined);
+    commandRejected(pending, undefined);
   }
 
-  window.onExportSessionData = (json) => {
-    try {
-      const data = JSON.parse(json);
-      if (data.sessionId && data.messages) {
-        const exportContent = JSON.stringify(data, null, 2);
-        const sanitizedTitle = (data.title || 'session')
-          .replace(/[<>:"/\\|?*]/g, '_')
-          .replace(/\s+/g, '_')
-          .substring(0, 50);
-        const filename = `${sanitizedTitle}_${data.sessionId.substring(0, 8)}.json`;
-        downloadJSON(exportContent, filename);
-      } else if (data.error) {
-        addToast(data.error, 'error');
-      } else {
-        addToast(tRef.current('history.exportFailed'), 'error');
-      }
-    } catch (error) {
-      console.error('[Frontend] Failed to process export data:', error);
-      addToast(tRef.current('history.exportFailed'), 'error');
-    }
-  };
-
-  // =========================================================================
-  // AI Title Callback
-  // =========================================================================
-
-  window.updateSessionTitle = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+  const updateSessionTitle = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const title = String(payload?.title ?? '');
     const sessionId = env?.sessionId ?? '';
     const tabId = env?.tabId ?? (payload?.tabId as string | undefined);
@@ -205,12 +176,12 @@ export function registerSessionCallbacks(
   // Semantic event registrations
   // =========================================================================
 
-  // The semantic catalog is the routing table: the dispatcher looks the
-  // handler up here first, the window globals stay for the legacy path.
+  // The semantic catalog is the routing table.
   registerHostEvents({
-  'command.rejected': window.commandRejected,
-  'attachment.failed': window.onAttachmentFailed,
-  'session.bound': window.setSessionId,
-  'tab.title.changed': window.updateSessionTitle,
+    'command.rejected': commandRejected,
+    'attachment.failed': onAttachmentFailed,
+    'session.bound': setSessionId,
+    'tab.title.changed': updateSessionTitle,
+    'toast.shown': handleAddToast,
   });
 }

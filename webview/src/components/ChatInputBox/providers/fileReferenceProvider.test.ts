@@ -1,3 +1,4 @@
+import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   filterFiles,
@@ -103,7 +104,7 @@ describe('fileReferenceProvider matching', () => {
     expect(typeof payload.requestId).toBe('number');
 
     // Stale empty-query response must not resolve the active waiter
-    window.onFileListResult?.(JSON.stringify({
+    hostEventHandler('files.listed')?.(JSON.stringify({
       requestId: payload.requestId - 1,
       files: [
         { name: 'Dockerfile', path: 'Dockerfile', type: 'file' },
@@ -112,7 +113,7 @@ describe('fileReferenceProvider matching', () => {
     }));
 
     // Correct response for "b"
-    window.onFileListResult?.(JSON.stringify({
+    hostEventHandler('files.listed')?.(JSON.stringify({
       requestId: payload.requestId,
       files: [
         { name: 'Dockerfile', path: 'Dockerfile', type: 'file' },
@@ -133,7 +134,7 @@ describe('fileReferenceProvider matching', () => {
     const controller = new AbortController();
     const promise = fileReferenceProvider('b', controller.signal);
 
-    window.onFileListResult?.(JSON.stringify({
+    hostEventHandler('files.listed')?.(JSON.stringify({
       files: [
         { name: 'Dockerfile', path: 'Dockerfile', type: 'file' },
         { name: 'build.gradle', path: 'build.gradle', type: 'file' },
@@ -153,7 +154,7 @@ describe('fileReferenceProvider matching', () => {
     const promise = fileReferenceProvider('build', controller.signal);
 
     const payload = JSON.parse(String(sendToJava.mock.calls[0][0]).replace(/^list_files:/, ''));
-    window.onFileListResult?.(JSON.stringify({
+    hostEventHandler('files.listed')?.(JSON.stringify({
       requestId: payload.requestId,
       files: [
         { name: 'build.gradle', path: 'build.gradle', type: 'file' },
@@ -175,7 +176,7 @@ describe('fileReferenceProvider matching', () => {
 
     const payload = JSON.parse(String(sendToJava.mock.calls[0][0]).replace(/^list_files:/, ''));
     // Backend over-matched via "jetbrains" in absolute path (legacy bug)
-    window.onFileListResult?.(JSON.stringify({
+    hostEventHandler('files.listed')?.(JSON.stringify({
       requestId: payload.requestId,
       files: [
         {
@@ -221,7 +222,7 @@ describe('fileReferenceProvider matching', () => {
     const promise = fileReferenceProvider('zzzz-no-match', controller.signal);
 
     const payload = JSON.parse(String(sendToJava.mock.calls[0][0]).replace(/^list_files:/, ''));
-    window.onFileListResult?.(JSON.stringify({
+    hostEventHandler('files.listed')?.(JSON.stringify({
       requestId: payload.requestId,
       files: [
         { name: 'Dockerfile', path: 'Dockerfile', type: 'file' },

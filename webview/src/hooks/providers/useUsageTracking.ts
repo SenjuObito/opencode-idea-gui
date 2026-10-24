@@ -42,7 +42,20 @@ export function useUsageTracking() {
   useEffect(() => {
     const applyStatus = (raw: unknown) => {
       try {
-        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        let data: any = raw;
+        if (typeof data === 'string') {
+          data = JSON.parse(data);
+        }
+        // Named events wrap the JSON under `data`; older callbacks passed the
+        // JSON string directly. Unwrap either shape before reading serveReady.
+        if (data && typeof data === 'object' && 'data' in data) {
+          const inner = (data as { data?: unknown }).data;
+          if (typeof inner === 'string') {
+            data = JSON.parse(inner);
+          } else if (inner && typeof inner === 'object') {
+            data = inner;
+          }
+        }
         cardDebugLog('[Probe] updateDaemonStatus handler fired:', JSON.stringify(data));
         setDaemonAlive(!!data.alive);
         if (data.engine && typeof data.engine === 'object') {
@@ -87,9 +100,10 @@ export function useUsageTracking() {
 
     // Drain any status that arrived before this listener was attached.
     // main.tsx stores the latest payload in window.__pendingDaemonStatus.
-    if (typeof window.__pendingDaemonStatus === 'string') {
-      const pending = window.__pendingDaemonStatus;
-      delete window.__pendingDaemonStatus;
+    const w = window as unknown as Record<string, unknown>;
+    if (w.__pendingDaemonStatus !== undefined) {
+      const pending = w.__pendingDaemonStatus;
+      delete w.__pendingDaemonStatus;
       applyStatus(pending);
     }
 

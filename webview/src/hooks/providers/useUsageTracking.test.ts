@@ -45,6 +45,39 @@ describe('useUsageTracking', () => {
     expect(result.current.isSdkStatusKnown('opencode')).toBe(true);
   });
 
+  it('unwraps the named daemon.status payload', () => {
+    const { result } = renderHook(() => useUsageTracking());
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: {
+            data: JSON.stringify({
+              alive: true,
+              serveReady: true,
+              engine: { state: 'v2', locked: true },
+            }),
+          },
+        })
+      );
+    });
+
+    expect(result.current.daemonStatusLoaded).toBe(true);
+    expect(result.current.isSdkInstalled('opencode')).toBe(true);
+    expect(result.current.daemonEngine?.state).toBe('v2');
+  });
+
+  it('drains a named daemon.status payload buffered before mount', () => {
+    (window as unknown as Record<string, unknown>).__pendingDaemonStatus = {
+      data: JSON.stringify({ alive: true, serveReady: true }),
+    };
+
+    const { result } = renderHook(() => useUsageTracking());
+
+    expect(result.current.daemonStatusLoaded).toBe(true);
+    expect(result.current.isSdkInstalled('opencode')).toBe(true);
+  });
+
   it('enters not-running state when daemon is not alive', () => {
     const { result } = renderHook(() => useUsageTracking());
 

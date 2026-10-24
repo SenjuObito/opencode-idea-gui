@@ -725,3 +725,18 @@ IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与
 - bind 前缓冲由 `PendingSendTest` 覆盖；后台权限归属由
   `permissionPromptRouting.test.ts` 覆盖；epoch/重同步由 `hostDispatcher` 测试覆盖。
 - 验证：该集成测试 9 个用例通过。
+
+## 第四轮补 19：修复状态栏永久“正在启动 OpenCode 服务”
+
+- 现象：`daemon.status` 已经到达，宿主日志显示
+  `serveReady=true`，但 webview 的 `daemonStatusLoaded` 一直为 false。
+- 根因：宿主改用具名事件后把状态包成 `{ data: "<json>" }`，而
+  `useUsageTracking` 仍按裸 JSON 字符串解析，读不到 `serveReady`。
+- 修复：
+  - `hostDispatcher` 对只有一个 `data` 字段的具名事件做兼容解包，
+    旧字符串 handler 和新具名字段 handler 都能拿到自己需要的形状。
+  - `main.tsx` 的 `daemon.status` handler 同时接受字符串和 `{ data }`。
+  - `useUsageTracking` 再防御性解包一次，并支持挂载前缓冲的包装对象。
+- 回归：新增 `useUsageTracking` 包装 payload、缓冲 payload 测试，以及
+  `hostDispatcher` 单 `data` 解包/多字段不解包测试。
+- 验证：tsc 0 错误、vitest `173 文件 / 1516 测试` 全通过。

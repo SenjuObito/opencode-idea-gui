@@ -113,6 +113,38 @@ describe('hostDispatcher', () => {
     expect(handler.mock.calls).toEqual([['new-binding']]);
   });
 
+  it('unwraps a single data field for legacy JSON handlers', () => {
+    const handler = vi.fn();
+    registerHostEvents({ legacyData: handler });
+
+    dispatchHostEnvelope({
+      v: 2,
+      type: 'legacyData',
+      payload: { data: '{"alive":true,"serveReady":true}' },
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      '{"alive":true,"serveReady":true}',
+      expect.objectContaining({ type: 'legacyData' }),
+    );
+  });
+
+  it('keeps a multi-field named payload intact', () => {
+    const handler = vi.fn();
+    registerHostEvents({ namedFields: handler });
+
+    dispatchHostEnvelope({
+      v: 2,
+      type: 'namedFields',
+      payload: { data: 'payload', tabId: 'tab-a' },
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      { data: 'payload', tabId: 'tab-a' },
+      expect.objectContaining({ type: 'namedFields' }),
+    );
+  });
+
   it('dispatches a batch in order and tolerates malformed entries', () => {
     const handler = vi.fn();
     registerHostEvents({ batchEvent: handler });

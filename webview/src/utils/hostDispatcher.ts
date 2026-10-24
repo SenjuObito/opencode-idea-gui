@@ -135,6 +135,16 @@ export function dispatchHostEnvelope(envelope: HostEnvelope): void {
   const payload = envelope.payload;
   if (payload && typeof payload === 'object' && !Array.isArray(payload)
       && !('args' in (payload as Record<string, unknown>))) {
+    const record = payload as Record<string, unknown>;
+    // Legacy callbacks such as `daemon.status` / `agents.updated` carried one
+    // JSON string. The named-event migration wraps it as `{ data: "..." }`;
+    // unwrap a single data field so both old string handlers and new named
+    // handlers see the shape they were written for.
+    const keys = Object.keys(record);
+    if (keys.length === 1 && typeof record.data === 'string') {
+      dispatchHostEvent(envelope.type, [record.data, envelope]);
+      return;
+    }
     // A named event: the handler reads the payload by field name and the
     // envelope for the identity.
     dispatchHostEvent(envelope.type, [payload, envelope]);

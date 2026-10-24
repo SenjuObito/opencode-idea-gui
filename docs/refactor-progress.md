@@ -711,3 +711,17 @@ IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与
 - 至此 webview 非 `__` 的 window 回调全局为 **0**；只剩 `window.sendToJava`
   传输桥与 `__` 私有状态。
 - 验证：tsc 0 错误、相关 vitest 124 用例通过；完整四项在提交前重跑。
+
+## 第四轮补 18：§13.2 fake daemon 集成场景
+
+- `MultiTabEventProtocolIntegrationTest` 新增：
+  - 历史 snapshot 与另一 tab 的流式 delta 同时到达，互不串。
+  - 标题、usage、revert 事件只带目标 tab/session。
+  - `message.removed` 只影响目标 tab。
+  - daemon 断连时每个 active turn 在自己的 tab 上结束。
+  - 1000 次 tab 生命周期创建/销毁不抛异常（冒烟泄漏检查）。
+- 测试用 `StreamMessageCoalescer` 的 `NO_BROWSER` 桩补上 `JsCallbackTarget`，
+  并让同步 Application 代理真正执行 `invokeLater`，从而走生产代码的发布路径。
+- bind 前缓冲由 `PendingSendTest` 覆盖；后台权限归属由
+  `permissionPromptRouting.test.ts` 覆盖；epoch/重同步由 `hostDispatcher` 测试覆盖。
+- 验证：该集成测试 9 个用例通过。

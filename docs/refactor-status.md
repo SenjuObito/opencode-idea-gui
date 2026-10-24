@@ -11,10 +11,10 @@
 
 | 状态 | 条目数 | 占比 |
 |---|---:|---:|
-| 已完成 | 15 | 94% |
+| 已完成 | 16 | 94% |
 | 部分完成 | 0 | 0% |
 | 待环境 | 1 | 6% |
-| 合计 | 16 | 100% |
+| 合计 | 17 | 100% |
 
 四项验证（每一轮都必须全绿才提交）：
 
@@ -25,7 +25,7 @@ cd webview && npx vitest run
 ./gradlew checkLegacyPatterns -PstrictLegacy=true
 ```
 
-当前基线（`25515f8` + 本轮工作区改动）：gradle 117 个测试类 / 864 用例
+当前基线（`c10d19b` + 本轮工作区改动）：gradle 117 个测试类 / 869 用例
 0 失败、tsc 0 错误、vitest `173 文件 / 1512 测试` 全通过、
 `checkLegacyPatterns` 0 forbidden / 0 debt。
 
@@ -48,13 +48,14 @@ cd webview && npx vitest run
 | E14 | 渲染：消息分页 / 窗口化、序列化缓存、Markdown 缓存、引用稳定 | 已完成 | 按回合分页（每页 5 轮）+ `MessageList` memo/useMemo；`MarkdownBlock` 增加按输出因素分键的 HTML LRU（300 条，流式 tail 不入缓存）`cf67523` |
 | E15 | 内存：每 tab 消息单副本与缓存分区治理 | 已完成 | webview 消息唯一副本在 `tabStore`；`messageMergeCache` 按 tabId 分区、切 tab 复用、关 tab 清理；宿主侧 `OpencodeSession.messages` 是服务端权威源，不属于镜像 |
 | E16 | 指标上报：queue depth / 丢弃数 / turn 时长 | 已完成 | `TabRecord` 记录 lastSeq / turnMs / attachments / epoch；桥接队列指标与每 tab 指标每 30s 写入 `PluginFileLogger` 的 METRICS 通道 `cf67523` |
-| §13 | JCEF 真实基准与功能矩阵 | 待环境 | 步骤见 `docs/jcef-benchmark.md`、`docs/functional-matrix.md`，需 IDE 运行时 |
+| §13.2 | fake daemon / 可控 marker 集成场景 | 已完成 | `MultiTabEventProtocolIntegrationTest` 覆盖双 tab 流式、历史+流式、关闭流式 tab、`message.removed`、标题/usage/revert、daemon 断连、1000 次 tab 生命周期；`PendingSendTest` 覆盖 bind 前缓冲；`permissionPromptRouting.test.ts` 覆盖后台权限归属 |
+| §13.3/13.4 | JCEF 真实基准与手工功能矩阵 | 待环境 | 步骤见 `docs/jcef-benchmark.md`、`docs/functional-matrix.md`，需 IDE 运行时 |
 
 ## 三、剩余工作与估算
 
 | 优先级 | 剩余项 | 性质 | 估算 |
 |---|---|---|---|
-| P3 | §13 JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工） |
+| P3 | §13.3/13.4 JCEF 基准 + 功能矩阵 | 需 IDE 运行时 | 0.5 天（人工） |
 
 合计约 **0.5 个工作日 + 环境验证**。
 
@@ -65,3 +66,4 @@ cd webview && npx vitest run
   所有宿主事件名都在双端目录中。
 - 非 `__` 的 `window.*` 回调全局已经清零，只剩 `window.sendToJava` 传输桥；
   组件内部动作走 registry 的 `internal.*` 键，不与宿主事件混用。
+- §13.2 的 fake daemon / 可控 marker 场景已补齐；只剩 §13.3/13.4 需要真实 IDE。

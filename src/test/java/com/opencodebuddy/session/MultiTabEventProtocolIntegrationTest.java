@@ -93,6 +93,37 @@ public class MultiTabEventProtocolIntegrationTest {
                 tabId);
     }
 
+    private static final StreamMessageCoalescer.JsCallbackTarget NO_BROWSER =
+            new StreamMessageCoalescer.JsCallbackTarget() {
+                @Override
+                public com.intellij.ui.jcef.JBCefBrowser getBrowser() {
+                    return null;
+                }
+
+                @Override
+                public boolean isDisposed() {
+                    return false;
+                }
+
+                @Override
+                public com.opencodebuddy.handler.core.HandlerContext getHandlerContext() {
+                    return null;
+                }
+            };
+
+    private static SessionCallbackAdapter streamingAdapter(
+            String sessionId, String tabId, RecordingTarget target) {
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(sessionId, tabId, target, NO_BROWSER);
+        return new SessionCallbackAdapter(
+                sessionId,
+                coalescer,
+                target,
+                null,
+                () -> true,
+                null,
+                tabId);
+    }
+
     @Test
     public void everyEventNamesItsOwnTabAndSession() {
         RecordingTarget targetA = new RecordingTarget();
@@ -209,6 +240,132 @@ public class MultiTabEventProtocolIntegrationTest {
         }
     }
 
+    @Test
+    public void historySnapshotAndStreamingDeltasStayOnTheirOwnTabs() {
+        RecordingTarget targetA = new RecordingTarget();
+        RecordingTarget targetB = new RecordingTarget();
+        SessionCallbackAdapter adapterA = streamingAdapter("ses_a", "tab-a", targetA);
+        SessionCallbackAdapter adapterB = streamingAdapter("ses_b", "tab-b", targetB);
+        try {
+            adapterA.onMessageUpdate(List.of(
+                    new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "history")));
+            adapterB.onContentDelta("B-live");
+
+            awaitCalls(targetA, 1);
+            awaitCalls(targetB, 1);
+
+            for (com.opencodebuddy.tab.TabEvent event : targetA.calls) {
+                assertEquals("tab-a", event.getTabId());
+                assertFalse("ses_b".equals(event.getSessionId()));
+            }
+            for (com.opencodebuddy.tab.TabEvent event : targetB.calls) {
+                assertEquals("tab-b", event.getTabId());
+                assertFalse("ses_a".equals(event.getSessionId()));
+            }
+        } finally {
+            adapterA.deactivate();
+            adapterB.deactivate();
+        }
+    }
+
+    @Test
+    public void titleUsageAndRevertEventsCarryTargetTab() {
+        RecordingTarget targetA = new RecordingTarget();
+        RecordingTarget targetB = new RecordingTarget();
+        SessionCallbackAdapter adapterA = adapter("ses_a", "tab-a", targetA);
+        SessionCallbackAdapter adapterB = adapter("ses_b", "tab-b", targetB);
+        try {
+            adapterA.onSessionTitleReceived("ses_a", "A title");
+            adapterA.onUsageUpdate(10, 100);
+            adapterA.onRevertStateUpdate(true, "msg-a");
+            adapterB.onSessionTitleReceived("ses_b", "B title");
+
+            awaitCalls(targetA, 3);
+            awaitCalls(targetB, 1);
+
+            assertTrue("title event missing",
+                    targetA.calls.stream().anyMatch(e -> "tab.title.changed".equals(e.getType())));
+            assertTrue("usage event missing",
+                    targetA.calls.stream().anyMatch(e -> "usage.updated".equals(e.getType())));
+            assertTrue("revert event missing",
+                    targetA.calls.stream().anyMatch(e -> "revert.changed".equals(e.getType())));
+            for (com.opencodebuddy.tab.TabEvent event : targetA.calls) {
+                assertEquals("tab-a", event.getTabId());
+                assertFalse("ses_b".equals(event.getSessionId()));
+            }
+            for (com.opencodebuddy.tab.TabEvent event : targetB.calls) {
+                assertEquals("tab-b", event.getTabId());
+                assertFalse("ses_a".equals(event.getSessionId()));
+            }
+        } finally {
+            adapterA.deactivate();
+            adapterB.deactivate();
+        }
+    }
+
+    @Test
+    public void messageRemovalCarriesOnlyItsTargetTab() {
+        RecordingTarget targetA = new RecordingTarget();
+        RecordingTarget targetB = new RecordingTarget();
+        SessionCallbackAdapter adapterA = adapter("ses_a", "tab-a", targetA);
+        SessionCallbackAdapter adapterB = adapter("ses_b", "tab-b", targetB);
+        try {
+            adapterB.onMessagesRemoved(List.of("msg-b-1"));
+
+            awaitCalls(targetB, 1);
+
+            assertEquals("tab-b", targetB.calls.get(0).getTabId());
+            assertEquals("message.removed", targetB.calls.get(0).getType());
+            assertTrue("the untouched tab received a removal", targetA.calls.isEmpty());
+        } finally {
+            adapterA.deactivate();
+            adapterB.deactivate();
+        }
+    }
+
+    @Test
+    public void daemonDisconnectEndsEveryActiveTurnOnItsOwnTab() {
+        RecordingTarget targetA = new RecordingTarget();
+        RecordingTarget targetB = new RecordingTarget();
+        SessionCallbackAdapter adapterA = streamingAdapter("ses_a", "tab-a", targetA);
+        SessionCallbackAdapter adapterB = streamingAdapter("ses_b", "tab-b", targetB);
+        try {
+            adapterA.onStreamStart();
+            adapterB.onStreamStart();
+            awaitCalls(targetA, 1);
+            awaitCalls(targetB, 1);
+
+            adapterA.onStreamEnd();
+            adapterB.onStreamEnd();
+            awaitCalls(targetA, 2);
+            awaitCalls(targetB, 2);
+
+            assertTrue("tab A did not end its turn",
+                    targetA.calls.stream().anyMatch(e -> "turn.ended".equals(e.getType())));
+            assertTrue("tab B did not end its turn",
+                    targetB.calls.stream().anyMatch(e -> "turn.ended".equals(e.getType())));
+            for (com.opencodebuddy.tab.TabEvent event : targetA.calls) {
+                assertEquals("tab-a", event.getTabId());
+            }
+            for (com.opencodebuddy.tab.TabEvent event : targetB.calls) {
+                assertEquals("tab-b", event.getTabId());
+            }
+        } finally {
+            adapterA.deactivate();
+            adapterB.deactivate();
+        }
+    }
+
+    @Test
+    public void aThousandTabLifecyclesDoNotThrow() {
+        for (int i = 0; i < 1_000; i++) {
+            RecordingTarget target = new RecordingTarget();
+            SessionCallbackAdapter adapter = adapter("ses_" + i, "tab-" + i, target);
+            adapter.onContentDelta("x");
+            adapter.deactivate();
+        }
+    }
+
     private static Application synchronousApplication() {
         return (Application) Proxy.newProxyInstance(
                 Application.class.getClassLoader(),
@@ -221,6 +378,17 @@ public class MultiTabEventProtocolIntegrationTest {
                             return ModalityState.NON_MODAL;
                         case "isEAP":
                             return Boolean.FALSE;
+                        case "invokeLater":
+                        case "invokeAndWait":
+                            if (args != null) {
+                                for (Object arg : args) {
+                                    if (arg instanceof Runnable runnable) {
+                                        runnable.run();
+                                        break;
+                                    }
+                                }
+                            }
+                            return null;
                         case "getAnyModalityState":
                         case "getDefaultModalityState":
                         case "getNoneModalityState":

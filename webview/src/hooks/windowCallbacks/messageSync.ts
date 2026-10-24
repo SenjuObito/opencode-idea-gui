@@ -666,9 +666,22 @@ export const preserveLatestMessagesOnShrink = (
   const hasStreamingTail = preservedTail.some((msg) => msg.type === 'assistant' && (msg.isStreaming || !!msg.__turnId));
   const hasUserTail = preservedTail.some((msg) => msg.type === 'user');
 
+  // A terminal provider error is part of the turn's transcript, not a stale
+  // snapshot artifact. When a later user-only snapshot shrinks the list, the
+  // error row must survive or the quota/auth notice disappears before the user
+  // can act on it. Do not keep it across a genuinely newer user prompt.
+  const lastPrev = prevList[prevList.length - 1];
+  const terminalError = lastPrev?.type === 'error' ? lastPrev : null;
+  const nextHasError = nextList.some((msg) => msg.type === 'error');
+  const errorTimestamp = terminalError ? getMessageTimestampMs(terminalError) : undefined;
+  const hasNewerUser = errorTimestamp != null && nextList.some(
+    (msg) => msg.type === 'user' && (getMessageTimestampMs(msg) ?? -Infinity) > errorTimestamp,
+  );
+  const hasTerminalErrorTail = Boolean(terminalError) && !nextHasError && !hasNewerUser;
+
   // Codex: always preserve shrink tail (handles compaction/summarization)
   // Other providers: only preserve if tail contains streaming/recent messages
-  if (provider !== 'codex' && !hasStreamingTail && !hasUserTail) {
+  if (provider !== 'codex' && !hasStreamingTail && !hasUserTail && !hasTerminalErrorTail) {
     return nextList;
   }
 
@@ -709,6 +722,10 @@ export const preserveLatestMessagesOnShrink = (
         }
       }
       return true;
+    }
+    // Keep the terminal error only when the shrink belongs to the same turn.
+    if (msg.type === 'error') {
+      return hasTerminalErrorTail;
     }
     // Don't re-append an assistant turn the snapshot already contains. A
     // finalized streaming bubble keeps its __turnId for the merge-guard window,

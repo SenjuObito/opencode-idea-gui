@@ -941,6 +941,36 @@ describe('preserveLatestMessagesOnShrink', () => {
     expect(result).toHaveLength(2);
     expect(result[1]).toBe(tailAssistant);
   });
+
+  it('preserves a terminal quota error when a same-turn user-only snapshot arrives', () => {
+    const user = makeUserMsg('hi', { timestamp: '2024-01-01T00:00:00.000Z' });
+    const quotaError: ClaudeMessage = {
+      type: 'error',
+      content: 'Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go',
+      timestamp: '2024-01-01T00:00:01.000Z',
+    };
+    const prev = [user, quotaError];
+
+    const result = preserveLatestMessagesOnShrink(prev, [user], 'opencode');
+
+    expect(result).toHaveLength(2);
+    expect(result[1]).toBe(quotaError);
+  });
+
+  it('drops an old terminal error when a newer user prompt starts a new turn', () => {
+    const oldUser = makeUserMsg('old question', { timestamp: '2024-01-01T00:00:00.000Z' });
+    const quotaError: ClaudeMessage = {
+      type: 'error',
+      content: 'Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go',
+      timestamp: '2024-01-01T00:00:01.000Z',
+    };
+    const nextUser = makeUserMsg('new question', { timestamp: '2024-01-01T00:00:02.000Z' });
+
+    const result = preserveLatestMessagesOnShrink([oldUser, quotaError], [nextUser], 'opencode');
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(nextUser);
+  });
 });
 
 // ---------------------------------------------------------------------------

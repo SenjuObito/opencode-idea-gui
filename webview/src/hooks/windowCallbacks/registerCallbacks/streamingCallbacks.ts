@@ -742,8 +742,25 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // Notify backend about stream completion for tab status indicator
     sendWindowCommand('tab.status.changed', { status: 'completed' });
 
+    // A terminal error row (quota/auth) is the only content of some turns.
+    // The pending rAF snapshot must be applied before it is canceled, or the
+    // error never reaches the transcript and the quota notice cannot render.
+    const pendingSnapshotHasTerminalError = (): boolean => {
+      if (typeof window.__pendingUpdateJson !== 'string' || window.__pendingUpdateJson.length === 0) {
+        return false;
+      }
+      try {
+        const pending = JSON.parse(window.__pendingUpdateJson) as Array<Record<string, unknown>>;
+        return Array.isArray(pending) && pending.some((message) => message?.type === 'error');
+      } catch {
+        return false;
+      }
+    };
+
     if (handlingMode === 'minimal') {
-      if (typeof window.__cancelPendingUpdateMessages === 'function') {
+      if (pendingSnapshotHasTerminalError()) {
+        window.__flushPendingUpdateMessages?.(targetSessionId);
+      } else if (typeof window.__cancelPendingUpdateMessages === 'function') {
         window.__cancelPendingUpdateMessages();
       }
       setStreamingActive(false);
@@ -807,7 +824,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       }
     }
 
-    if (typeof window.__cancelPendingUpdateMessages === 'function') {
+    if (pendingSnapshotHasTerminalError()) {
+      window.__flushPendingUpdateMessages?.(targetSessionId);
+    } else if (typeof window.__cancelPendingUpdateMessages === 'function') {
       window.__cancelPendingUpdateMessages();
     }
 

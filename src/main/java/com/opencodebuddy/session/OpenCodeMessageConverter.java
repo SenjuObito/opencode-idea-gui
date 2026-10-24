@@ -67,8 +67,13 @@ public final class OpenCodeMessageConverter {
     }
 
     /**
-     * {@code tool.state.error} is a string on v1 and {@code {type, message}} on
-     * v2. Accept both shapes rather than crashing on the one we did not expect.
+     * Read the normalized error contract emitted by opencode-buddy-core.
+     *
+     * <p>Core flattens v1 {@code {name,data:{message}}} and v2
+     * {@code {type,message}} into one {@code {kind,message,status,retryable}}
+     * object. The host deliberately does not re-implement either engine's
+     * shape; the legacy {@code type} fallback only covers diagnostics payloads
+     * that never travelled through the core normalizer (e.g. a tool state).</p>
      */
     private static String errorText(JsonObject state) {
         if (state == null || !state.has("error")) {
@@ -80,10 +85,15 @@ public final class OpenCodeMessageConverter {
         }
         if (err.isJsonObject()) {
             JsonObject obj = err.getAsJsonObject();
-            // Prefer the human-readable message; fall back to the type so the
-            // result is never empty when the server did say something.
             String message = textOf(obj.get("message"));
-            return !message.isEmpty() ? message : textOf(obj.get("type"));
+            if (!message.isEmpty()) {
+                return message;
+            }
+            String kind = textOf(obj.get("kind"));
+            if (!kind.isEmpty()) {
+                return kind;
+            }
+            return textOf(obj.get("type"));
         }
         return "";
     }
@@ -495,6 +505,16 @@ public final class OpenCodeMessageConverter {
             errorMsg.addProperty("timestamp", timestamp(info));
             JsonObject errorRaw = new JsonObject();
             errorRaw.addProperty("type", "error");
+            if (info.has("error") && info.get("error").isJsonObject()) {
+                errorRaw.add("error", info.getAsJsonObject("error").deepCopy());
+            }
+            String finish = string(info, "finish");
+            if (!finish.isEmpty()) {
+                errorRaw.addProperty("finish", finish);
+            }
+            if (isTrue(info, "aborted")) {
+                errorRaw.addProperty("aborted", true);
+            }
             errorMsg.add("raw", errorRaw);
             out.add(errorMsg);
         }

@@ -273,6 +273,31 @@ public class OpenCodeMessageConverterTest {
         assertEquals("Rate limit exceeded. Please try again later.", errorMsg.get("content").getAsString());
     }
 
+    @Test
+    public void consumesTheNormalizedErrorContractFromCore() {
+        JsonObject entryObj = entry("assistant", "[]");
+        JsonObject info = entryObj.getAsJsonObject("info");
+        JsonObject error = new JsonObject();
+        error.addProperty("kind", "APIError");
+        error.addProperty("message", "Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go");
+        error.addProperty("status", 429);
+        error.addProperty("retryable", false);
+        info.add("error", error);
+        info.addProperty("finish", "error");
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
+
+        assertEquals(1, out.size());
+        JsonObject errorMsg = out.get(0);
+        assertEquals("error", errorMsg.get("type").getAsString());
+        assertEquals("Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go",
+                errorMsg.get("content").getAsString());
+        JsonObject raw = errorMsg.getAsJsonObject("raw");
+        assertEquals("error", raw.get("type").getAsString());
+        assertEquals("APIError", raw.getAsJsonObject("error").get("kind").getAsString());
+        assertEquals("error", raw.get("finish").getAsString());
+    }
+
     private static JsonElement wrap(JsonObject entry) {
         JsonArray arr = new JsonArray();
         arr.add(entry);

@@ -302,4 +302,61 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
 
     delete window.__pendingUpdateJson;
   });
+
+  it('flushes a pending terminal error instead of cancelling it (minimal path)', () => {
+    const { refs } = createHarness([{ type: 'user', content: 'hi' }], 0);
+    refs.currentProviderRef.current = 'opencode';
+    refs.isStreamingRef.current = false;
+    refs.streamingTurnIdRef.current = -1;
+
+    let flushedSession: string | null | undefined;
+    let cancelled = false;
+    window.__flushPendingUpdateMessages = (sessionId) => { flushedSession = sessionId; };
+    window.__cancelPendingUpdateMessages = () => { cancelled = true; };
+    window.__pendingUpdateJson = JSON.stringify([
+      { type: 'user', content: 'hi' },
+      { type: 'error', content: 'Free usage limit reached' },
+    ]);
+
+    hostEventHandler('turn.ended')!(...sessionEvent('ses_test', {}));
+
+    expect(flushedSession).toBe('ses_test');
+    expect(cancelled).toBe(false);
+
+    delete window.__pendingUpdateJson;
+    delete window.__flushPendingUpdateMessages;
+    delete window.__cancelPendingUpdateMessages;
+  });
+
+  it('flushes a pending terminal error instead of cancelling it (full path)', () => {
+    const { refs } = createHarness(
+      [
+        { type: 'user', content: 'hi' },
+        { type: 'assistant', content: '', isStreaming: true, __turnId: 5 },
+      ],
+      5,
+    );
+    refs.currentProviderRef.current = 'opencode';
+    refs.isStreamingRef.current = true;
+    refs.streamingMessageIndexRef.current = 1;
+    refs.streamingTurnIdRef.current = 5;
+
+    let flushedSession: string | null | undefined;
+    let cancelled = false;
+    window.__flushPendingUpdateMessages = (sessionId) => { flushedSession = sessionId; };
+    window.__cancelPendingUpdateMessages = () => { cancelled = true; };
+    window.__pendingUpdateJson = JSON.stringify([
+      { type: 'user', content: 'hi' },
+      { type: 'error', content: 'Free usage limit reached' },
+    ]);
+
+    hostEventHandler('turn.ended')!(...sessionEvent('ses_test', { sequence: '99' }));
+
+    expect(flushedSession).toBe('ses_test');
+    expect(cancelled).toBe(false);
+
+    delete window.__pendingUpdateJson;
+    delete window.__flushPendingUpdateMessages;
+    delete window.__cancelPendingUpdateMessages;
+  });
 });

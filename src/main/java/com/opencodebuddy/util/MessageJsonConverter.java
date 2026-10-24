@@ -209,6 +209,12 @@ public class MessageJsonConverter {
         copyFieldIfPresent(raw, transport, "turnUsage");
         copyFieldIfPresent(raw, transport, "turnCostUsd");
         copyFieldIfPresent(raw, transport, "durationMs");
+        // Normalized terminal state. Core flattens v1/v2 errors into
+        // {kind,message,status,retryable}; copy it so the UI can identify a
+        // quota/auth error without re-parsing provider-specific payloads.
+        copyFieldIfPresent(raw, transport, "error");
+        copyFieldIfPresent(raw, transport, "finish");
+        copyFieldIfPresent(raw, transport, "aborted");
         // Agent/Task tool metadata (agentId, totalDurationMs, totalTokens,
         // toolStats, ...) stamped by the SDK on tool_result messages. The
         // frontend's SubagentList / AgentGroupBlock read this to render

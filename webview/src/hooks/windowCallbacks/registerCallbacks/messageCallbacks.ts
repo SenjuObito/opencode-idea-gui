@@ -685,6 +685,31 @@ export function registerMessageCallbacks(
     processUpdateMessages(json, sequence, baseIndexArg, targetSessionId);
   };
 
+  const flushPendingUpdateMessages = (targetSessionId?: string | null) => {
+    const json = pendingUpdateJson ?? window.__pendingUpdateJson ?? null;
+    const sequence = pendingUpdateSequence ?? null;
+    const baseIndex = pendingUpdateBaseIndex;
+    if (typeof json === 'string' && json.length > 0) {
+      // Force the non-buffering path: this is a terminal flush, so the
+      // snapshot must be applied now rather than scheduled into another rAF
+      // that cancelPendingUpdateMessages is about to clear.
+      const wasStreaming = isStreamingRef.current;
+      isStreamingRef.current = false;
+      try {
+        processUpdateMessages(
+          json,
+          sequence,
+          baseIndex,
+          targetSessionId ?? null,
+        );
+      } finally {
+        isStreamingRef.current = wasStreaming;
+      }
+    }
+    cancelPendingUpdateMessages();
+  };
+  window.__flushPendingUpdateMessages = flushPendingUpdateMessages;
+
   const updateMessageTail = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const json = String(payload?.messages ?? '[]');

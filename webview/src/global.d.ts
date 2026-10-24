@@ -984,6 +984,8 @@ interface Window {
   };
   /** Cancel pending rAF-deferred updateMessages (set by messageCallbacks, called by onStreamEnd). */
   __cancelPendingUpdateMessages?: () => void;
+  /** Apply one pending rAF-deferred updateMessages snapshot before canceling it. */
+  __flushPendingUpdateMessages?: (sessionId?: string | null) => void;
 
   /**
    * Rewind result callback - returns the result of a rewind operation

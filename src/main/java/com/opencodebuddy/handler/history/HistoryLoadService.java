@@ -139,17 +139,11 @@ public class HistoryLoadService {
                     session.addProperty("lastTimestamp", s.get("lastTimestamp").getAsString());
                 }
 
-                // Model
-                if (s.has("model")) {
-                    JsonElement modelElem = s.get("model");
-                    if (modelElem.isJsonObject()) {
-                        JsonObject mObj = modelElem.getAsJsonObject();
-                        String p = mObj.has("providerID") && !mObj.get("providerID").isJsonNull() ? mObj.get("providerID").getAsString() : "";
-                        String m = mObj.has("id") && !mObj.get("id").isJsonNull() ? mObj.get("id").getAsString() : "";
-                        session.addProperty("model", !p.isEmpty() && !m.isEmpty() ? p + "/" + m : m);
-                    } else if (modelElem.isJsonPrimitive()) {
-                        session.addProperty("model", modelElem.getAsString());
-                    }
+                // Model (core normalizes v2's {providerID,id} object to a
+                // provider/id string; the host only consumes that contract).
+                if (s.has("model") && s.get("model").isJsonPrimitive()
+                        && !s.get("model").isJsonNull()) {
+                    session.addProperty("model", s.get("model").getAsString());
                 }
 
                 // Agent
@@ -157,18 +151,13 @@ public class HistoryLoadService {
                     session.addProperty("agent", s.get("agent").getAsString());
                 }
 
-                // Project directory (v1: directory, v2: location.directory or directory)
-                String sessionDir = null;
+                // Core already unified v1 `directory` and v2 `location.directory`
+                // into `directory`; do not re-implement that split here.
                 if (s.has("directory") && !s.get("directory").isJsonNull()) {
-                    sessionDir = s.get("directory").getAsString();
-                } else if (s.has("location") && s.get("location").isJsonObject()) {
-                    JsonObject loc = s.getAsJsonObject("location");
-                    if (loc.has("directory") && !loc.get("directory").isJsonNull()) {
-                        sessionDir = loc.get("directory").getAsString();
+                    String sessionDir = s.get("directory").getAsString();
+                    if (!sessionDir.isBlank()) {
+                        session.addProperty("projectPath", sessionDir);
                     }
-                }
-                if (sessionDir != null && !sessionDir.isBlank()) {
-                    session.addProperty("projectPath", sessionDir);
                 }
 
                 // Metadata: isFavorited & favoritedAt

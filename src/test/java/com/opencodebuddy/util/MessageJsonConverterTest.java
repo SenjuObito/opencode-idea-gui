@@ -209,4 +209,32 @@ public class MessageJsonConverterTest {
         assertEquals("manual", transportRaw.getAsJsonObject("compactMetadata").get("trigger").getAsString());
         assertEquals(10, transportRaw.getAsJsonObject("compactMetadata").get("messagesSummarized").getAsInt());
     }
+
+    @Test
+    public void convertMessagesToJsonPreservesNormalizedTerminalError() {
+        JsonObject raw = new JsonObject();
+        raw.addProperty("type", "error");
+        raw.addProperty("finish", "error");
+        JsonObject error = new JsonObject();
+        error.addProperty("kind", "provider.quota");
+        error.addProperty("message", "Free usage limit reached");
+        error.addProperty("status", 429);
+        raw.add("error", error);
+
+        OpencodeSession.Message sessionMessage = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ERROR,
+                "Free usage limit reached",
+                raw
+        );
+
+        JsonArray transportMessages = JsonParser.parseString(
+                MessageJsonConverter.convertMessagesToJson(List.of(sessionMessage))
+        ).getAsJsonArray();
+
+        JsonObject transportRaw = transportMessages.get(0).getAsJsonObject().getAsJsonObject("raw");
+        assertEquals("error", transportRaw.get("finish").getAsString());
+        JsonObject transportedError = transportRaw.getAsJsonObject("error");
+        assertEquals("provider.quota", transportedError.get("kind").getAsString());
+        assertEquals(429, transportedError.get("status").getAsInt());
+    }
 }

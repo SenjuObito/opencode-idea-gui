@@ -740,3 +740,37 @@ IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与
 - 回归：新增 `useUsageTracking` 包装 payload、缓冲 payload 测试，以及
   `hostDispatcher` 单 `data` 解包/多字段不解包测试。
 - 验证：tsc 0 错误、vitest `173 文件 / 1516 测试` 全通过。
+
+## 第四轮补 20：core 统一 v1/v2 消息/错误契约，修复额度提示丢失
+
+- 根因：`opencode-buddy-core` 只对 v2 扁平消息做了错误归一化，v1 的
+  `{info,parts}` 直接透传给宿主；宿主 `OpenCodeMessageConverter` 再按 v2 的
+  `{type,message}` 读错误，v1 的 `{name,data:{message}}` 读不到。额度条因此
+  没有输入。
+- core 修复：
+  - `listMessages` 的 v1 返回和 Case A `{info,parts}` 现在统一走
+    `normalizeMessageEntry`；v1 `APIError`、v2 `provider.quota`、
+    `MessageAbortedError` 都归一成 `{kind,message,status,retryable}`。
+  - 有错误但没有文本 part 时，core 补一条合成错误 part；宿主不再猜引擎形状。
+  - `session.step.failed` / `session.next.step.failed` 归一后发
+    `[TURN_ERROR]`，额度错误不必等最终 listMessages 才可见。
+  - `listSessions` 统一 `directory` 和 `model`（v2 `location.directory` /
+    `{providerID,id}` 对象不再泄漏给宿主）。
+- 宿主/前端修复：
+  - `OpenCodeMessageConverter` 只消费 core 的 `error.message`，删除 v1
+    `data.message` 兼容分支；错误 raw 保留 `{kind,message,status,retryable}`。
+  - `MessageJsonConverter` 传输 `error` / `finish` / `aborted`。
+  - `HistoryLoadService` 删除 v1 `directory` / v2 `location.directory` 和
+    model 对象分支，改为消费 core 契约。
+  - `preserveLatestMessagesOnShrink` 保护同一回合尾部的 terminal error；
+    新用户轮次才允许丢弃旧错误。
+  - `onStreamEnd` 的 minimal/full 两条路径在取消 pending rAF 前先 flush
+    包含 terminal error 的快照。
+- 回归：
+  - core 新增 `error-shaping.test.js`（v1 APIError、v2 provider.quota、
+    aborted、幂等 kind）。
+  - Java 新增 normalized error 转换 / 传输测试。
+  - webview 新增 shrink 保留额度错误、新轮次丢弃旧错误、minimal/full
+    pending error flush 测试。
+- 验证：core 228 用例、gradle 117 类 / 871 用例、tsc 0 错误、
+  vitest 173 文件 / 1520 测试、legacy 0 forbidden / 0 debt。

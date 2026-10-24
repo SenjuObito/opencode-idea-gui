@@ -16,8 +16,9 @@ export function formatAsMarkdownQuote(text: string): string {
 /** Insert the given selection as an inline quote chip in the chat input and focus it. Returns false when there is nothing to quote. */
 export function quoteToChatInput(text: string): boolean {
   if (!text.trim()) return false;
-  if (!window.addQuotedSnippet) return false;
-  window.addQuotedSnippet(JSON.stringify({ text }));
+  const addSnippet = hostEventHandler('internal.chat.addQuote');
+  if (!addSnippet) return false;
+  addSnippet(JSON.stringify({ text }));
   hostEventHandler('chat.focus')?.();
   return true;
 }

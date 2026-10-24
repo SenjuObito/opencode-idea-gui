@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { useWindowCallbacks } from './useWindowCallbacks.js';
 import type { UseWindowCallbacksOptions } from './useWindowCallbacks.js';
 import type { ClaudeMessage } from '../types/index.js';
+import { hostEventHandler } from '../utils/hostEventRegistry';
 
 // 复用集成测试骨架：验证 onSessionStateRestored 是否真正更新本地 UI 状态。
 
@@ -91,7 +92,7 @@ describe('onSessionStateRestored', () => {
     renderHook(() => useWindowCallbacks(options));
 
     act(() => {
-      window.onSessionStateRestored?.(JSON.stringify({
+      hostEventHandler('internal.session.stateRestored')?.(JSON.stringify({
         model: 'anthropic/claude-sonnet-4-5',
         permissionMode: 'plan',
         reasoningEffort: 'high',

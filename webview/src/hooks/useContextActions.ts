@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { sendWindowCommand } from '../utils/bridge';
+import { registerHostEvents, unregisterHostEvents } from '../utils/hostEventRegistry';
 import { insertNewlineAtCursor } from './useContextMenu';
 
 /**
@@ -7,7 +8,7 @@ import { insertNewlineAtCursor } from './useContextMenu';
  */
 export function useContextActions() {
   useEffect(() => {
-    window.execContextAction = (action: string) => {
+    const execContextAction = (action: string) => {
       switch (action) {
         case 'copy': {
           const activeEl = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
@@ -58,8 +59,10 @@ export function useContextActions() {
       }
     };
 
+    registerHostEvents({ 'internal.chat.contextAction': execContextAction });
+
     return () => {
-      delete window.execContextAction;
+      unregisterHostEvents(['internal.chat.contextAction']);
     };
   }, []);
 }

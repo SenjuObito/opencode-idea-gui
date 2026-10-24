@@ -6,7 +6,7 @@
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
-import { registerHostEvents } from '../../../utils/hostEventRegistry';
+import { hostEventHandler, registerHostEvents } from '../../../utils/hostEventRegistry';
 
 export function registerAgentAndSelectionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -32,8 +32,9 @@ export function registerAgentAndSelectionCallbacks(options: UseWindowCallbacksOp
   };
 
   const addCodeSnippet = (selectionInfo?: string) => {
-    if (selectionInfo && window.insertCodeSnippetAtCursor) {
-      window.insertCodeSnippetAtCursor(selectionInfo);
+    const insertSnippet = hostEventHandler('internal.chat.insertSnippet');
+    if (selectionInfo && insertSnippet) {
+      insertSnippet(selectionInfo);
     }
   };
 

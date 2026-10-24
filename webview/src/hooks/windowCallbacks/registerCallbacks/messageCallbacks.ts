@@ -777,18 +777,6 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.onHistoryWindowInfo = (json) => {
-    try {
-      window.__opencodeHistoryWindow = JSON.parse(json) as NonNullable<Window['__opencodeHistoryWindow']>;
-      window.dispatchEvent(new CustomEvent('opencode-history-window-info', {
-        detail: window.__opencodeHistoryWindow,
-      }));
-    } catch (error) {
-      console.error('[Frontend] Failed to parse history window info:', error);
-    }
-  };
-
-
   const pendingMessages = (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
   if (typeof pendingMessages === 'string' && pendingMessages.length > 0) {
     delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
@@ -1211,7 +1199,7 @@ export function registerMessageCallbacks(
 
   // Legacy Codex callback — kept as no-op to avoid breaking older Java hosts.
   // Unlike historyLoadComplete, this must NOT release the session transition guard.
-  window.codexHistoryPageRenderComplete = () => {};
+  const codexHistoryPageRenderComplete = () => {};
 
   // =========================================================================
   // Codex History Page (paginated history loading)
@@ -1219,7 +1207,7 @@ export function registerMessageCallbacks(
 
   const codexPageBuffer = new Map<string, ClaudeMessage[]>();
 
-  window.beginCodexHistoryPage = (json: string) => {
+  const beginCodexHistoryPage = (json: string) => {
     try {
       const { pageId, sessionId } = JSON.parse(json) as {
         pageId: string;
@@ -1234,7 +1222,7 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.appendCodexHistoryPageBatch = (pageId: string, json: string) => {
+  const appendCodexHistoryPageBatch = (pageId: string, json: string) => {
     try {
       const messages = JSON.parse(json) as ClaudeMessage[];
       if (!Array.isArray(messages)) return;
@@ -1249,7 +1237,7 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.completeCodexHistoryPage = (json: string) => {
+  const completeCodexHistoryPage = (json: string) => {
     try {
       const {
         pageId,
@@ -1446,6 +1434,10 @@ export function registerMessageCallbacks(
     'context.usage.error': onContextUsageError,
     'history.data': handleHistoryData,
     'session.hydrated': onSessionHydrated,
+    'internal.history.codexBegin': beginCodexHistoryPage,
+    'internal.history.codexAppend': appendCodexHistoryPageBatch,
+    'internal.history.codexComplete': completeCodexHistoryPage,
+    'internal.history.codexRenderComplete': codexHistoryPageRenderComplete,
   });
 
   // Drain anything the pre-mount surface buffered. Registration has happened,

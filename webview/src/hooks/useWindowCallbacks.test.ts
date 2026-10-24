@@ -331,7 +331,7 @@ describe('useWindowCallbacks integration', () => {
     beginTransition('tab-active', 'hist-1', 'newer-transition');
 
     act(() => {
-      window.codexHistoryPageRenderComplete!();
+      hostEventHandler('internal.history.codexRenderComplete')!();
     });
 
     expect(isTabTransitioning('tab-active')).toBe(true);
@@ -841,16 +841,16 @@ describe('useWindowCallbacks integration', () => {
     };
 
     act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexBegin')!(JSON.stringify({
         pageId: 'page-1', sessionId: 'session-1', mode: 'prepend',
       }));
-      window.appendCodexHistoryPageBatch!('page-1', JSON.stringify([
+      hostEventHandler('internal.history.codexAppend')!('page-1', JSON.stringify([
         { type: 'user', content: 'older-1' },
       ]));
-      window.appendCodexHistoryPageBatch!('page-1', JSON.stringify([
+      hostEventHandler('internal.history.codexAppend')!('page-1', JSON.stringify([
         { type: 'assistant', content: 'older-2' },
       ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexComplete')!(JSON.stringify({
         pageId: 'page-1', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
       }));
@@ -870,13 +870,13 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexBegin')!(JSON.stringify({
         pageId: 'page-replace', sessionId: 'session-1', mode: 'replace',
       }));
-      window.appendCodexHistoryPageBatch!('page-replace', JSON.stringify([
+      hostEventHandler('internal.history.codexAppend')!('page-replace', JSON.stringify([
         { type: 'user', content: 'replacement' },
       ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexComplete')!(JSON.stringify({
         pageId: 'page-replace', sessionId: 'session-1', mode: 'replace',
         fromTurn: 0, toTurn: 1, totalTurns: 1, hasMore: false, loadedMessageCount: 1,
       }));
@@ -901,14 +901,14 @@ describe('useWindowCallbacks integration', () => {
     };
 
     act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexBegin')!(JSON.stringify({
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
       }));
-      window.appendCodexHistoryPageBatch!('page-older', JSON.stringify([
+      hostEventHandler('internal.history.codexAppend')!('page-older', JSON.stringify([
         { type: 'user', content: 'older-user' },
         { type: 'assistant', content: 'older-answer' },
       ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexComplete')!(JSON.stringify({
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
       }));
@@ -926,13 +926,13 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexBegin')!(JSON.stringify({
         pageId: 'page-old', sessionId: 'session-old', mode: 'prepend',
       }));
-      window.appendCodexHistoryPageBatch!('page-old', JSON.stringify([
+      hostEventHandler('internal.history.codexAppend')!('page-old', JSON.stringify([
         { type: 'user', content: 'stale' },
       ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexComplete')!(JSON.stringify({
         pageId: 'page-old', sessionId: 'session-old', mode: 'prepend',
         fromTurn: 0, toTurn: 30, totalTurns: 60, hasMore: false, loadedMessageCount: 1,
       }));
@@ -951,10 +951,10 @@ describe('useWindowCallbacks integration', () => {
     };
 
     act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexBegin')!(JSON.stringify({
         pageId: 'page-gap', sessionId: 'session-1', mode: 'prepend',
       }));
-      window.completeCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexComplete')!(JSON.stringify({
         pageId: 'page-gap', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 0, toTurn: 30, totalTurns: 70, hasMore: false, loadedMessageCount: 0,
       }));
@@ -1008,11 +1008,11 @@ describe('useWindowCallbacks integration', () => {
     };
 
     act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexBegin')!(JSON.stringify({
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
       }));
-      window.appendCodexHistoryPageBatch!('page-older', JSON.stringify(older));
-      window.completeCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexAppend')!('page-older', JSON.stringify(older));
+      hostEventHandler('internal.history.codexComplete')!(JSON.stringify({
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 100,
       }));
@@ -1045,14 +1045,14 @@ describe('useWindowCallbacks integration', () => {
     };
 
     act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexBegin')!(JSON.stringify({
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
       }));
-      window.appendCodexHistoryPageBatch!('page-older', JSON.stringify([
+      hostEventHandler('internal.history.codexAppend')!('page-older', JSON.stringify([
         { type: 'user', content: 'older-user' },
         { type: 'assistant', content: 'older-answer' },
       ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
+      hostEventHandler('internal.history.codexComplete')!(JSON.stringify({
         pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
         fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
       }));
@@ -1648,12 +1648,12 @@ describe('useWindowCallbacks integration', () => {
     const midpoint = Math.floor(payload.length / 2);
 
     act(() => {
-      window.onSubagentHistoryChunk?.('transfer-1', payload.slice(0, midpoint), false);
+      hostEventHandler('internal.subagent.historyChunk')?.('transfer-1', payload.slice(0, midpoint), false);
     });
     expect(opts.setSubagentHistories).not.toHaveBeenCalled();
 
     act(() => {
-      window.onSubagentHistoryChunk?.('transfer-1', payload.slice(midpoint), true);
+      hostEventHandler('internal.subagent.historyChunk')?.('transfer-1', payload.slice(midpoint), true);
     });
 
     expect(opts.setSubagentHistories).toHaveBeenCalledTimes(1);

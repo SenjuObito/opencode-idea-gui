@@ -132,7 +132,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   const onModeChanged = (mode: string) => updateMode(mode as PermissionMode);
   const onModeReceived = (mode: string) => updateMode(mode as PermissionMode);
 
-  window.onModelChanged = (modelId) => {
+  const onModelChanged = (modelId: string) => {
     setSelectedOpenCodeModel(modelId);
   };
 
@@ -140,7 +140,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     setSelectedOpenCodeModel(modelId);
   };
 
-  window.onSessionStateRestored = (json: string) => {
+  const onSessionStateRestored = (json: string) => {
     try {
       const state = JSON.parse(json) as {
         model?: string;
@@ -246,6 +246,8 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     'settings.send.shortcut': updateSendShortcut,
     'settings.auto.open.file': updateAutoOpenFileEnabled,
     'settings.permission.timeout': updatePermissionDialogTimeout,
+    'internal.settings.modelChanged': onModelChanged,
+    'internal.session.stateRestored': onSessionStateRestored,
   });
 
   // Drain any pending settings that arrived before callback registration.

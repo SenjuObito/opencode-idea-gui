@@ -220,7 +220,7 @@ export function useGlobalCallbacks({
       return true;
     };
 
-    window.insertCodeSnippetAtCursor = (selectionInfo: string) => {
+    const insertCodeSnippetAtCursor = (selectionInfo: string) => {
       try {
         if (!editableRef.current) return;
 
@@ -261,7 +261,7 @@ export function useGlobalCallbacks({
     // Insert an inline quote chip. Payload: JSON { text }.
     // The chip renders a compact preview; the full Markdown blockquote is
     // expanded from the registry only when the message is sent.
-    window.addQuotedSnippet = (payload: string) => {
+    const addQuotedSnippet = (payload: string) => {
       try {
         if (!editableRef.current) return;
 
@@ -319,10 +319,13 @@ export function useGlobalCallbacks({
       }
     };
 
+    registerHostEvents({
+      'internal.chat.insertSnippet': insertCodeSnippetAtCursor,
+      'internal.chat.addQuote': addQuotedSnippet,
+    });
+
     return () => {
-      delete window.insertCodeSnippetAtCursor;
-      unregisterHostEvents(['chat.focus']);
-      delete window.addQuotedSnippet;
+      unregisterHostEvents(['chat.focus', 'internal.chat.insertSnippet', 'internal.chat.addQuote']);
     };
   }, [editableRef, getTextContent, renderFileTags, renderQuoteTags, adjustHeight, onInput, setHasContent, focusInput]);
 }

@@ -14,15 +14,13 @@ describe('formatAsMarkdownQuote', () => {
 
 describe('quoteToChatInput', () => {
   afterEach(() => {
-    delete window.addQuotedSnippet;
-    unregisterHostEvents(['chat.focus']);
+    unregisterHostEvents(['internal.chat.addQuote', 'chat.focus']);
   });
 
   it('sends the raw quote as a chip payload and focuses the input', () => {
     const addSnippet = vi.fn();
     const focus = vi.fn();
-    window.addQuotedSnippet = addSnippet;
-    registerHostEvents({ 'chat.focus': focus });
+    registerHostEvents({ 'internal.chat.addQuote': addSnippet, 'chat.focus': focus });
 
     expect(quoteToChatInput('text')).toBe(true);
     expect(addSnippet).toHaveBeenCalledWith(JSON.stringify({ text: 'text' }));
@@ -30,8 +28,9 @@ describe('quoteToChatInput', () => {
   });
 
   it('returns false for empty selections', () => {
-    window.addQuotedSnippet = vi.fn();
+    const addSnippet = vi.fn();
+    registerHostEvents({ 'internal.chat.addQuote': addSnippet });
     expect(quoteToChatInput('   ')).toBe(false);
-    expect(window.addQuotedSnippet).not.toHaveBeenCalled();
+    expect(addSnippet).not.toHaveBeenCalled();
   });
 });

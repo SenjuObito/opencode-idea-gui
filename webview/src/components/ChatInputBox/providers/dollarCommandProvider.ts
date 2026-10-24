@@ -1,5 +1,6 @@
 import type { CommandItem, DropdownItemData } from '../types';
 import { debugLog, debugWarn } from '../../../utils/debug.js';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../../utils/hostEventRegistry';
 import i18n from '../../../i18n/config';
 
 // ============================================================================
@@ -28,10 +29,7 @@ export function resetDollarCommandsState() {
   cachedCommands = [];
   loadingState = 'idle';
   callbackRegistered = false;
-  // Clear the window callback to prevent handler chain growth on repeated provider switches
-  if (typeof window !== 'undefined') {
-    delete window.updateDollarCommands;
-  }
+  unregisterHostEvents(['internal.dollar.commands']);
   debugLog('[DollarCommand] State reset');
 }
 
@@ -40,7 +38,7 @@ export function resetDollarCommandsState() {
  */
 export function setupDollarCommandsCallback() {
   if (typeof window === 'undefined') return;
-  if (callbackRegistered && window.updateDollarCommands) return;
+  if (callbackRegistered && hostEventHandler('internal.dollar.commands')) return;
 
   loadingState = 'loading';
 
@@ -77,13 +75,15 @@ export function setupDollarCommandsCallback() {
     }
   };
 
-  // Preserve original handler for chaining (e.g., main.tsx placeholder)
-  const originalHandler = window.updateDollarCommands;
+  // Preserve original handler for chaining.
+  const originalHandler = hostEventHandler('internal.dollar.commands');
 
-  window.updateDollarCommands = (json: string) => {
-    handler(json);
-    originalHandler?.(json);
-  };
+  registerHostEvents({
+    'internal.dollar.commands': (json: string) => {
+      handler(json);
+      originalHandler?.(json);
+    },
+  });
   callbackRegistered = true;
   debugLog('[DollarCommand] Callback registered');
 

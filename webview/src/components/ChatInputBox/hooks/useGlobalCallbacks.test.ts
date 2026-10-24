@@ -1,5 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import { useGlobalCallbacks } from './useGlobalCallbacks.js';
+import { hostEventHandler, unregisterHostEvents } from '../../../utils/hostEventRegistry';
 
 function createEditable(): HTMLDivElement {
   const el = document.createElement('div');
@@ -91,8 +92,7 @@ describe('useGlobalCallbacks', () => {
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
-    delete window.insertCodeSnippetAtCursor;
-    delete window.handleFilePathFromJava;
+    unregisterHostEvents(['internal.chat.insertSnippet', 'files.path.from.ide']);
     document.body.innerHTML = '';
   });
 
@@ -100,7 +100,7 @@ describe('useGlobalCallbacks', () => {
     const editable = createEditable();
     const { getTextContent } = renderUseGlobalCallbacks(editable);
 
-    window.insertCodeSnippetAtCursor?.('console payload');
+    hostEventHandler('internal.chat.insertSnippet')?.('console payload');
     vi.runAllTimers();
 
     expect(getTextContent()).toBe('console payload ');
@@ -111,7 +111,7 @@ describe('useGlobalCallbacks', () => {
     editable.appendChild(document.createTextNode('draft question'));
     const { getTextContent } = renderUseGlobalCallbacks(editable);
 
-    window.insertCodeSnippetAtCursor?.('console payload');
+    hostEventHandler('internal.chat.insertSnippet')?.('console payload');
     vi.runAllTimers();
 
     expect(getTextContent()).toBe('draft question\nconsole payload ');
@@ -123,7 +123,7 @@ describe('useGlobalCallbacks', () => {
     placeCaretInsideFirstTextNode(editable, 1);
     const { getTextContent } = renderUseGlobalCallbacks(editable);
 
-    window.insertCodeSnippetAtCursor?.('XYZ');
+    hostEventHandler('internal.chat.insertSnippet')?.('XYZ');
     vi.runAllTimers();
 
     expect(getTextContent()).toBe('aXYZ bc');
@@ -138,7 +138,7 @@ describe('useGlobalCallbacks', () => {
     outside.focus();
     const { getTextContent } = renderUseGlobalCallbacks(editable);
 
-    window.insertCodeSnippetAtCursor?.('@/path/to/file');
+    hostEventHandler('internal.chat.insertSnippet')?.('@/path/to/file');
     vi.runAllTimers();
 
     expect(getTextContent()).toBe('draft question\n@/path/to/file ');

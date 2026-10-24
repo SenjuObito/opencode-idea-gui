@@ -694,3 +694,20 @@
 
 剩余 12 个 window 全局全部是组件内部动作（输入框引用/片段、Codex 分页、
 IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与宿主派发。
+
+## 第四轮补 17：内部 window 全局清零
+
+- 输入框引用/片段：`insertCodeSnippetAtCursor` / `addQuotedSnippet` 改为
+  `internal.chat.insertSnippet` / `internal.chat.addQuote`，`agentCallbacks` 与
+  `quoteUtils` 改查 registry。
+- `$` 命令：`updateDollarCommands` 改为 `internal.dollar.commands`，重置状态时
+  撤销注册。
+- IDEA 快捷动作：`execContextAction` 改为 `internal.chat.contextAction`。
+- 子代理分块：`onSubagentHistoryChunk` 改为 `internal.subagent.historyChunk`。
+- Codex 历史分页四个回调改为 `internal.history.codex*`；不再暴露 window。
+- 旧的 `onHistoryWindowInfo` 没有发送方也没有监听方，直接删除。
+- `onModelChanged` / `onSessionStateRestored` 改为 `internal.settings.modelChanged`
+  与 `internal.session.stateRestored`。
+- 至此 webview 非 `__` 的 window 回调全局为 **0**；只剩 `window.sendToJava`
+  传输桥与 `__` 私有状态。
+- 验证：tsc 0 错误、相关 vitest 124 用例通过；完整四项在提交前重跑。

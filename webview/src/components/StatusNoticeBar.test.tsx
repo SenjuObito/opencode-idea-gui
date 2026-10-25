@@ -14,7 +14,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key) }),
 }));
 
-const messagesState = { loading: false, streamingActive: false, sessionLoading: false };
+const messagesState = { turnActive: false, sessionLoading: false };
 vi.mock('../contexts/MessagesContext', () => ({
   useMessages: () => messagesState,
 }));
@@ -62,8 +62,7 @@ describe('StatusNoticeBar — retry notice (regression)', () => {
   beforeEach(() => {
     sendToJava.mockClear();
     __resetNoticeStateForTest();
-    messagesState.loading = true;
-    messagesState.streamingActive = false;
+    messagesState.turnActive = true;
     messagesState.sessionLoading = false;
     sessionState.currentSessionId = 'ses_a';
   });
@@ -95,8 +94,7 @@ describe('StatusNoticeBar — retry notice (regression)', () => {
 
   it('stays hidden once the turn settles', () => {
     setRetryStatus(retryPayload());
-    messagesState.loading = false;
-    messagesState.streamingActive = false;
+    messagesState.turnActive = false;
 
     const { container } = renderBar([]);
 
@@ -157,8 +155,7 @@ describe('StatusNoticeBar — terminal quota notice', () => {
   beforeEach(() => {
     sendToJava.mockClear();
     __resetNoticeStateForTest();
-    messagesState.loading = false;
-    messagesState.streamingActive = false;
+    messagesState.turnActive = false;
     messagesState.sessionLoading = false;
     sessionState.currentSessionId = 'ses_a';
   });
@@ -274,12 +271,12 @@ describe('StatusNoticeBar — terminal quota notice', () => {
     const { container, rerender } = renderBar([message]);
     expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
 
-    messagesState.loading = true;
+    messagesState.turnActive = true;
     rerender(<StatusNoticeBar messages={[message]} getMessageText={getMessageText} />);
     expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
 
     // Turn settles: notice still stays visible because the user did not dismiss it
-    messagesState.loading = false;
+    messagesState.turnActive = false;
     rerender(<StatusNoticeBar messages={[message]} getMessageText={getMessageText} />);
     expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
 
@@ -289,7 +286,7 @@ describe('StatusNoticeBar — terminal quota notice', () => {
   });
 
   it('lets the retry notice win while a turn is running', () => {
-    messagesState.loading = true;
+    messagesState.turnActive = true;
     setRetryStatus(retryPayload());
 
     const { container } = renderBar([quotaMessage()]);
@@ -370,8 +367,7 @@ describe('StatusNoticeBar — upgrade action', () => {
   beforeEach(() => {
     sendToJava.mockClear();
     __resetNoticeStateForTest();
-    messagesState.loading = false;
-    messagesState.streamingActive = false;
+    messagesState.turnActive = false;
     messagesState.sessionLoading = false;
     sessionState.currentSessionId = 'ses_a';
   });
@@ -420,20 +416,20 @@ describe('StatusNoticeBar — upgrade action', () => {
   });
 
   it('does not carry a link captured in a previous turn', () => {
-    messagesState.loading = true;
+    messagesState.turnActive = true;
     setRetryStatus(retryPayload({ action: { label: 'subscribe', link: 'https://turn-a' } }));
 
     const { container, rerender } = renderBar([]);
     expect(container.querySelector('.status-notice-bar--warning')).toBeTruthy();
 
     // Turn settles, then a brand-new turn starts: the captured action is dropped.
-    messagesState.loading = false;
+    messagesState.turnActive = false;
     rerender(<StatusNoticeBar messages={[]} getMessageText={getMessageText} />);
-    messagesState.loading = true;
+    messagesState.turnActive = true;
     rerender(<StatusNoticeBar messages={[]} getMessageText={getMessageText} />);
 
     // That new turn fails on quota, with no retry status of its own.
-    messagesState.loading = false;
+    messagesState.turnActive = false;
     rerender(<StatusNoticeBar messages={[quotaMessage()]} getMessageText={getMessageText} />);
 
     const action = container.querySelector('.status-notice-action') as HTMLElement;

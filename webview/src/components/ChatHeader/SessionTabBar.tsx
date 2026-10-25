@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { SessionTabData } from './types';
+import { isTabTurnActive } from '../../store/tabRuntime';
 import { SessionTabContextMenu } from './SessionTabContextMenu';
 
 export interface SessionTabBarProps {
@@ -176,7 +177,7 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   }
 
   const hasOverflow = overflowTabs.length > 0;
-  const isAnyOverflowBusy = overflowTabs.some((t) => t.streamingActive || t.loading);
+  const isAnyOverflowBusy = overflowTabs.some(isTabTurnActive);
   const isAnyOverflowAttention = overflowTabs.some(
     (t) => (t.pendingPermissions?.length ?? 0) > 0 || (t.pendingQuestions?.length ?? 0) > 0
   );
@@ -459,7 +460,7 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
         {visibleTabs.map((tab, idx) => {
           const isActive = tab.id === activeTabId;
           const isEditing = editingTabId === tab.id;
-          const isBusy = tab.streamingActive || tab.loading;
+          const isBusy = isTabTurnActive(tab);
           const isDragging = tab.id === draggingTabId;
           const hasPendingAction =
             (tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0;
@@ -601,7 +602,7 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
               >
                 {overflowTabs.map((tab, idx) => {
                   const isActive = tab.id === activeTabId;
-                  const isBusy = tab.streamingActive || tab.loading;
+                  const isBusy = isTabTurnActive(tab);
                   const isDragging = tab.id === draggingTabId;
                   const hasPendingAction =
                     (tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0;

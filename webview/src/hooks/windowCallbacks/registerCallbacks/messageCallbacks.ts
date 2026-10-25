@@ -901,34 +901,39 @@ export function registerMessageCallbacks(
     // Notify backend about loading state change for tab indicator
     sendWindowCommand('tab.loading.changed', { loading: isLoading });
 
-    setLoading((prevLoading) => {
-      if (isLoading) {
-        if (!prevLoading) {
-          setLoadingStartTime(Date.now());
-        }
-      } else {
-        // Stamp durationMs on the last assistant message when loading ends.
-        // Skip if onStreamEnd already stamped it (avoids double-write race).
-        setLoadingStartTime((prevStartTime) => {
-          if (prevStartTime != null) {
-            const durationMs = Date.now() - prevStartTime;
-            setMessages((prev) => {
-              for (let i = prev.length - 1; i >= 0; i--) {
-                if (prev[i].type === 'assistant') {
-                  if (typeof prev[i].durationMs === 'number') return prev;
-                  const next = [...prev];
-                  next[i] = { ...next[i], durationMs };
-                  return next;
-                }
-              }
-              return prev;
-            });
-          }
-          return null;
-        });
+    // Read the owning tab's current turn state instead of nesting setters
+    // inside a functional updater. The tab store applies writes synchronously,
+    // so the value read here is the one this event is transitioning away from.
+    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.();
+    const activeTab = activeTabId
+      ? window.__sessionTabsStore?.getTabs?.().find((tab) => tab.id === activeTabId)
+      : undefined;
+    const wasLoading = activeTab?.loading ?? false;
+    const turnStartedAt = activeTab?.turnStartedAt ?? null;
+
+    if (isLoading) {
+      if (!wasLoading) {
+        setLoadingStartTime(Date.now());
       }
-      return isLoading;
-    });
+    } else if (turnStartedAt != null) {
+      // Stamp durationMs on the last assistant message when loading ends.
+      // Skip if onStreamEnd already stamped it (avoids double-write race).
+      const durationMs = Date.now() - turnStartedAt;
+      setMessages((prev) => {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].type === 'assistant') {
+            if (typeof prev[i].durationMs === 'number') return prev;
+            const next = [...prev];
+            next[i] = { ...next[i], durationMs };
+            return next;
+          }
+        }
+        return prev;
+      });
+      setLoadingStartTime(null);
+    }
+
+    setLoading(isLoading);
   };
 
   const showThinkingStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {

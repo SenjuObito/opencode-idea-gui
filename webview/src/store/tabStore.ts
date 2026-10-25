@@ -28,6 +28,30 @@ export function getTabStore(): TabStore {
   return singleton;
 }
 
+/**
+ * The runtime state of a window that has no tab yet.
+ *
+ * <p>These fields are part of {@link SessionTabData} because a tab owns its
+ * conversation and the turn state that produced it. The view reads them from
+ * the active tab; background events write them on the owning tab. There is no
+ * window-wide copy that a tab switch would have to move.</p>
+ */
+const createDetachedTab = (): SessionTabData => ({
+  id: '',
+  sessionId: null,
+  title: '',
+  messages: [],
+  loading: false,
+  streamingActive: false,
+  isThinking: false,
+  status: undefined,
+  turnStartedAt: null,
+  isCompacting: false,
+  compactingStartTime: null,
+  sseTodos: null,
+  subagentHistories: {},
+});
+
 /** Drop the strip (tests: a fresh window must not inherit the previous tabs). */
 export function resetTabStore(): void {
   singleton = new TabStore([], '');
@@ -44,8 +68,14 @@ export function resetTabStore(): void {
 export class TabStore {
   private tabs: SessionTabData[];
   private activeTabId: string;
-  /** The transcript of a window that has no tab yet. */
-  private detachedMessages: ClaudeMessage[] = [];
+  /**
+   * The state of a window that has no tab yet.
+   *
+   * <p>Before the first tab is created (and in focused tests) the active tab is
+   * this object. It owns the same runtime fields as a real tab, so setters keep
+   * one code path instead of maintaining a second, window-wide copy.</p>
+   */
+  private detachedTab: SessionTabData = createDetachedTab();
   private readonly listeners = new Set<() => void>();
   private updatingTabs = false;
   private activeChangedDuringUpdate = false;
@@ -112,16 +142,44 @@ export class TabStore {
   }
 
   /**
+   * The tab that is on screen, or the detached state before the first tab.
+   *
+   * <p>The returned object is the owner of the active transcript and runtime
+   * state. Callers must not mutate it; `updateActiveTab` replaces it.</p>
+   */
+  readonly getActiveTab = (): SessionTabData => (
+    this.findById(this.activeTabId) ?? this.detachedTab
+  );
+
+  /**
+   * Replace the active tab with the result of `updater`.
+   *
+   * <p>Every runtime setter goes through here, so the active tab remains the
+   * only owner of `loading`, `streamingActive`, `isThinking` and the related
+   * turn state. A background event writes its own tab through `updateTab`.</p>
+   */
+  readonly updateActiveTab = (updater: (tab: SessionTabData) => SessionTabData): void => {
+    const activeId = this.activeTabId;
+    if (!activeId) {
+      const next = updater(this.detachedTab);
+      if (next === this.detachedTab) return;
+      this.detachedTab = next;
+      this.emit();
+      return;
+    }
+    this.setTabs((prev) => prev.map((tab) => (
+      tab.id === activeId ? updater(tab) : tab
+    )));
+  };
+
+  /**
    * The transcript of the tab that is on screen.
    *
    * <p>The store owns it: the view reads it from here, so switching tabs
    * never has to copy a transcript into another piece of state.</p>
    */
   getActiveTabMessages(): ClaudeMessage[] {
-    const active = this.findById(this.activeTabId);
-    // No tab yet (the strip is being built): the transcript waits in the store
-    // instead of in a second owner.
-    return active ? active.messages ?? [] : this.detachedMessages;
+    return this.getActiveTab().messages ?? [];
   }
 
   /** The transcript of one tab. */
@@ -138,17 +196,10 @@ export class TabStore {
   updateActiveTabMessages(
     updater: (current: ClaudeMessage[]) => ClaudeMessage[],
   ): void {
-    const activeId = this.activeTabId;
-    if (!activeId) {
-      this.detachedMessages = updater(this.detachedMessages);
-      this.emit();
-      return;
-    }
-    this.setTabs((prev) => prev.map((tab) => (
-      tab.id === activeId
-        ? { ...tab, messages: updater(tab.messages ?? []) }
-        : tab
-    )));
+    this.updateActiveTab((tab) => ({
+      ...tab,
+      messages: updater(tab.messages ?? []),
+    }));
   }
 
   findIdBySession(sessionId: string | null | undefined): string | null {

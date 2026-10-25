@@ -43,6 +43,7 @@ const useMessagesSafe = () => {
       messages: [],
       loading: false,
       streamingActive: false,
+      turnActive: false,
       sessionLoading: false,
     } as unknown as ReturnType<typeof useMessages>;
   }
@@ -342,8 +343,7 @@ export const StatusNoticeBar = ({
 
   const messages = propMessages ?? messagesCtx?.messages ?? [];
   const getMessageText = propGetMessageText ?? defaultGetMessageText;
-  const loading = messagesCtx?.loading ?? false;
-  const streamingActive = messagesCtx?.streamingActive ?? false;
+  const turnActive = messagesCtx?.turnActive ?? false;
   const sessionLoading = messagesCtx?.sessionLoading ?? false;
   const currentSessionId = sessionCtx?.currentSessionId ?? null;
 
@@ -353,8 +353,6 @@ export const StatusNoticeBar = ({
   // The dismissed set lives module-side and is not reactive; bumping this
   // counter is what makes a dismissal re-evaluate the notice.
   const [dismissVersion, setDismissVersion] = useState(0);
-
-  const turnActive = loading || streamingActive;
 
   const terminalNotice = useMemo<TerminalNotice | null>(() => {
     // A notice raised by a transcript that is still being restored is not

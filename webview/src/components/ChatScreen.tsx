@@ -151,7 +151,7 @@ export const ChatScreen = ({
   messageQueue, onRemoveFromQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
-  const { messages, loading, isThinking, streamingActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime } = useMessages();
+  const { messages, loading, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime } = useMessages();
   cardDebugLog('[ChatScreen] render, sessionLoading:', sessionLoading, 'statusPanelExpanded:', statusPanelExpanded);
   const { currentSessionId } = useSession();
   const previousMessageKeySnapshotRef = useRef<MessageKeySnapshot | undefined>(undefined);
@@ -314,7 +314,7 @@ export const ChatScreen = ({
       <div className="input-area" ref={inputAreaRef}>
         <ChatInputBox
           ref={chatInputRef}
-          isLoading={loading}
+          isLoading={turnActive}
           messages={mergedMessages}
           getMessageText={getMessageText}
           selectedModel={selectedModel}

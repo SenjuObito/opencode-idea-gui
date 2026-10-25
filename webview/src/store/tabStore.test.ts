@@ -49,6 +49,31 @@ describe('TabStore', () => {
     expect(snapshots).toEqual([['tab-2', ['tab-1', 'tab-2']]]);
   });
 
+  it('writes runtime state to the active tab, not to the window', () => {
+    const store = new TabStore([tab('tab-1'), tab('tab-2')], 'tab-1');
+
+    store.updateActiveTab((active) => ({ ...active, loading: true, streamingActive: true }));
+
+    expect(store.findById('tab-1')?.loading).toBe(true);
+    expect(store.findById('tab-1')?.streamingActive).toBe(true);
+    expect(store.findById('tab-2')?.loading).toBeUndefined();
+    expect(store.getActiveTab().id).toBe('tab-1');
+
+    store.setActiveTabId('tab-2');
+    expect(store.getActiveTab().loading).toBeUndefined();
+  });
+
+  it('keeps a detached runtime before the first tab exists', () => {
+    const store = new TabStore([], '');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.updateActiveTab((active) => ({ ...active, loading: true }));
+
+    expect(store.getActiveTab().loading).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('resolves tabs by both stable tab id and session id', () => {
     const store = new TabStore([tab('tab-1', 'ses_a'), tab('tab-2')], 'tab-1');
 

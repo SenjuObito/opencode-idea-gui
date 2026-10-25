@@ -4,6 +4,7 @@ import { sendWindowCommand } from '../../../utils/bridge';
 import i18n from '../../../i18n/config';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
 import { hostEventHandler, registerHostEvents } from '../../../utils/hostEventRegistry';
+import { readJson } from '../../../utils/hostEventTypes';
 
 // ============================================================================
 // Type Definitions
@@ -92,11 +93,19 @@ export function setupAgentsCallback() {
   if (typeof window === 'undefined') return;
   if (callbackRegistered && hostEventHandler('agents.updated')) return;
 
-  const handler = (json: string) => {
-    debugLog('[AgentProvider] Received data from backend, length=' + json.length);
+  const handler = (payload: unknown) => {
+    // Named events carry their content in `payload.data`; the dispatcher
+    // unwraps the single-field form, but accepting both shapes here keeps the
+    // provider independent of the transport's envelope details.
+    const raw = typeof payload === 'string'
+      ? payload
+      : (payload && typeof payload === 'object' && 'data' in payload
+          ? (payload as { data?: unknown }).data
+          : payload);
+    debugLog('[AgentProvider] Received data from backend, shape=' + typeof raw);
 
     try {
-      const parsed = JSON.parse(json);
+      const parsed = readJson<unknown>(raw);
       let agents: AgentItem[] = [];
 
       if (Array.isArray(parsed)) {
@@ -114,6 +123,10 @@ export function setupAgentsCallback() {
             };
           })
           .filter(a => a.name !== '');
+      }
+
+      if (!Array.isArray(parsed)) {
+        throw new Error('Agents payload is not an array');
       }
 
       cachedAgents = agents;
@@ -325,6 +338,11 @@ export function getSubagentsSync(query = ''): AgentItem[] {
  * dropdown can show subagents without waiting for the settings panel to open.
  */
 export function ensureAgentsLoaded(): void {
+  // The request and the reply handler are one lifecycle. Registering only in
+  // the dropdown provider lets an early preload send `agents.list` before any
+  // handler exists, so the host's `agents.updated` is dropped and later
+  // dropdown opens wait out the timeout on a turn that already finished.
+  setupAgentsCallback();
   if (loadingState === 'idle' || loadingState === 'failed') {
     requestRefresh();
   }

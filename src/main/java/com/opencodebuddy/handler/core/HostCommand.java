@@ -9,12 +9,20 @@ import com.google.gson.JsonParser;
  *
  * <p>Every command travels in the same envelope:
  * {@code {v, type, requestId, tabId, sessionId?, payload}}. The host validates
- * it, remembers the request id (so a replayed command runs once) and hands the
+ * it, remembers the command id (so a replayed command runs once) and hands the
  * payload to the handler that owns the command type.</p>
  *
- * <p>The envelope owns the identity: the payload may repeat it, but the
- * envelope's value wins, so a handler can never be talked into acting on a
- * different tab than the one the command names.</p>
+ * <p>The envelope owns the routing identity: the payload may repeat
+ * {@code tabId} or {@code sessionId}, but the envelope's value wins, so a
+ * handler can never be talked into acting on a different tab than the one the
+ * command names.</p>
+ *
+ * <p>The envelope's {@code requestId} is a <strong>command id</strong> used for
+ * idempotency. It is not the same namespace as a payload's {@code requestId}:
+ * a prompt reply, a context-usage request or a file-list request carries its
+ * own domain id there. The parser therefore never overwrites a payload
+ * {@code requestId}; it only supplies the command id when the payload has
+ * none.</p>
  */
 public final class HostCommand {
 
@@ -40,20 +48,20 @@ public final class HostCommand {
     private final String type;
     private final String tabId;
     private final String sessionId;
-    private final String requestId;
+    private final String commandId;
     private final String payloadJson;
 
     private HostCommand(
             String type,
             String tabId,
             String sessionId,
-            String requestId,
+            String commandId,
             String payloadJson
     ) {
         this.type = type;
         this.tabId = tabId;
         this.sessionId = sessionId;
-        this.requestId = requestId;
+        this.commandId = commandId;
         this.payloadJson = payloadJson;
     }
 
@@ -85,9 +93,9 @@ public final class HostCommand {
         if (expectedType != null && !expectedType.equals(type)) {
             throw new Invalid("UNKNOWN_TYPE", "expected " + expectedType + " but got " + type);
         }
-        String requestId = stringField(root, "requestId");
-        if (requestId == null) {
-            throw new Invalid("MISSING_REQUEST_ID", "the command request id is required");
+        String commandId = stringField(root, "requestId");
+        if (commandId == null) {
+            throw new Invalid("MISSING_REQUEST_ID", "the command id is required");
         }
         String tabId = stringField(root, "tabId");
         String sessionId = stringField(root, "sessionId");
@@ -103,14 +111,19 @@ public final class HostCommand {
             JsonElement payload = root.get("payload");
             if (payload.isJsonObject()) {
                 JsonObject object = payload.getAsJsonObject().deepCopy();
-                // The envelope owns the identity.
+                // Routing identity is owned by the envelope.
                 if (tabId != null) {
                     object.addProperty("tabId", tabId);
                 }
                 if (sessionId != null) {
                     object.addProperty("sessionId", sessionId);
                 }
-                object.addProperty("requestId", requestId);
+                // A payload requestId is a domain id (question/plan request,
+                // context-usage request, file-list request, ...). Only fill it
+                // from the command id when the payload does not carry one.
+                if (!hasText(object, "requestId")) {
+                    object.addProperty("requestId", commandId);
+                }
                 payloadJson = object.toString();
             } else if (payload.isJsonPrimitive() && payload.getAsJsonPrimitive().isString()) {
                 // A window-level command whose whole content is one string
@@ -128,11 +141,11 @@ public final class HostCommand {
             if (sessionId != null) {
                 empty.addProperty("sessionId", sessionId);
             }
-            empty.addProperty("requestId", requestId);
+            empty.addProperty("requestId", commandId);
             payloadJson = empty.toString();
         }
 
-        return new HostCommand(type, tabId, sessionId, requestId, payloadJson);
+        return new HostCommand(type, tabId, sessionId, commandId, payloadJson);
     }
 
     /** Parse a command that must name its tab. */
@@ -141,11 +154,18 @@ public final class HostCommand {
     }
 
     private static String stringField(JsonObject root, String name) {
-        if (!root.has(name) || root.get(name).isJsonNull()) {
+        if (!hasText(root, name)) {
             return null;
         }
-        String value = root.get(name).getAsString();
-        return value.isBlank() ? null : value;
+        return root.get(name).getAsString();
+    }
+
+    private static boolean hasText(JsonObject object, String name) {
+        return object != null
+                && object.has(name)
+                && !object.get(name).isJsonNull()
+                && object.get(name).isJsonPrimitive()
+                && !object.get(name).getAsString().isBlank();
     }
 
     public String getType() {
@@ -160,11 +180,12 @@ public final class HostCommand {
         return sessionId;
     }
 
-    public String getRequestId() {
-        return requestId;
+    /** The idempotency key of the command envelope. */
+    public String getCommandId() {
+        return commandId;
     }
 
-    /** The payload with the envelope's identity merged in. */
+    /** The payload with the envelope's routing identity merged in. */
     public String getPayloadJson() {
         return payloadJson;
     }

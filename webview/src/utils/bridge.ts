@@ -201,8 +201,12 @@ export const sendTabCommand = (
  * The v2 command envelope (docs/full-refactor-architecture-plan.md §7.1).
  *
  * Identity travels with the command: the host validates the version, the tab
- * id, the request id and the session binding before the command runs, and
+ * id, the command id and the session binding before the command runs, and
  * rejects it back to the sending tab when any of them does not add up.
+ *
+ * <p>{@code requestId} is the envelope's command idempotency key. A payload may
+ * carry its own {@code requestId} (a question/plan request, a context-usage
+ * request, ...); that is a domain id and must never be replaced by this one.</p>
  */
 export interface HostCommandEnvelope {
   v: 2;
@@ -220,7 +224,7 @@ export interface HostCommandEnvelope {
  *
  * @param tabId     the owning tab; mandatory — the host never guesses
  * @param type      command type, e.g. `session.send`
- * @param payload   command content, without identity
+ * @param payload   command content; domain ids such as a prompt request id stay here
  * @param sessionId the canonical session, when the tab is already bound
  */
 export const sendHostCommand = (

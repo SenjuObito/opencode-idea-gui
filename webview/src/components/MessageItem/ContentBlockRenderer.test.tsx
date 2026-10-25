@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpencodeContentBlock, ToolResultBlock } from '../../types';
+import { clearQuestionAnswers, setQuestionAnswer } from '../../store/questionAnswerStore';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
 
 // Capture the props MarkdownBlock receives without rendering the real marked
@@ -71,6 +72,10 @@ describe('ContentBlockRenderer block-level streaming', () => {
 });
 
 describe('ContentBlockRenderer askuserquestion', () => {
+  beforeEach(() => {
+    clearQuestionAnswers();
+  });
+
   const askBlock = (): OpencodeContentBlock =>
     ({
       type: 'tool_use',
@@ -162,6 +167,46 @@ describe('ContentBlockRenderer askuserquestion', () => {
 
     expect(getByText('您希望将哪些部分改为双语？')).toBeTruthy();
     expect(getByText('全部改为双语')).toBeTruthy();
+    expect(getByText('askUserQuestion.answeredStatus')).toBeTruthy();
+  });
+
+  it('uses a live answer event over a stale questionCard status', () => {
+    const cardBlock: OpencodeContentBlock = {
+      type: 'tool_use',
+      name: 'question',
+      id: 'tool-card-live',
+      questionCard: {
+        status: 'unanswered',
+        questions: [{ question: 'Pick a color?' }],
+        answers: {},
+      },
+    };
+
+    setQuestionAnswer({
+      callId: 'tool-card-live',
+      requestId: 'req-live',
+      questions: [{ question: 'Pick a color?' }],
+      answers: { 'Pick a color?': 'Blue' },
+    });
+
+    const { getByText } = render(
+      <ContentBlockRenderer
+        block={cardBlock}
+        messageIndex={0}
+        messageType="assistant"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={false}
+        isLastBlock={false}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('Pick a color?')).toBeTruthy();
+    expect(getByText('Blue')).toBeTruthy();
     expect(getByText('askUserQuestion.answeredStatus')).toBeTruthy();
   });
 

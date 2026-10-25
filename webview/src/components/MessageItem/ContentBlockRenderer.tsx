@@ -338,23 +338,35 @@ export function ContentBlockRenderer({
     // inline in the flow. The answer comes from the host's onQuestionAnswered
     // bridge event (stored in questionAnswerStore), falling back to findToolResult.
     if (toolName === 'askuserquestion' || toolName === 'question') {
-      // Prioritize structured questionCard injected by OpenCodeMessageConverter
+      const blockId = block.id ?? '';
+      const storedQA = getQuestionAnswer(blockId);
+
+      // The converter injects a questionCard from the message snapshot, which
+      // can be stale while the turn is still running. A live question.answered
+      // event is authoritative: merge it over the snapshot so the card flips
+      // to "answered" immediately instead of waiting for the next snapshot.
       if (block.type === 'tool_use' && block.questionCard) {
         const { status, questions, answers } = block.questionCard;
-        const storedAnswers = new Map<string, string>(Object.entries(answers || {}));
+        const mergedAnswers = new Map<string, string>(Object.entries(answers || {}));
+        if (storedQA) {
+          for (const [question, value] of Object.entries(storedQA.answers)) {
+            mergedAnswers.set(question, Array.isArray(value) ? value.join(', ') : value);
+          }
+        }
+        const hasLiveAnswer = Boolean(
+          storedQA && Object.keys(storedQA.answers).length > 0,
+        );
         return (
           <QuestionAnswerSummary
             questions={questions as QuestionSummaryItem[]}
             answer={null}
-            answers={storedAnswers}
-            status={status}
+            answers={mergedAnswers}
+            status={hasLiveAnswer ? 'answered' : status}
             t={t}
           />
         );
       }
 
-      const blockId = block.id ?? '';
-      const storedQA = getQuestionAnswer(blockId);
       console.log(`[ContentBlockRenderer] askuserquestion blockId="${blockId}" storedQA=${!!storedQA} block.input.questions=${JSON.stringify(block.input?.questions ?? []).substring(0, 300)}`);
       let answerBlock: ToolResultBlock | null = null;
       let storedAnswers: Map<string, string> | undefined;

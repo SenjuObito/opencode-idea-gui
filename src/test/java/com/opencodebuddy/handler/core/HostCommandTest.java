@@ -48,7 +48,7 @@ public class HostCommandTest {
         assertEquals("session.send", command.getType());
         assertEquals("tab-1", command.getTabId());
         assertEquals("ses_a", command.getSessionId());
-        assertEquals("req-1", command.getRequestId());
+        assertEquals("req-1", command.getCommandId());
 
         JsonObject payload = JsonParser.parseString(command.getPayloadJson()).getAsJsonObject();
         assertEquals("hi", payload.get("text").getAsString());
@@ -69,7 +69,7 @@ public class HostCommandTest {
     }
 
     @Test
-    public void theEnvelopeIdentityWinsOverThePayload() throws Exception {
+    public void theEnvelopeRoutingIdentityWinsOverThePayload() throws Exception {
         HostCommand command = HostCommand.parse(
                 envelope("session.send", "tab-1", "req-1", "ses_a",
                         "{\"tabId\":\"tab-other\",\"sessionId\":\"ses_other\",\"text\":\"hi\"}"),
@@ -78,6 +78,31 @@ public class HostCommandTest {
         JsonObject payload = JsonParser.parseString(command.getPayloadJson()).getAsJsonObject();
         assertEquals("tab-1", payload.get("tabId").getAsString());
         assertEquals("ses_a", payload.get("sessionId").getAsString());
+    }
+
+    @Test
+    public void thePayloadRequestIdIsNotReplacedByTheCommandId() throws Exception {
+        // A prompt reply carries the OpenCode request id in its payload while
+        // the envelope carries an unrelated idempotency key. Overwriting the
+        // payload id here sends the answer to a request that does not exist.
+        HostCommand command = HostCommand.parse(
+                envelope("question.reply", "tab-1", "cmd-uuid", "ses_a",
+                        "{\"requestId\":\"call_abc\",\"answers\":{}}"),
+                "question.reply");
+
+        assertEquals("cmd-uuid", command.getCommandId());
+        JsonObject payload = JsonParser.parseString(command.getPayloadJson()).getAsJsonObject();
+        assertEquals("call_abc", payload.get("requestId").getAsString());
+    }
+
+    @Test
+    public void theCommandIdSuppliesAMissingPayloadRequestId() throws Exception {
+        HostCommand command = HostCommand.parse(
+                envelope("session.send", "tab-1", "cmd-uuid", "ses_a", "{\"text\":\"hi\"}"),
+                "session.send");
+
+        JsonObject payload = JsonParser.parseString(command.getPayloadJson()).getAsJsonObject();
+        assertEquals("cmd-uuid", payload.get("requestId").getAsString());
     }
 
     @Test

@@ -197,6 +197,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   }, []);
 
   const closeQuestionCurrent = useCallback(() => {
+    currentAskUserQuestionRequestRef.current = null;
     setCurrentAskUserQuestionRequest(null);
     setAskUserQuestionDialogOpen(false);
   }, []);

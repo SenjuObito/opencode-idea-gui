@@ -633,13 +633,15 @@ public class PermissionHandler extends BaseMessageHandler {
                 LOG.warn("[PermissionHandler] question request carries no session identity"
                         + " (requestId=" + requestId + "); refusing to guess the active session");
             }
-            String toolName = stringOrNull(payload, "tool");
+            // Core normalizes `tool` to the tool call id: that is the block the
+            // inline question card is anchored to, not a tool name.
+            String callId = stringOrNull(payload, "tool");
             JsonArray questions = payload.has("questions") && payload.get("questions").isJsonArray()
                     ? payload.getAsJsonArray("questions")
                     : new JsonArray();
             String directory = context.resolveEffectiveWorkingDirectory();
 
-            prompts.questions.put(requestId, new PromptBroker.PendingQuestion(sessionId, questions, toolName, directory));
+            prompts.questions.put(requestId, new PromptBroker.PendingQuestion(sessionId, questions, callId, directory));
             prompts.rememberQuestionTab(requestId, context.getTabIdForSession(sessionId));
 
             // Trigger visual toast and sound reminders
@@ -659,8 +661,9 @@ public class PermissionHandler extends BaseMessageHandler {
                     requestData.addProperty("tabId", tabId);
                 }
             }
-            if (toolName != null) {
-                requestData.addProperty("toolName", toolName);
+            if (callId != null) {
+                // Keep the wire field name the dialog already consumes.
+                requestData.addProperty("toolName", callId);
             }
             requestData.add("questions", questions);
 
@@ -866,7 +869,7 @@ public class PermissionHandler extends BaseMessageHandler {
                                 context.publishEvent(com.opencodebuddy.tab.TabEvent.of("question.answered")
                                         .tab(context.getTabIdForSession(pending.sessionId))
                                         .session(pending.sessionId)
-                                        .field("callId", pending.toolName != null ? pending.toolName : "")
+                                        .field("callId", pending.callId != null ? pending.callId : "")
                                         .field("requestId", requestId)
                                         .field("questions", pending.questions)
                                         .field("answers", answers)

@@ -3272,9 +3272,9 @@ public class OpencodeBuddyChatWindow {
             return;
         }
 
-        if (!hostCommandIds.remember(command.getRequestId())) {
+        if (!hostCommandIds.remember(command.getCommandId())) {
             // A replayed command: the first one already ran.
-            LOG.debug("[HostCommand] ignoring the replayed command " + command.getRequestId());
+            LOG.debug("[HostCommand] ignoring the replayed command " + command.getCommandId());
             return;
         }
 
@@ -3290,14 +3290,14 @@ public class OpencodeBuddyChatWindow {
 
         MessageDispatcher dispatcher = this.messageDispatcher;
         if (dispatcher == null) {
-            publishCommandRejection(command.getTabId(), command.getRequestId(),
+            publishCommandRejection(command.getTabId(), command.getCommandId(),
                     "NO_DISPATCHER", "the window has no dispatcher");
             return;
         }
         if (!dispatcher.dispatch(command.getType(), command.getPayloadJson())) {
-            hostCommandIds.forget(command.getRequestId());
+            hostCommandIds.forget(command.getCommandId());
             LOG.warn("[HostCommand] unknown command type: " + command.getType());
-            publishCommandRejection(command.getTabId(), command.getRequestId(),
+            publishCommandRejection(command.getTabId(), command.getCommandId(),
                     "UNKNOWN_TYPE", "unknown command " + command.getType());
         }
     }
@@ -3322,19 +3322,19 @@ public class OpencodeBuddyChatWindow {
      */
     private void routeTabCommand(com.opencodebuddy.handler.core.HostCommand command) {
         if (command.getTabId() == null) {
-            publishCommandRejection(null, command.getRequestId(),
+            publishCommandRejection(null, command.getCommandId(),
                     "MISSING_TAB_ID", "a tab command must name its tab");
             return;
         }
         JsonObject payload = JsonParser.parseString(command.getPayloadJson()).getAsJsonObject();
         TabCommandRouter.Result result = tabCommandRouter.route(
                 new TabCommand(TabId.of(command.getTabId()), command.getType(),
-                        command.getRequestId(), payload));
+                        command.getCommandId(), payload));
         if (result != TabCommandRouter.Result.ROUTED
                 && result != TabCommandRouter.Result.DUPLICATE) {
             PluginFileLogger.warn("FRONTEND->BACKEND",
                     command.getType() + " tab=" + command.getTabId() + " -> " + result);
-            publishCommandRejection(command.getTabId(), command.getRequestId(),
+            publishCommandRejection(command.getTabId(), command.getCommandId(),
                     result.name(), "the tab command could not be routed");
         }
     }

@@ -665,7 +665,10 @@ public final class OpenCodeMessageConverter {
 
         JsonObject answersObj = new JsonObject();
         String output = string(state, "output");
-        String error = string(state, "error");
+        // v2 stores errors as {type, message}; the shared helper reads both
+        // that shape and v1's plain string. Using string() here silently
+        // turned an aborted question into "unanswered".
+        String error = errorText(state);
         boolean isCancelled = !error.isEmpty() || output.contains("question rejected");
 
         // 优先从 OpenCode 原生 metadata.answers (二维数组) 还原答案
@@ -706,7 +709,12 @@ public final class OpenCodeMessageConverter {
             }
         }
 
-        String status = isCancelled ? "cancelled" : (answersObj.size() > 0 ? "answered" : "unanswered");
+        // Real answers win over an error marker: a tool can briefly report an
+        // error while the server is settling, and an answered question must
+        // never regress to "cancelled".
+        String status = answersObj.size() > 0
+                ? "answered"
+                : (isCancelled ? "cancelled" : "unanswered");
 
         JsonObject questionCard = new JsonObject();
         questionCard.addProperty("status", status);

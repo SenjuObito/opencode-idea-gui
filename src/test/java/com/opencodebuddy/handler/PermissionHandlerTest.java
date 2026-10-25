@@ -1,6 +1,7 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
+import com.opencodebuddy.handler.core.HostCommand;
 import com.opencodebuddy.prompt.PromptBroker;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.JsonObject;
@@ -135,6 +136,50 @@ public class PermissionHandlerTest {
         assertTrue(result.get("approved").getAsBoolean());
         assertEquals("default", result.get("targetMode").getAsString());
         assertTrue(getPlanApprovalMap().isEmpty());
+    }
+
+    @Test
+    public void handleDispatchesQuestionReplyHostCommand() throws Exception {
+        CompletableFuture<JsonObject> future = new CompletableFuture<>();
+        injectAskUserFuture("call-question-1", future);
+
+        String content = "{\"requestId\":\"call-question-1\",\"answers\":{\"color\":\"red\"}}";
+        assertTrue(handler.handle("question.reply", content));
+
+        JsonObject result = future.get(2, TimeUnit.SECONDS);
+        assertEquals("red", result.get("color").getAsString());
+        assertTrue(getAskUserMap().isEmpty());
+    }
+
+    @Test
+    public void handleDispatchesPlanReplyHostCommand() throws Exception {
+        CompletableFuture<JsonObject> future = new CompletableFuture<>();
+        injectPlanApprovalFuture("plan-host-1", future);
+
+        String content = "{\"requestId\":\"plan-host-1\",\"approved\":true,\"targetMode\":\"default\"}";
+        assertTrue(handler.handle("plan.reply", content));
+
+        JsonObject result = future.get(2, TimeUnit.SECONDS);
+        assertTrue(result.get("approved").getAsBoolean());
+        assertTrue(getPlanApprovalMap().isEmpty());
+    }
+
+    @Test
+    public void aHostCommandKeepsTheQuestionRequestIdWhenDispatchingTheReply() throws Exception {
+        CompletableFuture<JsonObject> future = new CompletableFuture<>();
+        injectAskUserFuture("call-question-2", future);
+
+        String envelope = "{\"v\":2,\"type\":\"question.reply\","
+                + "\"requestId\":\"cmd-uuid\",\"tabId\":\"tab-1\",\"sessionId\":\"ses_a\","
+                + "\"payload\":{\"requestId\":\"call-question-2\","
+                + "\"answers\":{\"color\":\"blue\"}}}";
+        HostCommand command = HostCommand.parse(envelope, null);
+
+        assertTrue(handler.handle(command.getType(), command.getPayloadJson()));
+
+        JsonObject result = future.get(2, TimeUnit.SECONDS);
+        assertEquals("blue", result.get("color").getAsString());
+        assertTrue(getAskUserMap().isEmpty());
     }
 
     // The session-change safety net: when the user switches sessions while a permission dialog is
@@ -462,6 +507,9 @@ public class PermissionHandlerTest {
 
         Map<?, ?> map = brokerField(customHandler, "questions");
         assertTrue("pendingQuestions should contain q-test-1", map.containsKey("q-test-1"));
+        PromptBroker.PendingQuestion pending =
+                (PromptBroker.PendingQuestion) map.get("q-test-1");
+        assertEquals("ask", pending.callId);
     }
 
     @Test

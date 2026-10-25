@@ -28,13 +28,14 @@ public final class PromptBroker {
     public static final class PendingQuestion {
         public final String sessionId;
         public final JsonArray questions;
-        public final String toolName;
+        /** The tool call id of the question block the card is anchored to. */
+        public final String callId;
         public final String directory;
 
-        public PendingQuestion(String sessionId, JsonArray questions, String toolName, String directory) {
+        public PendingQuestion(String sessionId, JsonArray questions, String callId, String directory) {
             this.sessionId = sessionId;
             this.questions = questions;
-            this.toolName = toolName;
+            this.callId = callId;
             this.directory = directory;
         }
     }
@@ -132,7 +133,7 @@ public final class PromptBroker {
                 PendingQuestion pending = questions.get(entry.getKey());
                 result.add(new PendingPrompt(entry.getKey(), PromptKind.QUESTION,
                         askSessions.get(entry.getKey()), entry.getValue(),
-                        pending != null ? pending.toolName : null,
+                        pending != null ? pending.callId : null,
                         pending != null ? pending.directory : null,
                         pending != null ? pending.questions : null));
             }

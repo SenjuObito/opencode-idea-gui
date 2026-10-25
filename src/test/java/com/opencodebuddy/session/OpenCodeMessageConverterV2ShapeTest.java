@@ -149,7 +149,55 @@ public class OpenCodeMessageConverterV2ShapeTest {
         assertFalse(block.has("isError"));
     }
 
+    @Test
+    public void aQuestionAbortedWithAnObjectErrorIsCancelled() {
+        JsonObject entry = assistantToolEntry("", null, "error");
+        JsonObject part = entry.getAsJsonArray("parts").get(0).getAsJsonObject();
+        part.addProperty("tool", "question");
+        JsonObject state = part.getAsJsonObject("state");
+        state.add("input", questionInput("Pick a color?"));
+        state.add("error", errorObject("aborted", "Tool execution interrupted"));
+
+        List<JsonObject> messages = OpenCodeMessageConverter.convert(arrayOf(entry));
+
+        JsonObject card = firstContentBlock(messages.get(0)).getAsJsonObject("questionCard");
+        assertEquals("cancelled", card.get("status").getAsString());
+    }
+
+    @Test
+    public void aQuestionWithAnswersStaysAnsweredEvenWhenAnErrorMarkerIsPresent() {
+        JsonObject entry = assistantToolEntry("", null, "error");
+        JsonObject part = entry.getAsJsonArray("parts").get(0).getAsJsonObject();
+        part.addProperty("tool", "question");
+        JsonObject state = part.getAsJsonObject("state");
+        state.add("input", questionInput("Pick a color?"));
+        state.add("error", errorObject("aborted", "Tool execution interrupted"));
+
+        JsonArray answers = new JsonArray();
+        JsonArray firstAnswer = new JsonArray();
+        firstAnswer.add("Red");
+        answers.add(firstAnswer);
+        JsonObject metadata = new JsonObject();
+        metadata.add("answers", answers);
+        state.add("metadata", metadata);
+
+        List<JsonObject> messages = OpenCodeMessageConverter.convert(arrayOf(entry));
+
+        JsonObject card = firstContentBlock(messages.get(0)).getAsJsonObject("questionCard");
+        assertEquals("answered", card.get("status").getAsString());
+    }
+
     // ===== helpers =====
+
+    private static JsonObject questionInput(String question) {
+        JsonObject questionObject = new JsonObject();
+        questionObject.addProperty("question", question);
+        JsonArray questions = new JsonArray();
+        questions.add(questionObject);
+        JsonObject input = new JsonObject();
+        input.add("questions", questions);
+        return input;
+    }
 
     private static JsonArray arrayOf(JsonObject... entries) {
         JsonArray array = new JsonArray();

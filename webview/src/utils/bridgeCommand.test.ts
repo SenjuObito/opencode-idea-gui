@@ -27,6 +27,22 @@ describe('bridge v2 command envelope', () => {
     expect(envelope.payload).toEqual({ text: 'hi' });
   });
 
+  it('keeps a payload request id separate from the command id', () => {
+    // Question/plan replies carry the OpenCode request id in the payload.
+    // The envelope's requestId is only the idempotency key and must not
+    // replace it.
+    expect(sendHostCommand(
+      'tab-1',
+      'question.reply',
+      { requestId: 'call_abc', answers: {} },
+      'ses_a',
+    )).toBe(true);
+
+    const envelope = JSON.parse(lastCall().substring('host_command:'.length));
+    expect(envelope.requestId).not.toBe('call_abc');
+    expect(envelope.payload.requestId).toBe('call_abc');
+  });
+
   it('refuses to send a command without a tab', () => {
     expect(sendHostCommand('', 'session.send', { text: 'hi' })).toBe(false);
     expect(window.sendToJava).not.toHaveBeenCalled();

@@ -101,7 +101,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     setCompactingStartTime,
     setTaskEvents,
     setSseTodos,
-    subagentHistories,
     setSubagentHistories,
     setFilteredFileChanges,
     setSelectedModel,
@@ -122,21 +121,13 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     messages,
     currentSessionId,
     sessionTitle,
-    loading,
-    streamingActive,
-    isThinking,
-    status,
     revertBoundaryId,
-    isCompacting,
-    compactingStartTime,
     taskEvents,
-    sseTodos,
     filteredFileChanges,
     permissionMode,
     selectedModel,
     reasoningEffort,
     contextInfo,
-    loadingStartTime,
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
@@ -166,22 +157,13 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     messages,
     currentSessionId,
     sessionTitle,
-    loading,
-    streamingActive,
-    isThinking,
-    status,
     revertBoundaryId,
-    isCompacting,
-    compactingStartTime,
     taskEvents,
-    sseTodos,
-    subagentHistories,
     filteredFileChanges,
     permissionMode,
     selectedModel,
     reasoningEffort,
     contextInfo,
-    loadingStartTime,
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
@@ -192,22 +174,13 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       messages,
       currentSessionId,
       sessionTitle,
-      loading,
-      streamingActive,
-      isThinking,
-      status,
       revertBoundaryId,
-      isCompacting,
-      compactingStartTime,
       taskEvents,
-      sseTodos,
-      subagentHistories,
       filteredFileChanges,
       permissionMode,
       selectedModel,
       reasoningEffort,
       contextInfo,
-      loadingStartTime,
       usagePercentage,
       usageUsedTokens,
       usageMaxTokens,
@@ -216,22 +189,13 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     messages,
     currentSessionId,
     sessionTitle,
-    loading,
-    streamingActive,
-    isThinking,
-    status,
     revertBoundaryId,
-    isCompacting,
-    compactingStartTime,
     taskEvents,
-    sseTodos,
-    subagentHistories,
     filteredFileChanges,
     permissionMode,
     selectedModel,
     reasoningEffort,
     contextInfo,
-    loadingStartTime,
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
@@ -369,26 +333,20 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     const currentActive = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
     if (currentActive) {
       const snap = runtimeStateRef.current;
-      currentActive.messages = snap.messages;
+      // The transcript and turn state are already owned by this tab; copying
+      // them back from a React snapshot could overwrite a newer background
+      // update with a value captured before it. Only window-level state is
+      // snapshotted here.
       currentActive.sessionId = snap.currentSessionId;
       const isDefaultSnapTitle = !snap.sessionTitle || snap.sessionTitle === t('common.newSession');
       currentActive.title = isDefaultSnapTitle ? currentActive.title : (snap.sessionTitle || currentActive.title);
-      currentActive.loading = snap.loading;
-      currentActive.streamingActive = snap.streamingActive;
-      currentActive.isThinking = snap.isThinking;
-      currentActive.status = snap.status;
       currentActive.revertBoundaryId = snap.revertBoundaryId;
-      currentActive.isCompacting = snap.isCompacting;
-      currentActive.compactingStartTime = snap.compactingStartTime;
       currentActive.taskEvents = snap.taskEvents;
-      currentActive.sseTodos = snap.sseTodos;
-      currentActive.subagentHistories = snap.subagentHistories;
       currentActive.filteredFileChanges = snap.filteredFileChanges;
       currentActive.permissionMode = snap.permissionMode;
       currentActive.selectedModel = snap.selectedModel;
       currentActive.reasoningEffort = snap.reasoningEffort;
       currentActive.contextInfo = snap.contextInfo;
-      currentActive.turnStartedAt = snap.loadingStartTime ?? window.__turnStartedAt ?? null;
       currentActive.usagePercentage = snap.usagePercentage;
       currentActive.usageUsedTokens = snap.usageUsedTokens;
       currentActive.usageMaxTokens = snap.usageMaxTokens;
@@ -472,23 +430,17 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setCurrentSessionId?.(targetTab.sessionId);
       setCustomSessionTitle(targetTab.title || null);
       sendHostCommand(targetTab.id, 'tab.title.set', { title: targetTab.title || '' });
-      setMessages(targetTab.messages || []);
       restoreScrollState?.(targetTab.scrollState ?? null);
 
+      // Turn state, transcript and subagent histories belong to the target tab.
+      // Activating it is enough; copying a status-store snapshot back would let
+      // a stale background snapshot clear a live stream on the newly active tab.
       const targetStatus = statusStore.get(targetTab.id);
-      if (targetStatus?.streamingActive ?? targetTab.streamingActive) {
+      if (targetTab.streamingActive) {
         setTabRuntimeStreaming?.(targetTab.id, true);
       }
-      setLoading?.(targetStatus?.loading ?? targetTab.loading ?? false);
-      setStreamingActive?.(targetStatus?.streamingActive ?? targetTab.streamingActive ?? false);
-      setIsThinking?.(targetStatus?.isThinking ?? targetTab.isThinking ?? false);
-      setStatus?.(targetStatus?.status ?? targetTab.status ?? '');
       setRevertBoundaryId?.(targetStatus ? targetStatus.revertBoundaryId : (targetTab.revertBoundaryId ?? null));
-      setIsCompacting?.(targetStatus?.isCompacting ?? targetTab.isCompacting ?? false);
-      setCompactingStartTime?.(targetStatus ? targetStatus.compactingStartTime : (targetTab.compactingStartTime ?? null));
       setTaskEvents?.(targetStatus?.taskEvents ?? targetTab.taskEvents ?? {});
-      setSseTodos?.(targetStatus ? targetStatus.sseTodos : (targetTab.sseTodos ?? null));
-      setSubagentHistories?.(targetStatus?.subagentHistories ?? targetTab.subagentHistories ?? {});
       setFilteredFileChanges?.(targetStatus?.filteredFileChanges ?? targetTab.filteredFileChanges ?? []);
 
       window.__messageBaseIndex = targetTab.messageBaseIndex ?? 0;
@@ -517,9 +469,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         setContextInfo?.(targetTab.contextInfo);
       }
 
-      const targetTurnStartedAt = targetStatus ? targetStatus.turnStartedAt : (targetTab.turnStartedAt ?? null);
-      setLoadingStartTime?.(targetTurnStartedAt);
-      window.__turnStartedAt = targetTurnStartedAt ?? undefined;
+      window.__turnStartedAt = targetTab.turnStartedAt ?? undefined;
 
       setUsagePercentage?.(targetStatus?.usagePercentage ?? targetTab.usagePercentage ?? 0);
       setUsageUsedTokens?.(targetStatus ? targetStatus.usageUsedTokens : targetTab.usageUsedTokens);
@@ -557,20 +507,11 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       currentSessionIdRef,
       setCurrentSessionId,
       setCustomSessionTitle,
-      setMessages,
       restoreScrollState,
       statusStore,
       setTabRuntimeStreaming,
-      setLoading,
-      setStreamingActive,
-      setIsThinking,
-      setStatus,
       setRevertBoundaryId,
-      setIsCompacting,
-      setCompactingStartTime,
       setTaskEvents,
-      setSseTodos,
-      setSubagentHistories,
       setFilteredFileChanges,
       setPermissionMode,
       syncPermissionModeTo,
@@ -580,7 +521,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setSelectedModel,
       defaultAutoOpenFileEnabled,
       setContextInfo,
-      setLoadingStartTime,
       setUsagePercentage,
       setUsageUsedTokens,
       setUsageMaxTokens,

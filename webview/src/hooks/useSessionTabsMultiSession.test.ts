@@ -261,16 +261,14 @@ describe('useSessionTabs - multi-session attribution', () => {
     expect(restoreScrollState).toHaveBeenCalledWith(savedState);
   });
 
-  it('restores a background tab status and prompt written while it was hidden', () => {
-    const setStatus = vi.fn();
-    const setLoading = vi.fn();
+  it('keeps a background tab status and prompt written while it was hidden', () => {
     const restore = vi.fn();
     (window as any).__dialogStore = {
       getSnapshot: () => ({ permissions: [], questions: [] }),
       restore,
     };
 
-    const { result } = renderTabs({ currentSessionId: 'ses_a', setStatus, setLoading });
+    const { result } = renderTabs({ currentSessionId: 'ses_a' });
     act(() => {
       store().updateTabSessionId('tab-1', 'ses_a');
     });
@@ -292,8 +290,9 @@ describe('useSessionTabs - multi-session attribution', () => {
       result.current.selectTab(tab1Id);
     });
 
-    expect(setLoading).toHaveBeenLastCalledWith(true);
-    expect(setStatus).toHaveBeenLastCalledWith('running');
+    const active = result.current.tabs.find((tab) => tab.id === tab1Id)!;
+    expect(active.loading).toBe(true);
+    expect(active.status).toBe('running');
     expect(restore).toHaveBeenCalledWith([{ channelId: 'per-bg' }], [], []);
   });
 });
@@ -409,7 +408,7 @@ describe('useSessionTabs - history session loading', () => {
   });
 
   it('keeps each history session transcript on its own tab', () => {
-    const { result, setMessages, unmount } = renderTabsHost();
+    const { result, unmount } = renderTabsHost();
 
     act(() => {
       result.current.openSessionInTab('ses_h1', '历史会话 1');
@@ -446,7 +445,9 @@ describe('useSessionTabs - history session loading', () => {
     act(() => {
       result.current.selectTab(h1TabId);
     });
-    expect(setMessages).toHaveBeenLastCalledWith([{ type: 'user', content: 'H1 question' }]);
+    expect(result.current.activeTabId).toBe(h1TabId);
+    expect(result.current.tabs.find((t) => t.id === h1TabId)?.messages)
+      .toEqual([{ type: 'user', content: 'H1 question' }]);
     unmount();
   });
 

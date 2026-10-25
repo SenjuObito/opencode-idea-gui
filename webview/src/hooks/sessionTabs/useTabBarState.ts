@@ -15,23 +15,13 @@ export interface UseTabBarStateOptions extends Pick<
   | 'sessionTitle'
   | 'setCustomSessionTitle'
   | 'updateHistoryTitle'
-  | 'messages'
-  | 'loading'
-  | 'streamingActive'
-  | 'isThinking'
-  | 'status'
   | 'revertBoundaryId'
-  | 'isCompacting'
-  | 'compactingStartTime'
   | 'taskEvents'
-  | 'sseTodos'
-  | 'subagentHistories'
   | 'filteredFileChanges'
   | 'permissionMode'
   | 'selectedModel'
   | 'reasoningEffort'
   | 'contextInfo'
-  | 'loadingStartTime'
   | 'usagePercentage'
   | 'usageUsedTokens'
   | 'usageMaxTokens'
@@ -51,23 +41,13 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     sessionTitle,
     setCustomSessionTitle,
     updateHistoryTitle,
-    messages,
-    loading,
-    streamingActive,
-    isThinking,
-    status,
     revertBoundaryId,
-    isCompacting,
-    compactingStartTime,
     taskEvents,
-    sseTodos,
-    subagentHistories,
     filteredFileChanges,
     permissionMode,
     selectedModel,
     reasoningEffort,
     contextInfo,
-    loadingStartTime,
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
@@ -97,7 +77,7 @@ export function useTabBarState(options: UseTabBarStateOptions) {
           contextInfo: contextInfo ?? null,
           statusPanelExpanded: true,
           statusPanelTab: null,
-          turnStartedAt: loadingStartTime ?? null,
+          turnStartedAt: null,
           usagePercentage: usagePercentage ?? 0,
           usageUsedTokens: usageUsedTokens,
           usageMaxTokens: usageMaxTokens,
@@ -134,7 +114,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
 
       const nextSessionId = currentSessionId ?? active.sessionId;
       const nextTitle = (!sessionTitle || sessionTitle === t('common.newSession')) ? active.title : (sessionTitle || active.title);
-      const nextTurnStartedAt = loadingStartTime ?? active.turnStartedAt;
       const nextUsagePercentage = usagePercentage ?? active.usagePercentage;
       const nextUsageUsedTokens = usageUsedTokens !== undefined ? usageUsedTokens : active.usageUsedTokens;
       const nextUsageMaxTokens = usageMaxTokens !== undefined ? usageMaxTokens : active.usageMaxTokens;
@@ -146,22 +125,13 @@ export function useTabBarState(options: UseTabBarStateOptions) {
         active.sessionId === nextSessionId &&
         active.title === nextTitle &&
         active.isShared === isShared &&
-        active.loading === loading &&
-        active.streamingActive === streamingActive &&
-        active.isThinking === isThinking &&
-        active.status === status &&
         active.revertBoundaryId === revertBoundaryId &&
-        active.isCompacting === isCompacting &&
-        active.compactingStartTime === compactingStartTime &&
         active.taskEvents === taskEvents &&
-        active.sseTodos === sseTodos &&
-        active.subagentHistories === subagentHistories &&
         active.filteredFileChanges === filteredFileChanges &&
         active.permissionMode === permissionMode &&
         active.selectedModel === selectedModel &&
         active.reasoningEffort === reasoningEffort &&
         active.contextInfo === contextInfo &&
-        active.turnStartedAt === nextTurnStartedAt &&
         active.usagePercentage === nextUsagePercentage &&
         active.usageUsedTokens === nextUsageUsedTokens &&
         active.usageMaxTokens === nextUsageMaxTokens &&
@@ -179,22 +149,13 @@ export function useTabBarState(options: UseTabBarStateOptions) {
             sessionId: nextSessionId,
             title: nextTitle,
             isShared,
-            loading,
-            streamingActive,
-            isThinking,
-            status,
             revertBoundaryId,
-            isCompacting,
-            compactingStartTime,
             taskEvents,
-            sseTodos,
-            subagentHistories,
             filteredFileChanges,
             permissionMode,
             selectedModel,
             reasoningEffort,
             contextInfo,
-            turnStartedAt: nextTurnStartedAt,
             usagePercentage: nextUsagePercentage,
             usageUsedTokens: nextUsageUsedTokens,
             usageMaxTokens: nextUsageMaxTokens,
@@ -211,23 +172,13 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     currentSessionId,
     sessionTitle,
     isShared,
-    messages,
-    loading,
-    streamingActive,
-    isThinking,
-    status,
     revertBoundaryId,
-    isCompacting,
-    compactingStartTime,
     taskEvents,
-    sseTodos,
-    subagentHistories,
     filteredFileChanges,
     permissionMode,
     selectedModel,
     reasoningEffort,
     contextInfo,
-    loadingStartTime,
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,

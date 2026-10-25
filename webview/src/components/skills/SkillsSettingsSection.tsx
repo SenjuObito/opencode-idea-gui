@@ -221,9 +221,6 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
       }
     };
 
-    // Load Skills
-    loadSkills();
-
     // Close dropdown when clicking outside
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -238,6 +235,10 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
       'skills.delete': skillDeleteResult,
       'skills.toggle': skillToggleResult,
     });
+
+    // Request only after the reply handler is registered. The dispatcher can
+    // queue an early reply, but registering first makes the lifecycle explicit.
+    loadSkills();
 
     return () => {
       unregisterHostEvents(['skills.updated', 'skills.import', 'skills.delete', 'skills.toggle']);

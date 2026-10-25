@@ -3,13 +3,17 @@ package com.opencodebuddy.handler;
 import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
+import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.startup.BridgePreloader;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 
 import javax.swing.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -78,28 +82,115 @@ public class McpServerHandler extends BaseMessageHandler {
      * Get all MCP servers.
      */
     private void handleGetMcpServers() {
+        String projectPath = context.getProject() != null
+            ? context.getProject().getBasePath()
+            : null;
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                // The first request can race bridge extraction. Waiting here keeps
+                // the startup answer from caching an empty list until the user
+                // manually refreshes.
+                if (!BridgePreloader.isBridgeReady()) {
+                    BridgePreloader.waitForBridgeAsync().get(10, TimeUnit.SECONDS);
+                }
+
+                OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+                if (bridge != null) {
+                    bridge.listMcpServers(projectPath)
+                        .thenAccept(json -> publishMcpServers(
+                            parseOpenCodeMcpServers(json), projectPath, "OpenCode"))
+                        .exceptionally(ex -> {
+                            LOG.warn("[McpServerHandler] OpenCode listMcpServers failed: " + ex.getMessage());
+                            fallbackToLocalMcpServers(projectPath, "OpenCode request failed");
+                            return null;
+                        });
+                    return;
+                }
+            } catch (Exception e) {
+                LOG.warn("[McpServerHandler] OpenCode bridge unavailable: " + e.getMessage());
+            }
+
+            fallbackToLocalMcpServers(projectPath, "OpenCode bridge unavailable");
+        });
+    }
+
+    /**
+     * Normalize the core's list shape to the McpServer shape the webview reads.
+     * The core already hides v1/v2 differences; the host only fills display
+     * defaults when a field is absent.
+     */
+    static List<JsonObject> parseOpenCodeMcpServers(JsonElement json) {
+        JsonArray array = null;
+        if (json != null) {
+            if (json.isJsonArray()) {
+                array = json.getAsJsonArray();
+            } else if (json.isJsonObject()) {
+                JsonObject object = json.getAsJsonObject();
+                if (object.has("servers") && object.get("servers").isJsonArray()) {
+                    array = object.getAsJsonArray("servers");
+                } else if (object.has("data") && object.get("data").isJsonArray()) {
+                    array = object.getAsJsonArray("data");
+                }
+            }
+        }
+
+        List<JsonObject> result = new ArrayList<>();
+        if (array == null) {
+            return result;
+        }
+        for (JsonElement element : array) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject server = element.getAsJsonObject().deepCopy();
+            String fallbackName = server.has("name") && !server.get("name").isJsonNull()
+                ? server.get("name").getAsString()
+                : (server.has("id") && !server.get("id").isJsonNull()
+                    ? server.get("id").getAsString()
+                    : "mcp");
+            if (!server.has("id")) {
+                server.addProperty("id", fallbackName);
+            }
+            if (!server.has("name")) {
+                server.addProperty("name", fallbackName);
+            }
+            if (!server.has("server") || !server.get("server").isJsonObject()) {
+                JsonObject spec = new JsonObject();
+                spec.addProperty("type", "stdio");
+                server.add("server", spec);
+            }
+            if (!server.has("enabled")) {
+                server.addProperty("enabled", true);
+            }
+            result.add(server);
+        }
+        return result;
+    }
+
+    private void publishMcpServers(List<JsonObject> servers, String projectPath, String source) {
+        String serversJson = new Gson().toJson(servers);
+        LOG.info("[McpServerHandler] Loaded " + servers.size() + " MCP servers from "
+            + source + " for project: " + (projectPath != null ? projectPath : "(no project)"));
+        ApplicationManager.getApplication().invokeLater(() -> {
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.servers")
+                .field("data", serversJson).build());
+        });
+    }
+
+    /**
+     * Claude-compatible fallback for hosts where the OpenCode daemon is not
+     * running yet. It is never merged into a successful OpenCode answer: the
+     * engine is the authority for what OpenCode will actually load.
+     */
+    private void fallbackToLocalMcpServers(String projectPath, String reason) {
         try {
-            // Get project path for reading project-level MCP configuration
-            String projectPath = context.getProject() != null
-                ? context.getProject().getBasePath()
-                : null;
-
             List<JsonObject> servers = context.getSettingsService().getMcpServersWithProjectPath(projectPath);
-            Gson gson = new Gson();
-            String serversJson = gson.toJson(servers);
-
-            LOG.info("[McpServerHandler] Loaded " + servers.size() + " MCP servers for project: "
-                + (projectPath != null ? projectPath : "(no project)"));
-
-            ApplicationManager.getApplication().invokeLater(() -> {
-                broadcastToProject("window.updateMcpServers", escapeJs(serversJson));
-            });
+            LOG.info("[McpServerHandler] Falling back to local MCP config (" + reason + ")");
+            publishMcpServers(servers, projectPath, "local fallback");
         } catch (Exception e) {
             LOG.error("[McpServerHandler] Failed to get MCP servers: " + e.getMessage(), e);
-            // Send empty array so frontend exits loading state instead of hanging
-            ApplicationManager.getApplication().invokeLater(() -> {
-                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("mcp.servers").field("data", "[]").build());
-            });
+            publishMcpServers(new ArrayList<>(), projectPath, "empty fallback");
         }
     }
 

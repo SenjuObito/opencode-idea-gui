@@ -84,7 +84,9 @@ public class SkillHandler extends BaseMessageHandler {
             String skillsJson = GSON.toJson(skills);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("skills.updated").field("data", skillsJson).build());
+                // A reply belongs to the window that asked for it. broadcastEvent
+                // excludes that window by design.
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.updated").field("data", skillsJson).build());
             });
         } catch (Exception e) {
             LOG.error("[SkillHandler] Failed to get all skills: " + e.getMessage(), e);

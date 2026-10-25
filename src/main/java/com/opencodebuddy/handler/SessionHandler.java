@@ -506,9 +506,16 @@ public class SessionHandler extends BaseMessageHandler {
                     String data = a.has("data") && !a.get("data").isJsonNull()
                                           ? a.get("data").getAsString()
                                           : "";
-                    String attachmentId = a.has("id") && !a.get("id").isJsonNull()
-                                          ? a.get("id").getAsString()
-                                          : (fileName + "-" + i);
+                    // Chunked uploads name the staged file by attachmentId;
+                    // older inline payloads named it by id.
+                    String attachmentId;
+                    if (a.has("attachmentId") && !a.get("attachmentId").isJsonNull()) {
+                        attachmentId = a.get("attachmentId").getAsString();
+                    } else if (a.has("id") && !a.get("id").isJsonNull()) {
+                        attachmentId = a.get("id").getAsString();
+                    } else {
+                        attachmentId = fileName + "-" + i;
+                    }
                     // The attachment belongs to the tab that picked it. A
                     // chunked upload already wrote the bytes into that tab's
                     // directory, so the send only names it; an inline payload

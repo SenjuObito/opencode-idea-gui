@@ -1,6 +1,7 @@
 package com.opencodebuddy.handler;
 
 import com.opencodebuddy.handler.core.HandlerContext;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.Test;
@@ -9,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -19,6 +21,7 @@ import static org.junit.Assert.assertTrue;
 public class SessionHandlerHostCommandTest {
 
     private final List<String[]> jsCalls = new ArrayList<>();
+    private final List<String> stagedReads = new ArrayList<>();
 
     private SessionHandler handler() {
         HandlerContext context = new HandlerContext(
@@ -39,6 +42,12 @@ public class SessionHandlerHostCommandTest {
                     @Override
                     public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
                         jsCalls.add(new String[] {event.getType(), String.valueOf(event.getPayload().get("code"))});
+                    }
+
+                    @Override
+                    public String readStagedAttachment(String tabId, String attachmentId) {
+                        stagedReads.add(tabId + ":" + attachmentId);
+                        return "aGVsbG8=";
                     }
                 });
         return new SessionHandler(context);
@@ -100,5 +109,47 @@ public class SessionHandlerHostCommandTest {
 
         // The replay is swallowed: no second rejection is reported.
         assertEquals(afterFirst, jsCalls.size());
+    }
+
+    @Test
+    public void chunkedAttachmentIdIsUsedToReadTheStagedFile() {
+        SessionHandler handler = handler();
+
+        handler.handle("session.send", attachmentPayload("attachmentId", "att-chunked"));
+
+        assertEquals(List.of("tab-1:att-chunked"), stagedReads);
+        assertNoAttachmentMissing();
+    }
+
+    @Test
+    public void legacyAttachmentIdRemainsReadable() {
+        SessionHandler handler = handler();
+
+        handler.handle("session.send", attachmentPayload("id", "att-legacy"));
+
+        assertEquals(List.of("tab-1:att-legacy"), stagedReads);
+        assertNoAttachmentMissing();
+    }
+
+    private String attachmentPayload(String idField, String attachmentId) {
+        JsonObject attachment = new JsonObject();
+        attachment.addProperty(idField, attachmentId);
+        attachment.addProperty("fileName", "note.txt");
+        attachment.addProperty("mediaType", "text/plain");
+
+        JsonArray attachments = new JsonArray();
+        attachments.add(attachment);
+
+        JsonObject root = new JsonObject();
+        root.addProperty("tabId", "tab-1");
+        root.addProperty("requestId", "req-attachment");
+        root.addProperty("text", "hi");
+        root.add("attachments", attachments);
+        return root.toString();
+    }
+
+    private void assertNoAttachmentMissing() {
+        assertFalse(jsCalls.stream().anyMatch(call ->
+                "command.rejected".equals(call[0]) && call[1].contains("ATTACHMENT_MISSING")));
     }
 }

@@ -1,7 +1,6 @@
 package com.opencodebuddy.session;
 
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.util.JsUtils;
 import com.opencodebuddy.util.MessageJsonConverter;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -430,12 +429,11 @@ public class StreamMessageCoalescer {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             final int payloadChars;
             final long payloadBuildMs;
-            final String escapedMessagesJson;
+            final String messagesJson;
             try {
                 long buildStartedAt = System.nanoTime();
-                String messagesJson = MessageJsonConverter.convertMessagesToJson(transportMessages);
+                messagesJson = MessageJsonConverter.convertMessagesToJson(transportMessages);
                 payloadChars = messagesJson.length();
-                escapedMessagesJson = JsUtils.escapeJs(messagesJson);
                 payloadBuildMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - buildStartedAt);
 
                 // FIX: Record payload size for adaptive throttling
@@ -527,14 +525,14 @@ public class StreamMessageCoalescer {
                         publish("message.tail", b -> b
                                 .session(getTargetSessionId())
                                 .tab(tabId)
-                                .field("messages", escapedMessagesJson)
+                                .field("messages", messagesJson)
                                 .field("baseIndex", tailBaseIndex)
                                 .field("sequence", pushSequence));
                     } else {
                         publish("message.snapshot", b -> b
                                 .session(getTargetSessionId())
                                 .tab(tabId)
-                                .field("messages", escapedMessagesJson)
+                                .field("messages", messagesJson)
                                 .field("sequence", pushSequence));
                     }
                     synchronized (lock) {
@@ -560,7 +558,7 @@ public class StreamMessageCoalescer {
                     );
                 } catch (Exception e) {
                     LOG.warn("Failed to push updateMessages to webview (payload chars="
-                            + escapedMessagesJson.length() + "): " + e.getMessage(), e);
+                            + messagesJson.length() + "): " + e.getMessage(), e);
                 }
 
                 if (afterSendOnEdt != null) {

@@ -227,19 +227,11 @@ public class HistoryLoadPipelineIntegrationTest {
         coalescer.flush(seq -> flushed.countDown());
         assertTrue(flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-        // 推到线上的是 JsUtils.escapeJs 之后的 JS 字符串字面量，先反转义再解析。
-        JsonArray pushed = JsonParser.parseString(
-                unescapeJs(lastPushedPayload())).getAsJsonArray();
+        // The named event carries raw JSON, not a JS string literal. The webview
+        // calls JSON.parse on this value directly, so the test must do the same.
+        JsonArray pushed = JsonParser.parseString(lastPushedPayload()).getAsJsonArray();
         assertEquals("the count the host reports must equal the snapshot it pushed",
                 messageCount, pushed.size());
-    }
-
-    /** 反转 {@code JsUtils.escapeJs} 的常见项（测试数据里没有控制字符）。 */
-    private static String unescapeJs(String escaped) {
-        return escaped
-                .replace("\\\"", "\"")
-                .replace("\\'", "'")
-                .replace("\\\\", "\\");
     }
 
     @Test

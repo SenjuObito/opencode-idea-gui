@@ -95,7 +95,37 @@ public class SubagentHistoryServiceTest {
                 """).getAsJsonArray();
 
         assertEquals("completed",
-                SubagentHistoryService.statusFromEntries(entries, "running"));
+                SubagentHistoryService.statusFromEntries(entries));
+    }
+
+    @Test
+    public void aRunningChildIsNotCompletedByTheParentLaunchAck() {
+        JsonArray entries = JsonParser.parseString("""
+                [{"info": {"role": "assistant", "finish": "tool-calls"}, "parts": []}]
+                """).getAsJsonArray();
+
+        assertEquals("running", SubagentHistoryService.statusFromEntries(entries));
+    }
+
+    @Test
+    public void aChildWithNoAssistantMessageIsStillRunning() {
+        JsonArray entries = JsonParser.parseString("""
+                [{"info": {"role": "user"}, "parts": []}]
+                """).getAsJsonArray();
+
+        assertEquals("running", SubagentHistoryService.statusFromEntries(entries));
+        assertEquals("running", SubagentHistoryService.statusFromEntries(new JsonArray()));
+    }
+
+    @Test
+    public void aChildErrorIsAnError() {
+        JsonArray entries = JsonParser.parseString("""
+                [{"info": {"role": "assistant", "finish": "stop",
+                           "error": {"type": "tool.execution", "message": "failed"}},
+                  "parts": []}]
+                """).getAsJsonArray();
+
+        assertEquals("error", SubagentHistoryService.statusFromEntries(entries));
     }
 
     @Test

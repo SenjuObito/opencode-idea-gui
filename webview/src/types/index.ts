@@ -119,7 +119,7 @@ export type ClaudeMessage = OpencodeMessage;
 export interface TodoItem {
   id?: string;
   content: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   /** IDs of tasks that block this task (numeric string format from TaskCreate/TaskUpdate, e.g., "1", "2") */
   blockedBy?: string[];
 }

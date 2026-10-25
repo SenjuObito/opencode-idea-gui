@@ -632,6 +632,14 @@
       text-decoration: line-through;
     }
   }
+
+  &.status-cancelled {
+    .status-panel-todo-content {
+      color: var(--text-muted);
+      text-decoration: line-through;
+      opacity: 0.75;
+    }
+  }
 }
 
 .status-panel-todo-icon {
@@ -657,6 +665,10 @@
 
   &.status-completed .codicon {
     color: var(--color-todo-status-completed);
+  }
+
+  &.status-cancelled .codicon {
+    color: var(--text-muted);
   }
 }
 

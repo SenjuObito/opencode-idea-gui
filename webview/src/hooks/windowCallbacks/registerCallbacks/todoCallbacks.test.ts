@@ -82,8 +82,8 @@ describe('todos.updated', () => {
     expect(setSseTodos).toHaveBeenCalledTimes(1);
     const calledTodos: TodoItem[] = setSseTodos.mock.calls[0][0];
     expect(calledTodos).toHaveLength(3);
-    // 'cancelled' should normalize to 'completed'
-    expect(calledTodos[0].status).toBe('completed');
+    // v2 has a real cancelled state; it must not be rewritten to completed
+    expect(calledTodos[0].status).toBe('cancelled');
     expect(calledTodos[0].content).toBe('Task 10');
     // 'running' should normalize to 'in_progress'
     expect(calledTodos[1].status).toBe('in_progress');

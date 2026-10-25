@@ -10,7 +10,9 @@ export type RawTodoItem = {
   blockedBy?: unknown;
 };
 
-export function normalizeTodoStatus(status: unknown): 'pending' | 'in_progress' | 'completed' {
+export function normalizeTodoStatus(
+  status: unknown,
+): 'pending' | 'in_progress' | 'completed' | 'cancelled' {
   const value = typeof status === 'string' ? status.trim().toLowerCase() : '';
   if (value === 'completed' || value === 'done') {
     return 'completed';
@@ -19,7 +21,7 @@ export function normalizeTodoStatus(status: unknown): 'pending' | 'in_progress' 
     return 'in_progress';
   }
   if (value === 'cancelled' || value === 'canceled') {
-    return 'completed';
+    return 'cancelled';
   }
   return 'pending';
 }

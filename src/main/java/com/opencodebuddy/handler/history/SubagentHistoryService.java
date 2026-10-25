@@ -103,7 +103,7 @@ final class SubagentHistoryService {
                 .thenApply(childEntries -> {
                     JsonObject response = base.deepCopy();
                     JsonArray messages = convertEntries(childEntries);
-                    String status = statusFromEntries(childEntries, tool.status);
+                    String status = statusFromEntries(childEntries);
                     response.addProperty("success", true);
                     response.add("messages", messages);
                     response.addProperty("status", status);
@@ -130,8 +130,12 @@ final class SubagentHistoryService {
         if (error != null || history == null) {
             response = baseResponse(request, string(request, "sessionId"));
             response.addProperty("success", false);
-            response.addProperty("status", "completed");
-            response.addProperty("completed", true);
+            // A transcript request failure is not evidence that the child
+            // finished. Keep the card running so the next poll can recover;
+            // otherwise a transient bridge error permanently marks a still
+            // running subagent as completed.
+            response.addProperty("status", "running");
+            response.addProperty("completed", false);
             response.addProperty("error", error != null && error.getMessage() != null
                     ? error.getMessage() : "Failed to load subagent transcript");
             response.add("messages", new JsonArray());
@@ -228,8 +232,11 @@ final class SubagentHistoryService {
      * (a background child has already settled), the child's last assistant
      * message carries the terminal finish reason.
      */
-    static String statusFromEntries(JsonElement entries, String fallback) {
-        if (!"running".equals(fallback)) return fallback;
+    static String statusFromEntries(JsonElement entries) {
+        // The child transcript is authoritative for a background subagent.
+        // The parent tool's `state.status` becomes `completed` when the launch
+        // is acknowledged, while the child session can keep running for
+        // minutes. Never let that launch ack override a running child.
         JsonArray list = asArray(entries);
         for (int i = list.size() - 1; i >= 0; i--) {
             if (!list.get(i).isJsonObject()) continue;
@@ -242,9 +249,13 @@ final class SubagentHistoryService {
             if ("stop".equals(finish) || "end_turn".equals(finish) || "completed".equals(finish)) {
                 return "completed";
             }
+            // tool-calls / length / empty finish means the child is still
+            // working or its next step has not started yet.
             return "running";
         }
-        return fallback;
+        // No child assistant message is terminal evidence either. Keep polling
+        // even when the parent launch tool already says completed.
+        return "running";
     }
 
     static String childFromList(JsonElement sessions, String description) {

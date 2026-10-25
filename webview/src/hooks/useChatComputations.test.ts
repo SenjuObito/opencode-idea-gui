@@ -100,7 +100,7 @@ describe('deriveTodosForTurn', () => {
 
     expect(deriveTodosForTurn(messages, getContentBlocks, false)).toEqual([
       { content: 'Kept step', status: 'completed' },
-      { content: 'In-flight step', status: 'completed' },
+      { content: 'In-flight step', status: 'in_progress' },
     ]);
   });
 });

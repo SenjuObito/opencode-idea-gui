@@ -129,4 +129,24 @@ describe('ReasoningSelect', () => {
     expect(container.firstChild).toBeNull();
     expect(onChange).toHaveBeenCalledWith('default');
   });
+
+  it('capitalizes reasoning effort label and displays recommended badge', () => {
+    render(
+      <ReasoningSelect
+        value="low"
+        onChange={vi.fn()}
+        currentProvider="opencode"
+        selectedModel="custom-model"
+        modelVariants={['low', 'high']}
+      />,
+    );
+
+    const button = screen.getByRole('button');
+    expect(button.textContent).toContain('Low');
+    fireEvent.click(button);
+
+    // Dropdown contains options with capitalized label and (Recommended)
+    expect(screen.getByText('(Recommended)')).toBeTruthy();
+    expect(screen.getByText('High')).toBeTruthy();
+  });
 });

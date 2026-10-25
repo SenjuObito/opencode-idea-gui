@@ -26,7 +26,8 @@
     "seconds": "s",
     "minutes": "m",
     "optional": "Optional",
-    "pendingApproval": "Waiting for Action"
+    "pendingApproval": "Waiting for Action",
+    "recommended": "Recommended"
   },
   "chat": {
     "exportMarkdown": "Export as Markdown",
@@ -1734,6 +1735,7 @@
     },
     "cycleHint": "Cycle reasoning effort",
     "title": "Select reasoning depth",
+    "recommended": "Recommended",
     "none": {
       "label": "None",
       "description": "Disable thinking and answer directly"

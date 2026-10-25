@@ -117,7 +117,11 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
   const getReasoningText = (levelId: ReasoningEffort, field: 'label' | 'description') => {
     const key = `reasoning.${levelId}.${field}`;
     const fallback = REASONING_LEVELS.find(l => l.id === levelId)?.[field] || levelId;
-    return t(key, { defaultValue: fallback });
+    const text = t(key, { defaultValue: fallback });
+    if (field === 'label' && text) {
+      return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+    return text;
   };
 
   /**
@@ -219,7 +223,13 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <span>{getReasoningText(level.id, 'label')}</span>
                   {level.id === recommendedEffort && (
-                    <span style={RECOMMENDED_TEXT_STYLE}>({t('common.recommended', { defaultValue: '推荐' })})</span>
+                    <span style={RECOMMENDED_TEXT_STYLE}>
+                      ({t('reasoning.recommended', {
+                        defaultValue: t('common.recommended', {
+                          defaultValue: t('errorDiagnostic.recommended', { defaultValue: 'Recommended' }),
+                        }),
+                      })})
+                    </span>
                   )}
                 </div>
                 <span className="mode-description">{getReasoningText(level.id, 'description')}</span>

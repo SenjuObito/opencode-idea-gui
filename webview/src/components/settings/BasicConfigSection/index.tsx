@@ -118,6 +118,8 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
             key={tab.key}
             className={`${styles.basicTabBtn} ${activeTab === tab.key ? styles.active : ''}`}
             onClick={() => setActiveTab(tab.key)}
+            title={t(tab.labelKey)}
+            aria-label={t(tab.labelKey)}
           >
             <span className={`codicon ${tab.icon}`} />
             <span>{t(tab.labelKey)}</span>

@@ -1122,17 +1122,6 @@ const App = () => {
     setCurrentView('settings');
   }, [setSettingsInitialTab, setCurrentView]);
 
-  // Synchronize dynamic sessionTitle to IDE ToolWindow Tab display name
-  useEffect(() => {
-    const isDefaultNewSession = !sessionTitle || sessionTitle === t('common.newSession');
-    const titleTabId = window.__sessionTabsStore?.getActiveTabId?.();
-    // A tab command must name its tab. Before the store has an active tab there
-    // is nothing to rename; sending a window-level title command was rejected by
-    // the host and surfaced as a startup error toast.
-    if (titleTabId) {
-      sendHostCommand(titleTabId, 'tab.title.set', { title: isDefaultNewSession ? '' : sessionTitle });
-    }
-  }, [sessionTitle, t]);
 
 
   // Session tabs management
@@ -1219,6 +1208,15 @@ const App = () => {
     openSessionInTabRef.current = openSessionInTab;
     appTabsRef.current = tabs;
   }, [openSessionInTab, tabs]);
+
+  // Synchronize active tab title to IDE ToolWindow
+  useEffect(() => {
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const title = activeTab?.title || sessionTitle;
+    if (activeTabId && title) {
+      sendHostCommand(activeTabId, 'tab.title.set', { title });
+    }
+  }, [activeTabId, tabs, sessionTitle]);
 
   // ── Render ──
   return (

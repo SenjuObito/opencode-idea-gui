@@ -267,12 +267,28 @@ public class OpencodeBuddyChatWindow {
             String tabIdStr = command.tabId().value();
             createSessionForTab(tabIdStr);
         });
-        tabCommandRouter.register("tab.activate", command -> activateTab(command.tabId().value()));
+        tabCommandRouter.register("tab.activate", command -> {
+            String tabIdStr = command.tabId().value();
+            activateTab(tabIdStr);
+            TabRecord record = tabRegistry.get(command.tabId());
+            if (record != null) {
+                String title = record.getTitle();
+                if (title != null && !title.isBlank()) {
+                    updateTabTitle(title);
+                }
+            }
+        });
         tabCommandRouter.register("tab.close", command -> closeSession(command.tabId().value()));
         tabCommandRouter.register("tab.title.set", command -> {
             TabRecord record = tabRegistry.get(command.tabId());
+            String title = command.string("title");
             if (record != null && !record.isClosed()) {
-                record.setUserTitle(command.string("title"));
+                record.setUserTitle(title);
+                record.setTitle(title);
+            }
+            String currentActiveId = activeTabId;
+            if (currentActiveId == null || command.tabId().value().equals(currentActiveId)) {
+                updateTabTitle(title);
             }
         });
         String projectPath = project != null ? project.getBasePath() : null;
@@ -617,26 +633,36 @@ public class OpencodeBuddyChatWindow {
             return;
         }
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (disposed || parentContent == null) {
+            if (disposed) {
                 return;
             }
             if (rawTitle == null || rawTitle.trim().isEmpty()) {
-                String resetName = defaultTabName != null ? defaultTabName : originalTabName;
-                if (resetName != null) {
-                    this.originalTabName = resetName;
-                    parentContent.setDisplayName(resetName);
-                    parentContent.setDescription(null);
-                    LOG.debug("[TabTitle] Reset tab title to default: " + resetName);
-                }
                 return;
             }
 
             String title = rawTitle.replaceAll("[\\r\\n]+", " ").trim();
-            String displayName = title.length() > 9 ? title.substring(0, 8) + "..." : title;
-            this.originalTabName = displayName;
-            parentContent.setDisplayName(displayName);
-            parentContent.setDescription(title);
-            LOG.debug("[TabTitle] Updated tab title to: " + displayName + " (full: " + title + ")");
+            this.originalTabName = title;
+
+            // 1. 同步 Content 标签页显示名称
+            if (parentContent != null) {
+                parentContent.setDisplayName(title);
+                parentContent.setDescription(title);
+            }
+
+            // 2. 同步 IDE ToolWindow 顶栏 Header 标题
+            ToolWindow toolWindow = ToolWindowManager.getInstance(project)
+                    .getToolWindow(OpencodeBuddyToolWindow.TOOL_WINDOW_ID);
+            if (toolWindow != null) {
+                toolWindow.setTitle(title);
+            }
+
+            // 3. 同步独立浮动窗口标题（若当前处于浮动模式）
+            DetachedChatFrame detachedFrame = DetachedWindowManager.getDetachedFrame(project, this);
+            if (detachedFrame != null) {
+                detachedFrame.setTitle(OpencodeBuddyToolWindow.TOOL_WINDOW_DISPLAY_NAME + " - " + title);
+            }
+
+            LOG.debug("[TabTitle] Updated window title to: " + title);
         });
     }
 

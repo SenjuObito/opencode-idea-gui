@@ -26,20 +26,18 @@ const sidebarItems: SidebarItem[] = [
 interface SettingsSidebarProps {
   currentTab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 const SettingsSidebar = ({
   currentTab,
   onTabChange,
-  isCollapsed,
-  onToggleCollapse,
 }: SettingsSidebarProps) => {
   const { t } = useTranslation();
 
   return (
-    <div className={`${styles.sidebar} ${isCollapsed ? styles.collapsed : ''}`}>
+    <div className={styles.sidebar}>
       <div className={styles.sidebarItems}>
         {sidebarItems.map((item) => {
           const label = t(item.labelKey);
@@ -48,22 +46,21 @@ const SettingsSidebar = ({
               key={item.key}
               className={`${styles.sidebarItem} ${currentTab === item.key ? styles.active : ''}`}
               onClick={() => onTabChange(item.key)}
-              title={isCollapsed ? label : ''}
+              title={label}
+              aria-label={label}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onTabChange(item.key);
+                }
+              }}
             >
               <span className={`codicon ${item.icon}`} />
-              <span className={styles.sidebarItemText}>{label}</span>
             </div>
           );
         })}
-      </div>
-
-      {/* Collapse toggle button */}
-      <div
-        className={styles.sidebarToggle}
-        onClick={onToggleCollapse}
-        title={isCollapsed ? t('settings.sidebar.expand') : t('settings.sidebar.collapse')}
-      >
-        <span className={`codicon ${isCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-left'}`} />
       </div>
     </div>
   );

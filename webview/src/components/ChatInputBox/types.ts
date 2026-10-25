@@ -353,7 +353,7 @@ export function getAvailableReasoningLevels(
     if (id === 'default') continue;
     levels.push(known.get(id as ReasoningEffort) ?? {
       id: id as ReasoningEffort,
-      label: id,
+      label: id.charAt(0).toUpperCase() + id.slice(1),
       icon: 'codicon-circle-filled',
       description: id,
     });

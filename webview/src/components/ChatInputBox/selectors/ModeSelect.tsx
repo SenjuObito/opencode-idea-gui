@@ -78,9 +78,12 @@ export const ModeSelect = ({ value, onChange, provider: _provider }: ModeSelectP
   const modeOptions = useMemo(() => {
     return primaryAgents.map(agent => {
       const i18nKey = agent.id === 'build' ? 'default' : agent.id;
+      const translatedLabel = t(`openCodeModes.${i18nKey}.label`, { defaultValue: agent.name });
+      const rawLabel = translatedLabel || agent.name;
+      const label = rawLabel ? rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1) : rawLabel;
       return {
         id: agent.id,
-        label: agent.name,
+        label,
         icon: agent.id === 'plan' ? 'codicon-tasklist' : 'codicon-tools',
         tooltip: agent.description || t(`openCodeModes.${i18nKey}.tooltip`),
         description: agent.description || t(`openCodeModes.${i18nKey}.description`),
@@ -93,9 +96,13 @@ export const ModeSelect = ({ value, onChange, provider: _provider }: ModeSelectP
   const normalizedValue = value === 'default' ? 'build' : value;
 
   const currentMode = useMemo(() => {
-    return modeOptions.find(m => m.id === normalizedValue) || modeOptions[0] || {
+    const found = modeOptions.find(m => m.id === normalizedValue) || modeOptions[0];
+    if (found) return found;
+    const rawLabel = normalizedValue;
+    const label = rawLabel ? rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1) : rawLabel;
+    return {
       id: normalizedValue,
-      label: normalizedValue,
+      label,
       icon: 'codicon-tools',
       tooltip: '',
       description: '',

@@ -228,9 +228,10 @@ final class SubagentHistoryService {
     }
 
     /**
-     * The tool part is authoritative while it is still updating. When it lags
-     * (a background child has already settled), the child's last assistant
-     * message carries the terminal finish reason.
+     * The child transcript is authoritative. A background subagent's parent
+     * tool part reaches {@code completed} when the launch is acknowledged, so
+     * only the child's last assistant finish/error can prove that it actually
+     * ended.
      */
     static String statusFromEntries(JsonElement entries) {
         // The child transcript is authoritative for a background subagent.

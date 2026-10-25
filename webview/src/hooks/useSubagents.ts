@@ -156,16 +156,28 @@ export function extractSubagentsFromMessages(
   return subagents;
 }
 
+/**
+ * Apply core's canonical child-transcript status.
+ *
+ * <p>opencode's `subagent.history` is the child session's own transcript, so it
+ * is authoritative in both directions: a parent launch acknowledgement that
+ * says `completed` must not outlive a transcript that is still `running`.
+ * A `success: false` history is a transport failure, not evidence of a terminal
+ * state, so it never overwrites what the card already shows.</p>
+ */
 export function applySubagentHistoryCompletion(
   subagents: SubagentInfo[],
   subagentHistories: Record<string, SubagentHistoryResponse>,
 ): SubagentInfo[] {
   return subagents.map((subagent) => {
-    if (!subagent.isAsync || subagent.status !== 'running') return subagent;
     const history = subagentHistories[subagent.id]
       ?? (subagent.agentId ? subagentHistories[subagent.agentId] : undefined);
-    if (history?.status === 'error') return { ...subagent, status: 'error' as const };
-    return history?.completed ? { ...subagent, status: 'completed' as const } : subagent;
+    if (!history?.success || !history.status) return subagent;
+    if (history.status === subagent.status) return subagent;
+    // A live task_notification error is terminal in a way a later transcript
+    // cannot undo; every other disagreement follows the transcript.
+    if (history.status === 'completed' && subagent.status === 'error') return subagent;
+    return { ...subagent, status: history.status };
   });
 }
 

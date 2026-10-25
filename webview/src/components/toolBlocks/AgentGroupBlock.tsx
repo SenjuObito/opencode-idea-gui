@@ -106,18 +106,23 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
     ?? (input?.agentId as string | undefined);
   const agentPath = spawnMeta.agentPath;
   const history = (toolId ? histories[toolId] : undefined) ?? (agentId ? histories[agentId] : undefined);
-  const historyFailed = history?.status === 'error';
+  // core's child transcript is authoritative when present. The parent launch
+  // ack for opencode's `subagent` tool turns `completed` before the child is
+  // done, so a terminal result is not proof of a terminal child.
+  const historyStatus = history?.success === true ? history.status : undefined;
   // A settled main turn is only the launch boundary for a background Agent. Use
   // the live task_notification or a terminal sidechain end_turn as completion.
   // A failed launch (validation error before the task was registered) returns an
   // is_error tool_result and never emits a task_notification, so treat that as
   // an error instead of staying stuck on "running".
-  const isCompleted = isAsync
-    ? (taskEvent ? !taskFailed : history?.completed === true)
-    : hasTerminalResult;
-  const isError = isAsync
-    ? (taskEvent ? taskFailed : historyFailed || result?.is_error === true)
-    : hasTerminalResult && result?.is_error === true;
+  const isCompleted = historyStatus
+    ? historyStatus === 'completed'
+    : (isAsync ? Boolean(taskEvent) && !taskFailed : hasTerminalResult);
+  const isError = historyStatus
+    ? historyStatus === 'error'
+    : (isAsync
+      ? (taskEvent ? taskFailed : result?.is_error === true)
+      : hasTerminalResult && result?.is_error === true);
 
   const noopToggleThinking = useCallback(() => {}, []);
 
@@ -137,8 +142,11 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
   }, [agentId, agentPath, currentProvider, currentSessionId, summary, expanded, history, toolId]);
 
   useEffect(() => {
+    // Keep polling while core's transcript says the child is still running,
+    // even when the parent launch result already looks terminal.
+    const keepPolling = historyStatus ? historyStatus === 'running' : !isCompleted && !isError;
     // Clear existing timer when dependencies change or conditions no longer met
-    if (!expanded || !currentSessionId || !toolId || isCompleted || isError) {
+    if (!expanded || !currentSessionId || !toolId || !keepPolling) {
       if (pollingTimerRef.current !== null) {
         window.clearInterval(pollingTimerRef.current);
         pollingTimerRef.current = null;

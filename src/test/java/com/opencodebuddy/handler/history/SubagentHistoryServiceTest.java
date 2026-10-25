@@ -6,155 +6,123 @@ import com.google.gson.JsonParser;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+/**
+ * The host forwards core's canonical subagent state; it does not infer one.
+ *
+ * <p>core owns child-session resolution and the terminal-state rule. These
+ * cases lock the forwarding contract: routing identity is added, core's status
+ * is preserved verbatim, and a transport failure stays "running" so the next
+ * poll can recover.</p>
+ */
 public class SubagentHistoryServiceTest {
 
     @Test
-    public void findsTheChildSessionInTheToolMetadata() {
-        JsonArray entries = JsonParser.parseString("""
-                [{
-                  "info": {"id": "msg_1", "role": "assistant"},
-                  "parts": [{
-                    "type": "tool",
-                    "id": "call_task",
-                    "tool": "subagent",
-                    "state": {
-                      "status": "completed",
-                      "input": {"description": "Explore repo"},
-                      "output": "done",
-                      "metadata": {"sessionID": "ses_child"}
-                    }
-                  }]
-                }]
-                """).getAsJsonArray();
-
-        SubagentHistoryService.FoundTool tool =
-                SubagentHistoryService.findTool(entries, "call_task");
-
-        assertNotNull(tool);
-        assertEquals("ses_child", tool.childSessionId);
-        assertEquals("completed", tool.status);
-        assertEquals("done", tool.output);
-    }
-
-    @Test
-    public void fallsBackToTheSubagentWrapperWhenMetadataIsMissing() {
-        JsonArray entries = JsonParser.parseString("""
-                [{
-                  "info": {"id": "msg_1", "role": "assistant"},
-                  "parts": [{
-                    "type": "tool",
-                    "id": "call_task",
-                    "tool": "subagent",
-                    "state": {
-                      "status": "completed",
-                      "output": "<subagent sessionID=\\"ses_from_text\\" state=\\"completed\\">ok</subagent>"
-                    }
-                  }]
-                }]
-                """).getAsJsonArray();
-
-        SubagentHistoryService.FoundTool tool =
-                SubagentHistoryService.findTool(entries, "call_task");
-
-        assertNotNull(tool);
-        assertEquals("ses_from_text", tool.childSessionId);
-        assertEquals("completed", tool.status);
-    }
-
-    @Test
-    public void ignoresAnUnrelatedToolPart() {
-        JsonArray entries = JsonParser.parseString("""
-                [{"info": {"role": "assistant"},
-                  "parts": [{"type": "tool", "id": "call_other", "tool": "read", "state": {}}]}]
-                """).getAsJsonArray();
-
-        assertNull(SubagentHistoryService.findTool(entries, "call_task"));
-    }
-
-    @Test
-    public void choosesTheChildWhoseTitleMatchesTheDescription() {
-        JsonObject sessions = JsonParser.parseString("""
-                {"sessions": [
-                  {"id": "ses_old", "title": "Other task", "time": {"updated": 10}},
-                  {"id": "ses_match", "title": "Explore repo", "time": {"updated": 20}}
-                ]}
+    public void forwardsCoreStatusWithoutReinterpretingIt() {
+        JsonObject history = JsonParser.parseString("""
+                {
+                  "success": true,
+                  "toolUseId": "call_task",
+                  "childSessionID": "ses_child",
+                  "status": "running",
+                  "completed": false,
+                  "messages": []
+                }
                 """).getAsJsonObject();
+        JsonObject envelope = new JsonObject();
+        envelope.addProperty("success", true);
+        envelope.add("history", history);
 
-        assertEquals("ses_match",
-                SubagentHistoryService.childFromList(sessions, "Explore repo"));
+        JsonObject response = SubagentHistoryService.canonicalResponse(
+                request(), "ses_parent", envelope, null);
+
+        assertEquals("running", string(response, "status"));
+        assertFalse(response.get("completed").getAsBoolean());
+        assertEquals("ses_child", string(response, "childSessionID"));
+        assertEquals("ses_parent", string(response, "sessionId"));
+        assertEquals("call_task", string(response, "toolUseId"));
+        assertEquals("agent-1", string(response, "agentId"));
+        assertEquals("opencode", string(response, "provider"));
     }
 
     @Test
-    public void readsTheTerminalFinishFromTheChildTranscriptWhenTheToolPartLags() {
-        JsonArray entries = JsonParser.parseString("""
-                [{"info": {"role": "assistant", "finish": "stop"}, "parts": [{"type": "text", "text": "done"}]}]
-                """).getAsJsonArray();
+    public void keepsACompletedChildCompleted() {
+        JsonObject history = JsonParser.parseString("""
+                {
+                  "success": true,
+                  "status": "completed",
+                  "completed": true,
+                  "messages": [{"type": "assistant"}]
+                }
+                """).getAsJsonObject();
+        JsonObject envelope = new JsonObject();
+        envelope.add("history", history);
 
-        assertEquals("completed",
-                SubagentHistoryService.statusFromEntries(entries));
+        JsonObject response = SubagentHistoryService.canonicalResponse(
+                request(), "ses_parent", envelope, null);
+
+        assertEquals("completed", string(response, "status"));
+        assertTrue(response.get("completed").getAsBoolean());
     }
 
     @Test
-    public void aRunningChildIsNotCompletedByTheParentLaunchAck() {
-        JsonArray entries = JsonParser.parseString("""
-                [{"info": {"role": "assistant", "finish": "tool-calls"}, "parts": []}]
-                """).getAsJsonArray();
+    public void aCoreTransportFailureIsRunningNotCompleted() {
+        JsonObject response = SubagentHistoryService.canonicalResponse(
+                request(), "ses_parent", null, new IllegalStateException("bridge down"));
 
-        assertEquals("running", SubagentHistoryService.statusFromEntries(entries));
+        assertFalse(response.get("success").getAsBoolean());
+        assertEquals("running", string(response, "status"));
+        assertFalse(response.get("completed").getAsBoolean());
+        assertEquals("bridge down", string(response, "error"));
+        assertEquals(0, response.getAsJsonArray("messages").size());
+        assertEquals("agent-1", string(response, "agentId"));
     }
 
     @Test
-    public void aChildWithNoAssistantMessageIsStillRunning() {
-        JsonArray entries = JsonParser.parseString("""
-                [{"info": {"role": "user"}, "parts": []}]
-                """).getAsJsonArray();
+    public void aMalformedEnvelopeIsRunningNotCompleted() {
+        JsonObject response = SubagentHistoryService.canonicalResponse(
+                request(), "ses_parent", JsonParser.parseString("{\"success\":true}"), null);
 
-        assertEquals("running", SubagentHistoryService.statusFromEntries(entries));
-        assertEquals("running", SubagentHistoryService.statusFromEntries(new JsonArray()));
+        assertFalse(response.get("success").getAsBoolean());
+        assertEquals("running", string(response, "status"));
+        assertFalse(response.get("completed").getAsBoolean());
+        assertEquals(0, response.getAsJsonArray("messages").size());
     }
 
     @Test
-    public void aChildErrorIsAnError() {
-        JsonArray entries = JsonParser.parseString("""
-                [{"info": {"role": "assistant", "finish": "stop",
-                           "error": {"type": "tool.execution", "message": "failed"}},
-                  "parts": []}]
-                """).getAsJsonArray();
+    public void routingFieldsComeFromTheRequestNotCore() {
+        JsonObject history = JsonParser.parseString("""
+                {"success": true, "status": "running", "completed": false, "messages": []}
+                """).getAsJsonObject();
+        JsonObject envelope = new JsonObject();
+        envelope.add("history", history);
 
-        assertEquals("error", SubagentHistoryService.statusFromEntries(entries));
+        JsonObject response = SubagentHistoryService.canonicalResponse(
+                request(), "ses_parent", envelope, null);
+
+        assertEquals("agent-1", string(response, "agentId"));
+        assertEquals("agents/explore.md", string(response, "agentPath"));
+        assertEquals("call_task", string(response, "toolUseId"));
+        assertEquals("ses_parent", string(response, "sessionId"));
+        assertTrue(response.getAsJsonArray("messages") instanceof JsonArray);
     }
 
-    @Test
-    public void convertsReasoningAndToolPartsForTheProcessCard() {
-        JsonArray entries = JsonParser.parseString("""
-                [{
-                  "info": {"id": "msg_1", "role": "assistant"},
-                  "parts": [
-                    {"type": "reasoning", "text": "thinking"},
-                    {"type": "text", "text": "report"},
-                    {"type": "tool", "id": "call_read", "tool": "read",
-                     "state": {"input": {"path": "/repo/a.txt"}}}
-                  ]
-                }]
-                """).getAsJsonArray();
+    private static JsonObject request() {
+        return JsonParser.parseString("""
+                {
+                  "sessionId": "ses_parent",
+                  "toolUseId": "call_task",
+                  "agentId": "agent-1",
+                  "agentPath": "agents/explore.md",
+                  "provider": "opencode"
+                }
+                """).getAsJsonObject();
+    }
 
-        JsonArray messages = SubagentHistoryService.convertEntries(entries);
-
-        assertEquals(1, messages.size());
-        JsonArray blocks = messages.get(0).getAsJsonObject()
-                .getAsJsonObject("message").getAsJsonArray("content");
-        assertEquals(3, blocks.size());
-        assertEquals("thinking", blocks.get(0).getAsJsonObject().get("thinking").getAsString());
-        assertEquals("report", blocks.get(1).getAsJsonObject().get("text").getAsString());
-        JsonObject tool = blocks.get(2).getAsJsonObject();
-        assertEquals("tool_use", tool.get("type").getAsString());
-        assertEquals("read", tool.get("name").getAsString());
-        assertEquals("/repo/a.txt",
-                tool.getAsJsonObject("input").get("path").getAsString());
-        assertTrue(messages.get(0).getAsJsonObject().get("message").isJsonObject());
+    private static String string(JsonObject object, String field) {
+        return object.has(field) && !object.get(field).isJsonNull()
+                ? object.get(field).getAsString() : "";
     }
 }

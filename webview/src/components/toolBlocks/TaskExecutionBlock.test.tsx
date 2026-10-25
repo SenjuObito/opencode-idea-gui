@@ -183,7 +183,7 @@ describe('TaskExecutionBlock polling', () => {
 
   it('marks an async agent completed when sidechain history ends normally', () => {
     mockUseTaskEvent.mockReturnValue(undefined);
-    mockHistories = { 'agent-async': { success: true, completed: true, messages: [] } };
+    mockHistories = { 'agent-async': { success: true, status: 'completed', completed: true, messages: [] } };
 
     const { container } = render(
       <TaskExecutionBlock
@@ -201,6 +201,39 @@ describe('TaskExecutionBlock polling', () => {
     const indicator = container.querySelector('.tool-status-indicator');
     expect(indicator?.className).toContain('completed');
     expect(indicator?.className).not.toContain('pending');
+  });
+
+  it('keeps a running child transcript ahead of a completed launch result', () => {
+    mockHistories = {
+      'subagent-1': { success: true, status: 'running', completed: false, messages: [] },
+    };
+
+    const { container } = render(
+      <TaskExecutionBlock
+        name="subagent"
+        toolId="subagent-1"
+        isStreaming={false}
+        result={{ type: 'tool_result', tool_use_id: 'subagent-1', content: 'launched' } as any}
+        input={{ description: 'Explore repo', agent: 'explore' } as any}
+      />,
+    );
+
+    const indicator = container.querySelector('.tool-status-indicator');
+    expect(indicator?.className).toContain('pending');
+    expect(indicator?.className).not.toContain('completed');
+
+    // opencode's launch ack is terminal-looking, so polling must continue
+    // while core still reports the child as running.
+    fireEvent.click(container.querySelector('.task-header') as HTMLElement);
+    mockSendSessionCommand.mockClear();
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(mockSendSessionCommand).toHaveBeenCalledWith(
+      'subagent.history',
+      'session-1',
+      expect.objectContaining({ toolUseId: 'subagent-1', poll: true }),
+    );
   });
 
   it('flips an async agent to completed when a task_notification arrives', () => {

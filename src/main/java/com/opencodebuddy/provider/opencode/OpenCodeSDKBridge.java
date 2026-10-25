@@ -512,6 +512,33 @@ public class OpenCodeSDKBridge {
         return requestJson("opencode.listSessions", params);
     }
 
+    /**
+     * Canonical subagent transcript + status.
+     *
+     * <p>core owns the child-session lookup, the transcript read, and the
+     * terminal-state rule, because it is the only layer that knows the opencode
+     * version and the SSE lifecycle. The host forwards the result unchanged.</p>
+     */
+    public CompletableFuture<JsonElement> getSubagentHistory(
+            String parentSessionId,
+            String toolUseId,
+            String description,
+            String cwd,
+            boolean poll
+    ) {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", parentSessionId != null ? parentSessionId : "");
+        params.addProperty("toolUseId", toolUseId != null ? toolUseId : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
+        if (description != null && !description.isBlank()) {
+            params.addProperty("description", description);
+        }
+        if (poll) {
+            params.addProperty("poll", true);
+        }
+        return requestJson("opencode.getSubagentHistory", params);
+    }
+
     public CompletableFuture<JsonElement> deleteSession(String sessionId, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");

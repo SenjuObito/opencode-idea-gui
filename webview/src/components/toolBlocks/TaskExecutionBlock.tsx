@@ -100,19 +100,29 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
     ? isAsyncAgentInput(input, normalizedName, result, readToolUseStatus(toolId ? getToolResultRaw(toolId) : null))
     : false;
   const hasTerminalResult = result !== undefined && result !== null;
-  const taskFailed = taskEvent?.status === 'failed' || taskEvent?.status === 'stopped';
   // Async completion has two authoritative sources: the live task_notification,
   // and (after reload/polling) a sidechain transcript that ends in
   // assistant/end_turn. A settled main turn alone proves only that the launch
   // turn ended; the background sidechain may still be running.
   const history = (toolId ? histories[toolId] : undefined) ?? (agentId ? histories[agentId] : undefined);
-  const historyFailed = history?.status === 'error';
-  const isCompleted = isAsync
-    ? (taskEvent ? !taskFailed : history?.completed === true)
-    : hasTerminalResult;
-  const isError = isAsync
-    ? (taskEvent ? taskFailed : historyFailed || result?.is_error === true)
-    : hasTerminalResult && result?.is_error === true;
+  // The child transcript is authoritative when core returned one. opencode's
+  // parent `subagent` part turns `completed` as soon as the launch is
+  // acknowledged, so `hasTerminalResult` alone is not proof that a child
+  // session ended. A failed request carries `success:false` and is ignored.
+  const historyStatus = history?.success === true ? history.status : undefined;
+  const taskFailed = taskEvent?.status === 'failed' || taskEvent?.status === 'stopped';
+  // Async completion has two authoritative sources: the live task_notification,
+  // and (after reload/polling) a sidechain transcript that ends in
+  // assistant/end_turn. A settled main turn alone proves only that the launch
+  // turn ended; the background sidechain may still be running.
+  const isCompleted = historyStatus
+    ? historyStatus === 'completed'
+    : (isAsync ? Boolean(taskEvent) && !taskFailed : hasTerminalResult);
+  const isError = historyStatus
+    ? historyStatus === 'error'
+    : (isAsync
+      ? (taskEvent ? taskFailed : result?.is_error === true)
+      : hasTerminalResult && result?.is_error === true);
 
   // For background agents the task_notification carries the authoritative usage
   // and summary (the launch ack has none); prefer it over toolUseResult. Sync
@@ -144,8 +154,7 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
     && isAgentTool
     && Boolean(currentSessionId)
     && Boolean(toolId)
-    && !isCompleted
-    && !isError;
+    && (historyStatus ? historyStatus === 'running' : !isCompleted && !isError);
 
   useEffect(() => {
     if (!input || !shouldPollHistory || !currentSessionId || !toolId) return;

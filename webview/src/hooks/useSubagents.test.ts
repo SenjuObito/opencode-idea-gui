@@ -311,11 +311,49 @@ describe('extractSubagentsFromMessages', () => {
     );
 
     expect(applySubagentHistoryCompletion(extracted, {
-      tu_spawn: { success: true, completed: false, messages: [] },
+      tu_spawn: { success: true, status: 'running', completed: false, messages: [] },
     })[0].status).toBe('running');
 
     expect(applySubagentHistoryCompletion(extracted, {
-      tu_spawn: { success: true, completed: true, messages: [] },
+      tu_spawn: { success: true, status: 'completed', completed: true, messages: [] },
+    })[0].status).toBe('completed');
+  });
+
+  it('lets a running child transcript override a completed launch ack', () => {
+    // opencode v2 marks the parent `subagent` tool part completed as soon as
+    // the child session is acknowledged. The transcript is still the authority.
+    const extracted = [{
+      id: 'tu_subagent',
+      type: 'subagent',
+      description: 'Explore repo',
+      status: 'completed' as const,
+      isAsync: true,
+      messageIndex: 0,
+    }];
+
+    expect(applySubagentHistoryCompletion(extracted, {
+      tu_subagent: { success: true, status: 'running', completed: false, messages: [] },
+    })[0].status).toBe('running');
+  });
+
+  it('does not demote a card when the transcript request failed', () => {
+    const extracted = [{
+      id: 'tu_subagent',
+      type: 'subagent',
+      description: 'Explore repo',
+      status: 'completed' as const,
+      isAsync: true,
+      messageIndex: 0,
+    }];
+
+    expect(applySubagentHistoryCompletion(extracted, {
+      tu_subagent: {
+        success: false,
+        status: 'running',
+        completed: false,
+        error: 'bridge down',
+        messages: [],
+      },
     })[0].status).toBe('completed');
   });
 

@@ -160,7 +160,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         setOpenCodePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
         setPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
       }
-      const reasoningValues: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+      const reasoningValues: ReasoningEffort[] = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
       if (reasoningValues.includes(state.reasoningEffort as ReasoningEffort)) {
         setReasoningEffort(state.reasoningEffort as ReasoningEffort);
       }
@@ -190,7 +190,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
 
       updateMode(state.permissionMode as PermissionMode | undefined);
 
-      const reasoningValues: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+      const reasoningValues: ReasoningEffort[] = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
       if (reasoningValues.includes(state.reasoningEffort as ReasoningEffort)) {
         setReasoningEffort(state.reasoningEffort as ReasoningEffort);
       }

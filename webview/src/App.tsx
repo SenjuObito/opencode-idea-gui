@@ -35,7 +35,7 @@ import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved } from './utils/messageUtils';
 import type { ClaudeMessage } from './types';
-import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
+import { getRecommendedReasoningEffort, type Attachment, type ChatInputBoxHandle } from './components/ChatInputBox/types';
 import { ToastContainer } from './components/Toast';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatScreen } from './components/ChatScreen';
@@ -310,12 +310,31 @@ const App = () => {
     });
   }, [currentProvider, cliModels, cliCatalogHasEntries]);
 
+  /**
+   * A user-chosen model carries its own variant catalog. Carry the previous
+   * model's effort over only when it is still meaningful; otherwise use the
+   * new model's recommended level. In particular this prevents a `none`
+   * variant from surviving a model switch and becoming the visible default.
+   * A tab restore (`silent`) keeps that tab's saved effort.
+   */
+  const handleModelSelectWithEffort = useCallback((modelId: string, options?: { silent?: boolean }) => {
+    const modelChanged = modelId !== selectedModel;
+    handleModelSelect(modelId, options);
+    if (options?.silent || !modelChanged) return;
+
+    const modelInfo = availableModels.find((model) => model.id === modelId);
+    const recommended = getRecommendedReasoningEffort(modelInfo?.variants);
+    if (recommended && recommended !== reasoningEffort) {
+      handleReasoningChange(recommended);
+    }
+  }, [handleModelSelect, handleReasoningChange, availableModels, selectedModel, reasoningEffort]);
+
   const resetToPreferredModel = useCallback(() => {
     const preferredId = getFirstPreferredModelId(currentProvider, availableModels, cliDefaultModel);
     if (preferredId) {
-      handleModelSelect(preferredId);
+      handleModelSelectWithEffort(preferredId);
     }
-  }, [currentProvider, availableModels, cliDefaultModel, handleModelSelect]);
+  }, [currentProvider, availableModels, cliDefaultModel, handleModelSelectWithEffort]);
 
   // When models catalog arrives on initial load in a new session, immediately select the preferred model.
   const hasAutoSelectedOnStartupRef = useRef(false);
@@ -1168,7 +1187,7 @@ const App = () => {
     permissionMode,
     setPermissionMode,
     selectedModel,
-    setSelectedModel: handleModelSelect,
+    setSelectedModel: handleModelSelectWithEffort,
     reasoningEffort,
     setReasoningEffort: handleReasoningChange,
     contextInfo,
@@ -1315,7 +1334,7 @@ const App = () => {
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
               onModeSelect={handleModeSelect}
-              onModelSelect={handleModelSelect}
+              onModelSelect={handleModelSelectWithEffort}
               onReasoningChange={handleReasoningChange}
               onToggleThinking={handleToggleThinking}
               onAutoOpenFileEnabledChange={setActiveTabAutoOpenFileEnabled}

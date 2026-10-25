@@ -260,6 +260,12 @@ export interface ReasoningInfo {
  */
 export const REASONING_LEVELS: ReasoningInfo[] = [
   {
+    id: 'none',
+    label: 'None',
+    icon: 'codicon-circle-slash',
+    description: 'Disable reasoning',
+  },
+  {
     id: 'low',
     label: 'Low',
     icon: 'codicon-circle-small',
@@ -312,13 +318,16 @@ export function getRecommendedReasoningEffort(variants?: string[]): ReasoningEff
   if (cleanVariants.length === 0) {
     return undefined;
   }
-  if (cleanVariants.includes('medium')) {
+  // `none` means "thinking disabled". Prefer an actual thinking level when the
+  // model offers one; only fall back to `none` if it is all the model has.
+  const thinkingVariants = cleanVariants.filter(v => v !== 'none');
+  if (thinkingVariants.includes('medium')) {
     return 'medium';
   }
-  if (cleanVariants.includes('low')) {
+  if (thinkingVariants.includes('low')) {
     return 'low';
   }
-  return cleanVariants[0] as ReasoningEffort;
+  return (thinkingVariants[0] ?? cleanVariants[0]) as ReasoningEffort;
 }
 
 export function getAvailableReasoningLevels(
@@ -330,7 +339,9 @@ export function getAvailableReasoningLevels(
     if (isKnownNonReasoningModel(selectedModel)) {
       return [];
     }
-    return REASONING_LEVELS;
+    // Legacy/v1 catalogs do not advertise variants. The legacy UI exposes the
+    // classic levels; `none` is a catalog-provided variant, not a default.
+    return REASONING_LEVELS.filter(level => level.id !== 'none');
   }
   if (modelVariants.length === 0) {
     return [];

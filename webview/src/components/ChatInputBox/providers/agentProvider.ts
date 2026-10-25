@@ -206,7 +206,9 @@ function waitForAgents(signal: AbortSignal, timeoutMs: number): Promise<void> {
 function requestRefresh(): boolean {
   const now = Date.now();
 
-  if (now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
+  // A non-empty cache may be throttled. An empty cache must be allowed to
+  // retry immediately: it usually means the first reply raced daemon startup.
+  if (cachedAgents.length > 0 && now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
     debugLog('[AgentProvider] Skipping refresh (too soon)');
     return false;
   }
@@ -343,7 +345,11 @@ export function ensureAgentsLoaded(): void {
   // handler exists, so the host's `agents.updated` is dropped and later
   // dropdown opens wait out the timeout on a turn that already finished.
   setupAgentsCallback();
-  if (loadingState === 'idle' || loadingState === 'failed') {
+  // An empty list is not terminal: the host may have answered while the daemon
+  // was still starting, or the reply may have been lost. Keep it refreshable
+  // instead of caching "no agents" for the lifetime of the webview.
+  if (loadingState === 'idle' || loadingState === 'failed'
+      || (loadingState === 'success' && cachedAgents.length === 0)) {
     requestRefresh();
   }
 }
@@ -361,14 +367,15 @@ export async function subagentMentionProvider(
 
   setupAgentsCallback();
 
-  if (loadingState === 'idle' || loadingState === 'failed') {
+  if (loadingState === 'idle' || loadingState === 'failed'
+      || (loadingState === 'success' && cachedAgents.length === 0)) {
     requestRefresh();
   } else if (loadingState === 'loading' && Date.now() - lastRefreshTime > LOADING_TIMEOUT) {
     loadingState = 'failed';
     requestRefresh();
   }
 
-  if (loadingState !== 'success' && cachedAgents.length === 0) {
+  if (loadingState === 'loading') {
     await waitForAgents(signal, LOADING_TIMEOUT).catch(() => {});
   }
 

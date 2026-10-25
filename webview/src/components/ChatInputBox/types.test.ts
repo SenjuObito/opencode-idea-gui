@@ -3,6 +3,7 @@ import {
   OPENCODE_DEFAULT_MODEL_ID,
   OPENCODE_MODELS,
   getAvailableReasoningLevels,
+  getRecommendedReasoningEffort,
 } from './types';
 
 describe('OPENCODE_DEFAULT_MODEL_ID', () => {
@@ -49,11 +50,10 @@ describe('getAvailableReasoningLevels', () => {
     expect(levels[0].label).toBe('Low');
   });
 
-  it('generates entries for catalog variants outside the static list', () => {
+  it('renders the catalog-provided none variant with a real label', () => {
     const levels = getAvailableReasoningLevels('opencode', 'nemotron', ['none', 'xhigh']);
     expect(levels.map((l) => l.id)).toEqual(['none', 'xhigh']);
-    // Unknown ids fall back to the raw id so the option is still selectable.
-    expect(levels[0].label).toBe('none');
+    expect(levels[0].label).toBe('None');
   });
 
   it('offers only the model variant for a model with a single variant', () => {
@@ -65,5 +65,19 @@ describe('getAvailableReasoningLevels', () => {
   it('strips default when a catalog happens to list it', () => {
     const levels = getAvailableReasoningLevels('opencode', 'odd-model', ['default', 'low']);
     expect(levels.map((l) => l.id)).toEqual(['low']);
+  });
+});
+
+describe('getRecommendedReasoningEffort', () => {
+  it('prefers a thinking level over the none variant', () => {
+    expect(getRecommendedReasoningEffort(['none', 'high', 'max'])).toBe('high');
+  });
+
+  it('keeps none when it is the only variant', () => {
+    expect(getRecommendedReasoningEffort(['none'])).toBe('none');
+  });
+
+  it('prefers low for the DeepSeek Flash catalog', () => {
+    expect(getRecommendedReasoningEffort(['none', 'low', 'high', 'max'])).toBe('low');
   });
 });

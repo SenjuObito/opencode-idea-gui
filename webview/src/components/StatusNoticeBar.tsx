@@ -191,17 +191,83 @@ const hashText = (text: string): string => {
 };
 
 /**
- * Identity of a notice: session + message timestamp + text digest.
+ * Identity of a notice: session + diagnostic pattern.
  *
- * The timestamp is what makes this stable across snapshot rebuilds (the host
- * assigns it once, when the message is created) while still distinguishing two
- * identical errors raised a minute apart.
+ * <p>The semantic `turn.error` event and the transcript error row are two
+ * representations of the same failure, and their timestamps differ. Keying by
+ * the matched diagnosis (falling back to the text digest) makes dismissing one
+ * representation dismiss both. A timestamp in the key is what let a dismissed
+ * quota notice reappear after a later successful turn.</p>
  */
 export const noticeKeyFor = (
   sessionId: string | null,
   message: ClaudeMessage,
   text: string,
-): string => `${sessionId ?? ''}::${Number(message.timestamp) || 0}::${hashText(text.slice(0, 200))}`;
+  turnAnchor?: string | number | null,
+): string => {
+  const pattern = matchErrorPattern(text);
+  // The turn anchor is the prompt that opened this turn. The semantic event
+  // and the transcript row share it, while a later turn gets a new one. When
+  // there is no prompt yet (history replay), fall back to the row timestamp so
+  // two distinct errors in the same snapshot remain distinguishable.
+  const anchor = turnAnchor != null && String(turnAnchor).length > 0
+    ? String(turnAnchor)
+    : String(Number(message.timestamp) || 0);
+  return `${sessionId ?? ''}::${anchor}::${pattern?.code ?? hashText(text.slice(0, 200))}`;
+};
+
+/**
+ * Whether a user-role row is the prompt that opened a turn, rather than a
+ * synthetic tool_result row that happened inside it. The terminal notice only
+ * belongs to the newest turn; an error from an older turn must not resurface
+ * after a successful reply.
+ */
+function isUserPromptMessage(
+  message: ClaudeMessage,
+  getMessageText: (message: ClaudeMessage) => string,
+): boolean {
+  if (message.type !== 'user') return false;
+
+  let raw = message.raw as unknown;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = undefined;
+    }
+  }
+  const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
+  const nested = record?.message && typeof record.message === 'object'
+    ? record.message as Record<string, unknown>
+    : null;
+  const content = record?.content ?? nested?.content;
+
+  if (Array.isArray(content) && content.length > 0) {
+    return content.some((block) => (
+      block && typeof block === 'object'
+        && (block as { type?: unknown }).type !== 'tool_result'
+    ));
+  }
+  if (typeof content === 'string' && content.trim() === '[tool_result]') {
+    return false;
+  }
+  if (typeof message.content === 'string' && message.content.trim() === '[tool_result]') {
+    return false;
+  }
+  return (getMessageText(message) ?? '').trim().length > 0;
+}
+
+function findLatestUserPrompt(
+  messages: ClaudeMessage[],
+  getMessageText: (message: ClaudeMessage) => string,
+): ClaudeMessage | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (isUserPromptMessage(messages[i], getMessageText)) {
+      return messages[i];
+    }
+  }
+  return undefined;
+}
 
 export const setRetryStatus = (payload: RetryStatusPayload | null): void => {
   latestRetryStatus = payload;
@@ -359,6 +425,10 @@ export const StatusNoticeBar = ({
     // something the user can act on yet.
     if (sessionLoading) return null;
 
+    // Anchor both representations of an error to the prompt that opened the
+    // turn, not to their own timestamps.
+    const turnAnchor = findLatestUserPrompt(messages, getMessageText)?.timestamp;
+
     // Prefer the semantic `turn.error` event. It is not tied to a transcript
     // snapshot and therefore survives a shorter user-only snapshot.
     const direct = directTerminalError;
@@ -370,7 +440,7 @@ export const StatusNoticeBar = ({
           content: direct.message,
           timestamp: String(direct.timestamp),
         };
-        const key = noticeKeyFor(currentSessionId, pseudo, direct.message);
+        const key = noticeKeyFor(direct.sessionId ?? currentSessionId, pseudo, direct.message, turnAnchor);
         if (dismissedNoticeKeys.has(key)) return null;
         return { key, pattern, serverText: direct.message };
       }
@@ -378,6 +448,9 @@ export const StatusNoticeBar = ({
 
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const message = messages[i];
+      // Only the newest turn owns a terminal notice. If the scan reaches the
+      // prompt that opened it, older errors must not be resurrected.
+      if (isUserPromptMessage(message, getMessageText)) break;
       if (message.type !== 'error') continue;
 
       const text = getMessageText(message) ?? '';
@@ -386,7 +459,7 @@ export const StatusNoticeBar = ({
       // are promoted here.
       if (!pattern || pattern.presentation !== 'bar') continue;
 
-      const key = noticeKeyFor(currentSessionId, message, text);
+      const key = noticeKeyFor(currentSessionId, message, text, turnAnchor);
       // Only the last such error is ever shown: if it was dismissed, the notice
       // is gone — older ones must not resurface in its place.
       if (dismissedNoticeKeys.has(key)) return null;
@@ -432,7 +505,12 @@ export const StatusNoticeBar = ({
     previousTurnActiveRef.current = turnActive;
     if (wasActive || !turnActive) return;
 
+    // A new turn invalidates the previous turn's terminal notice. Without this
+    // the old quota error stayed in module state and could be re-keyed (or
+    // re-emitted by a reactivated session) after a later successful reply.
     pendingRetryAction = null;
+    noticeActionLinks.clear();
+    setTerminalError(null);
   }, [turnActive]);
 
   const retryAt = payload?.next ?? null;

@@ -285,6 +285,52 @@ describe('StatusNoticeBar — terminal quota notice', () => {
     expect(container.querySelector('.status-notice-bar--error')).toBeNull();
   });
 
+  it('keeps a dismissed quota notice hidden across transcript and later turns', () => {
+    const terminal = quotaMessage({ timestamp: '111' });
+    const prompt: ClaudeMessage = {
+      type: 'user',
+      content: 'try another model',
+      timestamp: '222',
+    };
+    const success: ClaudeMessage = {
+      type: 'assistant',
+      content: 'ok',
+      timestamp: '333',
+    };
+    const nextPrompt: ClaudeMessage = {
+      type: 'user',
+      content: 'try the other model',
+      timestamp: '444',
+    };
+
+    // The semantic turn.error form arrives first, in a turn opened by `prompt`.
+    act(() => {
+      onTerminalErrorFromHost({ error: QUOTA_TEXT }, { sessionId: 'ses_a' });
+    });
+    const { container, rerender } = renderBar([prompt, terminal]);
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+
+    fireEvent.click(container.querySelector('.status-notice-dismiss') as HTMLElement);
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+
+    // The same failure later appears as a transcript row. Its timestamp is
+    // different from the semantic event, but it must share the dismissal key.
+    act(() => {
+      setTerminalError(null);
+    });
+    rerender(<StatusNoticeBar messages={[prompt, terminal]} getMessageText={getMessageText} />);
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+
+    // A new turn starts and succeeds. The old error sits before its prompt, so
+    // it must not become the terminal notice again.
+    messagesState.turnActive = true;
+    rerender(<StatusNoticeBar messages={[prompt, terminal, nextPrompt, success]} getMessageText={getMessageText} />);
+    messagesState.turnActive = false;
+    rerender(<StatusNoticeBar messages={[prompt, terminal, nextPrompt, success]} getMessageText={getMessageText} />);
+
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+  });
+
   it('lets the retry notice win while a turn is running', () => {
     messagesState.turnActive = true;
     setRetryStatus(retryPayload());

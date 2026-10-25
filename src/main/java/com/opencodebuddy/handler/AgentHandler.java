@@ -116,7 +116,11 @@ public class AgentHandler extends BaseMessageHandler {
                         }
                         String agentsJson = gson.toJson(resultAgents);
                         ApplicationManager.getApplication().invokeLater(() -> {
-                            context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
+                            // This is the reply to *this* window's agents.list request.
+                            // broadcastEvent() deliberately excludes the originating
+                            // context, so using it here would send the list to every
+                            // window except the one waiting for it.
+                            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
                         });
                         return;
                     }
@@ -140,7 +144,7 @@ public class AgentHandler extends BaseMessageHandler {
             String agentsJson = gson.toJson(agents);
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                context.broadcastEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
+                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
             });
         } catch (Exception e) {
             LOG.error("[AgentHandler] Failed to get agents: " + e.getMessage(), e);

@@ -1734,6 +1734,10 @@
     },
     "cycleHint": "Cycle reasoning effort",
     "title": "Select reasoning depth",
+    "none": {
+      "label": "None",
+      "description": "Disable thinking and answer directly"
+    },
     "low": {
       "label": "Low",
       "description": "Quick responses with basic reasoning"

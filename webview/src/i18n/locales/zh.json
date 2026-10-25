@@ -1738,6 +1738,10 @@
     },
     "cycleHint": "切换推理力度",
     "title": "选择思考深度",
+    "none": {
+      "label": "关闭",
+      "description": "关闭思考，直接回答"
+    },
     "low": {
       "label": "low",
       "description": "快速响应，基础推理"

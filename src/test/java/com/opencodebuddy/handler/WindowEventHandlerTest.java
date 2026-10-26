@@ -1,135 +1,20 @@
 package com.opencodebuddy.handler;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.opencodebuddy.handler.core.HandlerContext;
-import com.opencodebuddy.provider.common.DaemonBridge;
-import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Unit tests for window-level bridge event dispatch, including share/unshare callbacks,
- * restored-history DOM commit acknowledgment, and surface-damage phase acknowledgments.
+ * Unit tests for window-level bridge event dispatch: restored-history DOM
+ * commit acknowledgment and surface-damage phase acknowledgments.
  */
 public class WindowEventHandlerTest {
-
-    @Test
-    public void dispatchesShareSessionSuccess() {
-        MockJsCallback jsCallback = new MockJsCallback();
-        OpenCodeSDKBridge bridge = new OpenCodeSDKBridge(null, new Gson()) {
-            @Override
-            public CompletableFuture<Boolean> request(
-                    String method, JsonObject params, DaemonBridge.DaemonOutputCallback callback) {
-                assertEquals("opencode.shareSession", method);
-                callback.onLine("{\"success\":true,\"share\":{\"url\":\"https://opencode.ai/share/session_123\"}}");
-                callback.onComplete(true);
-                return CompletableFuture.completedFuture(true);
-            }
-        };
-
-        HandlerContext context = new HandlerContext(null, bridge, null, jsCallback);
-        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback());
-
-        assertTrue(handler.handle("share_session", "session_123"));
-        assertEquals(1, jsCallback.calls.size());
-        assertEquals("session.share.done:https://opencode.ai/share/session_123", jsCallback.calls.get(0));
-    }
-
-    @Test
-    public void dispatchesShareSessionErrorOnFailure() {
-        MockJsCallback jsCallback = new MockJsCallback();
-        OpenCodeSDKBridge bridge = new OpenCodeSDKBridge(null, new Gson()) {
-            @Override
-            public CompletableFuture<Boolean> request(
-                    String method, JsonObject params, DaemonBridge.DaemonOutputCallback callback) {
-                assertEquals("opencode.shareSession", method);
-                callback.onError("Share disabled");
-                callback.onComplete(false);
-                return CompletableFuture.completedFuture(false);
-            }
-        };
-
-        HandlerContext context = new HandlerContext(null, bridge, null, jsCallback);
-        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback());
-
-        assertTrue(handler.handle("share_session", "session_123"));
-        assertTrue(jsCallback.calls.contains("session.share.failed:Share disabled") || jsCallback.calls.contains("session.share.failed:"));
-    }
-
-    @Test
-    public void dispatchesCompactSessionErrorExactlyOnceOnFailure() {
-        MockJsCallback jsCallback = new MockJsCallback();
-        OpenCodeSDKBridge bridge = new OpenCodeSDKBridge(null, new Gson()) {
-            @Override
-            public CompletableFuture<Boolean> request(
-                    String method, JsonObject params, DaemonBridge.DaemonOutputCallback callback) {
-                assertEquals("opencode.summarize", method);
-                callback.onError("Nothing to compact yet");
-                callback.onComplete(false);
-                return CompletableFuture.completedFuture(false);
-            }
-        };
-
-        HandlerContext context = new HandlerContext(null, bridge, null, jsCallback);
-        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback());
-
-        JsonObject payload = new JsonObject();
-        payload.addProperty("sessionId", "session_123");
-        assertTrue(handler.handle("session.compact", payload.toString()));
-        assertEquals(1, jsCallback.calls.size());
-        assertEquals("session.compact.failed:[session_123, Nothing to compact yet]", jsCallback.calls.get(0));
-    }
-
-    @Test
-    public void dispatchesUnshareSessionSuccess() {
-        MockJsCallback jsCallback = new MockJsCallback();
-        OpenCodeSDKBridge bridge = new OpenCodeSDKBridge(null, new Gson()) {
-            @Override
-            public CompletableFuture<Boolean> request(
-                    String method, JsonObject params, DaemonBridge.DaemonOutputCallback callback) {
-                assertEquals("opencode.unshareSession", method);
-                callback.onLine("{\"success\":true}");
-                callback.onComplete(true);
-                return CompletableFuture.completedFuture(true);
-            }
-        };
-
-        HandlerContext context = new HandlerContext(null, bridge, null, jsCallback);
-        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback());
-
-        assertTrue(handler.handle("unshare_session", "session_123"));
-        assertEquals(1, jsCallback.calls.size());
-        assertEquals("session.unshare.done:", jsCallback.calls.get(0));
-    }
-
-    @Test
-    public void dispatchesUnshareSessionError() {
-        MockJsCallback jsCallback = new MockJsCallback();
-        OpenCodeSDKBridge bridge = new OpenCodeSDKBridge(null, new Gson()) {
-            @Override
-            public CompletableFuture<Boolean> request(
-                    String method, JsonObject params, DaemonBridge.DaemonOutputCallback callback) {
-                assertEquals("opencode.unshareSession", method);
-                callback.onError("Unshare error");
-                callback.onComplete(false);
-                return CompletableFuture.completedFuture(false);
-            }
-        };
-
-        HandlerContext context = new HandlerContext(null, bridge, null, jsCallback);
-        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback());
-
-        assertTrue(handler.handle("unshare_session", "session_123"));
-        assertTrue(jsCallback.calls.contains("session.unshare.failed:Unshare error") || jsCallback.calls.contains("session.unshare.failed:"));
-    }
 
     /** Verifies that history_dom_committed is supported and dispatched exactly once. */
     @Test

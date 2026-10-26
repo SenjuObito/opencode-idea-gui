@@ -691,6 +691,21 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     }
 
     @Override
+    public void onSubagentStatus(String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.trim().isEmpty()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            // Always routed to the parent tab: core tags the marker with the
+            // parent session, and `publish` uses this adapter's own session.
+            publish("subagent.status", getTargetSessionId(), b -> b.json("subagent", jsonContent));
+        });
+    }
+
+    @Override
     public void onQuestionRequested(String jsonContent) {
         if (isInactive() || jsonContent == null || jsonContent.trim().isEmpty()) {
             return;

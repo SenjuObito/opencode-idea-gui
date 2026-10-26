@@ -135,7 +135,7 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
         const raw = message.raw;
         const isCompactSummary = raw && typeof raw === 'object' && 'isCompactSummary' in raw && raw.isCompactSummary;
         if (isCompactSummary) {
-          visible.push({ ...message, type: MESSAGE_TYPES.NOTIFICATION });
+          visible.push({ ...message, type: MESSAGE_TYPES.COMPACT_NOTIFICATION });
           continue;
         }
       }
@@ -168,7 +168,7 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
       const curr = visible[i];
       const next = visible[i + 1];
       const currRaw = curr.raw;
-      if (curr.type === MESSAGE_TYPES.NOTIFICATION
+      if ((curr.type === MESSAGE_TYPES.COMPACT_NOTIFICATION || curr.type === MESSAGE_TYPES.NOTIFICATION)
         && currRaw && typeof currRaw === 'object' && currRaw.isCompactSummary
         && next.type === MESSAGE_TYPES.USER && isCompactCommandMessage(next)) {
         visible[i] = next;

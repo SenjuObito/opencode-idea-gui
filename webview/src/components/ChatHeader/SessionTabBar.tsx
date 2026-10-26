@@ -1,8 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { SessionTabData } from './types';
 import { isTabTurnActive } from '../../store/tabRuntime';
 import { SessionTabContextMenu } from './SessionTabContextMenu';
+import {
+  calculateVisibleCount,
+  partitionTabs,
+  SESSION_TAB_FALLBACK_WIDTH,
+  SESSION_TAB_GAP,
+  SESSION_TAB_OVERFLOW_RESERVE,
+} from '../../utils/tabPartition';
 
 export interface SessionTabBarProps {
   tabs: SessionTabData[];
@@ -48,8 +55,19 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [visibleCount, setVisibleCount] = useState<number>(tabs.length);
+  /**
+   * Tab the user just dragged out of the overflow menu. It is forced into the
+   * rendered prefix until it is closed or dropped back into the menu, so the
+   * drop never gets undone by the width-based recalculation (a long title is
+   * wide enough to make the prefix one tab shorter, which used to send it
+   * straight back into "…").
+   */
+  const [pinnedTabId, setPinnedTabId] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
-  const tabWidthsRef = useRef<Record<string, number>>({});
+  // Measured width per tab, kept in state so a fresh measurement re-runs the
+  // capacity math and the partition in the same commit cycle.
+  const [tabWidths, setTabWidths] = useState<Record<string, number>>({});
+  const availableWidthRef = useRef<number>(Number.POSITIVE_INFINITY);
 
   // ── Drag to reorder tabs (no long-press wait) ──
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -68,6 +86,7 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   // 正在随鼠标跟随的 DOM 元素及鼠标相对该元素左上角的偏移量
   const draggingElementRef = useRef<HTMLDivElement | null>(null);
   const dragOffsetRef = useRef<{ x: number; y: number } | null>(null);
+  const dragVisualWidthRef = useRef<number | null>(null);
 
   useEffect(() => {
     draggingTabIdRef.current = draggingTabId;
@@ -100,33 +119,24 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
     const calculateVisibleTabs = () => {
       const containerW = el.clientWidth;
       if (containerW <= 0) return;
-      const GAP = 4;
-      const OVERFLOW_BTN_W = 32;
+
+      const widths = tabs.map((tab) => tabWidths[tab.id] ?? SESSION_TAB_FALLBACK_WIDTH);
 
       let total = 0;
-      for (let i = 0; i < tabs.length; i++) {
-        const w = tabWidthsRef.current[tabs[i].id] || 110;
-        total += (i > 0 ? GAP : 0) + w;
-      }
+      widths.forEach((width, index) => {
+        total += (index > 0 ? SESSION_TAB_GAP : 0) + width;
+      });
 
       if (total <= containerW) {
+        // Everything fits, so there is no overflow button to reserve space for.
+        availableWidthRef.current = Number.POSITIVE_INFINITY;
         setVisibleCount(tabs.length);
         return;
       }
 
-      const available = Math.max(60, containerW - OVERFLOW_BTN_W - GAP);
-      let used = 0;
-      let count = 0;
-      for (let i = 0; i < tabs.length; i++) {
-        const w = tabWidthsRef.current[tabs[i].id] || 110;
-        if (used + (count > 0 ? GAP : 0) + w <= available) {
-          used += (count > 0 ? GAP : 0) + w;
-          count++;
-        } else {
-          break;
-        }
-      }
-      setVisibleCount(Math.max(1, count));
+      const available = Math.max(60, containerW - SESSION_TAB_OVERFLOW_RESERVE);
+      availableWidthRef.current = available;
+      setVisibleCount(calculateVisibleCount(widths, available));
     };
 
     calculateVisibleTabs();
@@ -136,7 +146,35 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [tabs]);
+  }, [tabs, tabWidths]);
+
+  // Drop the pin when its tab is gone, so a closed tab cannot keep occupying a
+  // forced visible slot forever.
+  useEffect(() => {
+    if (pinnedTabId && !tabs.some((tab) => tab.id === pinnedTabId)) {
+      setPinnedTabId(null);
+    }
+  }, [pinnedTabId, tabs]);
+
+  // Reveal a freshly pinned tab if the strip is horizontally scrolled. The
+  // width-aware partition normally keeps everything inside the bar, but a
+  // single tab wider than the container can still need scrolling.
+  useEffect(() => {
+    if (!pinnedTabId) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const container = containerRef.current;
+      const element = tabElementsRef.current.get(pinnedTabId);
+      if (!container || !element) return;
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      if (elementRect.left < containerRect.left) {
+        container.scrollLeft -= containerRect.left - elementRect.left;
+      } else if (elementRect.right > containerRect.right) {
+        container.scrollLeft += elementRect.right - containerRect.right;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pinnedTabId, tabs]);
 
   // Close overflow menu on outside click or escape
   useEffect(() => {
@@ -165,16 +203,28 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
     };
   }, [overflowOpen]);
 
-  // Compute visibleTabs and overflowTabs, ensuring active tab is visible if possible
-  let visibleTabs: SessionTabData[] = tabs.slice(0, visibleCount);
-  let overflowTabs: SessionTabData[] = tabs.slice(visibleCount);
+  // The active session and the tab the user just dragged out of the overflow
+  // menu must stay rendered; everything else follows the width-based prefix.
+  const forcedTabIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (activeTabId) ids.add(activeTabId);
+    if (pinnedTabId) ids.add(pinnedTabId);
+    return ids;
+  }, [activeTabId, pinnedTabId]);
 
-  const activeInOverflowIdx = overflowTabs.findIndex((t) => t.id === activeTabId);
-  if (activeInOverflowIdx >= 0 && visibleTabs.length > 0) {
-    const activeTab = overflowTabs[activeInOverflowIdx];
-    visibleTabs = [...visibleTabs.slice(0, visibleTabs.length - 1), activeTab];
-    overflowTabs = tabs.filter((t) => !visibleTabs.some((vt) => vt.id === t.id));
-  }
+  // Single source of truth for the visible/overflow split: the two lists are a
+  // partition of `tabs` (no tab can be lost) and the forced tabs are promoted
+  // by evicting trailing ones instead of by rebuilding either list.
+  const { visibleTabs, overflowTabs } = useMemo(
+    () => partitionTabs(
+      tabs,
+      visibleCount,
+      forcedTabIds,
+      (id) => tabWidths[id] ?? SESSION_TAB_FALLBACK_WIDTH,
+      availableWidthRef.current,
+    ),
+    [tabs, visibleCount, forcedTabIds, tabWidths],
+  );
 
   const hasOverflow = overflowTabs.length > 0;
   const isAnyOverflowBusy = overflowTabs.some(isTabTurnActive);
@@ -245,7 +295,9 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
         followEl.style.zIndex = '10001';
         followEl.style.pointerEvents = 'none';
         followEl.style.transition = 'none';
-        followEl.style.width = `${followEl.offsetWidth}px`;
+        const targetWidth = dragVisualWidthRef.current ?? followEl.offsetWidth;
+        followEl.style.width = `${targetWidth}px`;
+        followEl.style.maxWidth = 'none';
       }
 
       // 检查鼠标是否在二级菜单（overflowMenu）内部
@@ -334,9 +386,11 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
         followEl.style.pointerEvents = '';
         followEl.style.transition = '';
         followEl.style.width = '';
+        followEl.style.maxWidth = '';
       }
       draggingElementRef.current = null;
       dragOffsetRef.current = null;
+      dragVisualWidthRef.current = null;
 
       draggingTabIdRef.current = null;
       dropIndicatorIndexRef.current = null;
@@ -379,6 +433,19 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
           if (targetGlobalIndex >= 0 && sourceGlobalIndex !== targetGlobalIndex) {
             onReorderTabs?.(sourceGlobalIndex, targetGlobalIndex);
           }
+          // Pulling a tab out of the overflow menu onto the bar is a request to
+          // keep it there. Pin it so the post-reorder width recalculation (a
+          // long title makes the prefix one tab shorter) cannot collapse it
+          // back into "…" — the reported "it returns to the collapsed menu".
+          // Dropping any tab into the menu is the opposite request, so the pin
+          // is released.
+          if (currentTargetArea === 'visible') {
+            if (overflowTabs.some((t) => t.id === currentDraggingId)) {
+              setPinnedTabId(currentDraggingId);
+            }
+          } else if (currentTargetArea === 'overflow') {
+            setPinnedTabId(null);
+          }
         }
       }
 
@@ -413,10 +480,14 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
       // 用于拖拽时让标题精准跟随鼠标。
       const el = e.currentTarget as HTMLDivElement;
       draggingElementRef.current = el;
-      const rect = el.getBoundingClientRect();
+      // 获取用户视觉上看到的内层卡片（如果处于 hover 展开状态，记录展开后的视觉宽度与精准偏移）
+      const innerEl = el.querySelector('.session-tab-inner') as HTMLElement | null;
+      const visualRect = innerEl ? innerEl.getBoundingClientRect() : el.getBoundingClientRect();
+      dragVisualWidthRef.current = visualRect.width;
+
       dragOffsetRef.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: Math.max(0, Math.min(e.clientX - visualRect.left, visualRect.width)),
+        y: Math.max(0, Math.min(e.clientY - visualRect.top, visualRect.height)),
       };
 
       // Enter "may-drag" mode immediately on press — no long-press wait.
@@ -439,10 +510,14 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
 
       const el = e.currentTarget as HTMLDivElement;
       draggingElementRef.current = el;
-      const rect = el.getBoundingClientRect();
+      // 获取用户视觉上看到的内层卡片（如果处于 hover 展开状态，记录展开后的视觉宽度与精准偏移）
+      const innerEl = el.querySelector('.session-tab-inner') as HTMLElement | null;
+      const visualRect = innerEl ? innerEl.getBoundingClientRect() : el.getBoundingClientRect();
+      dragVisualWidthRef.current = visualRect.width;
+
       dragOffsetRef.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: Math.max(0, Math.min(e.clientX - visualRect.left, visualRect.width)),
+        y: Math.max(0, Math.min(e.clientY - visualRect.top, visualRect.height)),
       };
 
       isDraggingActiveRef.current = true;
@@ -484,15 +559,17 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
                     if (draggingElementRef.current === el) return;
                     tabElementsRef.current.set(tab.id, el);
                     const w = el.getBoundingClientRect().width;
-                    if (w > 0 && tabWidthsRef.current[tab.id] !== w) {
-                      tabWidthsRef.current[tab.id] = w;
+                    if (w > 0) {
+                      setTabWidths((prev) => (
+                        Math.abs((prev[tab.id] ?? -1) - w) > 0.5 ? { ...prev, [tab.id]: w } : prev
+                      ));
                     }
                   } else {
                     if (draggingElementRef.current === el) return;
                     tabElementsRef.current.delete(tab.id);
                   }
                 }}
-                className={`session-tab-item ${isActive ? 'active' : ''} ${hasPendingAction ? 'has-attention' : ''} ${isDragging ? 'is-dragging' : ''}`}
+                className={`session-tab-item ${isActive ? 'active' : ''} ${hasPendingAction ? 'has-attention' : ''} ${isDragging ? 'is-dragging' : ''} ${isEditing ? 'is-editing' : ''}`}
                 onMouseDown={(e) => handleTabMouseDown(e, tab, idx)}
                 onClick={() => {
                   if (justFinishedDragRef.current) return;
@@ -501,63 +578,65 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
                 onContextMenu={(e) => handleContextMenu(e, tab)}
                 title={hasPendingAction ? `${tab.title} (${t('common.pendingApproval', { defaultValue: '等待操作' })})` : tab.title}
               >
-              <div className="session-tab-icon">
-                {hasPendingAction ? (
-                  <span
-                    className="codicon codicon-warning session-tab-attention-icon"
-                    title={t('common.pendingApproval', { defaultValue: '等待操作' })}
-                  />
-                ) : isBusy ? (
-                  <span className="codicon codicon-loading codicon-modifier-spin" />
-                ) : (
-                  <span className="codicon codicon-comment-discussion" />
-                )}
+                <div className="session-tab-inner">
+                  <div className="session-tab-icon">
+                    {hasPendingAction ? (
+                      <span
+                        className="codicon codicon-warning session-tab-attention-icon"
+                        title={t('common.pendingApproval', { defaultValue: '等待操作' })}
+                      />
+                    ) : isBusy ? (
+                      <span className="codicon codicon-loading codicon-modifier-spin" />
+                    ) : (
+                      <span className="codicon codicon-comment-discussion" />
+                    )}
+                  </div>
+
+                  {isEditing ? (
+                    <input
+                      ref={editInputRef}
+                      className="session-tab-inline-input"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitEditing(tab.id);
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          cancelEditing();
+                        }
+                      }}
+                      onBlur={() => commitEditing(tab.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      maxLength={50}
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <span
+                      className="session-tab-title"
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        startEditing(tab);
+                      }}
+                    >
+                      {tab.title}
+                    </span>
+                  )}
+
+                  <button
+                    className="session-tab-close-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCloseTab(tab.id);
+                    }}
+                    title={t('common.close', { defaultValue: 'Close' })}
+                    aria-label={t('common.close', { defaultValue: 'Close' })}
+                  >
+                    <span className="codicon codicon-close" />
+                  </button>
+                </div>
               </div>
-
-              {isEditing ? (
-                <input
-                  ref={editInputRef}
-                  className="session-tab-inline-input"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      commitEditing(tab.id);
-                    } else if (e.key === 'Escape') {
-                      e.preventDefault();
-                      cancelEditing();
-                    }
-                  }}
-                  onBlur={() => commitEditing(tab.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  maxLength={50}
-                  spellCheck={false}
-                />
-              ) : (
-                <span
-                  className="session-tab-title"
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    startEditing(tab);
-                  }}
-                >
-                  {tab.title}
-                </span>
-              )}
-
-              <button
-                className="session-tab-close-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseTab(tab.id);
-                }}
-                title={t('common.close', { defaultValue: 'Close' })}
-                aria-label={t('common.close', { defaultValue: 'Close' })}
-              >
-                <span className="codicon codicon-close" />
-              </button>
-            </div>
             {showDropAfter && <div className="session-tab-drop-indicator" />}
           </React.Fragment>
         );
@@ -594,9 +673,12 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
                 className="session-tab-overflow-menu"
                 style={{
                   position: 'fixed',
-                  left: `${Math.max(8, Math.min(menuPos.x, window.innerWidth - 220))}px`,
+                  ...(menuPos.x > window.innerWidth - 280
+                    ? { right: `${Math.max(8, window.innerWidth - (menuPos.x + 32))}px`, left: 'auto' }
+                    : { left: `${Math.max(8, menuPos.x)}px` }),
                   top: `${menuPos.y}px`,
                   zIndex: 10000,
+                  maxWidth: 'calc(100vw - 16px)',
                 }}
                 role="menu"
               >

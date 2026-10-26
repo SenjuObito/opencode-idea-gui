@@ -431,6 +431,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setCustomSessionTitle(targetTab.title || null);
       sendHostCommand(targetTab.id, 'tab.title.set', { title: targetTab.title || '' });
       restoreScrollState?.(targetTab.scrollState ?? null);
+      setMessages?.(targetTab.messages ?? []);
 
       // Turn state, transcript and subagent histories belong to the target tab.
       // Activating it is enough; copying a status-store snapshot back would let
@@ -439,7 +440,10 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       if (targetTab.streamingActive) {
         setTabRuntimeStreaming?.(targetTab.id, true);
       }
-      setRevertBoundaryId?.(targetStatus ? targetStatus.revertBoundaryId : (targetTab.revertBoundaryId ?? null));
+      const targetRevertBoundaryId = targetTab.revertBoundaryId !== undefined
+        ? targetTab.revertBoundaryId
+        : (targetStatus?.revertBoundaryId ?? null);
+      setRevertBoundaryId?.(targetRevertBoundaryId);
       setTaskEvents?.(targetStatus?.taskEvents ?? targetTab.taskEvents ?? {});
       setFilteredFileChanges?.(targetStatus?.filteredFileChanges ?? targetTab.filteredFileChanges ?? []);
 
@@ -508,6 +512,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setCurrentSessionId,
       setCustomSessionTitle,
       restoreScrollState,
+      setMessages,
       statusStore,
       setTabRuntimeStreaming,
       setRevertBoundaryId,
@@ -671,7 +676,10 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       window.__dialogStore?.clearActive?.();
 
       if (loadHistorySession) {
-        loadHistorySession(sessionId);
+        // The tab prepared above owns this bind. Passing it is what keeps the
+        // (already updated) currentSessionId from turning the bind into a
+        // "same session" soft reload that never hydrates the tab.
+        loadHistorySession(sessionId, activeTabIdRef.current);
       } else {
         sendHostCommand(activeTabIdRef.current, 'session.load', { sessionId }, sessionId);
       }

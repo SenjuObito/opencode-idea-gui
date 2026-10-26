@@ -12,9 +12,9 @@
 
 import type { UseWindowCallbacksOptions } from '../useWindowCallbacks';
 import { cardDebugLog } from '../../utils/bridge';
-import { parseTaskNotification } from '../../utils/taskEventParser';
+import { parseSubagentStatusEvent, parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
-import type { SubagentHistoryResponse } from '../../types/subagent';
+import type { SubagentHistoryResponse, TaskEvent } from '../../types/subagent';
 import type { TodoItem } from '../../types';
 import { normalizeTodoStatus } from '../../utils/todoShared';
 import {
@@ -43,6 +43,8 @@ function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, 
 const pendingSubagentHistoryChunks = new Map<string, string[]>();
 const MAX_PENDING_SUBAGENT_HISTORY_TRANSFERS = 16;
 const MAX_SUBAGENT_HISTORIES = 50;
+/** A terminal child transcript is final for its tool call. */
+const TERMINAL_SUBAGENT_STATUSES = new Set(['completed', 'error']);
 
 /**
  * Merge one subagent transcript into a tab-owned map.
@@ -57,6 +59,13 @@ function mergeSubagentHistory(
   result: SubagentHistoryResponse,
 ): Record<string, SubagentHistoryResponse> {
   const existing = prev[key];
+  // Two requests can be in flight together (the expand-time read and the
+  // post-terminal refresh). The expand-time snapshot is taken while the child
+  // may still be running, so it can land after the terminal one; a `running`
+  // answer must not demote a terminal record. Terminal is final per tool call.
+  if (existing?.status && TERMINAL_SUBAGENT_STATUSES.has(existing.status) && result.status === 'running') {
+    return prev;
+  }
   if (existing && existing.success === result.success
     && existing.completed === result.completed
     && existing.status === result.status
@@ -223,40 +232,74 @@ export function registerWindowCallbacks(
   //      session switch, so stale entries from the prior session cannot linger.
   //   3. tool_use_ids are globally unique, so even a delayed event can only
   //      update the agent it was emitted for, never mislabel another.
+  /**
+   * Store the latest terminal run event for the tab that owns it.
+   *
+   * <p>Two transports end here: the legacy Claude-shaped `task.event` and
+   * opencode's engine-neutral `subagent.status` (inline and background). Routing
+   * is by the envelope session, so a background tab receives its own state and
+   * the active tab never absorbs a sibling session's agent.</p>
+   */
+  const applyTaskEvent = (taskEvent: TaskEvent, targetSessionId: string | null) => {
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.taskEvents = { ...(t.taskEvents || {}), [taskEvent.toolUseId]: taskEvent };
+        }
+      );
+      return;
+    }
+
+    if (!options.setTaskEvents) return;
+    const { toolUseId } = taskEvent;
+    options.setTaskEvents((prev) => {
+      const existing = prev[toolUseId];
+      if (existing
+        && existing.status === taskEvent.status
+        && existing.summary === taskEvent.summary
+        && existing.totalTokens === taskEvent.totalTokens
+        && existing.totalToolUseCount === taskEvent.totalToolUseCount
+        && existing.totalDurationMs === taskEvent.totalDurationMs
+        && existing.agentId === taskEvent.agentId
+        && existing.outputFilePath === taskEvent.outputFilePath) {
+        return prev;
+      }
+      return { ...prev, [toolUseId]: taskEvent };
+    });
+  };
+
   const onTaskEvent = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     try {
       const taskEvent = parseTaskNotification(readJson<any>(payload?.event));
       if (!taskEvent) return;
-
-      if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-        window.__sessionTabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          (t) => {
-            t.taskEvents = { ...(t.taskEvents || {}), [taskEvent.toolUseId]: taskEvent };
-          }
-        );
-        return;
-      }
-
-      if (!options.setTaskEvents) return;
-      const { toolUseId } = taskEvent;
-      options.setTaskEvents((prev) => {
-        const existing = prev[toolUseId];
-        if (existing
-          && existing.status === taskEvent.status
-          && existing.summary === taskEvent.summary
-          && existing.totalTokens === taskEvent.totalTokens
-          && existing.totalToolUseCount === taskEvent.totalToolUseCount
-          && existing.totalDurationMs === taskEvent.totalDurationMs
-          && existing.agentId === taskEvent.agentId
-          && existing.outputFilePath === taskEvent.outputFilePath) {
-          return prev;
-        }
-        return { ...prev, [toolUseId]: taskEvent };
-      });
+      applyTaskEvent(taskEvent, targetSessionId);
     } catch {
       // Ignore malformed task event payloads.
+    }
+  };
+
+  /**
+   * Canonical terminal state for a subagent run, pushed by core.
+   *
+   * <p>opencode v1 (`task`) and v2 (`subagent`) both arrive here after core has
+   * resolved the child session, and core publishes it for inline calls too (the
+   * parent tool result is the child's final report). This is therefore the one
+   * live status source for every subagent run: no engine branches, no polling,
+   * and no "is it async?" special case at the call site.</p>
+   */
+  const onSubagentStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const targetSessionId: string | null = env?.sessionId ?? null;
+    try {
+      const raw = readJson<any>(payload?.subagent);
+      const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const taskEvent = parseSubagentStatusEvent(record);
+      if (!taskEvent) return;
+      applyTaskEvent(taskEvent, targetSessionId);
+    } catch {
+      // Ignore malformed status payloads; the parent tool result remains the
+      // replay/bootstrap source for the card.
     }
   };
 
@@ -329,6 +372,7 @@ export function registerWindowCallbacks(
   registerHostEvents({
     'internal.subagent.historyChunk': appendSubagentHistoryChunk,
     'subagent.history': onSubagentHistoryLoaded,
+    'subagent.status': onSubagentStatus,
     'task.event': onTaskEvent,
     'todos.updated': onTodoUpdated,
   });

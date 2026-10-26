@@ -160,6 +160,11 @@ interface Window {
   onTaskEvent?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
   /**
+   * Canonical terminal state for a background subagent (opencode v1/v2).
+   */
+  onSubagentStatus?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
+
+  /**
    * opencode todo.updated SSE event callback.
    */
   onTodoUpdated?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;

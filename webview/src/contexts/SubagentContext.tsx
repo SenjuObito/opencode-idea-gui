@@ -1,14 +1,16 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { ClaudeRawMessage, SubagentHistoryResponse, TaskEvent, TaskEventMap } from '../types';
 
-// SubagentHistoryContext holds the full history map so consumers
-// (AgentGroupBlock / TaskExecutionBlock) re-render when an entry arrives.
-// Reactivity is required: an inline Agent card expands, polls the sidechain
-// transcript, and must flip from "pending" to "completed" once the response
-// lands - a stable getter would never trigger that re-render. The map is small
-// (one entry per polled subagent) and updates are low-frequency (2 s polling,
-// only for expanded cards), so re-rendering all inline cards on a change is
-// bounded and matches the TaskEventContext pattern below.
+// SubagentHistoryContext holds the full transcript map so consumers
+// (AgentGroupBlock / TaskExecutionBlock / StatusPanel details) re-render when an
+// entry arrives. The map is small (one entry per expanded row) and updates are
+// low-frequency (one request per expansion, no polling), so re-rendering all
+// inline cards on a change is bounded and matches the TaskEventContext pattern
+// below.
+//
+// A transcript is detail data only. It is a point-in-time snapshot and must
+// never decide a run's status; `TaskEventContext` (fed by core's
+// `subagent.status`) is the single status source.
 const SubagentHistoryContext = createContext<Record<string, SubagentHistoryResponse>>({});
 
 interface SessionIdContextValue {
@@ -25,17 +27,17 @@ export type GetToolResultRawFn = (toolUseId: string) => ClaudeRawMessage | null;
 
 const ToolResultRawContext = createContext<GetToolResultRawFn>(() => null);
 
-// TaskEventContext holds the full task-events map (keyed by tool_use_id) so that
-// inline Agent tool cards (TaskExecutionBlock / AgentGroupBlock) can subscribe to
-// a background agent's terminal status. Unlike SubagentHistoryContext, this
-// deliberately re-renders consumers on change: a background agent's
-// task_notification arrives after the launch tool_result, and the card must flip
-// from "running" to "completed" without a manual reload. The map is small (one
-// entry per background agent) and updates are low-frequency, so the re-render
-// cost is bounded.
+// TaskEventContext holds the canonical terminal run-event map (keyed by
+// tool_use_id) so the StatusPanel and both inline Agent cards derive status from
+// one place. Core publishes `subagent.status` for inline and background calls
+// alike; Claude's task_notification feeds the same map. This deliberately
+// re-renders consumers on change: the event arrives after the launch/parent
+// result, and the row must leave "running" without a manual reload. The map is
+// small (one entry per finished run) and updates are terminal-only, so the
+// re-render cost is bounded.
 //
 // Split into its own provider (TaskEventProvider) rather than living in
-// MessagesContext so that task_event updates do not invalidate the
+// MessagesContext so that run-event updates do not invalidate the
 // MessagesContext value and re-render every consumer of it.
 const TaskEventContext = createContext<TaskEventMap>({});
 
@@ -109,9 +111,9 @@ export function useGetToolResultRaw(): GetToolResultRawFn {
 }
 
 /**
- * Hook returning the latest task_* event for a background (run_in_background)
- * Agent tool call, keyed by its tool_use_id. Re-renders the caller when the
- * event map changes so inline Agent cards reflect completion in real time.
+ * Hook returning the canonical terminal run event for a subagent call, keyed by
+ * its tool_use_id (inline and background alike). Re-renders the caller when the
+ * event map changes so the cards reflect completion in real time.
  */
 export function useTaskEvent(toolUseId: string | undefined): TaskEvent | undefined {
   const taskEvents = useContext(TaskEventContext);

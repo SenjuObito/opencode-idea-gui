@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ToolInput, ToolResultBlock } from '../../types';
 import { AGENT_TOOL_NAMES, isToolName, normalizeToolName } from '../../utils/toolConstants';
@@ -10,6 +10,7 @@ import {
   parseSpawnAgentMeta,
   readAgentType,
   readToolUseStatus,
+  resolveSubagentRunState,
 } from '../../utils/subagentResult';
 import {
   useSubagentHistories,
@@ -100,29 +101,22 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
     ? isAsyncAgentInput(input, normalizedName, result, readToolUseStatus(toolId ? getToolResultRaw(toolId) : null))
     : false;
   const hasTerminalResult = result !== undefined && result !== null;
-  // Async completion has two authoritative sources: the live task_notification,
-  // and (after reload/polling) a sidechain transcript that ends in
-  // assistant/end_turn. A settled main turn alone proves only that the launch
-  // turn ended; the background sidechain may still be running.
   const history = (toolId ? histories[toolId] : undefined) ?? (agentId ? histories[agentId] : undefined);
-  // The child transcript is authoritative when core returned one. opencode's
-  // parent `subagent` part turns `completed` as soon as the launch is
-  // acknowledged, so `hasTerminalResult` alone is not proof that a child
-  // session ended. A failed request carries `success:false` and is ignored.
-  const historyStatus = history?.success === true ? history.status : undefined;
-  const taskFailed = taskEvent?.status === 'failed' || taskEvent?.status === 'stopped';
-  // Async completion has two authoritative sources: the live task_notification,
-  // and (after reload/polling) a sidechain transcript that ends in
-  // assistant/end_turn. A settled main turn alone proves only that the launch
-  // turn ended; the background sidechain may still be running.
-  const isCompleted = historyStatus
-    ? historyStatus === 'completed'
-    : (isAsync ? Boolean(taskEvent) && !taskFailed : hasTerminalResult);
-  const isError = historyStatus
-    ? historyStatus === 'error'
-    : (isAsync
-      ? (taskEvent ? taskFailed : result?.is_error === true)
-      : hasTerminalResult && result?.is_error === true);
+  // One status rule for the whole UI (shared with the StatusPanel and
+  // AgentGroupBlock): core's `subagent.status` event is the live authority for
+  // inline and background runs alike; the parent tool result is the
+  // replay/bootstrap source (a reloaded session has no events). An async launch
+  // acknowledgement never completes the card, and the child transcript is
+  // detail data only — a `running` snapshot can be older than the run and must
+  // not pin the spinner.
+  const status = resolveSubagentRunState({
+    isAsync,
+    hasTerminalResult,
+    resultIsError: result?.is_error === true,
+    terminalEvent: taskEvent,
+  });
+  const isCompleted = status === 'completed';
+  const isError = status === 'error';
 
   // For background agents the task_notification carries the authoritative usage
   // and summary (the launch ack has none); prefer it over toolUseResult. Sync
@@ -133,8 +127,21 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
   const detailToolUseCount = (isAsync ? taskEvent?.totalToolUseCount : undefined) ?? agentToolMeta.totalToolUseCount;
   const detailResultText = (isAsync ? taskEvent?.summary : undefined) ?? extractResultText(result);
 
+  // One transcript request per expansion, keyed by session + tool call. The
+  // memoised `input` object is stable in production, but the guard keeps a
+  // parent re-render from turning the detail view into a refresher. The
+  // transcript feeds the expanded detail only; it never decides status.
+  const requestedHistoryRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!input || !expanded || !isAgentTool || !currentSessionId || !toolId || history) return;
+    if (!expanded) {
+      requestedHistoryRef.current = null;
+      return;
+    }
+    if (!input || !isAgentTool || !currentSessionId || !toolId) return;
+    if (history) return;
+    const key = `${currentSessionId}:${toolId}`;
+    if (requestedHistoryRef.current === key) return;
+    requestedHistoryRef.current = key;
     sendSessionCommand('subagent.history', currentSessionId, {
       sessionId: currentSessionId,
       provider: currentProvider,
@@ -143,35 +150,21 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
       description: typeof description === 'string' ? description : undefined,
       toolUseId: toolId,
     });
-  }, [input, agentId, agentPath, currentProvider, currentSessionId, description, expanded, history, isAgentTool, toolId]);
+  }, [
+    input,
+    agentId,
+    agentPath,
+    currentProvider,
+    currentSessionId,
+    description,
+    expanded,
+    history,
+    isAgentTool,
+    toolId,
+  ]);
 
-  // Poll while an expanded async Agent is unresolved, including after a main
-  // turn settles. This lets a reloaded session observe the sidechain's terminal
-  // end_turn without relying on the live-only task_notification event. Stop once
-  // the agent reaches a terminal state (completed or error) so a failed
-  // background agent does not leak an interval forever.
-  const shouldPollHistory = expanded
-    && isAgentTool
-    && Boolean(currentSessionId)
-    && Boolean(toolId)
-    && (historyStatus ? historyStatus === 'running' : !isCompleted && !isError);
-
-  useEffect(() => {
-    if (!input || !shouldPollHistory || !currentSessionId || !toolId) return;
-    const timer = window.setInterval(() => {
-      sendSessionCommand('subagent.history', currentSessionId, {
-        sessionId: currentSessionId,
-        provider: currentProvider,
-        agentId,
-        agentPath,
-        description: typeof description === 'string' ? description : undefined,
-        toolUseId: toolId,
-        // 轮询标记：宿主按 tail 窗口解析，避免每 2s 全量拉取+转换整段会话。
-        poll: true,
-      });
-    }, 2_000);
-    return () => window.clearInterval(timer);
-  }, [input, agentId, agentPath, currentProvider, currentSessionId, description, shouldPollHistory, toolId]);
+  // No status polling here: core pushes `subagent.status` for both launch
+  // modes, and the request above only fills the expanded detail view.
 
   if (!input) {
     return null;

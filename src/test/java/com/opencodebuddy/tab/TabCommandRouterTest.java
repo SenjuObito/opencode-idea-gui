@@ -48,6 +48,28 @@ public class TabCommandRouterTest {
     }
 
     @Test
+    public void sessionCommandsRouteOnTheSendingTabsActorToo() throws Exception {
+        TabRegistry registry = new TabRegistry();
+        registry.create(TabId.of("tab-a"), "/repo");
+        registry.create(TabId.of("tab-b"), "/repo");
+        TabCommandRouter router = new TabCommandRouter(registry);
+        List<String> handled = new CopyOnWriteArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+        router.register("session.share", command -> {
+            handled.add(command.tabId().value() + ":" + command.string("sessionId"));
+            done.countDown();
+        });
+
+        assertTrue(router.handles("session.share"));
+        JsonObject payload = new JsonObject();
+        payload.addProperty("sessionId", "ses_a");
+        assertEquals(TabCommandRouter.Result.ROUTED, router.route(
+                new TabCommand(TabId.of("tab-a"), "session.share", "req-share", payload)));
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertEquals(List.of("tab-a:ses_a"), handled);
+    }
+
+    @Test
     public void replaysOfTheSameRequestIdRunOnce() throws Exception {
         TabRegistry registry = new TabRegistry();
         registry.create(TabId.of("tab-a"), "/repo");

@@ -9,6 +9,7 @@ import org.junit.Test;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -259,6 +260,25 @@ public class OpenCodeMessageConverterTest {
         assertTrue(raw.get("isCompactSummary").getAsBoolean());
         assertNotNull(raw.getAsJsonObject("compactMetadata"));
         assertEquals("manual", raw.getAsJsonObject("compactMetadata").get("trigger").getAsString());
+        // The summary is the message content; it must not be repeated in the
+        // card's "user context" line.
+        assertFalse(raw.getAsJsonObject("compactMetadata").has("userContext"));
+    }
+
+    @Test
+    public void compactionReasonBecomesTheTriggerWithoutUserContext() {
+        JsonObject entryObj = entry("compaction", "[{\"type\":\"text\",\"text\":\"## Objective\\nShip it.\"}]");
+        JsonObject info = entryObj.getAsJsonObject("info");
+        info.addProperty("reason", "auto");
+        info.addProperty("isCompactSummary", true);
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
+        assertEquals(1, out.size());
+        JsonObject raw = out.get(0).getAsJsonObject("raw");
+        JsonObject meta = raw.getAsJsonObject("compactMetadata");
+        assertEquals("auto", meta.get("trigger").getAsString());
+        assertFalse(meta.has("userContext"));
+        assertEquals("## Objective\nShip it.", out.get(0).get("content").getAsString());
     }
 
     @Test

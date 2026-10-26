@@ -359,8 +359,10 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
             setIsThinking?.(nextStatus?.isThinking ?? nextActive.isThinking ?? false);
             setStatus?.(nextStatus?.status ?? nextActive.status ?? '');
             setRevertBoundaryId?.(nextStatus ? nextStatus.revertBoundaryId : (nextActive.revertBoundaryId ?? null));
-            setIsCompacting?.(nextStatus?.isCompacting ?? nextActive.isCompacting ?? false);
-            setCompactingStartTime?.(nextStatus ? nextStatus.compactingStartTime : (nextActive.compactingStartTime ?? null));
+            // Compact state lives on the tab: a background completion clears it
+            // there, and the switch must show that, not an older snapshot.
+            setIsCompacting?.(nextActive.isCompacting ?? nextStatus?.isCompacting ?? false);
+            setCompactingStartTime?.(nextActive.compactingStartTime ?? nextStatus?.compactingStartTime ?? null);
             setTaskEvents?.(nextStatus?.taskEvents ?? nextActive.taskEvents ?? {});
             setSseTodos?.(nextStatus ? nextStatus.sseTodos : (nextActive.sseTodos ?? null));
             setSubagentHistories?.(nextStatus?.subagentHistories ?? nextActive.subagentHistories ?? {});

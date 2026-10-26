@@ -55,7 +55,7 @@ interface UseSessionManagementReturn {
   forceCreateNewSessionWithProvider: (providerId: string) => void;
   handleConfirmInterrupt: () => void;
   handleCancelInterrupt: () => void;
-  loadHistorySession: (sessionId: string) => void;
+  loadHistorySession: (sessionId: string, targetTabId?: string | null) => void;
   deleteHistorySession: (sessionId: string) => void;
   deleteHistorySessions: (sessionIds: string[]) => void;
   exportHistorySession: (sessionId: string, title: string) => void;
@@ -113,10 +113,10 @@ export function useSessionManagement({
     addToast(toast.message, toast.type);
   }, [addToast, t]);
 
-  const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null) => {
+  const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null, targetTabId?: string | null) => {
     // The guard belongs to the tab that is switching. Other tabs keep their
     // own events flowing while this one loads its history.
-    const transitionTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+    const transitionTabId = targetTabId ?? window.__sessionTabsStore?.getActiveTabId?.() ?? null;
     const transitionToken = createSessionTransitionToken();
     beginTransition(transitionTabId, nextSessionId, transitionToken);
     // 完整会话切换会取代任何在途的同会话软刷新，释放其去抖守卫。
@@ -259,16 +259,37 @@ export function useSessionManagement({
   // 会话级模型/模式/推理力度的恢复不在此处做（历史快照的行内值从不更新，
   // 用它恢复会覆盖用户刚切换的选择）。跨会话加载时由宿主从 daemon
   // session.get 读 opencode 权威状态后经 onSessionStateRestored 推送恢复。
-  const loadHistorySession = useCallback((sessionId: string) => {
+  /**
+   * Bind a history session to a tab, or soft-reload the active one.
+   *
+   * <p>{@code targetTabId} is the tab the caller prepared for the session (a
+   * restored history tab, a fork landing, an empty draft being promoted). With
+   * it, the session comparison below must not run: the caller has already
+   * pointed {@code currentSessionId} at the incoming session, so a "same
+   * session" check would send only a soft reload and never bind the tab — the
+   * fork appeared with an empty transcript and a stuck loading state.</p>
+   */
+  const loadHistorySession = useCallback((sessionId: string, targetTabId?: string | null) => {
     const session = historyDataRef.current?.sessions?.find(s => s.sessionId === sessionId);
-    cardDebugLog('[SessionManagement] loadHistorySession called, sessionId:', sessionId, 'currentSessionId:', currentSessionId, 'isSameSession:', sessionId === currentSessionId);
+    const activeSessionId = currentSessionIdRef?.current ?? currentSessionId;
+    cardDebugLog('[SessionManagement] loadHistorySession called, sessionId:', sessionId, 'targetTabId:', targetTabId, 'currentSessionId:', activeSessionId, 'isSameSession:', sessionId === activeSessionId);
+
+    if (targetTabId) {
+      // A named tab is authoritative: bind this session to it and let the
+      // host hydrate that tab. The transition guard is scoped to the tab.
+      beginSessionTransition(sessionId, session?.title ?? null, targetTabId);
+      window.__softSessionReloadInFlight = null;
+      sendHostCommand(targetTabId, 'session.load', { sessionId }, sessionId);
+      setCurrentView('chat');
+      return;
+    }
 
     // Re-opening the very session already active: don't interrupt the in-flight
     // turn or wipe the view - just ask the backend to soft-reload the transcript
     // from the server. The backend sessionLoadCallback detects the same-session
     // case and routes through reloadActiveSessionMessages (reusing the
     // session_updated reload path, never interrupting).
-    if (sessionId === currentSessionId) {
+    if (sessionId === activeSessionId) {
       // 去抖守卫：同会话软刷新已在途时不重复发送。宿主每次恢复消息后都会推送
       // onRevertStateUpdate 等事件，任何来源的重复触发都会形成
       // load_session → 恢复消息 → 事件 → load_session 的死循环（表现为消息
@@ -326,7 +347,7 @@ export function useSessionManagement({
     // The command names the session; the tab is the tab that shows it.
     sendHostCommand(activeTabId ?? '', 'session.load', { sessionId }, sessionId);
     setCurrentView('chat');
-  }, [beginSessionTransition, setCurrentView, currentSessionId]);
+  }, [beginSessionTransition, setCurrentView, currentSessionId, currentSessionIdRef]);
 
   // Delete history session
   const deleteHistorySession = useCallback((sessionId: string) => {

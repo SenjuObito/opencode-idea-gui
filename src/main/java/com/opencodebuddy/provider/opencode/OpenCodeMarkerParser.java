@@ -214,6 +214,16 @@ public final class OpenCodeMarkerParser {
             return;
         }
 
+        if (line.startsWith("[SUBAGENT_STATUS]")) {
+            // Authoritative terminal state for a background subagent session.
+            // Emitted by core under the PARENT session identity, so it reaches
+            // this tab even when the parent is idle and not streaming.
+            String payload = stripSeparator(line, "[SUBAGENT_STATUS]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            callback.onMessage("subagent_status", isJsonObject(decoded) ? decoded : payload);
+            return;
+        }
+
         if (line.startsWith("[MESSAGE_START]")) {
             callback.onMessage("message_start", "");
             return;

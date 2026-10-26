@@ -539,6 +539,24 @@ public class OpenCodeSDKBridge {
         return requestJson("opencode.getSubagentHistory", params);
     }
 
+    /**
+     * Canonical status for every background subagent in one session.
+     *
+     * <p>Called once per history load: a transcript only persists the launch
+     * acknowledgement, so a reopened session would otherwise show a finished
+     * child as running forever. Core owns the child-session lookup; the host
+     * never branches on the engine.</p>
+     */
+    public CompletableFuture<JsonElement> getSessionSubagents(String sessionId, String cwd, int limit) {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", sessionId != null ? sessionId : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
+        if (limit > 0) {
+            params.addProperty("limit", limit);
+        }
+        return requestJson("opencode.getSessionSubagents", params);
+    }
+
     public CompletableFuture<JsonElement> deleteSession(String sessionId, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");

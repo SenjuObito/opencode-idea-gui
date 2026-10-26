@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import type { ClaudeMessage, ClaudeRawMessage, ClaudeContentBlock, ToolResultBlock, SubagentHistoryResponse, SubagentInfo, SubagentStatus, TaskEvent, TaskEventMap } from '../types';
+import type { ClaudeMessage, ClaudeRawMessage, ClaudeContentBlock, ToolResultBlock, SubagentInfo, TaskEvent, TaskEventMap } from '../types';
 import { normalizeToolInput } from '../utils/toolInputNormalization';
 import { AGENT_TOOL_NAMES, isToolName, normalizeToolName } from '../utils/toolConstants';
-import { extractResultText, isAsyncAgentInput, parseSpawnAgentMeta, readAgentType, readToolUseStatus } from '../utils/subagentResult';
+import { extractResultText, isAsyncAgentInput, parseSpawnAgentMeta, readAgentType, readToolUseStatus, resolveSubagentRunState } from '../utils/subagentResult';
 import { useTaskEvents } from '../contexts/SubagentContext';
 
 type GetToolResultRawFn = (toolUseId: string) => ClaudeRawMessage | null;
@@ -12,46 +12,15 @@ interface UseSubagentsParams {
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[];
   findToolResult: (toolUseId?: string, messageIndex?: number) => ToolResultBlock | null;
   getToolResultRaw: GetToolResultRawFn;
-  subagentHistories?: Record<string, SubagentHistoryResponse>;
 }
 
 /**
- * Determine subagent status.
+ * Extract subagent runs from the transcript.
  *
- * Async agents (Agent/Task tool invoked with run_in_background:true) only
- * receive a launch acknowledgment tool_result, not a completion signal. The
- * terminal status arrives later via a task_notification event, so while no
- * event has landed the agent is still running.
- *
- * Sync agents (task/agent without run_in_background) run inline: a tool_result
- * means the agent is done.
+ * <p>Status comes from the shared `resolveSubagentRunState`; core's
+ * `subagent.status` is the same event for inline and background runs. The
+ * panel and the inline cards therefore apply one rule instead of three.</p>
  */
-function determineStatus(
-  result: ToolResultBlock | null,
-  isAsync: boolean,
-  taskEvent: TaskEvent | undefined,
-): SubagentStatus {
-  if (isAsync) {
-    if (taskEvent) {
-      return taskEvent.status === 'failed' || taskEvent.status === 'stopped' ? 'error' : 'completed';
-    }
-    // A failed launch (validation error before the background task was
-    // registered) returns an is_error tool_result and never emits a
-    // task_notification - surface it as an error instead of staying stuck on
-    // "running" forever.
-    if (result?.is_error) {
-      return 'error';
-    }
-    return 'running';
-  }
-  if (!result) {
-    return 'running';
-  }
-  if (result.is_error) {
-    return 'error';
-  }
-  return 'completed';
-}
 
 function extractResultMetadata(
   result: ToolResultBlock | null,
@@ -134,7 +103,12 @@ export function extractSubagentsFromMessages(
       // completed the instant the ack arrives.
       const toolUseStatus = readToolUseStatus(getToolResultRaw(toolUseId));
       const isAsync = isAsyncAgentInput(input, toolName, result, toolUseStatus);
-      const status = determineStatus(result, isAsync, taskEvent);
+      const status = resolveSubagentRunState({
+        isAsync,
+        hasTerminalResult: result !== null && result !== undefined,
+        resultIsError: result?.is_error === true,
+        terminalEvent: taskEvent,
+      });
       const resultMetadata = extractResultMetadata(result, getToolResultRaw, toolUseId, taskEvent);
       const spawnMeta = toolName === 'spawn_agent' ? parseSpawnAgentMeta(input, result) : {};
 
@@ -157,31 +131,6 @@ export function extractSubagentsFromMessages(
 }
 
 /**
- * Apply core's canonical child-transcript status.
- *
- * <p>opencode's `subagent.history` is the child session's own transcript, so it
- * is authoritative in both directions: a parent launch acknowledgement that
- * says `completed` must not outlive a transcript that is still `running`.
- * A `success: false` history is a transport failure, not evidence of a terminal
- * state, so it never overwrites what the card already shows.</p>
- */
-export function applySubagentHistoryCompletion(
-  subagents: SubagentInfo[],
-  subagentHistories: Record<string, SubagentHistoryResponse>,
-): SubagentInfo[] {
-  return subagents.map((subagent) => {
-    const history = subagentHistories[subagent.id]
-      ?? (subagent.agentId ? subagentHistories[subagent.agentId] : undefined);
-    if (!history?.success || !history.status) return subagent;
-    if (history.status === subagent.status) return subagent;
-    // A live task_notification error is terminal in a way a later transcript
-    // cannot undo; every other disagreement follows the transcript.
-    if (history.status === 'completed' && subagent.status === 'error') return subagent;
-    return { ...subagent, status: history.status };
-  });
-}
-
-/**
  * Hook to extract subagent information from Task tool calls.
  */
 export function useSubagents({
@@ -189,17 +138,16 @@ export function useSubagents({
   getContentBlocks,
   findToolResult,
   getToolResultRaw,
-  subagentHistories = {},
 }: UseSubagentsParams): SubagentInfo[] {
   const taskEvents = useTaskEvents();
-  return useMemo(() => {
-    const extracted = extractSubagentsFromMessages(
+  return useMemo(
+    () => extractSubagentsFromMessages(
       messages,
       getContentBlocks,
       findToolResult,
       getToolResultRaw,
       taskEvents,
-    );
-    return applySubagentHistoryCompletion(extracted, subagentHistories);
-  }, [messages, getContentBlocks, findToolResult, getToolResultRaw, taskEvents, subagentHistories]);
+    ),
+    [messages, getContentBlocks, findToolResult, getToolResultRaw, taskEvents],
+  );
 }

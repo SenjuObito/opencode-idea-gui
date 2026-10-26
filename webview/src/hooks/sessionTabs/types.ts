@@ -59,7 +59,7 @@ export interface UseSessionTabsOptions {
   chatInputRef?: React.RefObject<any>;
   defaultAutoOpenFileEnabled?: boolean;
   forceCreateNewSession: () => void;
-  loadHistorySession: (sessionId: string) => void;
+  loadHistorySession: (sessionId: string, targetTabId?: string | null) => void;
   currentSessionIdRef?: React.RefObject<string | null>;
   deleteTabRuntime?: (tabId: string) => void;
   setTabRuntimeStreaming?: (tabId: string, streaming: boolean) => void;

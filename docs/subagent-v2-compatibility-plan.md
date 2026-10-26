@@ -244,3 +244,112 @@ Basic auth（`-u opencode:<pwd>`）+ `x-opencode-directory` → 拉 `/openapi.js
 不经过 async 完成判定。后台子代理（`background: true`）仍是唯一未验证场景。
 在此之前**不改** async 完成判定 —— 现状下后台子代理最坏表现是一直 running，
 比误判成"瞬间完成"更容易被识别和不误导。
+
+---
+
+## 10. 实施结果：后台子代理终态（2026-10-26）
+
+P1 的"形态 A / 形态 B"猜测**不再需要在宿主或前端判断**。终态改由 core 推送，
+两条形态最终都收敛到同一个权威来源：子会话自己的 transcript。
+
+### 10.1 链路
+
+```
+父会话 subagent 调用（v1 task / v2 subagent，background 标志二选一）
+  └─ core 注册 watch：{ parentSessionId, toolUseId, childSessionId }
+子会话终态（session.idle / session.execution.succeeded / failed / error）
+  └─ core 读一次 getSubagentHistory 校验（canonical status）
+       └─ runWithIdentity({ sessionId: parentSessionId })
+            └─ [SUBAGENT_STATUS] { toolUseId, childSessionId, status, summary? }
+宿主 OpenCodeMarkerParser → OpenCodeMessageHandler → CallbackHandler
+  └─ SessionCallbackAdapter.onSubagentStatus → 事件 `subagent.status`（带父会话归属）
+webview onSubagentStatus → TaskEventMap → 列表 / 卡片状态翻转
+```
+
+兜底（都不是轮询）：
+
+1. **引擎合成通知**：父会话 transcript 里的
+   `<subagent sessionID="…" state="completed|error|cancelled">…</subagent>`，
+   即使子会话事件丢失也能给出终态。
+2. **结算对账**：父回合 `_settleTurn` 时对未决 watch 各查一次；
+   覆盖"子会话在 watch 注册前就结束"。
+3. **重载对账**：`OpencodeSession.loadFromServer()` 完成后调一次
+   `opencode.getSessionSubagents`（上限 20 条），终态项走同一个 `subagent.status` 事件。
+   覆盖"IDE 关闭期间子代理结束"。
+
+### 10.2 关键约束
+
+- **v1 行为不变**：只有 `background`/`run_in_background` 的调用注册 watch；v1 的同步
+  `task` 不注册 watch。§11 起同步调用也会发一次终态事件（父 tool_result 即证据）。
+- **不新增 v1/v2 分支层**：注册点复用 core 既有的两处分叉（v1 `_handleToolPart`、
+  v2 `session.tool.*`），输出统一成 `[SUBAGENT_STATUS]`。
+- **宿主零引擎判断**：Java 只做标记 → 语义事件的搬运。
+- **transcript 的 `running` 不会回退已终态卡片**：该保证在 §11 收敛后由更强的规则
+  取代 —— transcript 不再参与状态判定，只有 core 的 `subagent.status` 和父结果回放。
+- **UI 不再轮询状态**：`SubagentList` / `TaskExecutionBlock` / `AgentGroupBlock`
+  只剩"展开时拉一次详情"，状态全部来自 core 推送（回放时来自持久化结果）。
+
+### 10.3 契约
+
+`[SUBAGENT_STATUS]` 载荷：
+
+```json
+{
+  "parentSessionId": "ses_parent",
+  "toolUseId": "call_abc",
+  "childSessionId": "ses_child",
+  "status": "completed | failed | stopped",
+  "description": "Explore auth",
+  "summary": "子会话最后一条 assistant 文本（截断 500）"
+}
+```
+
+`subagent.status` 事件载荷：`{ "subagent": "<上述 JSON 字符串>" }`。
+§11 起同步（inline）调用也走同一事件；webview 只用一个
+`resolveSubagentRunState` 映射：`completed → completed`，`failed/stopped → error`。
+
+## 11. 架构收敛：子代理运行状态（2026-10-26）
+
+### 11.1 问题与判定
+
+同步（inline）`@explore` 子代理卡片的转圈永不复位，即使父 tool_result 已经带回
+`<subagent … state="completed">` 终态。直接原因是**逻辑 bug**（状态优先级把
+`running` 快照当成权威），但它反复出现（先面板、后气泡）暴露的是**架构债**：
+
+- 状态语义分散在 `useSubagents`、`applySubagentHistoryCompletion` 和两个卡片里；
+- 终态通道不对称：async 有 core 推送，sync 只能由 UI 从结果推断；
+- `subagent.history` 是时点快照，却被当成单调状态使用，任何"先展开、后完成"都会复现。
+
+### 11.2 收敛后的模型
+
+**core 是运行状态的唯一生产者，transcript 只服务详情。**
+
+1. **core 统一发布**：`_registerSubagentCall` 对 sync 与 async 一视同仁。
+   - async：沿用 watch（子会话终态、合成 notice、结算/重载对账）。
+   - sync：父 tool_result 就是子会话的最终报告，在终止态直接发布一次
+     `[SUBAGENT_STATUS]`；`<subagent state>` 给出 completed/failed/stopped，
+     没有 notice 时按 `isError` 映射。sync 不注册 watch。
+   - 后台启动失败（父工具 failed）也发布 `failed` 并丢弃 watch。
+2. **webview 单一推导**：`resolveSubagentRunState` 是唯一状态函数，面板与两个卡片共用。
+   输入只有三样：core 的终态事件、`isAsync`、父 tool_result（回放/引导）。
+   子会话 transcript 不在输入里。
+3. **transcript 降级**：`subagent.history` 只用于展开详情；不再参与状态、不再有
+   "纠正读"、不再需要"running 不得回退终态"的特殊规则。
+4. **回放路径**：重载的会话没有事件可重放，sync 的终态由持久化的父 tool_result
+   确定性折叠得出；async 由 `loadFromServer()` 后的一次对账补推（§10.2）。
+   两者都不轮询，也不依赖 transcript 快照。
+
+### 11.3 行为约束
+
+- 状态优先级：**终态事件 > 父结果回放；async 启动确认永远不是终态**。
+- sync 事件与父工具卡片同回合到达；事件缺失时（重载/旧记录）结果仍能正确显示。
+- v1 行为不变：`task` 的父结果仍为终态；新增的只是同一份 `subagent.status` 广播。
+- 不新增轮询；`subagent.history` 每个展开行只请求一次。
+- 引擎差异（v1/v2 工具名、background 字段、`state.output`/`state.content`）仍只在 core 收敛。
+
+### 11.4 附带修复
+
+`_handleToolPart` 的终止态改用 `state.output ?? state.content`
+（`flattenToolContent`）。只读 `state.output` 会为 v2 发出空 tool_result，且
+`toolResultDone` 会压掉随后 `session.tool.success` 的完整内容。
+

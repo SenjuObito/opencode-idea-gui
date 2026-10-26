@@ -152,4 +152,64 @@ describe('ChatHeader', () => {
     expect(onReorderTabs).not.toHaveBeenCalled();
     expect(onSelectTab).toHaveBeenCalledWith('tab-2');
   });
+
+  describe('overflow menu', () => {
+    const makeTabs = (count: number): SessionTabData[] => Array.from({ length: count }, (_, index) => ({
+      id: `tab-${index + 1}`,
+      sessionId: `sess-${index + 1}`,
+      title: `Tab ${index + 1}`,
+      messages: [],
+      isShared: false,
+    }));
+
+    const wideTabSet = makeTabs(4);
+
+    /**
+     * Render the bar inside a 260px container: 4 fallback-width tabs (110px)
+     * only fit two of them plus the overflow button, so tabs 3-4 collapse into
+     * the "…" menu.
+     */
+    const renderNarrowBar = (activeTabId = 'tab-1') => {
+      const onReorderTabs = vi.fn();
+      const props = { ...defaultProps, tabs: wideTabSet, activeTabId, onReorderTabs };
+      const view = render(<ChatHeader {...props} />);
+      const container = document.querySelector('.session-tabs-container') as HTMLElement;
+      Object.defineProperty(container, 'clientWidth', { configurable: true, value: 260 });
+      // Re-run the capacity effect now that the container reports a width.
+      view.rerender(<ChatHeader {...props} tabs={[...wideTabSet]} />);
+      return { onReorderTabs };
+    };
+
+    it('keeps a tab dragged out of the collapsed menu in the visible bar', async () => {
+      const { onReorderTabs } = renderNarrowBar();
+
+      fireEvent.click(screen.getByRole('button', { name: 'common.moreSessions' }));
+      const dragged = screen.getByText('Tab 4');
+      const row = dragged.closest('.session-tab-overflow-item');
+      expect(row).not.toBeNull();
+
+      // Drop well outside the overflow menu: the bar is the drop target.
+      fireEvent.mouseDown(row!, { clientX: 200, clientY: 200, button: 0 });
+      fireEvent.mouseMove(document, { clientX: 500, clientY: 300 });
+      fireEvent.mouseUp(document, { clientX: 500, clientY: 300 });
+
+      expect(onReorderTabs).toHaveBeenCalledWith(3, 1);
+
+      // The dropped tab must stay rendered in the bar instead of snapping back
+      // into the collapsed menu after the width recalculation.
+      const moved = screen.getByText('Tab 4');
+      expect(moved.closest('.session-tab-item')).not.toBeNull();
+      expect(moved.closest('.session-tab-overflow-item')).toBeNull();
+    });
+
+    it('keeps the active tab visible without dropping another tab', () => {
+      renderNarrowBar('tab-4');
+
+      const visibleTitles = Array.from(document.querySelectorAll('.session-tab-item .session-tab-title'))
+        .map((element) => element.textContent);
+      expect(visibleTitles).toEqual(['Tab 1', 'Tab 4']);
+      // Tab 2 and Tab 3 remain reachable through the overflow menu.
+      expect(screen.getByRole('button', { name: 'common.moreSessions' })).toBeTruthy();
+    });
+  });
 });

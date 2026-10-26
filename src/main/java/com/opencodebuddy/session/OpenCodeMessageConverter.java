@@ -229,14 +229,28 @@ public final class OpenCodeMessageConverter {
         raw.addProperty("isCompactSummary", true);
 
         if (info.has("compactMetadata") && info.get("compactMetadata").isJsonObject()) {
-            raw.add("compactMetadata", info.get("compactMetadata").deepCopy());
-            raw.add("summarizeMetadata", info.get("compactMetadata").deepCopy());
+            JsonObject meta = info.getAsJsonObject("compactMetadata").deepCopy();
+            // Older cores copied the entire summary into `userContext`.
+            // That field is a user-supplied /compact focus, so showing the
+            // summary there printed the whole conversation summary twice.
+            if (meta.has("userContext") && !meta.get("userContext").isJsonNull()
+                    && summaryText.equals(textOf(meta.get("userContext")))) {
+                meta.remove("userContext");
+            }
+            if (!meta.has("trigger") && info.has("reason")) {
+                String reason = string(info, "reason");
+                if (!reason.isEmpty()) {
+                    meta.addProperty("trigger", reason);
+                }
+            }
+            raw.add("compactMetadata", meta);
+            raw.add("summarizeMetadata", meta.deepCopy());
         } else {
             JsonObject meta = new JsonObject();
-            meta.addProperty("userContext", summaryText);
-            meta.addProperty("trigger", "manual");
+            String reason = string(info, "reason");
+            meta.addProperty("trigger", reason.isEmpty() ? "manual" : reason);
             raw.add("compactMetadata", meta);
-            raw.add("summarizeMetadata", meta);
+            raw.add("summarizeMetadata", meta.deepCopy());
         }
 
         return msg;
@@ -563,11 +577,12 @@ public final class OpenCodeMessageConverter {
         JsonObject message = new JsonObject();
         message.add("content", blocks);
         raw.add("message", message);
+        JsonObject out = new JsonObject();
         String id = string(info, "id");
         if (!id.isEmpty()) {
+            out.addProperty("id", id);
             raw.addProperty("id", id);
         }
-        JsonObject out = new JsonObject();
         out.addProperty("type", type);
         out.addProperty("content", content);
         out.addProperty("timestamp", timestamp(info));

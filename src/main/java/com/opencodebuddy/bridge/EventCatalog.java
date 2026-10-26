@@ -82,6 +82,7 @@ public final class EventCatalog {
         // ── status panel ───────────────────────────────────────────────────
         byType.put("todos.updated", "onTodoUpdated");
         byType.put("task.event", "onTaskEvent");
+        byType.put("subagent.status", "onSubagentStatus");
         byType.put("subagent.history", "onSubagentHistoryLoaded");
         byType.put("revert.changed", "onRevertStateUpdate");
 

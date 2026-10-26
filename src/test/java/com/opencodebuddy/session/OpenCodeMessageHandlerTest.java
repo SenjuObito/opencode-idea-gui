@@ -57,6 +57,39 @@ public class OpenCodeMessageHandlerTest {
     }
 
     @Test
+    public void testSubagentStatusDispatchesToNotifySubagentStatus() {
+        AtomicReference<String> receivedStatusJson = new AtomicReference<>();
+        callbackHandler.setCallback(new OpencodeSession.SessionCallback() {
+            @Override
+            public void onSubagentStatus(String jsonContent) {
+                receivedStatusJson.set(jsonContent);
+            }
+            @Override
+            public void onMessageUpdate(java.util.List<OpencodeSession.Message> messages) {}
+            @Override
+            public void onStateChange(boolean busy, boolean loading, String error) {}
+            @Override
+            public void onSessionIdReceived(String sessionId) {}
+            @Override
+            public void onPermissionRequested(com.opencodebuddy.permission.PermissionRequest request) {}
+            @Override
+            public void onThinkingStatusChanged(boolean isThinking) {}
+            @Override
+            public void onSlashCommandsReceived(java.util.List<String> slashCommands) {}
+            @Override
+            public void onNodeLog(String log) {}
+            @Override
+            public void onSummaryReceived(String summary) {}
+        });
+
+        String payload = "{\"parentSessionId\":\"ses_parent\",\"toolUseId\":\"call_1\","
+                + "\"childSessionId\":\"ses_child\",\"status\":\"completed\"}";
+        handler.onMessage("subagent_status", payload);
+
+        assertEquals(payload, receivedStatusJson.get());
+    }
+
+    @Test
     public void testUserMessageResetsStreamingAccumulatorAcrossTurns() {
         // Turn 1 Assistant response
         String assistantJson = "{\"role\":\"assistant\",\"content\":\"Turn 1 answer\"}";

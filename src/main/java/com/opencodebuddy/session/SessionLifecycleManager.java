@@ -162,6 +162,18 @@ public class SessionLifecycleManager {
             if (coalescer == null) {
                 coalescer = host.getStreamCoalescer();
             }
+            if (coalescer != null && coalescer.isStreamActive()) {
+                // A history reload or the revert/compact soft reload must not
+                // wipe a live turn. Release the frontend's transition with the
+                // current transcript and let the stream finish.
+                host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                        .session(sessionId)
+                        .tab(host.findTabIdForSession(sessionId))
+                        .field("messageCount", existingSession.getMessages().size())
+                        .build());
+                host.markHistoryLoaded(sessionId);
+                return;
+            }
             long clearBarrierSeq = (coalescer != null) ? coalescer.resetStreamState() : 0L;
             host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.cleared")
                     .session(sessionId)

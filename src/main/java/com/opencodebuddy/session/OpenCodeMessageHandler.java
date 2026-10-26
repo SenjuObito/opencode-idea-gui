@@ -86,6 +86,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
             case "question_request" -> handleQuestionRequest(content);
             case "question_closed" -> handleQuestionClosed(content);
             case "todo_updated" -> handleTodoUpdated(content);
+            case "subagent_status" -> handleSubagentStatus(content);
             case "session_title" -> handleSessionTitle(content);
             case "revert_state" -> handleRevertState(content);
             case "message_removed" -> handleMessagesRemoved(content);
@@ -467,6 +468,18 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
     private void handleTodoUpdated(String jsonContent) {
         callbackHandler.notifyTodoUpdated(jsonContent);
+    }
+
+    /**
+     * Canonical terminal state for a background subagent.
+     *
+     * <p>Core owns the child session lookup and the status decision (v1/v2
+     * differences are already normalised there); this layer only forwards the
+     * payload. The event belongs to the parent tab, so it is routed exactly like
+     * a todo update.</p>
+     */
+    private void handleSubagentStatus(String jsonContent) {
+        callbackHandler.notifySubagentStatus(jsonContent);
     }
 
     private void handleSessionTitle(String jsonContent) {

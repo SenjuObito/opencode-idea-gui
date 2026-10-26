@@ -54,7 +54,7 @@ describe('finalizeSubagentsForSettledTurn', () => {
     expect(result[0].status).toBe('running');
   });
 
-  it('preserves terminal status supplied by task_notification or sidechain history', () => {
+  it('preserves terminal status supplied by the run event', () => {
     const result = finalizeSubagentsForSettledTurn(
       [
         subagent({ isAsync: true, status: 'completed' }),

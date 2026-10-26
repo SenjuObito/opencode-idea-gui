@@ -90,4 +90,24 @@ describe('StatusPanel subagent history routing', () => {
     expect(updateTab).not.toHaveBeenCalled();
     expect(setSubagentHistories).not.toHaveBeenCalled();
   });
+
+  it('never demotes a terminal transcript with a late running snapshot', () => {
+    // The expand-time read and the post-terminal refresh can be in flight at
+    // once; the expand-time answer may be the older, still-running snapshot.
+    hostEventHandler('subagent.history')?.(payload('ses_active'));
+    const firstUpdater = setSubagentHistories.mock.calls[0][0] as (prev: Record<string, any>) => Record<string, any>;
+    const completed = firstUpdater({});
+    expect(completed['tool-1'].status).toBe('completed');
+
+    setSubagentHistories.mockClear();
+    hostEventHandler('subagent.history')?.(JSON.stringify({
+      ...JSON.parse(payload('ses_active')),
+      status: 'running',
+      completed: false,
+    }));
+    const secondUpdater = setSubagentHistories.mock.calls[0][0] as (prev: Record<string, any>) => Record<string, any>;
+    const merged = secondUpdater(completed);
+
+    expect(merged['tool-1'].status).toBe('completed');
+  });
 });

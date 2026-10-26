@@ -26,7 +26,7 @@ vi.mock('../../contexts/SubagentContext', () => ({
   useTaskEvent: (toolUseId: string | undefined) => mockUseTaskEvent(toolUseId),
 }));
 
-describe('TaskExecutionBlock polling', () => {
+describe('TaskExecutionBlock transcript loading', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockSendSessionCommand.mockReset();
@@ -46,7 +46,7 @@ describe('TaskExecutionBlock polling', () => {
     vi.useRealTimers();
   });
 
-  it('continues polling an unresolved agent after the main turn settles', () => {
+  it('requests the transcript once on expand and never starts an interval', () => {
     const setIntervalSpy = vi.spyOn(window, 'setInterval');
 
     const { container } = render(
@@ -62,9 +62,16 @@ describe('TaskExecutionBlock polling', () => {
       />,
     );
 
+    expect(mockSendSessionCommand).not.toHaveBeenCalled();
     fireEvent.click(container.querySelector('.task-header') as HTMLElement);
 
-    expect(setIntervalSpy).toHaveBeenCalled();
+    expect(mockSendSessionCommand).toHaveBeenCalledTimes(1);
+    expect(mockSendSessionCommand).toHaveBeenCalledWith(
+      'subagent.history',
+      'session-1',
+      expect.objectContaining({ toolUseId: 'task-1' }),
+    );
+    expect(setIntervalSpy).not.toHaveBeenCalled();
   });
 
   it('expands the task details when the header is clicked', () => {
@@ -86,10 +93,8 @@ describe('TaskExecutionBlock polling', () => {
     expect(container.querySelector('.task-details')).toBeTruthy();
   });
 
-  it('stops polling once a tool result marks the agent task completed', () => {
-    const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
-
-    const { container, rerender } = render(
+  it('does not refetch the transcript on a timer', () => {
+    const { container } = render(
       <TaskExecutionBlock
         name="Task"
         toolId="task-1"
@@ -102,35 +107,11 @@ describe('TaskExecutionBlock polling', () => {
     );
 
     fireEvent.click(container.querySelector('.task-header') as HTMLElement);
-
-    act(() => {
-      vi.advanceTimersByTime(2_000);
-    });
-
-    expect(mockSendSessionCommand).toHaveBeenCalledWith(
-      'subagent.history',
-      'session-1',
-      expect.objectContaining({ toolUseId: 'task-1' }),
-    );
-
-    rerender(
-      <TaskExecutionBlock
-        name="Task"
-        toolId="task-1"
-        isStreaming={true}
-        result={{ type: 'tool_result', tool_use_id: 'task-1', content: 'done' } as any}
-        input={{
-          description: 'Inspect render path',
-          subagent_type: 'Explore',
-        }}
-      />,
-    );
-
-    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(mockSendSessionCommand).toHaveBeenCalledTimes(1);
 
     mockSendSessionCommand.mockClear();
     act(() => {
-      vi.advanceTimersByTime(4_000);
+      vi.advanceTimersByTime(10_000);
     });
 
     expect(mockSendSessionCommand).not.toHaveBeenCalled();
@@ -181,7 +162,9 @@ describe('TaskExecutionBlock polling', () => {
     expect(indicator?.className).not.toContain('completed');
   });
 
-  it('marks an async agent completed when sidechain history ends normally', () => {
+  it('does not complete an async agent from a terminal sidechain transcript', () => {
+    // A transcript is detail-only now: only core's `subagent.status` (or the
+    // legacy task_notification, same store) can complete a background launch.
     mockUseTaskEvent.mockReturnValue(undefined);
     mockHistories = { 'agent-async': { success: true, status: 'completed', completed: true, messages: [] } };
 
@@ -199,11 +182,43 @@ describe('TaskExecutionBlock polling', () => {
     );
 
     const indicator = container.querySelector('.tool-status-indicator');
-    expect(indicator?.className).toContain('completed');
-    expect(indicator?.className).not.toContain('pending');
+    expect(indicator?.className).toContain('pending');
+    expect(indicator?.className).not.toContain('completed');
   });
 
-  it('keeps a running child transcript ahead of a completed launch result', () => {
+  it('keeps an async launch pending regardless of its cached transcript', () => {
+    mockHistories = {
+      'subagent-1': { success: true, status: 'completed', completed: true, messages: [] },
+    };
+
+    const { container } = render(
+      <TaskExecutionBlock
+        name="subagent"
+        toolId="subagent-1"
+        isStreaming={false}
+        result={{
+          type: 'tool_result',
+          tool_use_id: 'subagent-1',
+          content: '<subagent sessionID="ses_child" state="running" description="Explore repo">…</subagent>',
+        } as any}
+        input={{ description: 'Explore repo', agent: 'explore' } as any}
+      />,
+    );
+
+    // The transcript is detail-only. A background launch stays running until
+    // core's `subagent.status` event arrives, whatever an expand-time snapshot
+    // happened to say.
+    const indicator = container.querySelector('.tool-status-indicator');
+    expect(indicator?.className).toContain('pending');
+    expect(indicator?.className).not.toContain('completed');
+  });
+
+  it('completes an inline agent even when a cached transcript still says running', () => {
+    // Regression: the user expanded the row while the child was still running,
+    // so the cached transcript says `running`. The child then finished and its
+    // terminal report arrived as the parent tool_result. Polling is gone, so the
+    // stale snapshot must not pin the spinner — and it is not a status input at
+    // all any more.
     mockHistories = {
       'subagent-1': { success: true, status: 'running', completed: false, messages: [] },
     };
@@ -213,27 +228,59 @@ describe('TaskExecutionBlock polling', () => {
         name="subagent"
         toolId="subagent-1"
         isStreaming={false}
-        result={{ type: 'tool_result', tool_use_id: 'subagent-1', content: 'launched' } as any}
+        result={{
+          type: 'tool_result',
+          tool_use_id: 'subagent-1',
+          content: '<subagent sessionID="ses_child" state="completed">done</subagent>',
+        } as any}
         input={{ description: 'Explore repo', agent: 'explore' } as any}
       />,
     );
 
     const indicator = container.querySelector('.tool-status-indicator');
-    expect(indicator?.className).toContain('pending');
-    expect(indicator?.className).not.toContain('completed');
+    expect(indicator?.className).toContain('completed');
+    expect(indicator?.className).not.toContain('pending');
+  });
 
-    // opencode's launch ack is terminal-looking, so polling must continue
-    // while core still reports the child as running.
-    fireEvent.click(container.querySelector('.task-header') as HTMLElement);
-    mockSendSessionCommand.mockClear();
-    act(() => {
-      vi.advanceTimersByTime(2_000);
-    });
-    expect(mockSendSessionCommand).toHaveBeenCalledWith(
-      'subagent.history',
-      'session-1',
-      expect.objectContaining({ toolUseId: 'subagent-1', poll: true }),
+  it('requests the transcript once per expansion and never uses it for status', () => {
+    const input = { description: 'Explore repo', agent: 'explore' } as any;
+    const result = {
+      type: 'tool_result',
+      tool_use_id: 'subagent-1',
+      content: '<subagent sessionID="ses_child" state="completed">done</subagent>',
+    } as any;
+
+    const { container, rerender } = render(
+      <TaskExecutionBlock name="subagent" toolId="subagent-1" isStreaming={true} input={input} />,
     );
+    fireEvent.click(container.querySelector('.task-header') as HTMLElement);
+    expect(mockSendSessionCommand).toHaveBeenCalledTimes(1);
+
+    // The host answers with the child transcript snapshot taken while it was
+    // still running. That snapshot alone must not trigger another request.
+    mockHistories = {
+      'subagent-1': { success: true, status: 'running', completed: false, messages: [] },
+    };
+    mockSendSessionCommand.mockClear();
+    rerender(
+      <TaskExecutionBlock name="subagent" toolId="subagent-1" isStreaming={true} input={input} />,
+    );
+    expect(mockSendSessionCommand).not.toHaveBeenCalled();
+
+    // The child's terminal report arrives as the parent tool_result; status
+    // comes from that (or core's event), so the transcript is not re-read.
+    rerender(
+      <TaskExecutionBlock name="subagent" toolId="subagent-1" isStreaming={true} input={input} result={result} />,
+    );
+    expect(mockSendSessionCommand).not.toHaveBeenCalled();
+    const indicator = container.querySelector('.tool-status-indicator');
+    expect(indicator?.className).toContain('completed');
+
+    // Unrelated re-renders stay quiet too.
+    rerender(
+      <TaskExecutionBlock name="subagent" toolId="subagent-1" isStreaming={true} input={input} result={result} />,
+    );
+    expect(mockSendSessionCommand).not.toHaveBeenCalled();
   });
 
   it('flips an async agent to completed when a task_notification arrives', () => {
@@ -307,63 +354,50 @@ describe('TaskExecutionBlock polling', () => {
     expect(indicator?.className).not.toContain('pending');
   });
 
-  it('stops polling when an async agent fails', () => {
-    const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
-
-    // Start with no task_event: the card is pending and begins polling.
+  it('a pushed failure flips the card without another request', () => {
     mockUseTaskEvent.mockReturnValue(undefined);
 
     const { container, rerender } = render(
       <TaskExecutionBlock
         name="Agent"
-        toolId="agent-poll-fail"
+        toolId="agent-push-fail"
         isStreaming={true}
         input={{
           description: 'background research',
           subagent_type: 'research',
           run_in_background: true,
-        } as any}
+        }}
       />,
     );
 
     fireEvent.click(container.querySelector('.task-header') as HTMLElement);
+    expect(mockSendSessionCommand).toHaveBeenCalledTimes(1);
 
-    act(() => {
-      vi.advanceTimersByTime(2_000);
-    });
-
-    expect(mockSendSessionCommand).toHaveBeenCalledWith(
-      'subagent.history',
-      'session-1',
-      expect.objectContaining({ toolUseId: 'agent-poll-fail' }),
-    );
-
-    // A failure notification arrives - the card must stop polling.
+    // core pushes the terminal state; no transcript roundtrip is involved.
     mockUseTaskEvent.mockReturnValue({
-      toolUseId: 'agent-poll-fail',
+      toolUseId: 'agent-push-fail',
       status: 'failed',
     } as any);
 
+    mockSendSessionCommand.mockClear();
     rerender(
       <TaskExecutionBlock
         name="Agent"
-        toolId="agent-poll-fail"
+        toolId="agent-push-fail"
         isStreaming={true}
         input={{
           description: 'background research',
           subagent_type: 'research',
           run_in_background: true,
-        } as any}
+        }}
       />,
     );
 
-    expect(clearIntervalSpy).toHaveBeenCalled();
-
-    mockSendSessionCommand.mockClear();
+    const indicator = container.querySelector('.tool-status-indicator');
+    expect(indicator?.className).toContain('error');
     act(() => {
-      vi.advanceTimersByTime(4_000);
+      vi.advanceTimersByTime(10_000);
     });
-
     expect(mockSendSessionCommand).not.toHaveBeenCalled();
   });
 

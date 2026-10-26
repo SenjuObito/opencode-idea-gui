@@ -364,6 +364,21 @@
 - 删除 `webview/src/types/protocol.ts` 与 `sendTypedBridgeEvent`：那份清单还在
   描述已删除的 `send_message` / `set_model` / `update_title`。
 
+### 会话命令进路由表（fork / share / revert / compact）
+
+- `session.fork|share|unshare|revert|unrevert|compact` 从
+  `WindowEventHandler` 迁到 `TabSessionCommandHandler`：宿主按信封 `tabId`
+  交给 `TabCommandRouter`，在目标 tab 的 actor 上串行执行。命令不再有
+  "active tab" 兜底。
+- payload 里的 `sessionId`（由 `HostCommand` 从信封注入）只用于校验：tab
+  在命令排队期间已经切走时拒绝执行，避免旧命令落到新会话上。
+- 结果事件统一带 `tab` / `session`：后台 tab 的分享、撤销、压缩结果不会
+  改到当前屏幕那个 tab 的状态。
+- `session.fork` 的源会话只认路由 tab；payload 里过期的 `sourceTabId`
+  会被忽略并记日志。目标 tab 仍是预分配的 id，fork 不影响源 tab。
+- webview 的 tab 菜单分享/取消分享显式传 `tab.sessionId`，不再依赖
+  `selectTab` 之后才更新的活动会话。
+
 ### 附件分块上传（D10）
 
 - 大附件不再塞进 `session.send` 的一帧（32KB 预算下单帧会被整块穿过桥）。
@@ -774,3 +789,38 @@ IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与
     pending error flush 测试。
 - 验证：core 228 用例、gradle 117 类 / 871 用例、tsc 0 错误、
   vitest 173 文件 / 1522 测试、legacy 0 forbidden / 0 debt。
+
+## 第五轮：fork 装载、撤销事件、v2 分享与压缩归属
+
+- fork / 历史会话装载改为 tab 级：
+  - webview `loadHistorySession(sessionId, targetTabId)`：调用方点名 tab 时
+    强制走绑定路径，不再因为 `currentSessionId` 已被提前改成目标会话而误判
+    为「同会话软刷新」。`openSessionInTab` 传入刚准备好的 tab id。
+  - 宿主 `HistoryHandler` 回调：信封带 `tabId` 时一律交给
+    `SessionLifecycleManager.loadHistorySession(..., tabId)`，不再用
+    `host.getSession()`（活动会话）判断 same-session。fork 目标 tab 因此能
+    真正绑定并收到 `session.loaded`，不再停在 `LOADING_HISTORY`。
+  - `reloadActiveSessionMessages` 的旧路径补齐 `.session` / `.tab` 并
+    `markHistoryLoaded`；`revert.changed` 使用被恢复会话自己的身份。
+  - 同会话软刷新遇到仍在流式输出的 tab 时只释放过渡、不 reset 流，避免
+    刷新把正在生成的回合清掉。
+- `revert.changed` 解析：
+  - 新增 `parseRevertStateEvent`，统一处理命名事件 `[payload, envelope]`
+    （`payload.state`）和旧的位置参数 `[sessionId, stateJson]` /
+    `[sessionId, stateObject]`。撤销后折叠与「恢复」按钮恢复工作。
+- v2 分享：
+  - `shareSession` / `unshareSession` 在 v2 直连
+    `POST/DELETE /api/session/{id}/share`（SDK 里的旧 `/session/{id}/share`
+    返回 405）；404 时回退到无 `/api` 前缀的 v2 构建。v1 仍走 SDK。
+- 压缩状态归属：
+  - `isCompacting` / `compactingStartTime` 写入发起压缩的 tab；`useTabBarState`
+    把活动 tab 的状态同步进 tab，`useTabLifecycle` 切回时优先读 tab。
+    后台完成只清该 tab 的 spinner，不再影响当前屏幕。
+- `/compact` 摘要：
+  - core 不再把整段 summary 填进 `compactMetadata.userContext`（该字段只表示
+    用户给 `/compact` 的补充说明）；宿主对旧数据做同样的去重保护。
+  - v2 无时间戳的 compaction 记录按「新上下文边界」排到消息末尾，不再因为
+    时间为 0 被排到对话最前面。
+  - 渲染层在 `userContext` 与摘要正文相同时不显示，避免重复整段摘要。
+- 回归：core 287 用例、gradle 890 用例、tsc 0 错误、vitest 178 文件 /
+  1577 测试全通过。

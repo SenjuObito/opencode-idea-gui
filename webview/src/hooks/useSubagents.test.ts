@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClaudeContentBlock, ClaudeMessage, ToolResultBlock } from '../types';
-import { applySubagentHistoryCompletion, extractSubagentsFromMessages } from './useSubagents';
+import { extractSubagentsFromMessages } from './useSubagents';
 
 const assistantWithAgent = (toolUseId: string): ClaudeMessage => ({
   type: 'assistant',
@@ -304,70 +304,32 @@ describe('extractSubagentsFromMessages', () => {
     expect(subagents[0].status).toBe('error');
   });
 
-  it('finalizes only async agents whose sidechain history ends in end_turn', () => {
-    const messages = [assistantWithAsyncAgent('tu_spawn'), launchAckResult('tu_spawn')];
-    const extracted = extractSubagentsFromMessages(
-      messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages), {},
+  it("lets core's terminal event decide an inline subagent too", () => {
+    // Core publishes `subagent.status` for inline calls as well; the event is
+    // the single live authority, so it wins over the raw tool result.
+    const messages = [assistantWithV2Subagent('tu_v2_event'), toolResultMessage('tu_v2_event')];
+    const taskEvents = {
+      tu_v2_event: { toolUseId: 'tu_v2_event', status: 'failed' as const },
+    };
+
+    const subagents = extractSubagentsFromMessages(
+      messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages), taskEvents,
     );
 
-    expect(applySubagentHistoryCompletion(extracted, {
-      tu_spawn: { success: true, status: 'running', completed: false, messages: [] },
-    })[0].status).toBe('running');
-
-    expect(applySubagentHistoryCompletion(extracted, {
-      tu_spawn: { success: true, status: 'completed', completed: true, messages: [] },
-    })[0].status).toBe('completed');
+    expect(subagents).toHaveLength(1);
+    expect(subagents[0].status).toBe('error');
   });
 
-  it('lets a running child transcript override a completed launch ack', () => {
-    // opencode v2 marks the parent `subagent` tool part completed as soon as
-    // the child session is acknowledged. The transcript is still the authority.
-    const extracted = [{
-      id: 'tu_subagent',
-      type: 'subagent',
-      description: 'Explore repo',
-      status: 'completed' as const,
-      isAsync: true,
-      messageIndex: 0,
-    }];
-
-    expect(applySubagentHistoryCompletion(extracted, {
-      tu_subagent: { success: true, status: 'running', completed: false, messages: [] },
-    })[0].status).toBe('running');
-  });
-
-  it('does not demote a card when the transcript request failed', () => {
-    const extracted = [{
-      id: 'tu_subagent',
-      type: 'subagent',
-      description: 'Explore repo',
-      status: 'completed' as const,
-      isAsync: true,
-      messageIndex: 0,
-    }];
-
-    expect(applySubagentHistoryCompletion(extracted, {
-      tu_subagent: {
-        success: false,
-        status: 'running',
-        completed: false,
-        error: 'bridge down',
-        messages: [],
-      },
-    })[0].status).toBe('completed');
-  });
-
-  it('does not overwrite a task_notification error with sidechain completion', () => {
+  it('does not overwrite a terminal error push with the parent result', () => {
     const messages = [assistantWithAsyncAgent('tu_spawn')];
     const taskEvents = {
       tu_spawn: { toolUseId: 'tu_spawn', status: 'failed' as const },
     };
-    const extracted = extractSubagentsFromMessages(
+
+    const subagents = extractSubagentsFromMessages(
       messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages), taskEvents,
     );
 
-    expect(applySubagentHistoryCompletion(extracted, {
-      tu_spawn: { success: true, completed: true, messages: [] },
-    })[0].status).toBe('error');
+    expect(subagents[0].status).toBe('error');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTaskNotification } from './taskEventParser';
+import { parseSubagentStatusEvent, parseTaskNotification } from './taskEventParser';
 
 describe('parseTaskNotification', () => {
   it('parses a complete task_notification with usage', () => {
@@ -79,9 +79,9 @@ describe('parseTaskNotification', () => {
   });
 
   it('passes stopped status through for the caller to map', () => {
-    // parseTaskNotification does not interpret status; determineStatus maps
-    // stopped/failed -> error. Verify the raw status survives so that mapping
-    // can fire.
+    // parseTaskNotification does not interpret status; resolveSubagentRunState
+    // maps stopped/failed -> error. Verify the raw status survives so that
+    // mapping can fire.
     const ev = parseTaskNotification({
       subtype: 'task_notification',
       tool_use_id: 'tu_4',
@@ -114,5 +114,44 @@ describe('parseTaskNotification', () => {
       output_file: '',
     });
     expect(ev?.outputFilePath).toBeUndefined();
+  });
+});
+
+describe('parseSubagentStatusEvent', () => {
+  it('maps the engine-neutral payload onto a TaskEvent', () => {
+    expect(parseSubagentStatusEvent({
+      parentSessionId: 'ses_parent',
+      toolUseId: 'call_1',
+      childSessionId: 'ses_child',
+      status: 'completed',
+      description: 'Explore auth',
+      summary: 'done',
+    })).toEqual({
+      toolUseId: 'call_1',
+      status: 'completed',
+      agentId: 'ses_child',
+      summary: 'done',
+    });
+  });
+
+  it('accepts every terminal status core can emit', () => {
+    for (const status of ['completed', 'failed', 'stopped'] as const) {
+      expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status })?.status).toBe(status);
+    }
+  });
+
+  it('rejects running, unknown statuses and missing ids', () => {
+    expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status: 'running' })).toBeNull();
+    expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status: 'weird' })).toBeNull();
+    expect(parseSubagentStatusEvent({ status: 'completed' })).toBeNull();
+    expect(parseSubagentStatusEvent(null)).toBeNull();
+    expect(parseSubagentStatusEvent('completed')).toBeNull();
+  });
+
+  it('omits optional fields instead of inventing empty ones', () => {
+    expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status: 'failed' })).toEqual({
+      toolUseId: 'call_1',
+      status: 'failed',
+    });
   });
 });

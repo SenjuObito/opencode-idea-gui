@@ -60,6 +60,38 @@ public class OpenCodeMarkerParserTest {
     }
 
     @Test
+    public void testSubagentStatusMarkerCarriesTheBareJsonObject() {
+        // core emits [SUBAGENT_STATUS] via emitJsonStringMarker, i.e. the payload
+        // is JSON-stringified once: [SUBAGENT_STATUS] "{\"toolUseId\":...}"
+        String rawJson = "{\"parentSessionId\":\"ses_parent\",\"toolUseId\":\"call_1\","
+                + "\"childSessionId\":\"ses_child\",\"status\":\"completed\",\"summary\":\"done\"}";
+        String line = "[SUBAGENT_STATUS] " + gson.toJson(rawJson);
+
+        AtomicReference<String> receivedType = new AtomicReference<>();
+        AtomicReference<String> receivedContent = new AtomicReference<>();
+
+        MessageCallback callback = new MessageCallback() {
+            @Override
+            public void onMessage(String type, String content) {
+                receivedType.set(type);
+                receivedContent.set(content);
+            }
+
+            @Override
+            public void onError(String error) {}
+
+            @Override
+            public void onComplete(SDKResult result) {}
+        };
+
+        parser.processOutputLine(line, callback, new SDKResult(),
+                new OpenCodeMarkerParser.StreamContext());
+
+        assertEquals("subagent_status", receivedType.get());
+        assertEquals(rawJson, receivedContent.get());
+    }
+
+    @Test
     public void testTodoUpdatedWithSinglyEncodedPayload() {
         String rawJson = "{\"sessionID\":\"ses_123\",\"todos\":[{\"content\":\"Task 1\",\"status\":\"completed\"}]}";
         String line = "[TODO_UPDATED] " + rawJson;

@@ -7,6 +7,7 @@ import {
   parseSpawnAgentMeta,
   readAgentType,
   readToolUseStatus,
+  resolveSubagentRunState,
 } from './subagentResult';
 
 describe('isAsyncAgentInput', () => {
@@ -85,6 +86,75 @@ describe('isAsyncAgentInput', () => {
   it('returns false for a completed tool-use status (sync agent)', () => {
     expect(isAsyncAgentInput({ prompt: 'x' }, 'agent', null, 'completed')).toBe(false);
     expect(isAsyncAgentInput({ prompt: 'x' }, 'agent', null, 'running')).toBe(false);
+  });
+
+  it('recognizes opencode v2 launch acknowledgements by their running state', () => {
+    // v2 background launches have no fixed wording: either the synthetic
+    // notice or the ack object. Both mean "started", so the card must stay
+    // pending even when the input lost the background flag.
+    expect(isAsyncAgentInput({ description: 'x' }, 'subagent', {
+      type: 'tool_result',
+      content: '<subagent sessionID="ses_child" state="running" description="x">…</subagent>',
+    })).toBe(true);
+    expect(isAsyncAgentInput({ description: 'x' }, 'subagent', {
+      type: 'tool_result',
+      content: '{"sessionID":"ses_child","status":"running"}',
+    })).toBe(true);
+  });
+
+  it('does not treat a completed subagent report as an async launch ack', () => {
+    expect(isAsyncAgentInput({ agent: 'explore' }, 'subagent', {
+      type: 'tool_result',
+      content: '<subagent sessionID="ses_child" state="completed">done</subagent>',
+    })).toBe(false);
+  });
+});
+
+describe('resolveSubagentRunState', () => {
+  it('uses the canonical terminal event first, for both launch modes', () => {
+    expect(resolveSubagentRunState({
+      isAsync: true,
+      hasTerminalResult: true,
+      terminalEvent: { toolUseId: 't', status: 'completed' },
+    })).toBe('completed');
+    expect(resolveSubagentRunState({
+      isAsync: true,
+      hasTerminalResult: true,
+      terminalEvent: { toolUseId: 't', status: 'failed' },
+    })).toBe('error');
+    expect(resolveSubagentRunState({
+      isAsync: false,
+      hasTerminalResult: true,
+      terminalEvent: { toolUseId: 't', status: 'stopped' },
+    })).toBe('error');
+    expect(resolveSubagentRunState({
+      isAsync: false,
+      hasTerminalResult: true,
+      terminalEvent: { toolUseId: 't', status: 'completed' },
+    })).toBe('completed');
+  });
+
+  it('keeps an async launch running until a terminal event arrives', () => {
+    // The parent result is only an acknowledgement; treating it as completion
+    // is the bug that made async cards flip early.
+    expect(resolveSubagentRunState({ isAsync: true, hasTerminalResult: true })).toBe('running');
+    expect(resolveSubagentRunState({ isAsync: true, hasTerminalResult: false })).toBe('running');
+  });
+
+  it('surfaces a failed launch for async agents without an event', () => {
+    expect(resolveSubagentRunState({
+      isAsync: true,
+      hasTerminalResult: true,
+      resultIsError: true,
+    })).toBe('error');
+  });
+
+  it('completes an inline run from its terminal parent result (history replay)', () => {
+    // A reloaded session has no events; the persisted tool result is the
+    // bootstrap source for the card.
+    expect(resolveSubagentRunState({ isAsync: false, hasTerminalResult: true })).toBe('completed');
+    expect(resolveSubagentRunState({ isAsync: false, hasTerminalResult: true, resultIsError: true })).toBe('error');
+    expect(resolveSubagentRunState({ isAsync: false, hasTerminalResult: false })).toBe('running');
   });
 });
 

@@ -198,6 +198,17 @@ public class CallbackHandler {
     }
 
     /**
+     * Notify that a background subagent reached a terminal state.
+     *
+     * @param jsonContent {@code {toolUseId, childSessionId, status, summary?}}
+     */
+    public void notifySubagentStatus(String jsonContent) {
+        if (callback != null) {
+            callback.onSubagentStatus(jsonContent);
+        }
+    }
+
+    /**
      * Notify of a question request (AskUserQuestion).
      */
     public void notifyQuestionRequested(String jsonContent) {

@@ -4,6 +4,7 @@ import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.handler.history.HistoryHandler;
 import com.opencodebuddy.handler.core.MessageDispatcher;
 import com.opencodebuddy.handler.PermissionHandler;
+import com.opencodebuddy.handler.TabSessionCommandHandler;
 import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.session.OpencodePermissionRegistry;
@@ -96,6 +97,13 @@ public class OpencodeBuddyChatWindow {
             new com.opencodebuddy.tab.TabAttachmentStore(
                     com.opencodebuddy.tab.TabAttachmentStore.defaultRoot());
     private final TabCommandRouter tabCommandRouter;
+    /**
+     * The tab-scoped session commands (fork / share / revert / compact).
+     *
+     * <p>They live on the router rather than the window dispatcher so the router
+     * can resolve the sending tab and run each command on that tab's actor.</p>
+     */
+    private final TabSessionCommandHandler tabSessionCommands;
     private volatile String activeTabId = null;
     private final WebviewWatchdog webviewWatchdog;
     private volatile StreamMessageCoalescer streamCoalescer;
@@ -263,6 +271,21 @@ public class OpencodeBuddyChatWindow {
         });
 
         this.tabCommandRouter = new TabCommandRouter(tabRegistry);
+        // Session commands are tab-scoped: the router resolves the sending tab
+        // and the handler runs on that tab's actor, so a command can never act
+        // on "the active tab" by accident. The context is supplied lazily
+        // because the handler is built before ChatWindowDelegate exists.
+        this.tabSessionCommands = new TabSessionCommandHandler(
+                () -> this.handlerContext,
+                this::bindForkedSession);
+        tabCommandRouter.register("session.fork", tabSessionCommands::fork);
+        tabCommandRouter.register("share_session", tabSessionCommands::share);
+        tabCommandRouter.register("session.share", tabSessionCommands::share);
+        tabCommandRouter.register("unshare_session", tabSessionCommands::unshare);
+        tabCommandRouter.register("session.unshare", tabSessionCommands::unshare);
+        tabCommandRouter.register("session.revert", tabSessionCommands::revert);
+        tabCommandRouter.register("session.unrevert", tabSessionCommands::unrevert);
+        tabCommandRouter.register("session.compact", tabSessionCommands::compact);
         tabCommandRouter.register("tab.create", command -> {
             String tabIdStr = command.tabId().value();
             createSessionForTab(tabIdStr);
@@ -3304,12 +3327,12 @@ public class OpencodeBuddyChatWindow {
             return;
         }
 
-        // The tab commands are the registry's business, not a handler's: they
-        // create, point at and close tabs, which the handlers cannot see.
-        // Lifecycle events also use a `tab.` prefix (tab.loading.changed,
-        // tab.status.changed) but belong to the window dispatcher; only types
-        // the router registered are treated as tab commands.
-        if (command.getType().startsWith("tab.") && tabCommandRouter.handles(command.getType())) {
+        // The router owns every command it registered: tab lifecycle commands
+        // (tab.create, tab.activate, ...) and the session commands that must act
+        // on the tab that sent them (fork / share / revert / compact). The
+        // prefix is not the criterion — only the registration is, so lifecycle
+        // events such as tab.loading.changed stay with the window dispatcher.
+        if (tabCommandRouter.handles(command.getType())) {
             routeTabCommand(command);
             return;
         }
@@ -4155,6 +4178,7 @@ public class OpencodeBuddyChatWindow {
                     .build());
                 return;
             }
+            String currentTabId = findTabIdForSession(currentId);
             if (streamCoalescer != null && streamCoalescer.isStreamActive()) {
                 deferredReload.defer(currentId);
                 LOG.info("[OpencodeBuddyChatWindow] Same-session resume deferred — "
@@ -4163,7 +4187,8 @@ public class OpencodeBuddyChatWindow {
                 // guard now so a later deferred reload can paint; if the list is empty
                 // the stream-end drain will repopulate it.
                 publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
-                    .session(current.getSessionId())
+                    .session(currentId)
+                    .tab(currentTabId)
                     .field("messageCount", current.getMessages().size())
                     .build());
                 return;
@@ -4175,8 +4200,11 @@ public class OpencodeBuddyChatWindow {
             restoring.loadFromServer().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
                 if (disposed || getSession() != restoring) {
                     publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                    .session(currentId)
+                    .tab(currentTabId)
                     .field("messageCount", 0)
                     .build());
+                    markHistoryLoaded(currentId);
                     return;
                 }
                 int count = restoring.getMessages().size();
@@ -4188,16 +4216,22 @@ public class OpencodeBuddyChatWindow {
                     targetCoalescer.flush(seq -> {
                         if (!disposed) {
                             publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                        .session(currentId)
+                        .tab(currentTabId)
                         .field("messageCount", count)
                         .build());
                             syncRevertStateToFrontend(restoring);
+                            markHistoryLoaded(currentId);
                         }
                     });
                 } else {
                     publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                        .session(currentId)
+                        .tab(currentTabId)
                         .field("messageCount", count)
                         .build());
                     syncRevertStateToFrontend(restoring);
+                    markHistoryLoaded(currentId);
                 }
             })).exceptionally(ex -> {
                 LOG.warn("[OpencodeBuddyChatWindow] Same-session soft reload failed: " + ex.getMessage(), ex);
@@ -4213,8 +4247,15 @@ public class OpencodeBuddyChatWindow {
         });
     }
 
-    private void syncRevertStateToFrontend(OpencodeSession restoring) {
-        if (restoring == null) {
+    /** The tab that owns the loaded session is no longer waiting for history. */
+    private void markHistoryLoaded(String sessionId) {
+        TabRecord record = tabRegistry.findBySession(sessionId);
+        if (record != null) {
+            tabRegistry.markBound(record.getTabId());
+        }
+    }
+
+    private void syncRevertStateToFrontend(OpencodeSession restoring) {        if (restoring == null) {
             return;
         }
         SessionState.RevertState rs = restoring.getRevertState();
@@ -4226,8 +4267,8 @@ public class OpencodeBuddyChatWindow {
             revertPayload.add("messageId", com.google.gson.JsonNull.INSTANCE);
         }
         publishTabEvent(com.opencodebuddy.tab.TabEvent.of("revert.changed")
-                .session(getSession() != null ? getSession().getSessionId() : null)
-                .tab(findTabIdForSession(getSession() != null ? getSession().getSessionId() : null))
+                .session(restoring.getSessionId())
+                .tab(findTabIdForSession(restoring.getSessionId()))
                 .json("state", revertPayload.toString())
                 .build());
     }

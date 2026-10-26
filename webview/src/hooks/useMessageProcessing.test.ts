@@ -74,13 +74,13 @@ describe('useMessageProcessing', () => {
       useMessageProcessing({ messages, currentSessionId: 'session-1', t }),
     );
 
-    // /compact user message + summary notification
+    // /compact user message + summary compact_notification
     expect(result.current.mergedMessages).toHaveLength(2);
     expect(result.current.mergedMessages[0].type).toBe('user');
-    expect(result.current.mergedMessages[1].type).toBe('notification');
+    expect(result.current.mergedMessages[1].type).toBe('compact_notification');
   });
 
-  it('shows auto-compact summary as notification', () => {
+  it('shows auto-compact summary as compact_notification', () => {
     const messages: ClaudeMessage[] = [
       makeMessage('user', '', {
         raw: { isCompactSummary: true, message: { content: 'This session is being continued from a previous conversation...' } },
@@ -97,7 +97,7 @@ describe('useMessageProcessing', () => {
     );
 
     expect(result.current.mergedMessages).toHaveLength(2);
-    expect(result.current.mergedMessages[0].type).toBe('notification');
+    expect(result.current.mergedMessages[0].type).toBe('compact_notification');
     expect(result.current.mergedMessages[1].type).toBe('assistant');
   });
 
@@ -138,10 +138,10 @@ describe('useMessageProcessing', () => {
       useMessageProcessing({ messages, currentSessionId: 'session-1', t }),
     );
 
-    // /compact user message should be swapped before the summary notification
+    // /compact user message should be swapped before the summary compact_notification
     expect(result.current.mergedMessages).toHaveLength(2);
     expect(result.current.mergedMessages[0].type).toBe('user');
-    expect(result.current.mergedMessages[1].type).toBe('notification');
+    expect(result.current.mergedMessages[1].type).toBe('compact_notification');
   });
 
   it('non-compact command with stdout remains hidden', () => {

@@ -361,7 +361,7 @@ describe('useSessionTabs - history session loading', () => {
     expect(result.current.tabs).toHaveLength(1);
     expect(result.current.tabs[0].sessionId).toBe('ses_h1');
     expect(result.current.tabs[0].title).toBe('历史会话 1');
-    expect(loadHistorySession).toHaveBeenCalledWith('ses_h1');
+    expect(loadHistorySession).toHaveBeenCalledWith('ses_h1', result.current.tabs[0].id);
     unmount();
   });
 
@@ -379,8 +379,8 @@ describe('useSessionTabs - history session loading', () => {
     expect(result.current.tabs[0].sessionId).toBe('ses_h1');
     expect(result.current.tabs[1].sessionId).toBe('ses_h2');
     expect(result.current.activeTabId).toBe(result.current.tabs[1].id);
-    expect(loadHistorySession).toHaveBeenNthCalledWith(1, 'ses_h1');
-    expect(loadHistorySession).toHaveBeenNthCalledWith(2, 'ses_h2');
+    expect(loadHistorySession).toHaveBeenNthCalledWith(1, 'ses_h1', result.current.tabs[0].id);
+    expect(loadHistorySession).toHaveBeenNthCalledWith(2, 'ses_h2', result.current.tabs[1].id);
     unmount();
   });
 

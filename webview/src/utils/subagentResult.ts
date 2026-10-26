@@ -1,4 +1,4 @@
-import type { ToolResultBlock } from '../types';
+import type { SubagentStatus, TaskEvent, ToolResultBlock } from '../types';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
 
 /**
@@ -46,7 +46,14 @@ export function extractResultText(result?: ToolResultBlock | null): string | und
 // terminal report is delivered solely as a main-session XML (see the ai-bridge
 // interception in runtime-lifecycle.js). Matching this text is what keeps the
 // card from flipping to "completed" the instant the ack lands.
-const ASYNC_LAUNCH_TEXT = /Async agent launched/i;
+//
+// opencode v2 has no fixed wording: a background launch comes back either as the
+// synthetic `<subagent sessionID="…" state="running">` notice or as the launch
+// ack object `{ "sessionID": "…", "status": "running" }`. Both mean "the child
+// started, not finished" and must be treated exactly like Claude's ack — keyed
+// off the state, never off the `subagent` tag alone (a completed child also
+// carries that tag).
+const ASYNC_LAUNCH_TEXT = /Async agent launched|<subagent\b[^>]*\bstate\s*=\s*["']running["']|"status"\s*:\s*"running"/i;
 
 /**
  * Whether an Agent/Task tool input launches a background (async) subagent.
@@ -114,6 +121,54 @@ export function readToolUseStatus(raw: unknown): unknown {
     return undefined;
   }
   return (toolUseResult as Record<string, unknown>).status;
+}
+
+export interface SubagentRunStateInput {
+  /** True when the parent result is only a launch acknowledgement (async agent). */
+  isAsync: boolean;
+  /** True when a tool_result block exists for this call. */
+  hasTerminalResult: boolean;
+  resultIsError?: boolean;
+  /**
+   * Canonical terminal event pushed by core (`subagent.status`), for inline and
+   * background calls alike. Absent while the run is still going, and on history
+   * replay (no events are replayed).
+   */
+  terminalEvent?: Pick<TaskEvent, 'status'> | null;
+}
+
+/**
+ * The single status derivation for a subagent run.
+ *
+ * <p>Core publishes `subagent.status` for both launch modes, so a terminal event
+ * is always the first source. The parent tool result is the replay/bootstrap
+ * source: a reloaded session has no events, and an inline call's result is its
+ * child's final report. A launch acknowledgement is never terminal, which is
+ * why an async run stays `running` until its event arrives.</p>
+ *
+ * <p>Child transcripts (`subagent.history`) are deliberately NOT an input. A
+ * transcript snapshot is a point-in-time read that can be older than the run's
+ * terminal state; treating it as status is what pinned the card spinner. The
+ * transcript remains the detail view's data source only.</p>
+ */
+export function resolveSubagentRunState({
+  isAsync,
+  hasTerminalResult,
+  resultIsError,
+  terminalEvent,
+}: SubagentRunStateInput): SubagentStatus {
+  if (terminalEvent) {
+    return terminalEvent.status === 'failed' || terminalEvent.status === 'stopped'
+      ? 'error'
+      : 'completed';
+  }
+  if (isAsync) {
+    // A failed launch (validation error before the background task was
+    // registered) returns an is_error tool_result and never emits an event.
+    return resultIsError ? 'error' : 'running';
+  }
+  if (!hasTerminalResult) return 'running';
+  return resultIsError ? 'error' : 'completed';
 }
 
 export interface SpawnAgentMeta {

@@ -18,7 +18,7 @@
     align-items: center;
     flex: 1;
     min-width: 0; /* Allow flex items to shrink below their minimum content size */
-    overflow: hidden;
+    overflow: visible;
     .flex-gap-horizontal(12px);
 
     > * {
@@ -295,15 +295,34 @@
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 2px 0;
+    padding: 6px 0;
+    margin: -4px 0;
     scrollbar-width: none;
     &::-webkit-scrollbar {
         display: none;
     }
 
+    &:hover {
+        overflow: visible;
+    }
+
     &.is-reordering {
         cursor: grabbing;
         user-select: none;
+        overflow: hidden !important;
+
+        .session-tab-item:not(.session-tab-item-following) {
+            pointer-events: none;
+
+            .session-tab-inner {
+                position: relative !important;
+                transform: none !important;
+                box-shadow: none !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                z-index: 1 !important;
+            }
+        }
     }
 }
 
@@ -348,118 +367,186 @@
 }
 
 .session-tab-item {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-size: 12px;
-    color: var(--color-chat-bars-muted-text, var(--text-tertiary));
-    background: transparent;
-    border: 1px solid transparent;
-    cursor: pointer;
-    white-space: nowrap;
     max-width: 150px;
-    user-select: none;
-    transition: all 0.15s ease;
+    height: 28px;
     flex-shrink: 0;
+    user-select: none;
+    box-sizing: border-box;
 
-    &:hover {
-        background: var(--color-chat-bars-hover-bg, var(--bg-hover));
-        color: var(--color-chat-bars-text, var(--text-secondary));
+    &.is-dragging {
+        opacity: 0.55;
+        cursor: grabbing;
+    }
 
-        .session-tab-close-btn {
-            opacity: 0.8;
+    /* 正随鼠标跟随移动的 tab：固定定位并悬浮在最上层，位置由 JS 实时更新 */
+    &.session-tab-item-following {
+        position: fixed;
+        z-index: 10001;
+        pointer-events: none;
+        opacity: 0.95 !important;
+        transform: none !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        border-color: var(--accent-primary, #007acc);
+        background: var(--bg-tertiary);
+        border-radius: 6px;
+        max-width: none !important;
+        cursor: grabbing;
+
+        .session-tab-inner {
+            box-shadow: none !important;
+            background: transparent !important;
+            transform: none !important;
+            width: 100% !important;
+            max-width: none !important;
+
+            .session-tab-title {
+                overflow: visible !important;
+                text-overflow: clip !important;
+                white-space: nowrap !important;
+                flex: none !important;
+            }
         }
     }
 
-    &.active {
+    .session-tab-inner {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: var(--color-chat-bars-muted-text, var(--text-tertiary));
+        background: transparent;
+        border: 1px solid transparent;
+        cursor: pointer;
+        white-space: nowrap;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    box-shadow 0.2s ease,
+                    background 0.15s ease,
+                    border-color 0.15s ease,
+                    color 0.15s ease;
+
+        .session-tab-icon {
+            font-size: 13px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            color: var(--text-tertiary);
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .session-tab-title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            min-width: 0;
+            transition: color 0.15s ease;
+        }
+
+        .session-tab-inline-input {
+            background: var(--bg-primary);
+            border: 1px solid var(--accent-primary);
+            color: var(--text-primary);
+            border-radius: 3px;
+            font-size: 12px;
+            padding: 1px 4px;
+            outline: none;
+            max-width: 100px;
+        }
+
+        .session-tab-close-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            border: none;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            opacity: 0;
+            padding: 0;
+            transition: opacity 0.15s ease, background 0.15s ease;
+            flex-shrink: 0;
+
+            &:hover {
+                opacity: 1 !important;
+                background: var(--color-button-danger-hover-bg, rgba(239, 68, 68, 0.2));
+                color: var(--color-danger, #ef4444);
+            }
+
+            .codicon {
+                font-size: 12px;
+            }
+        }
+    }
+
+    /* Active 状态 */
+    &.active .session-tab-inner {
         background: var(--bg-tertiary);
         color: var(--text-primary);
         border: 1px solid var(--border-secondary);
         font-weight: 500;
+
+        .session-tab-icon {
+            color: var(--accent-primary);
+        }
 
         .session-tab-close-btn {
             opacity: 0.7;
         }
     }
 
-    &.is-dragging {
-        opacity: 0.55;
-        transform: scale(0.98);
-        cursor: grabbing;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        border-color: var(--accent-primary, #007acc);
-    }
+    /* Hover 状态：macOS Dock 风格悬浮变大、置顶、以标题栏可用空间展开完整标题 */
+    &:hover:not(.is-dragging):not(.is-editing) {
+        z-index: 1000;
 
-    /* 正随鼠标跟随移动的 tab：固定定位并悬浮在最上层，位置由 JS 实时更新 */
-    &.session-tab-item-following {
-        position: fixed;
-        z-index: 9999;
-        pointer-events: none;
-        opacity: 1 !important;
-        transform: none !important;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-        border-color: var(--accent-primary, #007acc);
-        background: var(--bg-tertiary);
-        cursor: grabbing;
-    }
+        .session-tab-inner {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: max-content;
+            min-width: 100%;
+            max-width: calc(100vw - 80px);
+            height: 100%;
+            z-index: 1000;
+            transform: translateY(-2px) scale(1.06);
+            transform-origin: left center;
+            color: var(--color-chat-bars-text, var(--text-primary));
+            background: var(--bg-secondary);
+            border-color: var(--border-secondary);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.12);
 
-    .session-tab-icon {
-        font-size: 13px;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        color: var(--text-tertiary);
-    }
+            .session-tab-icon {
+                transform: scale(1.1);
+            }
 
-    &.active .session-tab-icon {
-        color: var(--accent-primary);
-    }
+            .session-tab-title {
+                overflow: visible;
+                text-overflow: clip;
+                white-space: nowrap;
+                flex: none;
+                font-size: 12.5px;
+            }
 
-    .session-tab-title {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        flex: 1;
-        min-width: 0;
-    }
-
-    .session-tab-inline-input {
-        background: var(--bg-primary);
-        border: 1px solid var(--accent-primary);
-        color: var(--text-primary);
-        border-radius: 3px;
-        font-size: 12px;
-        padding: 1px 4px;
-        outline: none;
-        max-width: 100px;
-    }
-
-    .session-tab-close-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 16px;
-        height: 16px;
-        border-radius: 3px;
-        border: none;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-        opacity: 0;
-        padding: 0;
-        transition: opacity 0.15s ease, background 0.15s ease;
-        flex-shrink: 0;
-
-        &:hover {
-            opacity: 1 !important;
-            background: var(--color-button-danger-hover-bg, rgba(239, 68, 68, 0.2));
-            color: var(--color-danger, #ef4444);
+            .session-tab-close-btn {
+                opacity: 0.85;
+            }
         }
 
-        .codicon {
-            font-size: 12px;
+        &.active .session-tab-inner {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-primary, #007acc);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.32), 0 0 0 1px var(--accent-primary, #007acc);
         }
     }
 }
@@ -593,16 +680,18 @@
 
 .session-tab-overflow-menu {
     position: fixed;
-    min-width: 180px;
-    max-width: 280px;
-    max-height: 320px;
+    min-width: 200px;
+    max-width: calc(100vw - 16px);
+    max-height: 360px;
     overflow-y: auto;
+    overflow-x: hidden;
     background: var(--color-chat-bars-bg, var(--bg-secondary));
     border: 1px solid var(--border-secondary);
     border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
     z-index: 10000;
-    padding: 4px;
+    padding: 6px;
+    box-sizing: border-box;
 
     .session-tab-overflow-item {
         display: flex;
@@ -611,9 +700,17 @@
         padding: 6px 8px;
         border-radius: 6px;
         font-size: 12px;
-        color: var(--text-secondary);
+        color: var(--color-chat-bars-muted-text, var(--text-secondary));
         cursor: pointer;
-        transition: background 0.12s ease;
+        /* The drag handle is the title itself; without this a long title starts a
+           native text selection instead of the custom drag. */
+        user-select: none;
+        position: relative;
+        box-sizing: border-box;
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    box-shadow 0.2s ease,
+                    background 0.15s ease,
+                    color 0.15s ease;
 
         &.is-dragging {
             opacity: 0.4;
@@ -626,12 +723,31 @@
             border-radius: 6px;
         }
 
-        &:hover {
+        /* 鼠标悬浮时放大并展示完整标题，宽度不超过插件宽度 */
+        &:hover:not(.is-dragging) {
             background: var(--color-chat-bars-hover-bg, var(--bg-hover));
             color: var(--text-primary);
+            transform: scale(1.025);
+            transform-origin: center center;
+            z-index: 10;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+
+            .session-tab-icon {
+                transform: scale(1.15);
+            }
+
+            .session-tab-overflow-title {
+                max-width: none;
+                overflow: visible;
+                text-overflow: clip;
+                white-space: normal;
+                word-break: break-word;
+                font-size: 12.5px;
+                color: var(--text-primary);
+            }
 
             .session-tab-overflow-close {
-                opacity: 0.8;
+                opacity: 0.85;
             }
         }
 
@@ -647,6 +763,7 @@
             display: flex;
             align-items: center;
             color: var(--text-tertiary);
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         &.active .session-tab-icon {
@@ -655,9 +772,13 @@
 
         .session-tab-overflow-title {
             flex: 1;
+            min-width: 0;
+            max-width: 220px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            transition: color 0.15s ease, font-size 0.15s ease;
+            line-height: 1.4;
         }
 
         .session-tab-overflow-close {
@@ -671,7 +792,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: opacity 0.15s ease, background 0.15s ease;
+            transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+            flex-shrink: 0;
 
             &:hover {
                 opacity: 1 !important;
@@ -685,5 +807,6 @@
         }
     }
 }
+
 
 

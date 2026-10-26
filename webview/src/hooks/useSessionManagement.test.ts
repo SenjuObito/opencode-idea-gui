@@ -417,8 +417,52 @@ describe('useSessionManagement', () => {
     expect(window.sendToJava).not.toHaveBeenCalledWith('create_new_session:');
   });
 
-  it('loadHistorySession without loading state does not send interrupt', () => {
+  it('binds a named tab even when currentSessionId already points at the session', () => {
     const historyData = {
+      success: true,
+      sessions: [
+        {
+          sessionId: 'fork-1',
+          title: 'Forked',
+          provider: 'opencode',
+          messageCount: 2,
+          lastTimestamp: Date.now(),
+        },
+      ],
+      total: 1,
+    } as unknown as HistoryData;
+
+    const mocks = createMocks();
+
+    const { result } = renderHook(() =>
+      useSessionManagement({
+        messages: [],
+        loading: false,
+        historyData,
+        currentSessionId: 'fork-1',
+        currentSessionIdRef: { current: 'fork-1' },
+        ...mocks,
+        t,
+      })
+    );
+
+    // The screen still shows another tab. The fork lands in its own tab.
+    withActiveTab('tab-source');
+    act(() => {
+      result.current.loadHistorySession('fork-1', 'tab-fork');
+    });
+
+    const envelopes = sentCommands(
+      (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map((call: unknown[]) => call[0] as string),
+    );
+    const load = envelopes.find((envelope) => envelope?.type === 'session.load');
+    // A bind, not a "same session" soft reload: it names the reserved tab.
+    expect(load?.tabId).toBe('tab-fork');
+    expect(isTabTransitioning('tab-fork')).toBe(true);
+    expect(isTabTransitioning('tab-source')).toBe(false);
+  });
+
+  it('loadHistorySession without loading state does not send interrupt', () => {    const historyData = {
       success: true,
       sessions: [
         {

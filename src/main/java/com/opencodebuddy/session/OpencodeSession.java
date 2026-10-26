@@ -4,6 +4,7 @@ import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.tab.TabStreamRouter;
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -191,6 +192,18 @@ public class OpencodeSession {
         }
 
         default void onTodoUpdated(String jsonContent) {
+        }
+
+        /**
+         * Canonical terminal state for a background subagent, decided by core.
+         *
+         * <p>Payload: {@code {toolUseId, childSessionId, status, description?,
+         * summary?}} with {@code status} in {@code completed|failed|stopped}.
+         * The value is engine-neutral: opencode v1's {@code task} and v2's
+         * {@code subagent} both arrive here, so the webview never branches on
+         * the engine.</p>
+         */
+        default void onSubagentStatus(String jsonContent) {
         }
 
         default void onQuestionRequested(String jsonContent) {
@@ -797,9 +810,82 @@ public class OpencodeSession {
 
     /**
      * Load message history from the server.
+     *
+     * <p>After the transcript lands, background subagent state is reconciled
+     * once: a persisted transcript only carries the launch acknowledgement, so
+     * a session reopened after the child finished would otherwise show a
+     * permanent spinner. The reconcile is fire-and-forget and never changes the
+     * load result.</p>
      */
     public CompletableFuture<Void> loadFromServer() {
-        return messageOrchestrator.loadFromServer();
+        return messageOrchestrator.loadFromServer()
+                .whenComplete((ignored, error) -> {
+                    if (error == null) {
+                        reconcileSubagentStates();
+                    }
+                });
+    }
+
+    /**
+     * Ask core for the canonical status of every background subagent in this
+     * session and forward the terminal ones as the same {@code subagent.status}
+     * event the live path uses.
+     *
+     * <p>One bounded request per load, no polling. Core already normalises the
+     * v1 {@code task} / v2 {@code subagent} difference, so nothing here branches
+     * on the engine.</p>
+     */
+    private void reconcileSubagentStates() {
+        String sessionId = state.getSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        openCodeSDKBridge.getSessionSubagents(sessionId, state.getCwd(), 20)
+                .whenComplete((payload, error) -> {
+                    if (error != null || payload == null || !payload.isJsonObject()) {
+                        return;
+                    }
+                    JsonObject root = payload.getAsJsonObject();
+                    if (root.has("success") && !root.get("success").getAsBoolean()) {
+                        return;
+                    }
+                    JsonElement list = root.get("subagents");
+                    if (list == null || !list.isJsonArray()) {
+                        return;
+                    }
+                    for (JsonElement item : list.getAsJsonArray()) {
+                        if (item == null || !item.isJsonObject()) {
+                            continue;
+                        }
+                        JsonObject entry = item.getAsJsonObject();
+                        if (!entry.has("terminal") || entry.get("terminal").isJsonNull()
+                                || !entry.get("terminal").getAsBoolean()) {
+                            continue;
+                        }
+                        callbackFacade.getCallbackHandler()
+                                .notifySubagentStatus(toSubagentStatusPayload(entry));
+                    }
+                });
+    }
+
+    /**
+     * Core's batch vocabulary is the transcript vocabulary
+     * ({@code completed|error|running}); the event contract uses
+     * {@code completed|failed|stopped}.
+     */
+    private static String toSubagentStatusPayload(JsonObject entry) {
+        JsonObject payload = new JsonObject();
+        for (String field : new String[]{"toolUseId", "childSessionId", "description", "summary"}) {
+            JsonElement value = entry.get(field);
+            if (value != null && !value.isJsonNull() && value.isJsonPrimitive()) {
+                payload.addProperty(field, value.getAsString());
+            }
+        }
+        JsonElement status = entry.get("status");
+        String raw = status != null && !status.isJsonNull() && status.isJsonPrimitive()
+                ? status.getAsString() : "";
+        payload.addProperty("status", "error".equals(raw) ? "failed" : raw);
+        return payload.toString();
     }
 
     /**

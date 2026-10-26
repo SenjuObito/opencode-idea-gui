@@ -419,9 +419,6 @@ public class ChatWindowDelegate {
             @Override public void onRefreshEditorContext(boolean enabled) {
                 host.onRefreshEditorContext(enabled);
             }
-            @Override public void onForkBound(String targetTabId, String sessionId) {
-                host.bindForkedSession(targetTabId, sessionId);
-            }
         }));
 
         PermissionHandler permissionHandler = new PermissionHandler(handlerContext);
@@ -431,6 +428,18 @@ public class ChatWindowDelegate {
 
         HistoryHandler historyHandler = new HistoryHandler(handlerContext);
         historyHandler.setSessionLoadCallback((sessionId, projectPath, provider, model, tabId) -> {
+            if (tabId != null && !tabId.isBlank()) {
+                // The command names its tab, so bind/hydrate that tab. Never
+                // infer the target from the active session: after a fork the
+                // active session is already the new one, which made the load
+                // look like a "same-session soft reload", skip the tab binding
+                // and leave the forked tab stuck in LOADING_HISTORY.
+                host.getSessionLifecycleManager().loadHistorySession(
+                        sessionId, projectPath, provider, model, tabId);
+                return;
+            }
+            // Legacy window-level callers (no tab in the envelope) keep the
+            // old heuristic. Every webview command carries a tab id now.
             OpencodeSession current = host.getSession();
             boolean sameSession = current != null
                     && sessionId != null
@@ -447,7 +456,7 @@ public class ChatWindowDelegate {
                 host.reloadActiveSessionMessages();
             } else {
                 host.getSessionLifecycleManager().loadHistorySession(
-                        sessionId, projectPath, provider, model, tabId);
+                        sessionId, projectPath, provider, model, null);
             }
         });
         host.setHistoryHandler(historyHandler);

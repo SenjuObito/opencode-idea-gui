@@ -437,6 +437,7 @@ void handle(TabCommand command) {
 | `session.interrupt` | TabSessionActor | 必须带 tabId |
 | `session.load` | TabSessionFactory | 绑定历史会话 |
 | `session.fork` | TabSessionFactory | 目标 tab 预创建 |
+| `session.share` / `session.unshare` | TabSessionCommandHandler | per-tab，事件带 tab/session |
 | `session.revert` / `unrevert` | TabSessionActor | per-tab |
 | `session.compact` | TabSessionActor | per-tab |
 | `session.rename` | TabSessionActor | per-tab |

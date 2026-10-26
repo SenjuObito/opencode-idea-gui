@@ -36,6 +36,7 @@ import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved } from './utils/messageUtils';
 import { parseRevertStateEvent } from './utils/revertStateEvent';
 import type { HostEventEnvelope } from './utils/hostEventTypes';
+import type { CompactNoticeData } from './components/ChatHeader/types';
 import type { ClaudeMessage } from './types';
 import { getRecommendedReasoningEffort, type Attachment, type ChatInputBoxHandle } from './components/ChatInputBox/types';
 import { ToastContainer } from './components/Toast';
@@ -89,6 +90,7 @@ const App = () => {
     sseTodos,
     isCompacting, setIsCompacting,
     compactingStartTime, setCompactingStartTime,
+    compactNotice, setCompactNotice,
   } = useMessages();
 
   // task_events live in TaskEventProvider (SubagentContext) so their updates do
@@ -661,6 +663,35 @@ const App = () => {
     });
   }, []);
 
+  /**
+   * Store a compact result on the tab that owns the session.
+   *
+   * <p>A background tab has no visible transcript to append to, and a
+   * foreground tab loses an appended message when the history reload that
+   * follows the compaction replaces the transcript. Writing the result on the
+   * tab keeps one source of truth: the notice is rendered while the tab is
+   * active and cleared by the next user message.</p>
+   */
+  const applyCompactNotice = useCallback((tabId: string | null | undefined, notice: CompactNoticeData) => {
+    const merge = (prev: CompactNoticeData | null | undefined): CompactNoticeData => (
+      prev && prev.status === 'failure' && notice.status === 'failure' && !prev.detail && notice.detail
+        ? { ...prev, detail: notice.detail }
+        : notice
+    );
+    if (tabId) {
+      window.__sessionTabsStore?.updateTab?.(tabId, (tab) => {
+        tab.isCompacting = false;
+        tab.compactingStartTime = null;
+        tab.compactNotice = merge(tab.compactNotice);
+      });
+    } else {
+      // No tab (single-window fallback): keep the notice on the active one. A
+      // known tab that disappeared meanwhile drops the result instead of
+      // showing it in whichever conversation happens to be on screen.
+      setCompactNotice((prev) => merge(prev));
+    }
+  }, [setCompactNotice]);
+
   // Register bridge callbacks for share / fork / revert / compact results
   useEffect(() => {    /**
    * A fork that the host bound to a reserved tab.
@@ -668,13 +699,18 @@ const App = () => {
    * <p>The webview reserved the tab before the daemon answered, so the fork
    * lands in exactly that tab and the source tab stays untouched.</p>
    */
-  const onForkBound = (targetTabId: string, sessionId: string) => {
+  const onForkBound = (targetTabId: string, sessionId: string, sourceTabId?: string, sourceSessionId?: string) => {
     try {
       if (!targetTabId || !sessionId) return;
-      const sourceTab = appTabsRef.current?.find((t) => t.id !== targetTabId);
+      const activeId = window.__sessionTabsStore?.getActiveTabId?.() ?? activeTabId;
+      const currentTabs = appTabsRef.current || [];
+      const sourceTab =
+        (sourceTabId && currentTabs.find((t) => t.id === sourceTabId)) ||
+        (sourceSessionId && currentTabs.find((t) => t.sessionId === sourceSessionId)) ||
+        (activeId && currentTabs.find((t) => t.id === activeId && t.id !== targetTabId)) ||
+        currentTabs.find((t) => t.id !== targetTabId);
       const forkedTitle = sourceTab ? `${sourceTab.title} (Fork)` : `${sessionTitle || 'Session'} (Fork)`;
       openSessionInTabRef.current(sessionId, forkedTitle, undefined, undefined, undefined, targetTabId);
-      void loadHistorySession(sessionId, targetTabId);
       addToast(t('chat.forkCreatedToast', { defaultValue: '会话已成功 Fork 并打开新标签页' }), 'success');
     } catch (error) {
       console.error('[App] onForkBound failed', error);
@@ -867,15 +903,16 @@ const App = () => {
       const isForeground = !targetSessionId
         || !window.__sessionTabsStore
         || window.__sessionTabsStore.isActiveSession(targetSessionId);
+      // Record the result before the foreground check: a compact that finishes
+      // in a background tab must still show its success pill when the user
+      // switches back.
+      applyCompactNotice(ownerTabId, { status: 'success', at: Date.now() });
       if (!isForeground) {
-        // The result belongs to the tab that asked; clear only its spinner.
-        setTabCompacting(ownerTabId, false, null);
         return;
       }
       setIsCompacting(false);
       setCompactingStartTime(null);
       setTabCompacting(ownerTabId, false, null);
-      setMessages((prev) => [...prev, createCompactSuccessNotice(t('chat.compactSuccess'))]);
       // Force scroll to bottom after compact completes
       requestAnimationFrame(() => {
         scrollToBottom();
@@ -892,29 +929,13 @@ const App = () => {
       const isForeground = !targetSessionId
         || !window.__sessionTabsStore
         || window.__sessionTabsStore.isActiveSession(targetSessionId);
+      applyCompactNotice(ownerTabId, { status: 'failure', detail, at: Date.now() });
       if (!isForeground) {
-        setTabCompacting(ownerTabId, false, null);
         return;
       }
       setIsCompacting(false);
       setCompactingStartTime(null);
       setTabCompacting(ownerTabId, false, null);
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.type === 'notification') {
-          const raw = last.raw as Record<string, unknown> | undefined;
-          if (raw?.compactStatus === 'failure') {
-            // Already showing a failure notice; if current has no detail but new one does, enrich it
-            if (!raw.compactDetail && detail) {
-              const updated = [...prev];
-              updated[updated.length - 1] = createCompactFailureNotice(t('chat.compactFailed'), detail);
-              return updated;
-            }
-            return prev;
-          }
-        }
-        return [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)];
-      });
       requestAnimationFrame(() => {
         scrollToBottom();
       });
@@ -943,7 +964,7 @@ const App = () => {
         'session.compact.done', 'session.compact.failed',
       ]);
     };
-  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, setTabCompacting, scrollToBottom]);
+  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, setTabCompacting, applyCompactNotice, scrollToBottom]);
 
   // ── Window callbacks (bridge communication) ──
   useWindowCallbacks({
@@ -981,10 +1002,21 @@ const App = () => {
   });
 
   // ── Message processing ──
+  // Compact feedback is tab state, not a transcript entry. Injecting it here
+  // keeps one success/failure pill across the history reload and tab switches
+  // that follow a compaction; handleSubmit clears it with the next user message.
+  const messagesWithCompactNotice = useMemo(() => {
+    if (!compactNotice) return messages;
+    const notice = compactNotice.status === 'failure'
+      ? createCompactFailureNotice(t('chat.compactFailed'), compactNotice.detail)
+      : createCompactSuccessNotice(t('chat.compactSuccess'));
+    return [...messages, notice];
+  }, [messages, compactNotice, t]);
+
   const {
     getMessageText, getContentBlocks,
     mergedMessages, sentAttachmentsRef,
-  } = useMessageProcessing({ messages, currentSessionId, t });
+  } = useMessageProcessing({ messages: messagesWithCompactNotice, currentSessionId, t });
 
   // ── Message sender ──
   const {
@@ -1145,6 +1177,10 @@ const App = () => {
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     if (!text && !hasAttachments) return;
 
+    // The compact pill reports the context transition the next prompt starts
+    // from. Sending that prompt is what acknowledges it.
+    setCompactNotice(null);
+
     // View-switching / session-reset commands bypass busy guard
     if (text.startsWith('/')) {
       const command = text.split(/\s+/)[0].toLowerCase();
@@ -1195,7 +1231,7 @@ const App = () => {
     // 普通消息 / 队列消息 / !shell —— 服务端 prompt 前都会 cleanup revert
     consumeRevertBoundary();
     hookHandleSubmit(content, attachments, fileTags);
-  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
+  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary, setCompactNotice]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
@@ -1312,6 +1348,11 @@ const App = () => {
     openSessionInTabRef.current = openSessionInTab;
     appTabsRef.current = tabs;
   }, [openSessionInTab, tabs]);
+
+  // Reset message anchor rail collapsed count when active tab or session switches
+  useEffect(() => {
+    setAnchorCollapsedCount(0);
+  }, [activeTabId, currentSessionId]);
 
   // Synchronize active tab title to IDE ToolWindow
   useEffect(() => {

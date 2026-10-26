@@ -33,6 +33,7 @@ public final class PendingSend {
     private String sessionId;
     private boolean completed;
     private boolean timedOut;
+    private boolean bootstrapTimeoutEnabled = true;
 
     public PendingSend(String requestId, String tabId, Consumer<String> markerConsumer) {
         this.requestId = Objects.requireNonNull(requestId, "requestId");
@@ -92,6 +93,22 @@ public final class PendingSend {
     }
 
     /**
+     * Learn the session from a line the host routed to that session's sink.
+     *
+     * <p>A request that already names a session is stamped with it from its
+     * very first line, so its lines never travel through this buffer and the
+     * [SESSION_ID] marker is delivered to the sink directly. Recording the id
+     * here disarms the bootstrap timeout: the send is attributed, so waiting
+     * for an id that can no longer arrive would only fire a false failure in
+     * the middle of a long turn.</p>
+     */
+    public synchronized void bindSession(String sessionId) {
+        if (this.sessionId == null && sessionId != null && !sessionId.isBlank()) {
+            this.sessionId = sessionId;
+        }
+    }
+
+    /**
      * Called by the host when the tab's session sink is registered. Replays the
      * lines that arrived before the bind, then switches to direct delivery.
      */
@@ -117,6 +134,25 @@ public final class PendingSend {
         timeoutAction = action != null ? action : () -> { };
     }
 
+    /**
+     * Stop waiting for a {@code [SESSION_ID]} marker.
+     *
+     * <p>Used by sends that already name their session: the daemon stamps
+     * every line of such a request with the session, so the marker is delivered
+     * to the session sink instead of this buffer. The buffer is still useful as
+     * a request-id fallback when that sink is not registered, but the 30 s
+     * deadline no longer applies — firing it mid-turn reports a fake fatal
+     * error and tears down the running turn's UI.</p>
+     */
+    public synchronized void disableBootstrapTimeout() {
+        bootstrapTimeoutEnabled = false;
+    }
+
+    /** Visible for tests: whether the 30 s bootstrap deadline still applies. */
+    public synchronized boolean isBootstrapTimeoutEnabled() {
+        return bootstrapTimeoutEnabled;
+    }
+
     /** Test hook: exercise the timeout synchronously instead of waiting 30 s. */
     void expireNow() {
         expire();
@@ -125,7 +161,7 @@ public final class PendingSend {
     private void expire() {
         boolean fire;
         synchronized (this) {
-            fire = !completed && sessionId == null && !timedOut;
+            fire = bootstrapTimeoutEnabled && !completed && sessionId == null && !timedOut;
             if (fire) {
                 timedOut = true;
                 completed = true;

@@ -238,6 +238,39 @@ describe('ContentBlockRenderer askuserquestion', () => {
   });
 });
 
+describe('ContentBlockRenderer compact_summary', () => {
+  it('renders the success pill with the title instead of the raw summary text', () => {
+    const block: OpencodeContentBlock = {
+      type: 'compact_summary',
+      title: 'chat.compactSuccess',
+      content: '## Objective\nExplore the repository',
+      metadata: { messagesSummarized: 18, direction: 'up_to' },
+    };
+
+    const { container, getByText, queryByText } = render(
+      <ContentBlockRenderer
+        block={block}
+        messageIndex={0}
+        messageType="notification"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={true}
+        isLastBlock={true}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('chat.compactSuccess')).toBeTruthy();
+    expect(getByText('— chat.compactSummary.messagesUpTo')).toBeTruthy();
+    expect(queryByText(/## Objective/)).toBeNull();
+    expect(container.querySelector('.compact-card--success')).toBeTruthy();
+    expect(container.querySelector('.compact-card__pill-icon.codicon-check')).toBeTruthy();
+  });
+});
+
 describe('ContentBlockRenderer compact_notification', () => {
   it('renders success compact notification card with codicon-check and pill class', () => {
     const block: OpencodeContentBlock = {

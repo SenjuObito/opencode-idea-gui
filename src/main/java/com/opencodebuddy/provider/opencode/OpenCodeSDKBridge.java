@@ -249,9 +249,23 @@ public class OpenCodeSDKBridge {
                 callback.onComplete(result);
             }
         };
+        // A send that already names a session has nothing to bootstrap: the
+        // daemon stamps every line of such a request with that session, so the
+        // [SESSION_ID] marker is routed straight to the session sink and never
+        // reaches the PendingSend below. Arming the 30 s bootstrap timer anyway
+        // made it fire inside every turn longer than 30 s: the timeout called
+        // back into the message handler as a fatal error, which ended the
+        // stream and cleared the frontend's generating state while the daemon
+        // was still producing output. The buffer itself still helps as a
+        // request-id fallback for a session whose sink is not registered yet.
+        final boolean needsSessionBootstrap = sessionId == null || sessionId.isBlank();
+
         AtomicReference<PendingSend> pending = new AtomicReference<>();
         return daemon.sendCommand("opencode.send", params, output, requestId -> {
             PendingSend send = new PendingSend(requestId, null, output::onLine);
+            if (!needsSessionBootstrap) {
+                send.disableBootstrapTimeout();
+            }
             pending.set(send);
             daemon.registerPendingSend(send);
         }).whenComplete((ok, err) -> {
@@ -320,9 +334,16 @@ public class OpenCodeSDKBridge {
                 callback.onComplete(result);
             }
         };
+        // Same bootstrap rule as sendMessage: a turn on a known session must not
+        // arm a 30 s [SESSION_ID] deadline that would fail it mid-turn.
+        final boolean needsSessionBootstrap = sessionId == null || sessionId.isBlank();
+
         AtomicReference<PendingSend> pending = new AtomicReference<>();
         return daemon.sendCommand("opencode.shell", params, output, requestId -> {
             PendingSend send = new PendingSend(requestId, null, output::onLine);
+            if (!needsSessionBootstrap) {
+                send.disableBootstrapTimeout();
+            }
             pending.set(send);
             daemon.registerPendingSend(send);
         }).whenComplete((ok, err) -> {

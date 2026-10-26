@@ -166,6 +166,13 @@ sequenceDiagram
 
 #### 2. 完成态通知（方案 3：极简紧凑单行条）
 - **组件**：[`ContentBlockRenderer.tsx`](../webview/src/components/MessageItem/ContentBlockRenderer.tsx)
+- **状态归属**：完成/失败结果保存在 `SessionTabData.compactNotice`（按 Tab 会话隔离），
+  而不是直接追加到消息数组。历史重载、切换 Tab、后台完成都不会丢失；用户发送下一条
+  消息时（`App.handleSubmit`）才清除。这样压缩中的 Tab 切走再切回，成功气泡仍然存在。
+- **历史摘要渲染**：服务端持久化的压缩摘要（`raw.isCompactSummary`）映射为
+  `notification` → `compact_summary` 块，渲染为「会话已压缩」标题 + 可展开摘要，
+  不再把摘要正文当作成功气泡的标题。若已有本地完成通知，则不重复渲染同一摘要；
+  用户发出下一条消息后，旧摘要气泡自动隐藏，避免历史中堆积多条压缩提示。
 - **样式**：
   ```less
   .compact-card-wrapper {
@@ -211,8 +218,8 @@ sequenceDiagram
 | `get_ui_preferences` | Webview → Host | 无 | Webview 就绪或设置页打开时获取宿主持久化的 UI 偏好 |
 | `set_ui_preferences` | Webview → Host | `JSON string` (Partial<UiPreferences>) | 偏好发生变动时增量推送至宿主持久化 |
 | `window.applyUiPreferences` | Host → Webview | `JSON string` (UiPreferences) | 宿主向 Webview 推送权威偏好完整镜像 |
-| `window.onCompactSuccess` | Host → Webview | `targetSessionId?: string` | 压缩成功通知，前端校验匹配当前会话后关闭 loading 并追加成功气泡 |
-| `window.onCompactError` | Host → Webview | `targetSessionId?: string, detail?: string` | 压缩失败通知，前端校验匹配当前会话后关闭 loading 并追加失败气泡 |
+| `window.onCompactSuccess` | Host → Webview | `targetSessionId?: string` | 压缩成功通知，写入所属 Tab 的 `compactNotice`（后台 Tab 同样记录），激活该 Tab 后渲染成功气泡，直到用户发送下一条消息 |
+| `window.onCompactError` | Host → Webview | `targetSessionId?: string, detail?: string` | 压缩失败通知，写入所属 Tab 的 `compactNotice`（后台 Tab 同样记录），激活该 Tab 后渲染失败气泡，直到用户发送下一条消息 |
 
 ---
 

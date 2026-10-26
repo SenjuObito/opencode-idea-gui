@@ -570,7 +570,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
 
       const resolvedTitle = title || t('common.historySession', { defaultValue: '历史会话' });
 
-      if (isCurrentEmptyDraft && currentActive) {
+      if (isCurrentEmptyDraft && currentActive && (!reservedTabId || reservedTabId === currentActive.id)) {
         const updatedTabs = tabsRef.current.map((t) =>
           t.id === currentActive.id
             ? {
@@ -585,6 +585,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
                 filteredFileChanges: [],
                 contextInfo: null,
                 autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
+                compactNotice: null,
                 scrollState: undefined,
               }
             : t

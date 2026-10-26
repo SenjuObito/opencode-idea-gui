@@ -46,6 +46,7 @@ export {
   normalizeBlocks,
 } from './contentBlockNormalize';
 export type { LocalizeMessageFn } from './contentBlockNormalize';
+export { isHumanUserMessage, isToolResultOnlyUserMessage } from './turnScope';
 
 /**
  * Generate a stable key for a message, used for React list keys and anchor navigation.
@@ -310,6 +311,20 @@ export function isCompactRelatedMessage(message: ClaudeMessage): boolean {
 }
 
 /**
+ * Check whether a message is the summary produced by a compaction.
+ *
+ * <p>Both the persisted history shape (`role: user` with
+ * `raw.isCompactSummary`) and the rendered notification keep this flag, so the
+ * renderer can recognise the summary regardless of the message type it was
+ * mapped to.</p>
+ */
+export function isCompactSummaryMessage(message: ClaudeMessage): boolean {
+  const raw = message.raw;
+  return !!raw && typeof raw === 'object'
+    && 'isCompactSummary' in raw && (raw as Record<string, unknown>).isCompactSummary === true;
+}
+
+/**
  * Check if a message is a compact-boundary system line. The CLI writes the real
  * compaction metadata ({ trigger, preTokens, postTokens, durationMs, … }) on a
  * separate `type: 'system', subtype: 'compact_boundary'` JSONL line, NOT on the
@@ -416,9 +431,12 @@ export function buildCompactNotification(group: ClaudeMessage[]): ClaudeMessage 
 }
 
 /**
- * Create a synthetic compact_notification message (e.g. "Session compacted")
- * appended locally after a successful /compact summarize. The notice is
- * UI-only — it is not persisted in the session and disappears on reload.
+ * Create a synthetic compact_notification message (e.g. "Session compacted").
+ *
+ * <p>This notice is UI-only: the App keeps it per tab (see
+ * `SessionTabData.compactNotice`) and injects it at render time, so a history
+ * reload or a tab switch cannot drop it. It is removed when the user sends the
+ * next message.</p>
  */
 export function createCompactSuccessNotice(headerText: string): ClaudeMessage {
   return {

@@ -104,7 +104,7 @@ public final class TabSessionCommandHandler {
         }
 
         String messageId = command.string("messageId");
-        if (!isBlank(messageId) && !"latest".equals(messageId.trim())) {
+        if (!isBlank(messageId)) {
             withMessageId(context, sourceSessionId, messageId, "fork",
                     resolvedId -> requestFork(context, sourceSessionId, resolvedId, sourceTabId, targetTabId),
                     error -> publishForkFailure(context, sourceTabId, sourceSessionId, error));
@@ -152,7 +152,9 @@ public final class TabSessionCommandHandler {
                 context.publishEvent(TabEvent.of("session.fork.bound")
                         .session(newSessionId)
                         .tab(targetTabId)
-                        .field("args", List.of(targetTabId, newSessionId))
+                        .field("args", List.of(targetTabId, newSessionId, sourceTabId, sourceSessionId != null ? sourceSessionId : ""))
+                        .field("sourceTabId", sourceTabId)
+                        .field("sourceSessionId", sourceSessionId != null ? sourceSessionId : "")
                         .build());
             }
         });
@@ -387,9 +389,18 @@ public final class TabSessionCommandHandler {
                 .json("state", out.toString())
                 .build());
 
-        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
-            com.intellij.openapi.vfs.VirtualFileManager.getInstance().asyncRefresh(null);
-        });
+        var app = com.intellij.openapi.application.ApplicationManager.getApplication();
+        if (app != null) {
+            app.invokeLater(() -> {
+                try {
+                    var vfs = com.intellij.openapi.vfs.VirtualFileManager.getInstance();
+                    if (vfs != null) {
+                        vfs.asyncRefresh(null);
+                    }
+                } catch (Throwable ignored) {
+                }
+            });
+        }
     }
 
     private void publishRevertFailure(HandlerContext context, Target target, String op, String error) {

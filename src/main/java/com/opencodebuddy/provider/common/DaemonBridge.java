@@ -920,6 +920,18 @@ public class DaemonBridge {
         if (session != null) {
             SessionLineSink sink = sessionSinks.get(session);
             if (sink != null) {
+                // The line was attributable by session, so the request that
+                // produced it no longer needs to wait for a [SESSION_ID]: the
+                // sink route skips the PendingSend below, and without this the
+                // bootstrap timeout would fire mid-turn (a session-aware request
+                // stamps every line with its session, so the marker never
+                // reaches the buffer).
+                if (id != null) {
+                    PendingSend pending = pendingSends.get(id);
+                    if (pending != null) {
+                        pending.bindSession(session);
+                    }
+                }
                 deliver(sink, line);
                 return;
             }

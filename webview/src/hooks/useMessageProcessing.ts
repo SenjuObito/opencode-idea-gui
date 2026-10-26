@@ -12,6 +12,7 @@ import {
   hasNonHumanOrigin,
   isCompactRelatedMessage,
   isCompactCommandMessage,
+  isCompactSummaryMessage,
   MESSAGE_TYPES,
 } from '../utils/messageUtils';
 import { getTabMergeCache } from '../utils/messageMergeCache';
@@ -123,6 +124,15 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
 
     const visible: ClaudeMessage[] = [];
 
+    // A locally injected compact result (see SessionTabData.compactNotice) is the
+    // authoritative feedback for this compaction. The persisted summary it
+    // describes must not render as a second pill next to it.
+    const hasLocalCompactNotice = merged.some((message) => {
+      if (message.type !== MESSAGE_TYPES.COMPACT_NOTIFICATION) return false;
+      const raw = message.raw;
+      return !!raw && typeof raw === 'object' && Boolean((raw as Record<string, unknown>).compactStatus);
+    });
+
     for (const message of merged) {
       // ── Compact summary → notification ─────────────────────────────────
       // Must happen before shouldShowMessage because isCompactSummary
@@ -132,10 +142,9 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
       // hasCommandMessageTag returns true → rendered as normal user message.
       // stdout messages are hidden by HIDDEN_OUTPUT_TAGS filter.
       if (message.type === MESSAGE_TYPES.USER && isCompactRelatedMessage(message) && !isTaskNotificationOnlyMessage(message)) {
-        const raw = message.raw;
-        const isCompactSummary = raw && typeof raw === 'object' && 'isCompactSummary' in raw && raw.isCompactSummary;
-        if (isCompactSummary) {
-          visible.push({ ...message, type: MESSAGE_TYPES.COMPACT_NOTIFICATION });
+        if (isCompactSummaryMessage(message)) {
+          if (hasLocalCompactNotice) continue;
+          visible.push({ ...message, type: MESSAGE_TYPES.NOTIFICATION });
           continue;
         }
       }
@@ -177,7 +186,22 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
       }
     }
 
-    return visible;
+    // A compact pill describes the context state the next prompt replaces.
+    // Keep it while it is still the newest user-facing event — an assistant
+    // continuation after an automatic compaction does not count — and drop it
+    // once the user sends a later message. This also keeps reloaded history
+    // from stacking one pill per past compaction.
+    let lastUserPromptIndex = -1;
+    for (let i = visible.length - 1; i >= 0; i--) {
+      const message = visible[i];
+      if (message.type !== MESSAGE_TYPES.USER || isCompactSummaryMessage(message)) continue;
+      lastUserPromptIndex = i;
+      break;
+    }
+
+    return lastUserPromptIndex >= 0
+      ? visible.filter((message, index) => !(isCompactSummaryMessage(message) && index < lastUserPromptIndex))
+      : visible;
     // Note: isTaskNotificationOnlyMessage, hasNonHumanOrigin, isCompactRelatedMessage
     // are stable module-level pure functions imported from messageUtils — their references
     // never change, so they don't need to be in the dependency array.

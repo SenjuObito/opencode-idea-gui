@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -58,6 +59,46 @@ public class PendingSendTest {
         assertTrue(pending.isTimedOut());
         assertTrue(timedOut.get());
         assertNull("a timed-out send must stop buffering", pending.sessionId());
+    }
+
+    /**
+     * The host routes a line that already names a session straight to that
+     * session's sink; the marker therefore never reaches the PendingSend. The
+     * sink route reports the learned identity here so the bootstrap timeout is
+     * disarmed instead of failing the send 30 s into a still-running turn.
+     */
+    @Test
+    public void aSessionLearnedFromTheSinkRouteDisarmsTheBootstrapTimeout() {
+        AtomicBoolean timedOut = new AtomicBoolean(false);
+        PendingSend pending = new PendingSend("req-5", null, line -> { });
+        pending.setTimeoutAction(() -> timedOut.set(true));
+
+        pending.bindSession("ses_known");
+        pending.expireNow();
+
+        assertEquals("ses_known", pending.sessionId());
+        assertFalse(pending.isTimedOut());
+        assertFalse("an attributed send must not fail mid-turn", timedOut.get());
+    }
+
+    /**
+     * A send that already knows its session must not be failed by the bootstrap
+     * deadline, even though its buffer is still registered as a request-id
+     * fallback. This is the host-side half of the "indicator disappears
+     * mid-turn" regression.
+     */
+    @Test
+    public void aDisabledBootstrapTimeoutNeverExpires() {
+        AtomicBoolean timedOut = new AtomicBoolean(false);
+        PendingSend pending = new PendingSend("req-6", null, line -> { });
+        pending.setTimeoutAction(() -> timedOut.set(true));
+
+        pending.disableBootstrapTimeout();
+        pending.expireNow();
+
+        assertFalse(pending.isBootstrapTimeoutEnabled());
+        assertFalse(pending.isTimedOut());
+        assertFalse(timedOut.get());
     }
 
     @Test

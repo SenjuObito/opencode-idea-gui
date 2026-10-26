@@ -227,6 +227,9 @@ public class TabSessionCommandHandlerTest {
         TabEvent event = jsCallback.only("session.fork.bound");
         assertEquals("tab-fork", event.getTabId());
         assertEquals("ses_new", event.getSessionId());
+        assertEquals("tab-a", event.getPayload().get("sourceTabId"));
+        assertEquals("ses_a", event.getPayload().get("sourceSessionId"));
+        assertEquals(List.of("tab-fork", "ses_new", "tab-a", "ses_a"), event.getPayload().get("args"));
     }
 
     @Test

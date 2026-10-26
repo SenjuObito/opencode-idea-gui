@@ -151,7 +151,7 @@ export const ChatScreen = ({
   messageQueue, onRemoveFromQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
-  const { messages, loading, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime } = useMessages();
+  const { messages, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime } = useMessages();
   cardDebugLog('[ChatScreen] render, sessionLoading:', sessionLoading, 'statusPanelExpanded:', statusPanelExpanded);
   const { currentSessionId } = useSession();
   const previousMessageKeySnapshotRef = useRef<MessageKeySnapshot | undefined>(undefined);
@@ -262,7 +262,7 @@ export const ChatScreen = ({
                     messageKeys={messageKeySnapshot.keys}
                     streamingActive={streamingActive}
                     isThinking={isThinking}
-                    loading={loading}
+                    turnActive={turnActive}
                     loadingStartTime={loadingStartTime}
                     isCompacting={isCompacting}
                     compactingStartTime={compactingStartTime}

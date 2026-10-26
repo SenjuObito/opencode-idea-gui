@@ -99,10 +99,64 @@ public final class TabSessionFactory {
                     "tab " + tabId + " is already bound to " + current);
         }
 
+        SessionCallbackAdapter effectiveAdapter = adapter != null ? adapter : record.getAdapter();
+        StreamMessageCoalescer effectiveCoalescer = coalescer != null ? coalescer : record.getCoalescer();
+        if (effectiveAdapter != null) {
+            effectiveAdapter.setTabId(tabId.value());
+            effectiveAdapter.setSessionId(canonicalSessionId);
+            session.setCallback(effectiveAdapter);
+        }
+        if (effectiveCoalescer != null) {
+            effectiveCoalescer.setTabId(tabId.value());
+            effectiveCoalescer.setSessionId(canonicalSessionId);
+        }
+
         registry.bind(tabId, canonicalSessionId,
                 session,
-                adapter != null ? adapter : record.getAdapter(),
-                coalescer != null ? coalescer : record.getCoalescer());
+                effectiveAdapter,
+                effectiveCoalescer);
+        registry.markLoadingHistory(tabId);
+        return record;
+    }
+
+    /**
+     * Bind a known canonical session (e.g. from fork) to a tab, creating
+     * and wiring the session, adapter, and coalescer through Host if not already present.
+     */
+    public TabRecord attachSession(
+            TabId tabId,
+            String canonicalSessionId,
+            String cwd,
+            SessionConfigurer configurer
+    ) {
+        TabRecord record = registry.create(tabId, cwd);
+        SessionId next = SessionId.of(canonicalSessionId);
+        SessionId current = record.getSessionId();
+        if (current != null && !current.equals(next)) {
+            throw new IllegalStateException(
+                    "tab " + tabId + " is already bound to " + current);
+        }
+
+        OpencodeSession session = record.getSession() != null ? record.getSession() : host.newSession(cwd);
+        session.getState().setSessionId(canonicalSessionId);
+        if (configurer != null) {
+            configurer.configure(session);
+        }
+
+        StreamMessageCoalescer coalescer = record.getCoalescer() != null ? record.getCoalescer() : host.newCoalescer(tabId);
+        SessionCallbackAdapter adapter = record.getAdapter() != null ? record.getAdapter() : host.newAdapter(tabId, coalescer);
+
+        if (adapter != null) {
+            adapter.setTabId(tabId.value());
+            adapter.setSessionId(canonicalSessionId);
+            session.setCallback(adapter);
+        }
+        if (coalescer != null) {
+            coalescer.setTabId(tabId.value());
+            coalescer.setSessionId(canonicalSessionId);
+        }
+
+        registry.bind(tabId, canonicalSessionId, session, adapter, coalescer);
         registry.markLoadingHistory(tabId);
         return record;
     }

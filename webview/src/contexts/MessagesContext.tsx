@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, useSyncExter
 import type { ClaudeMessage, SubagentHistoryResponse, TodoItem } from '../types';
 import { getTabStore } from '../store/tabStore';
 import { isTabTurnActive } from '../store/tabRuntime';
+import type { CompactNoticeData } from '../components/ChatHeader/types';
 
 export const DEFAULT_STATUS = 'ready';
 
@@ -41,6 +42,9 @@ export interface MessagesContextValue {
   setIsCompacting: React.Dispatch<React.SetStateAction<boolean>>;
   compactingStartTime: number | null;
   setCompactingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
+  /** Last compact result of this tab, shown until the next user message. */
+  compactNotice: CompactNoticeData | null;
+  setCompactNotice: React.Dispatch<React.SetStateAction<CompactNoticeData | null>>;
 }
 
 const MessagesContext = createContext<MessagesContextValue | null>(null);
@@ -174,6 +178,16 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
     [tabStore],
   );
 
+  const setCompactNotice = useCallback<React.Dispatch<React.SetStateAction<CompactNoticeData | null>>>(
+    (updater) => {
+      tabStore.updateActiveTab((tab) => ({
+        ...tab,
+        compactNotice: applyUpdater(updater, tab.compactNotice ?? null),
+      }));
+    },
+    [tabStore],
+  );
+
   // A history download is a property of the viewport, not of a conversation:
   // it is true only while the current tab is restoring its transcript and must
   // not follow a tab switch.
@@ -190,6 +204,7 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
   const sseTodos = activeTab.sseTodos ?? null;
   const isCompacting = activeTab.isCompacting ?? false;
   const compactingStartTime = activeTab.compactingStartTime ?? null;
+  const compactNotice = activeTab.compactNotice ?? null;
 
   const value = useMemo<MessagesContextValue>(
     () => ({
@@ -216,6 +231,8 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       setIsCompacting,
       compactingStartTime,
       setCompactingStartTime,
+      compactNotice,
+      setCompactNotice,
     }),
     [
       messages,
@@ -240,6 +257,8 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       setIsCompacting,
       compactingStartTime,
       setCompactingStartTime,
+      compactNotice,
+      setCompactNotice,
     ],
   );
 

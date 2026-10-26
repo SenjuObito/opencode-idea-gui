@@ -15,6 +15,31 @@ export function isToolResultOnlyUserMessage(message: ClaudeMessage): boolean {
   );
 }
 
+export function isHumanUserMessage(message: ClaudeMessage): boolean {
+  if (message.type !== 'user') return false;
+  if (isToolResultOnlyUserMessage(message)) return false;
+
+  const raw = typeof message.raw === 'object' && message.raw !== null ? (message.raw as Record<string, unknown>) : null;
+  if (raw?.synthetic === true) return false;
+
+  const contentStr = typeof message.content === 'string' ? message.content : '';
+  if (contentStr === '[tool_result]' || contentStr.includes('<task-notification>')) return false;
+
+  const nestedMessage = (raw?.message && typeof raw.message === 'object') ? (raw.message as Record<string, unknown>) : undefined;
+  const rawContent = raw?.content ?? nestedMessage?.content;
+
+  if (Array.isArray(rawContent)) {
+    if (rawContent.length === 0) return Boolean(contentStr.trim());
+    return rawContent.some((block) => {
+      if (!block || typeof block !== 'object') return false;
+      const bType = (block as { type?: string }).type;
+      return bType !== 'tool_result';
+    });
+  }
+
+  return true;
+}
+
 export function findLatestConversationTurnStart(messages: ClaudeMessage[]): number {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];

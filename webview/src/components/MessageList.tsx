@@ -2,8 +2,7 @@ import { memo, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallbac
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../types';
 import { cardDebugLog } from '../utils/bridge';
-import { isToolResultOnlyUserMessage } from '../utils/turnScope';
-import { matchesProviderMessageId } from '../utils/messageUtils';
+import { isHumanUserMessage, matchesProviderMessageId } from '../utils/messageUtils';
 import { MessageItem } from './MessageItem';
 import WaitingIndicator from './WaitingIndicator';
 import CompactingIndicator from './CompactingIndicator';
@@ -26,31 +25,6 @@ import {
 const INITIAL_VISIBLE_TURNS = 5;
 const REVEAL_TURN_PAGE_SIZE = 5;
 const MIN_LOADING_DISPLAY_MS = 600;
-
-function isHumanUserMessage(message: ClaudeMessage): boolean {
-  if (message.type !== 'user') return false;
-  if (isToolResultOnlyUserMessage(message)) return false;
-
-  const raw = typeof message.raw === 'object' && message.raw !== null ? (message.raw as Record<string, unknown>) : null;
-  if (raw?.synthetic === true) return false;
-
-  const contentStr = typeof message.content === 'string' ? message.content : '';
-  if (contentStr === '[tool_result]' || contentStr.includes('<task-notification>')) return false;
-
-  const nestedMessage = (raw?.message && typeof raw.message === 'object') ? (raw.message as Record<string, unknown>) : undefined;
-  const rawContent = raw?.content ?? nestedMessage?.content;
-
-  if (Array.isArray(rawContent)) {
-    if (rawContent.length === 0) return Boolean(contentStr.trim());
-    return rawContent.some((block) => {
-      if (!block || typeof block !== 'object') return false;
-      const bType = (block as { type?: string }).type;
-      return bType !== 'tool_result';
-    });
-  }
-
-  return true;
-}
 
 function getFirstMessageBoundaryKey(message: ClaudeMessage | undefined): string | undefined {
   if (!message) return undefined;
@@ -100,7 +74,13 @@ interface MessageListProps {
   messageKeys: readonly string[];
   streamingActive: boolean;
   isThinking: boolean;
-  loading: boolean;
+  /**
+   * True while the turn is still running (`loading || streamingActive`).
+   * The generating indicator follows the turn, not one of its phases: a
+   * `loading=false` that is not a turn terminal must not hide it while the
+   * stream keeps producing output.
+   */
+  turnActive: boolean;
   loadingStartTime: number | null;
   isCompacting: boolean;
   compactingStartTime: number | null;
@@ -138,7 +118,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   messageKeys,
   streamingActive,
   isThinking,
-  loading,
+  turnActive,
   loadingStartTime,
   isCompacting,
   compactingStartTime,
@@ -513,8 +493,11 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
         />
       )}
 
-      {/* Loading indicator */}
-      {loading && <WaitingIndicator startTime={loadingStartTime ?? undefined} />}
+      {/* Generating indicator — keyed on the whole turn, not on `loading`.
+          A `session.loading=false` that is not a turn terminal (e.g. an
+          out-of-band error from the host) must not hide it while
+          `streamingActive` is still true. */}
+      {turnActive && <WaitingIndicator startTime={loadingStartTime ?? undefined} />}
 
       {/* Compacting indicator */}
       {isCompacting && <CompactingIndicator startTime={compactingStartTime ?? undefined} />}

@@ -67,4 +67,64 @@ public class TabSessionFactoryTest {
             assertEquals("ses_first", record.getSessionIdString());
         }
     }
+
+    @Test
+    public void attachWiresAdapterAndCoalescerIdentifiers() {
+        TabRegistry registry = new TabRegistry();
+        TabSessionFactory factory = factory(registry);
+        OpencodeSession session = new OpencodeSession(null, null);
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer("initial_ses", "initial_tab", null, null);
+        SessionCallbackAdapter adapter = new SessionCallbackAdapter(
+                "initial_ses", coalescer, event -> {}, null, () -> true, null, "initial_tab");
+
+        TabRecord record = factory.attach(
+                TabId.of("tab-fork"), "ses_fork", session, adapter, coalescer, "/repo");
+
+        assertEquals("tab-fork", adapter.getTabId());
+        assertEquals("ses_fork", adapter.getSessionId());
+        assertEquals("tab-fork", coalescer.getTabId());
+        assertEquals("ses_fork", coalescer.getSessionId());
+        assertEquals(TabState.LOADING_HISTORY, record.getState());
+    }
+
+    @Test
+    public void attachSessionCreatesAndWiresFromHost() {
+        TabRegistry registry = new TabRegistry();
+        OpencodeSession session = new OpencodeSession(null, null);
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer("initial", "initial", null, null);
+        SessionCallbackAdapter adapter = new SessionCallbackAdapter(
+                "initial", coalescer, event -> {}, null, () -> true, null, "initial");
+
+        TabSessionFactory factory = new TabSessionFactory(registry, new TabSessionFactory.Host() {
+            @Override
+            public OpencodeSession newSession(String cwd) {
+                return session;
+            }
+
+            @Override
+            public StreamMessageCoalescer newCoalescer(TabId tabId) {
+                return coalescer;
+            }
+
+            @Override
+            public SessionCallbackAdapter newAdapter(TabId tabId, StreamMessageCoalescer c) {
+                return adapter;
+            }
+        });
+
+        TabRecord record = factory.attachSession(
+                TabId.of("tab-target"), "ses_target", "/repo", s -> s.getState().setModel("custom-model"));
+
+        assertEquals("tab-target", record.getTabId().value());
+        assertEquals("ses_target", record.getSessionIdString());
+        assertSame(session, record.getSession());
+        assertSame(adapter, record.getAdapter());
+        assertSame(coalescer, record.getCoalescer());
+        assertEquals("tab-target", adapter.getTabId());
+        assertEquals("ses_target", adapter.getSessionId());
+        assertEquals("tab-target", coalescer.getTabId());
+        assertEquals("ses_target", coalescer.getSessionId());
+        assertEquals("custom-model", session.getState().getModel());
+        assertEquals(TabState.LOADING_HISTORY, record.getState());
+    }
 }

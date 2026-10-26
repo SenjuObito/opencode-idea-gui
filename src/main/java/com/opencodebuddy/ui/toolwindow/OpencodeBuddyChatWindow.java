@@ -1724,35 +1724,21 @@ public class OpencodeBuddyChatWindow {
         TabId tab = TabId.of(targetTabId);
         String cwd = project != null ? project.getBasePath() : null;
         TabRecord record = tabRegistry.get(tab);
-        if (record == null || record.isClosed()) {
-            record = tabRegistry.create(tab, cwd);
-        }
-        if (record.getSessionId() != null) {
+        if (record != null && record.getSessionId() != null) {
             // The tab already has a session: a fork never replaces one.
             LOG.info("[Tab] fork target " + targetTabId + " is already bound; ignoring");
             return;
         }
 
-        OpencodeSession session = new OpencodeSession(project, openCodeSDKBridge);
-        if (cwd != null && !cwd.isBlank()) {
-            session.setCwd(cwd);
-        }
-        // The canonical id is already known: recording it must not announce it
-        // as a new session, or the tab would be bound twice.
-        session.getState().setSessionId(canonicalSessionId);
+        TabRecord boundRecord = tabSessionFactory.attachSession(tab, canonicalSessionId, cwd, s -> {
+            if (cwd != null && !cwd.isBlank()) {
+                s.setCwd(cwd);
+            }
+        });
+        OpencodeSession session = boundRecord.getSession();
+        SessionCallbackAdapter adapter = boundRecord.getAdapter();
+        StreamMessageCoalescer coalescer = boundRecord.getCoalescer();
 
-        StreamMessageCoalescer coalescer = record.getCoalescer() != null
-                ? record.getCoalescer()
-                : createStreamCoalescer(targetTabId);
-        SessionCallbackAdapter adapter = record.getAdapter() != null
-                ? record.getAdapter()
-                : createCallbackAdapter(targetTabId, coalescer);
-        if (adapter != null && coalescer != null) {
-            adapter.setTabId(targetTabId);
-            coalescer.setTabId(targetTabId);
-        }
-
-        tabSessionFactory.attach(tab, canonicalSessionId, session, adapter, coalescer, cwd);
         registerSession(canonicalSessionId, session, adapter, coalescer);
         if (handlerContext != null) {
             handlerContext.registerSession(canonicalSessionId, session);
@@ -2223,6 +2209,7 @@ public class OpencodeBuddyChatWindow {
         }
         if (effectiveAdapter != null) {
             effectiveAdapter.setTabId(stableTabId.value());
+            session.setCallback(effectiveAdapter);
         }
         registerSession(canonicalSessionId, session, effectiveAdapter, effectiveCoalescer);
         if (handlerContext != null) {

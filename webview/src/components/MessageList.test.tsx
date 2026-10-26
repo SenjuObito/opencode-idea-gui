@@ -127,7 +127,7 @@ function StableMessageList({
       messageKeys={snapshot.keys}
       streamingActive
       isThinking
-      loading={false}
+      turnActive={false}
       loadingStartTime={null}
       t={t}
       getMessageText={noopGetText}
@@ -147,7 +147,7 @@ function renderList(messages: ClaudeMessage[]) {
       messageKeys={keysFor(messages)}
       streamingActive={false}
       isThinking={false}
-      loading={false}
+      turnActive={false}
       loadingStartTime={null}
       t={t}
       getMessageText={noopGetText}
@@ -250,7 +250,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(messages)}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -279,7 +279,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(makeMessages(50, 'session2'))}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -309,7 +309,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(firstSession)}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -332,7 +332,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(secondSession)}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -355,7 +355,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(messages)}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -468,7 +468,7 @@ describe('MessageList container behaviour', () => {
     expect(last.textContent).toBe('message 39');
   });
 
-  it('renders waiting indicator when loading', () => {
+  it('renders waiting indicator while the turn is active', () => {
     const endRef = createRef<HTMLDivElement>();
     render(
       <MessageList
@@ -476,8 +476,33 @@ describe('MessageList container behaviour', () => {
         messageKeys={keysFor(makeMessages(3))}
         streamingActive={false}
         isThinking={false}
-        loading={true}
+        turnActive
         loadingStartTime={Date.now()}
+        t={t}
+        getMessageText={noopGetText}
+        getContentBlocks={noopGetBlocks}
+        findToolResult={noopFindToolResult}
+        extractMarkdownContent={noopExtractMd}
+        messagesEndRef={endRef}
+      />
+    );
+    expect(screen.getByTestId('waiting-indicator')).toBeTruthy();
+  });
+
+  it('keeps the waiting indicator while streaming even if the loading phase cleared', () => {
+    // Regression: the indicator used to be keyed on `loading` alone. A
+    // session.loading=false that is not a turn terminal (e.g. a host-side
+    // error) hid the "generating" notice mid-turn, while the stop button and
+    // the incoming deltas proved the turn was still running.
+    const endRef = createRef<HTMLDivElement>();
+    render(
+      <MessageList
+        messages={makeMessages(3)}
+        messageKeys={keysFor(makeMessages(3))}
+        streamingActive
+        isThinking={false}
+        turnActive
+        loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
         getContentBlocks={noopGetBlocks}

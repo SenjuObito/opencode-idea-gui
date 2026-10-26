@@ -39,6 +39,11 @@ public class MessageJsonConverter {
             msgObj.addProperty("timestamp", msg.timestamp);
             msgObj.addProperty("content", truncateErrorContent(msg.content != null ? msg.content : ""));
             if (msg.raw != null) {
+                if (msg.raw.has("id") && !msg.raw.get("id").isJsonNull()) {
+                    msgObj.addProperty("id", msg.raw.get("id").getAsString());
+                } else if (msg.raw.has("uuid") && !msg.raw.get("uuid").isJsonNull()) {
+                    msgObj.addProperty("id", msg.raw.get("uuid").getAsString());
+                }
                 JsonObject transportRaw = truncateRawForTransport(msg.raw);
                 msgObj.add("raw", transportRaw);
                 if (transportRaw.has("durationMs") && !transportRaw.get("durationMs").isJsonNull()) {
@@ -188,6 +193,7 @@ public class MessageJsonConverter {
 
     private static JsonObject buildTransportRaw(JsonObject raw) {
         JsonObject transport = new JsonObject();
+        copyFieldIfPresent(raw, transport, "id");
         copyFieldIfPresent(raw, transport, "uuid");
         copyFieldIfPresent(raw, transport, "type");
         copyFieldIfPresent(raw, transport, "isMeta");

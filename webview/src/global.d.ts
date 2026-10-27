@@ -137,10 +137,6 @@ interface Window {
   appendCodexHistoryPageBatch?: (pageId: string, json: string) => void;
   /** Complete and apply a Codex history page transfer. */
   completeCodexHistoryPage?: (json: string) => void;
-  /** Early history completion buffered before React installs the real callback. */
-  __pendingHistoryLoadComplete?: { expectedMessageCount?: string | number };
-  /** Early history list data buffered before React installs the real setHistoryData callback. */
-  __pendingHistoryData?: any;
   /** Number of messages in the latest full backend snapshot accepted by this page. */
   __lastAcceptedMessageCount?: number;
   /** Restored-history snapshot size that still needs a React commit acknowledgment. */
@@ -187,14 +183,6 @@ interface Window {
   commandRejected?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
   onAttachmentFailed?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
 
-  /** Rejections that arrived before the real handler was registered. */
-  __pendingCommandRejections?: Array<{
-    tabId: string;
-    requestId: string;
-    code: string;
-    message: string;
-  }>;
-
   /**
    * Add toast notification (called from backend)
    */
@@ -214,9 +202,6 @@ interface Window {
    */
   /** @param arg2 the tab that owns the session (empty when the host cannot say) */
   onUsageUpdate?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
-
-  /** Buffers the latest usage update received before React callbacks mount. */
-  __pendingUsageUpdate?: unknown;
 
   /**
    * Mode changed callback
@@ -613,13 +598,6 @@ interface Window {
   /**
    * Pending dollar commands payload before callback registration
    */
-  __pendingDollarCommands?: string;
-
-  /**
-   * Pending slash commands payload before provider initialization
-   */
-  __pendingSlashCommands?: string;
-
   /**
    * Apply IDEA editor font configuration (called from Java backend)
    * @param config Font configuration object containing fontFamily, fontSize, lineSpacing, fallbackFonts
@@ -1024,8 +1002,6 @@ interface Window {
   /**
    * Update daemon alive status callback
    */
-  updateDaemonStatus?: (json: string) => void;
-
   /**
    * CLI tools install/version detection result (Settings → CLI tab).
    * Payload is a map of tool id → { id, name, binaryName, installed, version?, path?, error? }.
@@ -1033,69 +1009,6 @@ interface Window {
   updateCliStatus?: (json: string) => void;
 
   __ccgOnBridgeReady?: () => void;
-
-  /**
-   * Pending send shortcut status before React initialization
-   */
-  __pendingSendShortcut?: string;
-
-  /**
-   * Pending auto open file enabled status before React initialization
-   */
-  __pendingAutoOpenFileEnabled?: string;
-
-  /**
-   * Pending permission dialog timeout before React initialization
-   */
-  __pendingPermissionDialogTimeout?: string;
-
-  __pendingPermissionDialogRequests?: string[];
-
-  __pendingAskUserQuestionDialogRequests?: string[];
-
-  __pendingPlanApprovalDialogRequests?: string[];
-
-  /**
-   * Pending error toasts before React window.showToast listener is mounted.
-   */
-  __pendingToasts?: string[];
-
-  /**
-   * Pending updateMessages payload before React initialization
-   */
-  __pendingUpdateMessages?: string | { json: string; sequence?: number | null };
-
-  /**
-   * Pending status text before React initialization
-   */
-  __pendingStatusText?: string;
-
-  /**
-   * Pending summary text before React initialization
-   */
-  __pendingSummaryText?: string;
-
-  /**
-   * Pending user message before addUserMessage is registered (for Quick Fix feature)
-   */
-  __pendingUserMessage?: string;
-
-  /**
-   * Pending loading state before showLoading is registered (for Quick Fix feature)
-   */
-  __pendingLoadingState?: boolean;
-
-  /**
-   * Pending mode payload before setMode is registered.
-   */
-  __pendingModeReceived?: string;
-
-  /**
-   * Pending daemon status payload before useUsageTracking listener is mounted.
-   * updateDaemonStatus dispatches a CustomEvent, but events fired before the
-   * listener is attached are lost; this slot preserves the latest payload.
-   */
-  __pendingDaemonStatus?: string;
 
   /**
    * Execute context action from IDEA shortcut (copy/cut/send)
@@ -1158,9 +1071,6 @@ interface Window {
   /** Applies the current Java session configuration without echoing bridge commands. */
   applyBackendTabState?: (json: string) => void;
 
-  /** Buffers backend tab state when Java responds before React callbacks mount. */
-  __pendingBackendTabState?: string;
-
   // ============================================================================
   // Provider settings panel callbacks (registered by ProviderList)
   // ============================================================================
@@ -1199,7 +1109,6 @@ interface Window {
           defaultModel?: string;
         }
   ) => void;
-  __pendingCliModels?: unknown;
 
   /**
    * Multi-session tab store for routing background session events

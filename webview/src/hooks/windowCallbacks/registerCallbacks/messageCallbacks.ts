@@ -37,6 +37,7 @@ import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstructi
 import { collectUnresolvedToolUseIds } from './streamingCallbacks';
 import i18n from '../../../i18n/config';
 import type { TabMessageStore } from '../../../store/tabMessageStore';
+import { getTabStore } from '../../../store/tabStore';
 
 const isTruthy = (v: unknown) => v === true || v === 'true';
 
@@ -127,7 +128,8 @@ export function registerMessageCallbacks(
     if (sessionId && sessionBaseIndexMap.has(sessionId)) {
       return sessionBaseIndexMap.get(sessionId)!;
     }
-    const tab = sessionId ? window.__sessionTabsStore?.getTabs?.().find((t) => t.sessionId === sessionId) : null;
+    const tabStore = getTabStore();
+    const tab = sessionId ? (tabStore.findTabBySessionId(sessionId) ?? window.__sessionTabsStore?.getTabs?.().find((t) => t.sessionId === sessionId)) : null;
     if (tab && typeof tab.messageBaseIndex === 'number') {
       return tab.messageBaseIndex;
     }
@@ -138,11 +140,12 @@ export function registerMessageCallbacks(
     if (sessionId) {
       sessionBaseIndexMap.set(sessionId, baseIndex);
     }
-    const tab = sessionId ? window.__sessionTabsStore?.getTabs?.().find((t) => t.sessionId === sessionId) : null;
+    const tabStore = getTabStore();
+    const tab = sessionId ? (tabStore.findTabBySessionId(sessionId) ?? window.__sessionTabsStore?.getTabs?.().find((t) => t.sessionId === sessionId)) : null;
     if (tab) {
       tab.messageBaseIndex = baseIndex;
     }
-    const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    const activeSessionId = tabStore.getActiveSessionId() || window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
     if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
       window.__messageBaseIndex = baseIndex;
     }
@@ -207,11 +210,12 @@ export function registerMessageCallbacks(
     // A frame deferred 16ms during streaming can outlive a tab switch. If the
     // session is no longer the one on screen, applying it here would write one
     // conversation into another tab's transcript (and retrigger auto-scroll).
-    if (
-      targetSessionId
-      && window.__sessionTabsStore
-      && !window.__sessionTabsStore.isActiveSession(targetSessionId)
-    ) {
+    const tabStore = getTabStore();
+    const isBackground = targetSessionId && (
+      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+    );
+    if (isBackground) {
       cardDebugLog('[processUpdateMessages] DROPPED: target is not the active session', targetSessionId);
       return;
     }
@@ -476,11 +480,12 @@ export function registerMessageCallbacks(
     }
     // Same deferred-frame guard as processUpdateMessages: a tail pushed for a
     // background session must never be applied after the user switched away.
-    if (
-      targetSessionId
-      && window.__sessionTabsStore
-      && !window.__sessionTabsStore.isActiveSession(targetSessionId)
-    ) {
+    const tabStore = getTabStore();
+    const isBackground = targetSessionId && (
+      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+    );
+    if (isBackground) {
       cardDebugLog('[processMessageTail] DROPPED: target is not the active session', targetSessionId);
       return;
     }
@@ -568,11 +573,15 @@ export function registerMessageCallbacks(
     const baseIndexArg = payload?.baseIndex as string | number | undefined;
     const targetTabId: string | null = env?.tabId ?? null;
 
-    const isForegroundSession = !targetSessionId
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const isForegroundSession = !hasTabs
+      || !targetSessionId
       || (targetSessionId === options.currentSessionIdRef?.current)
+      || (tabStore.size() > 0 ? tabStore.isActiveSession(targetSessionId) : false)
       || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
 
-    if (!isForegroundSession && targetSessionId && window.__sessionTabsStore) {
+    if (!isForegroundSession && targetSessionId && hasTabs) {
       const applyToBackgroundTab = (t: any) => {
         try {
           const raw = JSON.parse(json);
@@ -580,27 +589,42 @@ export function registerMessageCallbacks(
             // The tab owns its transcript: the snapshot is reconciled by
             // message id, so a message keeps its identity across snapshots.
             const store = t.messageStore as TabMessageStore | undefined;
-            t.messages = store ? store.applySnapshot(raw) : raw;
+            const nextMessages = store ? store.applySnapshot(raw) : raw;
+            t.messages = nextMessages;
+            return { ...t, messages: nextMessages };
           }
         } catch (e) {
           console.error('[MultiSession] Failed to parse background updateMessages', e);
         }
+        return t;
       };
 
       if (targetTabId) {
         // The tab id is known: write to exactly that tab. No lookup, no
         // guessing, and a closed tab simply has nowhere to write.
-        const written = window.__sessionTabsStore.updateTab?.(targetTabId, applyToBackgroundTab);
+        let written = false;
+        if (tabStore.size() > 0) {
+          written = tabStore.updateTab(targetTabId, applyToBackgroundTab as any);
+        }
+        if (!written && window.__sessionTabsStore?.updateTab) {
+          written = Boolean(window.__sessionTabsStore.updateTab(targetTabId, applyToBackgroundTab));
+        }
         if (!written) {
           cardDebugLog('[updateMessages] dropped: no tab', targetTabId, 'owns this snapshot');
         }
         return;
       }
 
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        applyToBackgroundTab
-      );
+      let written = false;
+      if (tabStore.size() > 0) {
+        written = tabStore.updateBackgroundTab(targetSessionId, applyToBackgroundTab as any);
+      }
+      if (!written && window.__sessionTabsStore?.updateBackgroundTab) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          applyToBackgroundTab
+        );
+      }
       // No tab claims this session: the user closed it (or the host pushed an
       // id the webview never bound). Drop the snapshot — falling through to the
       // active path would render another conversation's messages in the tab the
@@ -716,31 +740,46 @@ export function registerMessageCallbacks(
     const baseIndexArg = payload?.baseIndex as string | number;
     const sequenceArg = payload?.sequence as string | number | undefined;
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
-          try {
-            const tail = JSON.parse(json);
-            if (Array.isArray(tail)) {
-              const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
-              const currentMessages = t.messages || [];
-              if (Number.isSafeInteger(base) && base >= 0 && base <= currentMessages.length) {
-                t.messages = [...currentMessages.slice(0, base), ...tail];
-              } else if (currentMessages.length > 0) {
-                t.messages = [...currentMessages, ...tail];
-              } else {
-                t.messages = tail;
-              }
-              t.messageBaseIndex = Number.isSafeInteger(base) ? base : 0;
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const isBackground = hasTabs && targetSessionId && (
+      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+    );
+    if (isBackground && targetSessionId) {
+      const applyTail = (t: any) => {
+        try {
+          const tail = JSON.parse(json);
+          if (Array.isArray(tail)) {
+            const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
+            const currentMessages = t.messages || [];
+            let nextMessages = tail;
+            if (Number.isSafeInteger(base) && base >= 0 && base <= currentMessages.length) {
+              nextMessages = [...currentMessages.slice(0, base), ...tail];
+            } else if (currentMessages.length > 0) {
+              nextMessages = [...currentMessages, ...tail];
             }
-          } catch (e) {
-            console.error('[MultiSession] Failed to parse background updateMessageTail', e);
+            const nextBase = Number.isSafeInteger(base) ? base : 0;
+            t.messages = nextMessages;
+            t.messageBaseIndex = nextBase;
+            return { ...t, messages: nextMessages, messageBaseIndex: nextBase };
           }
+        } catch (e) {
+          console.error('[MultiSession] Failed to parse background updateMessageTail', e);
         }
-      );
-      // No tab claims this session: closed by the user (or never bound). Drop,
-      // do not append to the active conversation.
+        return t;
+      };
+
+      let written = false;
+      if (tabStore.size() > 0) {
+        written = tabStore.updateBackgroundTab(targetSessionId, applyTail as any);
+      }
+      if (!written && window.__sessionTabsStore) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          applyTail
+        );
+      }
       return;
     }
 
@@ -802,43 +841,35 @@ export function registerMessageCallbacks(
     }
   };
 
-  const pendingMessages = (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
-  if (typeof pendingMessages === 'string' && pendingMessages.length > 0) {
-    delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
-    updateMessages({ messages: pendingMessages });
-  } else if (
-    pendingMessages &&
-    typeof pendingMessages === 'object' &&
-    typeof (pendingMessages as { json?: unknown }).json === 'string'
-  ) {
-    delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
-    const payload = pendingMessages as { json: string; sequence?: number | null; sessionId?: string };
-    updateMessages({ messages: payload.json, sequence: payload.sequence ?? undefined },
-      payload.sessionId ? { sessionId: payload.sessionId } : undefined);
-  }
-
   const updateStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const text = payload?.status as string;
     // The host names the owning tab: routing by tab id is exact.
     const targetTabId = env?.tabId ?? null;
 
-    if (targetTabId && window.__sessionTabsStore && window.__sessionTabsStore.isActiveTab
-        && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
-      window.__sessionTabsStore.updateTab?.(targetTabId, (t: any) => {
-        t.status = text;
-      });
-      return;
-    }
-
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    if (targetTabId && hasTabs) {
+      if (!tabStore.isActiveTab(targetTabId)) {
+        tabStore.updateTab(targetTabId, (t) => ({ ...t, status: text }));
+        window.__sessionTabsStore?.updateTab?.(targetTabId, (t: any) => {
           t.status = text;
-        }
-      );
-      return;
+        });
+        return;
+      }
+    } else if (targetSessionId && hasTabs) {
+      const isBackground = (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+        (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+      if (isBackground) {
+        tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, status: text }));
+        window.__sessionTabsStore?.updateBackgroundTab?.(
+          (t) => t.sessionId === targetSessionId,
+          (t) => {
+            t.status = text;
+          }
+        );
+        return;
+      }
     }
 
     // Resolve localized message if key or known legacy string is passed
@@ -872,22 +903,29 @@ export function registerMessageCallbacks(
     // The host names the owning tab: routing by tab id is exact.
     const targetTabId = env?.tabId ?? null;
 
-    if (targetTabId && window.__sessionTabsStore && window.__sessionTabsStore.isActiveTab
-        && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
-      window.__sessionTabsStore.updateTab?.(targetTabId, (t: any) => {
-        t.loading = isLoading;
-      });
-      return;
-    }
-
-    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    if (targetTabId && hasTabs) {
+      if (!tabStore.isActiveTab(targetTabId)) {
+        tabStore.updateTab(targetTabId, (t) => ({ ...t, loading: isLoading }));
+        window.__sessionTabsStore?.updateTab?.(targetTabId, (t: any) => {
           t.loading = isLoading;
-        }
-      );
-      return;
+        });
+        return;
+      }
+    } else if (targetSessionId && hasTabs) {
+      const isBackground = (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+        (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+      if (isBackground) {
+        tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, loading: isLoading }));
+        window.__sessionTabsStore?.updateBackgroundTab?.(
+          (t) => t.sessionId === targetSessionId,
+          (t) => {
+            t.loading = isLoading;
+          }
+        );
+        return;
+      }
     }
 
     // No "ignore loading=false while streaming" guard here any more.
@@ -904,10 +942,7 @@ export function registerMessageCallbacks(
     // Read the owning tab's current turn state instead of nesting setters
     // inside a functional updater. The tab store applies writes synchronously,
     // so the value read here is the one this event is transitioning away from.
-    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.();
-    const activeTab = activeTabId
-      ? window.__sessionTabsStore?.getTabs?.().find((tab) => tab.id === activeTabId)
-      : undefined;
+    const activeTab = tabStore.getActiveTab();
     const wasLoading = activeTab?.loading ?? false;
     const turnStartedAt = activeTab?.turnStartedAt ?? null;
 
@@ -939,8 +974,15 @@ export function registerMessageCallbacks(
   const showThinkingStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
     const isThinkingVal = isTruthy(payload?.thinking);
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const isBackground = hasTabs && targetSessionId && (
+      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+    );
+    if (isBackground && targetSessionId) {
+      tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, isThinking: isThinkingVal }));
+      window.__sessionTabsStore?.updateBackgroundTab?.(
         (t) => t.sessionId === targetSessionId,
         (t) => {
           t.isThinking = isThinkingVal;
@@ -955,8 +997,15 @@ export function registerMessageCallbacks(
     const targetSessionId: string | null = env?.sessionId ?? null;
     const summary = String(payload?.summary ?? '');
     if (!summary || !summary.trim()) return;
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const isBackground = hasTabs && targetSessionId && (
+      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+    );
+    if (isBackground && targetSessionId) {
+      tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, status: summary }));
+      window.__sessionTabsStore?.updateBackgroundTab?.(
         (t) => t.sessionId === targetSessionId,
         (t) => {
           t.status = summary;
@@ -1022,17 +1071,28 @@ export function registerMessageCallbacks(
     const uuid = payload?.uuid as string;
     if (!targetSessionId || !content || !uuid) return;
 
-    if (
-      targetSessionId &&
-      window.__sessionTabsStore &&
-      !window.__sessionTabsStore.isActiveSession(targetSessionId)
-    ) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.messages = patchUuidInList(t.messages ?? [], content, uuid);
-        }
-      );
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const isBackground = hasTabs && targetSessionId && (
+      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+    );
+    if (isBackground && targetSessionId) {
+      const applyPatch = (t: any) => {
+        const nextMsgs = patchUuidInList(t.messages ?? [], content, uuid);
+        t.messages = nextMsgs;
+        return { ...t, messages: nextMsgs };
+      };
+      let written = false;
+      if (tabStore.size() > 0) {
+        written = tabStore.updateBackgroundTab(targetSessionId, applyPatch as any);
+      }
+      if (!written && window.__sessionTabsStore) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          applyPatch
+        );
+      }
       return;
     }
 
@@ -1163,21 +1223,35 @@ export function registerMessageCallbacks(
     const targetSessionId: string | null = env?.sessionId ?? null;
     const expectedMessageCountArg = payload?.messageCount as string | number | undefined;
 
-    const isForeground = !targetSessionId
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const isForeground = !hasTabs
+      || !targetSessionId
       || (targetSessionId === options.currentSessionIdRef?.current)
+      || (tabStore.size() > 0 ? tabStore.isActiveSession(targetSessionId) : false)
       || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
 
-    if (!isForeground && targetSessionId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.loading = false;
-          t.streamingActive = false;
-        }
-      );
+    if (!isForeground && targetSessionId && hasTabs) {
+      let updated = false;
+      if (tabStore.size() > 0) {
+        updated = tabStore.updateBackgroundTab(targetSessionId, (t) => ({
+          ...t,
+          loading: false,
+          streamingActive: false,
+        }));
+      }
+      if (!updated && window.__sessionTabsStore) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          (t) => {
+            t.loading = false;
+            t.streamingActive = false;
+          }
+        );
+      }
       // If the tab that owns this session is transitioning toward it, the
       // guard is released now that the history has arrived.
-      const ownerTabId = window.__sessionTabsStore?.getTabIdForSession?.(targetSessionId) ?? null;
+      const ownerTabId = tabStore.findIdBySession(targetSessionId) ?? window.__sessionTabsStore?.getTabIdForSession?.(targetSessionId) ?? null;
       if (window.__sessionTabsStore?.getTabTransitionTarget?.(ownerTabId) === targetSessionId) {
         window.__sessionTabsStore?.endTabTransition?.(ownerTabId);
       }
@@ -1220,12 +1294,6 @@ export function registerMessageCallbacks(
       }
     }
   };
-
-  const pendingHistoryLoadComplete = window.__pendingHistoryLoadComplete;
-  if (pendingHistoryLoadComplete) {
-    window.__pendingHistoryLoadComplete = undefined;
-    historyLoadComplete({ messageCount: pendingHistoryLoadComplete.expectedMessageCount });
-  }
 
   // Legacy Codex callback — kept as no-op to avoid breaking older Java hosts.
   // Unlike historyLoadComplete, this must NOT release the session transition guard.
@@ -1295,9 +1363,12 @@ export function registerMessageCallbacks(
 
       // Ignore if the session changed during the transfer. The tab strip knows
       // which session is on screen; the ref is only the fallback.
-      const stillCurrent = window.__sessionTabsStore
-        ? window.__sessionTabsStore.isActiveSession(sessionId)
-        : currentSessionIdRef.current === sessionId; // legacy-allow: fallback when no tab strip exists
+      const tabStore = getTabStore();
+      const stillCurrent = tabStore.size() > 0
+        ? tabStore.isActiveSession(sessionId)
+        : (window.__sessionTabsStore
+          ? window.__sessionTabsStore.isActiveSession(sessionId)
+          : currentSessionIdRef.current === sessionId); // legacy-allow: fallback when no tab strip exists
       if (!stillCurrent) return;
 
       // Contiguity check: for prepend mode, the new page's toTurn must match
@@ -1386,7 +1457,8 @@ export function registerMessageCallbacks(
 
       cardDebugLog('[onSessionHydrated] received for session:', targetSessionId, 'count:', authoritativeMessages.length);
 
-      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || currentSessionIdRef?.current;
+      const tabStore = getTabStore();
+      const activeSessionId = tabStore.getActiveSessionId() || window.__sessionTabsStore?.getActiveSessionId?.() || currentSessionIdRef?.current;
       const isForeground = !activeSessionId || targetSessionId === activeSessionId;
 
       if (isForeground) {
@@ -1426,17 +1498,22 @@ export function registerMessageCallbacks(
       }
 
       // Also ensure background tab store has the authoritative snapshot
+      const applyHydrated = (t: any) => {
+        t.messages = authoritativeMessages;
+        t.messageBaseIndex = 0;
+        if (typeof isStreaming === 'boolean') t.streamingActive = isStreaming;
+        if (typeof loading === 'boolean') t.loading = loading;
+        if (typeof status === 'string') t.status = status;
+        if (typeof revertBoundaryId !== 'undefined') t.revertBoundaryId = revertBoundaryId;
+        return { ...t };
+      };
+      if (tabStore.size() > 0) {
+        tabStore.updateBackgroundTab(targetSessionId, applyHydrated as any);
+      }
       if (window.__sessionTabsStore) {
         window.__sessionTabsStore.updateBackgroundTab(
           (t) => t.sessionId === targetSessionId,
-          (t) => {
-            t.messages = authoritativeMessages;
-            t.messageBaseIndex = 0;
-            if (typeof isStreaming === 'boolean') t.streamingActive = isStreaming;
-            if (typeof loading === 'boolean') t.loading = loading;
-            if (typeof status === 'string') t.status = status;
-            if (typeof revertBoundaryId !== 'undefined') t.revertBoundaryId = revertBoundaryId;
-          }
+          applyHydrated
         );
       }
     } catch (e) {
@@ -1469,36 +1546,4 @@ export function registerMessageCallbacks(
     'internal.history.codexComplete': completeCodexHistoryPage,
     'internal.history.codexRenderComplete': codexHistoryPageRenderComplete,
   });
-
-  // Drain anything the pre-mount surface buffered. Registration has happened,
-  // so the local handlers and their state setters are all live.
-  const pendingHistory = (window as unknown as Record<string, unknown>).__pendingHistoryData;
-  if (pendingHistory !== undefined) {
-    delete (window as unknown as Record<string, unknown>).__pendingHistoryData;
-    handleHistoryData(pendingHistory);
-  }
-
-  const pendingStatus = (window as unknown as Record<string, unknown>).__pendingStatusText;
-  if (typeof pendingStatus === 'string' && pendingStatus.length > 0) {
-    delete (window as unknown as Record<string, unknown>).__pendingStatusText;
-    updateStatus(pendingStatus as any);
-  }
-
-  const pendingLoading = window.__pendingLoadingState;
-  if (typeof pendingLoading === 'boolean') {
-    delete window.__pendingLoadingState;
-    showLoading(pendingLoading as any);
-  }
-
-  const pendingUserMessage = window.__pendingUserMessage;
-  if (typeof pendingUserMessage === 'string' && pendingUserMessage.length > 0) {
-    delete window.__pendingUserMessage;
-    addUserMessage(pendingUserMessage);
-  }
-
-  const pendingSummary = (window as unknown as Record<string, unknown>).__pendingSummaryText;
-  if (typeof pendingSummary === 'string' && pendingSummary.length > 0) {
-    delete (window as unknown as Record<string, unknown>).__pendingSummaryText;
-    showSummary(pendingSummary as any);
-  }
 }

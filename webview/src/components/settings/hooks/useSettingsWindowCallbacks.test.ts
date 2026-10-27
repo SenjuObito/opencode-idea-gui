@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES,
+  SETTINGS_BOOTSTRAP_COMMANDS,
   useSettingsWindowCallbacks,
   type SettingsWindowCallbacksDeps,
 } from './useSettingsWindowCallbacks';
@@ -59,6 +59,12 @@ describe('useSettingsWindowCallbacks', () => {
     resetHostEvents();
   });
 
+  /** The command types the settings panel sent, in order. */
+  const sentTypes = () => (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls
+    .map((call) => call[0] as string)
+    .filter((payload) => payload.startsWith('host_command:'))
+    .map((payload) => JSON.parse(payload.substring('host_command:'.length)).type as string);
+
   it('loads basic settings in batches without stamping providers/agents or CLI-probe configs', () => {
     const deps = createDeps();
 
@@ -66,24 +72,22 @@ describe('useSettingsWindowCallbacks', () => {
 
     // Heavy list fetches are deferred until their settings tabs open.
     expect(deps.loadAgents).not.toHaveBeenCalled();
-    expect(window.sendToJava).not.toHaveBeenCalledWith('get_current_claude_config:');
+    expect(sentTypes()).not.toContain('get_current_claude_config');
 
     // First batch only (batchSize = 5), priority fields for first paint.
-    const firstBatch = SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES.slice(0, 5);
-    expect((window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual([
-      ...firstBatch,
-    ]);
+    const firstBatch = SETTINGS_BOOTSTRAP_COMMANDS.slice(0, 5);
+    expect(sentTypes()).toEqual([...firstBatch]);
 
     // Drain deferred batches.
     vi.runAllTimers();
-    const allMessages = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-    for (const message of SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES) {
-      expect(allMessages).toContain(message);
+    const allCommands = sentTypes();
+    for (const command of SETTINGS_BOOTSTRAP_COMMANDS) {
+      expect(allCommands).toContain(command);
     }
 
     // CLI availability probes freeze JCEF when done on open — keep off bootstrap.
-    expect(allMessages).not.toContain('get_commit_prompt:');
-    expect(allMessages).not.toContain('get_prompt_enhancer_config:');
+    expect(allCommands).not.toContain('get_commit_prompt');
+    expect(allCommands).not.toContain('get_prompt_enhancer_config');
   });
 
   it('registers ui font callback and updates ui font state from backend payload', () => {

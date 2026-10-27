@@ -149,13 +149,6 @@ export function registerSessionCallbacks(
     }
   };
 
-  // Rejections that arrived before this handler existed are shown now.
-  const pendingRejections = window.__pendingCommandRejections ?? [];
-  window.__pendingCommandRejections = [];
-  for (const pending of pendingRejections) {
-    commandRejected(pending, undefined);
-  }
-
   const updateSessionTitle = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const title = String(payload?.title ?? '');
     const sessionId = env?.sessionId ?? '';

@@ -214,11 +214,6 @@ function beginLoad(providerId: string) {
 // Global host event registration
 if (typeof window !== 'undefined') {
   registerHostEvents({ 'cli.models': handleIncomingCliModels });
-  if (window.__pendingCliModels) {
-    const pending = window.__pendingCliModels;
-    delete window.__pendingCliModels;
-    handleIncomingCliModels(pending as any);
-  }
 }
 
 const subscribe = (listener: () => void) => {
@@ -234,12 +229,6 @@ const getSnapshot = () => state;
  * Loads model catalogs for OpenCode via channel-manager listModels.
  */
 export function useCliModels(currentProvider: string = 'opencode') {
-  if (typeof window !== 'undefined' && window.__pendingCliModels) {
-    const pending = window.__pendingCliModels;
-    delete window.__pendingCliModels;
-    handleIncomingCliModels(pending as any);
-  }
-
   const currentSnapshot = useSyncExternalStore(subscribe, getSnapshot);
 
   useEffect(() => {

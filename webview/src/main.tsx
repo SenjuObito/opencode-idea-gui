@@ -38,7 +38,7 @@ import {
 } from './utils/surfaceDamagePulse';
 import { forceWebviewRepaint } from './utils/forceWebviewRepaint';
 import { registerHostEvents } from './utils/hostEventRegistry';
-import type { HostEventPayload } from './utils/hostEventTypes';
+import { getTabStore } from './store/tabStore';
 
 // Silence noisy console output in production (including third-party libs).
 // console.error is preserved so ErrorBoundary and unhandled exceptions still
@@ -447,20 +447,6 @@ registerHostEvents({
       // ignore
     }
   },
-  'daemon.status': (payload: HostEventPayload | string) => {
-    // Named events carry the payload as `{ data: "<json>" }`; the legacy path
-    // passed the JSON string directly. Normalize once here so both
-    // useUsageTracking and __pendingDaemonStatus always see a string.
-    const json = typeof payload === 'string'
-      ? payload
-      : typeof payload?.data === 'string'
-        ? payload.data
-        : JSON.stringify(payload ?? {});
-    // Keep the latest payload available for useUsageTracking to drain on mount.
-    // CustomEvents dispatched before the listener is attached are lost.
-    window.__pendingDaemonStatus = json;
-    window.dispatchEvent(new CustomEvent('updateDaemonStatus', { detail: json }));
-  },
   'turn.retry': onRetryStatusFromHost,
   'turn.error': onTerminalErrorFromHost,
   'linkify.capabilities': (json: string) => {
@@ -543,7 +529,7 @@ waitForBridge(() => {
   sendWindowCommand('settings.font.code.get');
 
   debugLog('[Main] Sending commands.refresh request');
-  const refreshTabId = window.__sessionTabsStore?.getActiveTabId?.();
+  const refreshTabId = getTabStore().getActiveTabId();
   if (refreshTabId) {
     sendHostCommand(refreshTabId, 'commands.refresh');
   } else {

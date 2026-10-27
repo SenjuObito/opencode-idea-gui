@@ -20,7 +20,7 @@ public class WebviewEventQueueTest {
 
         String script = WebviewEventQueue.buildBatchScript(List.of(call));
 
-        assertTrue(script.contains("window.__opencodeDispatch('onTodoUpdated', ['ses_1', '[]'])"));
+        assertTrue(script.contains("window.__opencodeDispatch('todos.updated', ['ses_1', '[]'])"));
         assertTrue(script.contains("window.onTodoUpdated('ses_1', '[]')"));
     }
 
@@ -58,7 +58,7 @@ public class WebviewEventQueueTest {
         assertEquals(1, scheduled.size());
         scheduled.remove(0).run();
         assertEquals(1, scripts.size());
-        assertTrue(scripts.get(0).contains("window.__opencodeDispatch('onContentDelta'"));
+        assertTrue(scripts.get(0).contains("window.__opencodeDispatch('content.delta'"));
         queue.dispose();
     }
 

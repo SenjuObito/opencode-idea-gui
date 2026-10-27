@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { sendWindowCommand } from '../utils/bridge';
-import { registerHostEvents, unregisterHostEvents } from '../utils/hostEventRegistry';
+import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../utils/hostEventRegistry';
 import { insertNewlineAtCursor } from './useContextMenu';
 
 /**
@@ -46,7 +46,7 @@ export function useContextActions() {
           break;
         }
         case 'send': {
-          document.dispatchEvent(new CustomEvent('ideaSend'));
+          hostEventHandler('internal.chat.send')?.();
           break;
         }
         case 'newline': {

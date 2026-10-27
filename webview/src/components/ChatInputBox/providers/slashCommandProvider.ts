@@ -3,6 +3,7 @@ import { sendHostCommand, sendWindowCommand } from '../../../utils/bridge';
 import i18n from '../../../i18n/config';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
 import { hostEventHandler, registerHostEvents } from '../../../utils/hostEventRegistry';
+import { getTabStore } from '../../../store/tabStore';
 
 /**
  * Local command list (commands to be filtered out)
@@ -196,13 +197,6 @@ export function setupSlashCommandsCallback() {
   });
   callbackRegistered = true;
   debugLog('[SlashCommand] Callback registered');
-
-  if (window.__pendingSlashCommands) {
-    debugLog('[SlashCommand] Processing pending commands');
-    const pending = window.__pendingSlashCommands;
-    window.__pendingSlashCommands = undefined;
-    handler(pending);
-  }
 }
 
 function waitForSlashCommands(signal: AbortSignal, timeoutMs: number): Promise<void> {
@@ -270,7 +264,7 @@ function requestRefresh(): boolean {
   }
 
   const attempt = retryCount + 1;
-  const activeTabId = window.__sessionTabsStore?.getActiveTabId?.();
+  const activeTabId = getTabStore().getActiveTabId();
   const sent = activeTabId
     ? sendHostCommand(activeTabId, 'commands.refresh')
     : sendWindowCommand('commands.refresh');

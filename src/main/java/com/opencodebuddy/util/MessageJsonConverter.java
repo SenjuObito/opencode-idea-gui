@@ -388,7 +388,13 @@ public class MessageJsonConverter {
             usageUpdate.addProperty("maxTokens", maxTokens);
 
             String usageJson = new Gson().toJson(usageUpdate);
-            handlerContext.callJavaScript("window.onUsageUpdate", sessionId, JsUtils.escapeJs(usageJson));
+            // The named event carries the session in the envelope and the payload
+            // by field: a positional call would reach the handler with no
+            // envelope, and the handler drops an update it cannot attribute.
+            handlerContext.publishEvent(com.opencodebuddy.tab.TabEvent.of("usage.updated")
+                    .session(sessionId)
+                    .json("usage", usageJson)
+                    .build());
         } catch (Exception e) {
             LOG.warn("Failed to push usage update: " + e.getMessage(), e);
         }

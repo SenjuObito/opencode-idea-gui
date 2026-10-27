@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
 import { sendHostCommand, sendSessionCommand, sendInterrupt, sendWindowCommand, cardDebugLog } from '../utils/bridge';
+import { getTabStore } from '../store/tabStore';
 import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
@@ -116,7 +117,7 @@ export function useSessionManagement({
   const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null, targetTabId?: string | null) => {
     // The guard belongs to the tab that is switching. Other tabs keep their
     // own events flowing while this one loads its history.
-    const transitionTabId = targetTabId ?? window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+    const transitionTabId = targetTabId ?? getTabStore().getActiveTabId() ?? null;
     const transitionToken = createSessionTransitionToken();
     beginTransition(transitionTabId, nextSessionId, transitionToken);
     // 完整会话切换会取代任何在途的同会话软刷新，释放其去抖守卫。
@@ -300,11 +301,11 @@ export function useSessionManagement({
         return;
       }
       cardDebugLog('[SessionManagement] same session soft reload, sending load_session');
-      cardDebugLog('[SessionManagement] BEFORE: tab transition=', window.__sessionTabsStore?.isTabTransitioning?.(window.__sessionTabsStore?.getActiveTabId?.()), 'softReload=', window.__softSessionReloadInFlight);
+      cardDebugLog('[SessionManagement] BEFORE: tab transition=', window.__sessionTabsStore?.isTabTransitioning?.(getTabStore().getActiveTabId()), 'softReload=', window.__softSessionReloadInFlight);
       // Set transition guard so backend's clearMessages (from restoreMessages)
       // won't reset sessionLoading to false before messages arrive — prevents
       // the empty-state flash that occurs when the tab is not transitioning.
-      const softReloadTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+      const softReloadTabId = getTabStore().getActiveTabId() ?? null;
       const softReloadToken = createSessionTransitionToken();
       beginTransition(softReloadTabId, sessionId, softReloadToken);
       window.__softSessionReloadInFlight = sessionId;
@@ -322,7 +323,7 @@ export function useSessionManagement({
           cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
         }
       }, 5_000);
-      sendHostCommand(window.__sessionTabsStore?.getActiveTabId?.() ?? '', 'session.load', { sessionId }, sessionId);
+      sendHostCommand(getTabStore().getActiveTabId() ?? '', 'session.load', { sessionId }, sessionId);
       setCurrentView('chat');
       return;
     }
@@ -339,7 +340,7 @@ export function useSessionManagement({
     // interleaving two conversations. Rebinding releases the old session, whose
     // late deltas then fall through to the logged orphan path instead of
     // corrupting the visible transcript.
-    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.();
+    const activeTabId = getTabStore().getActiveTabId();
     if (activeTabId) {
       window.__sessionTabsStore?.updateTabSessionId?.(activeTabId, sessionId);
     }

@@ -58,7 +58,7 @@ public class HistoryLoadService {
                 String finalJson = buildHistoryJsonFromNativeSessions(resultElement, provider);
                 LOG.info("[HistoryHandler] 构建原生历史会话数据完成，JSON 长度: " + finalJson.length());
 
-                context.callJavaScript("window.setHistoryData", context.escapeJs(finalJson));
+                context.callJavaScript("setHistoryData", context.escapeJs(finalJson));
                 LOG.info("[HistoryHandler] 历史会话数据已通过 callJavaScript 发送给前端");
 
             } catch (Exception e) {
@@ -72,7 +72,7 @@ public class HistoryLoadService {
         JsonObject errorObj = new JsonObject();
         errorObj.addProperty("success", false);
         errorObj.addProperty("error", errorMessage);
-        context.callJavaScript("window.setHistoryData", context.escapeJs(GSON.toJson(errorObj)));
+        context.callJavaScript("setHistoryData", context.escapeJs(GSON.toJson(errorObj)));
     }
 
     /**

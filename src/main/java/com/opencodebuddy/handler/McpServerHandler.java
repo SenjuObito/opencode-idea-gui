@@ -369,7 +369,7 @@ public class McpServerHandler extends BaseMessageHandler {
             LOG.error("[McpServerHandler] Failed to add MCP server: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() -> {
                 String errorMsg = escapeJs(com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("mcp.addServerFailedWithReason", e.getMessage()));
-                callJavaScript("window.showError", errorMsg);
+                callJavaScript("showError", errorMsg);
             });
         }
     }
@@ -391,7 +391,7 @@ public class McpServerHandler extends BaseMessageHandler {
             LOG.error("[McpServerHandler] Failed to update MCP server: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() -> {
                 String errorMsg = escapeJs(com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("mcp.updateServerFailedWithReason", e.getMessage()));
-                callJavaScript("window.showError", errorMsg);
+                callJavaScript("showError", errorMsg);
             });
         }
     }
@@ -416,14 +416,14 @@ public class McpServerHandler extends BaseMessageHandler {
                     String reason = com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("mcp.serverNotFound");
                     String errorMsg = escapeJs(com.opencodebuddy.i18n.OpenCodeBuddyBundle.message(
                             "mcp.deleteServerFailedWithReason", reason));
-                    callJavaScript("window.showError", errorMsg);
+                    callJavaScript("showError", errorMsg);
                 });
             }
         } catch (Exception e) {
             LOG.error("[McpServerHandler] Failed to delete MCP server: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() -> {
                 String errorMsg = escapeJs(com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("mcp.deleteServerFailedWithReason", e.getMessage()));
-                callJavaScript("window.showError", errorMsg);
+                callJavaScript("showError", errorMsg);
             });
         }
     }
@@ -457,7 +457,7 @@ public class McpServerHandler extends BaseMessageHandler {
         } catch (Exception e) {
             LOG.error("[McpServerHandler] Failed to toggle MCP server: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.showError", escapeJs("切换 MCP 服务器状态失败: " + e.getMessage()));
+                callJavaScript("showError", escapeJs("切换 MCP 服务器状态失败: " + e.getMessage()));
             });
         }
     }

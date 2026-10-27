@@ -9,18 +9,12 @@
 
 import { parseSequence } from './parseSequence';
 import { transitionTargetOfSession } from './tabTransition';
+import { getTabStore } from '../../store/tabStore';
 
 export { parseSequence };
 
 /**
- * Retrieves the minimum accepted update sequence for a given session.
- *
- * Strictly per-session. There is deliberately **no** global fallback any more:
- * a single shared baseline let one session's high sequence number permanently
- * block the snapshots of another session that had just been loaded or switched
- * to (whose coalescer restarts at 0). An unknown session gets a fresh baseline
- * of 0, i.e. accept — the permissive direction, because dropping a snapshot is
- * invisible to the user while blocking one freezes the whole tab.
+ * Internal session sequence barrier registry.
  */
 export const getMinAcceptedSequence = (sessionId?: string | null): number => {
   if (!sessionId || !window.__sessionMinAcceptedUpdateSequence) {
@@ -46,6 +40,8 @@ const isForegroundSession = (sessionId?: string | null): boolean => {
   // A tab that is switching to this session is the foreground, even before the
   // switch has completed.
   if (transitionTargetOfSession(sessionId) === sessionId) return true;
+  const store = getTabStore();
+  if (store.isActiveSession(sessionId)) return true;
   if (window.__sessionTabsStore?.isActiveSession(sessionId)) return true;
   return false;
 };

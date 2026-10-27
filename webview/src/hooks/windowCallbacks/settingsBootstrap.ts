@@ -1,13 +1,12 @@
 /**
  * settingsBootstrap.ts
  *
- * Handles initial configuration requests sent to the Java backend and the
- * processing of any values that arrived before the callbacks were registered
- * (stored in window.__pending* slots by main.tsx).
+ * Handles initial configuration requests sent to the Java backend. Early host
+ * events are no longer buffered here: the host dispatcher queues an event whose
+ * handler is not registered yet and flushes it in order once it is.
  */
 
 import { sendWindowCommand } from '../../utils/bridge';
-import { hostEventHandler } from '../../utils/hostEventRegistry';
 
 const MAX_RETRIES = 30;
 
@@ -62,41 +61,4 @@ export const startModeRequest = (): void => {
     }
   };
   setTimeout(requestMode, 200);
-};
-
-/**
- * Drain any pending window.__pending* values captured by main.tsx before
- * the React callbacks were registered.  Must be called after the corresponding
- * window.updateXxx / window.onXxx callbacks have been assigned.
- */
-export const drainPendingSettings = (): void => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const w = window as unknown as Record<string, unknown>;
-
-  if (w.__pendingSendShortcut) {
-    const pending = w.__pendingSendShortcut as string;
-    delete w.__pendingSendShortcut;
-    hostEventHandler('settings.send.shortcut')?.(pending);
-  }
-
-  if (w.__pendingAutoOpenFileEnabled) {
-    const pending = w.__pendingAutoOpenFileEnabled as string;
-    delete w.__pendingAutoOpenFileEnabled;
-    hostEventHandler('settings.auto.open.file')?.(pending);
-  }
-
-  if (w.__pendingPermissionDialogTimeout) {
-    const pending = w.__pendingPermissionDialogTimeout as string;
-    delete w.__pendingPermissionDialogTimeout;
-    hostEventHandler('settings.permission.timeout')?.(pending);
-  }
-
-  if (w.__pendingModeReceived) {
-    const pending = w.__pendingModeReceived as string;
-    delete w.__pendingModeReceived;
-    hostEventHandler('settings.mode.received')?.(pending);
-  }
 };

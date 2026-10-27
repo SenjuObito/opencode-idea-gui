@@ -16,6 +16,10 @@ export interface SessionTabBarProps {
   activeTabId: string;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
+  onCloseOtherTabs?: (tabId: string) => void;
+  onCloseTabsToLeft?: (tabId: string) => void;
+  onCloseTabsToRight?: (tabId: string) => void;
+  onCloseAllTabs?: () => void;
   onRenameTab: (tabId: string, newTitle: string) => void;
   onForkTab: (tab: SessionTabData) => void;
   onExportTab: (tab: SessionTabData) => void;
@@ -37,6 +41,10 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onCloseOtherTabs,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
+  onCloseAllTabs,
   onRenameTab,
   onForkTab,
   onExportTab,
@@ -767,6 +775,7 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
           x={contextMenu.x}
           y={contextMenu.y}
           tab={contextMenu.tab}
+          tabs={tabs}
           onClose={() => setContextMenu(null)}
           onRename={() => startEditing(contextMenu.tab)}
           onFork={() => onForkTab(contextMenu.tab)}
@@ -774,6 +783,10 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
           onShare={() => onShareTab(contextMenu.tab)}
           onCopyShareLink={() => onCopyShareLinkTab(contextMenu.tab)}
           onUnshare={() => onUnshareTab(contextMenu.tab)}
+          onCloseOthers={() => onCloseOtherTabs?.(contextMenu.tab.id)}
+          onCloseToLeft={() => onCloseTabsToLeft?.(contextMenu.tab.id)}
+          onCloseToRight={() => onCloseTabsToRight?.(contextMenu.tab.id)}
+          onCloseAll={() => onCloseAllTabs?.()}
           t={t}
         />
       )}

@@ -13,6 +13,7 @@
  * one.</p>
  */
 import { TabTransitionStore } from '../../store/tabTransitionStore';
+import { getTabStore } from '../../store/tabStore';
 
 export interface TabTransitionState {
   /** The session the tab is switching to. */
@@ -33,12 +34,18 @@ const store = new TabTransitionStore();
 
 /** The tab that is on screen. */
 export function activeTabId(): string | null {
+  const tabStore = getTabStore();
+  const id = tabStore.getActiveTabId();
+  if (id) return id;
   return window.__sessionTabsStore?.getActiveTabId?.() ?? null;
 }
 
 /** The tab that owns a session id (null when the session has no tab). */
 export function tabIdForSession(sessionId: string | null | undefined): string | null {
   if (!sessionId) return null;
+  const tabStore = getTabStore();
+  const id = tabStore.findIdBySession(sessionId);
+  if (id) return id;
   return window.__sessionTabsStore?.getTabIdForSession?.(sessionId) ?? null;
 }
 

@@ -125,19 +125,11 @@ describe('useWindowCallbacks integration', () => {
     window.sendToJava = vi.fn();
     window.updateDependencyStatus = undefined;
     delete (window as unknown as Record<string, unknown>)._appUpdateDependencyStatus;
-    // The drain test inspects this slot; if a prior test (or earlier suite run)
-    // leaked a value onto window we'd see a false-positive drain. Wipe it here
-    // so each test starts from a clean pending state.
-    delete (window as unknown as Record<string, unknown>).__pendingPermissionDialogTimeout;
     delete (window as unknown as Record<string, unknown>).__pendingDependencyStatus;
-    delete window.__pendingBackendTabState;
-    delete window.__pendingUsageUpdate;
     delete window.__CCGUI_RECOVERY_STATE_APPLIED__;
     delete window.__lastAcceptedMessageCount;
     delete window.__sessionTabsStore;
     delete window.__pendingHistoryRefreshMessageCount;
-    delete window.__pendingHistoryLoadComplete;
-    delete (window as unknown as Record<string, unknown>).__pendingHistoryData;
     delete window.__historySurfaceRefreshEpoch;
     window.__dependencyStatusState = 'pending';
   });
@@ -177,42 +169,6 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setReasoningEffort).toHaveBeenCalledWith('high');
     expect(window.__CCGUI_RECOVERY_STATE_APPLIED__).toBe(true);
     expect((window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.length).toBe(bridgeCallsBeforeRestore);
-  });
-
-  it('drains Java recovery state buffered before React callback registration', () => {
-    window.__pendingBackendTabState = JSON.stringify({
-      provider: 'codex',
-      model: 'gpt-5.6-sol',
-      permissionMode: 'default',
-    });
-    const opts = createOptions();
-
-    renderHook(() => useWindowCallbacks(opts));
-
-    expect(opts.setCurrentProvider).toHaveBeenCalledWith('opencode');
-    expect(opts.setSelectedOpenCodeModel).toHaveBeenCalledWith('gpt-5.6-sol');
-    expect(window.__pendingBackendTabState).toBeUndefined();
-  });
-
-  it('drains the latest usage update buffered before React callback registration', () => {
-    window.__pendingUsageUpdate = {
-      payload: {
-        usage: JSON.stringify({
-          percentage: 19,
-          usedTokens: 49300,
-          maxTokens: 258400,
-        }),
-      },
-      env: { sessionId: 'session-active' },
-    };
-    const opts = createOptions();
-
-    renderHook(() => useWindowCallbacks(opts));
-
-    expect(opts.setUsagePercentage).toHaveBeenCalledWith(19);
-    expect(opts.setUsageUsedTokens).toHaveBeenCalledWith(49300);
-    expect(opts.setUsageMaxTokens).toHaveBeenCalledWith(258400);
-    expect(window.__pendingUsageUpdate).toBeUndefined();
   });
 
   it('routes a background session usage update to its own tab only', () => {
@@ -715,52 +671,6 @@ describe('useWindowCallbacks integration', () => {
       .filter(([payload]) => isHistoryCommit(payload));
     expect(historyRefreshCalls).toHaveLength(1);
     vi.useRealTimers();
-  });
-
-  it('drains an early history completion only after the restored message DOM commits', async () => {
-    const restoredMessages: ClaudeMessage[] = [
-      { type: 'assistant', content: 'restored before callback registration' },
-    ];
-    window.__pendingUpdateMessages = {
-      json: JSON.stringify(restoredMessages),
-      sequence: 1,
-    };
-    window.__pendingHistoryLoadComplete = { expectedMessageCount: 1 };
-    let domTextWhenAcknowledged = '';
-    window.sendToJava = vi.fn((payload: string) => {
-      if (isHistoryCommit(payload)) {
-        domTextWhenAcknowledged = document.querySelector('[data-testid="history-dom"]')?.textContent ?? '';
-      }
-    });
-
-    const HistoryHarness = () => {
-      const [messages, setMessages] = useState<ClaudeMessage[]>([]);
-      useWindowCallbacks(createOptions({ setMessages }));
-      return createElement(
-        'div',
-        { 'data-testid': 'history-dom' },
-        messages.map(message => message.content).join('|'),
-      );
-    };
-
-    render(createElement(HistoryHarness));
-
-    await waitFor(() => {
-      expect(domTextWhenAcknowledged).toContain('restored before callback registration');
-    });
-    expect(window.__pendingHistoryLoadComplete).toBeUndefined();
-    expect(historyCommitCalls().length).toBeGreaterThan(0);
-  });
-
-  it('preserves an explicit zero count buffered before callback registration', async () => {
-    window.__pendingHistoryLoadComplete = { expectedMessageCount: 0 };
-    renderHook(() => useWindowCallbacks(createOptions()));
-
-    await waitFor(() => {
-      expect(historyCommitCalls().length).toBeGreaterThan(0);
-    });
-    expect(window.__pendingHistoryLoadComplete).toBeUndefined();
-    expect(historyCommitCalls().length).toBeGreaterThan(0);
   });
 
   it('reports a DOM commit when the restored-history snapshot arrived first', () => {
@@ -1289,55 +1199,11 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setPermissionDialogTimeoutSeconds).toHaveBeenLastCalledWith(300);
   });
 
-  // ===== Bootstrap drain for permission dialog timeout =====
-  //
-  // main.tsx may receive `updatePermissionDialogTimeout` from Java before React has
-  // mounted and registered the real callback. To avoid losing that payload it stashes
-  // the raw JSON onto `window.__pendingPermissionDialogTimeout`. After registration,
-  // `drainPendingSettings()` must replay it into the now-installed callback exactly
-  // once and clear the slot so a later re-mount doesn't replay stale data.
-
-  it('drains __pendingPermissionDialogTimeout into the setter on registration', () => {
-    const w = window as unknown as Record<string, unknown>;
-    w.__pendingPermissionDialogTimeout = JSON.stringify({ permissionDialogTimeoutSeconds: 900 });
-
-    const opts = createOptions();
-    renderHook(() => useWindowCallbacks(opts));
-
-    expect(opts.setPermissionDialogTimeoutSeconds).toHaveBeenCalledWith(900);
-    // Pending slot is consumed exactly once — leaving it around would let a remount
-    // re-fire the same value and clobber any later edits the user made in between.
-    expect(w.__pendingPermissionDialogTimeout).toBeUndefined();
-  });
-
-  it('drained payload goes through the same clamp/validation as live updates', () => {
-    const w = window as unknown as Record<string, unknown>;
-    w.__pendingPermissionDialogTimeout = JSON.stringify({ permissionDialogTimeoutSeconds: 99999 });
-
-    const opts = createOptions();
-    renderHook(() => useWindowCallbacks(opts));
-
-    expect(opts.setPermissionDialogTimeoutSeconds).toHaveBeenCalledWith(3600);
-    expect(w.__pendingPermissionDialogTimeout).toBeUndefined();
-  });
-
   it('does not call setPermissionDialogTimeoutSeconds when no pending payload exists', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
     expect(opts.setPermissionDialogTimeoutSeconds).not.toHaveBeenCalled();
-  });
-
-  it('drains __pendingHistoryData into setHistoryData on registration', () => {
-    const w = window as unknown as Record<string, unknown>;
-    const dummyHistory = { success: true, sessions: [{ sessionId: 'sess-1', title: 'Test' }] };
-    w.__pendingHistoryData = JSON.stringify(dummyHistory);
-
-    const opts = createOptions();
-    renderHook(() => useWindowCallbacks(opts));
-
-    expect(opts.setHistoryData).toHaveBeenCalledWith(dummyHistory);
-    expect(w.__pendingHistoryData).toBeUndefined();
   });
 
   it('addErrorMessage shows toast but does not set status', () => {

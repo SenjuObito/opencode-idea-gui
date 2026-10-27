@@ -29,6 +29,10 @@
     "recommended": "推薦"
   },
   "chat": {
+    "closeOtherTabs": "關閉其他分頁",
+    "closeAllTabs": "關閉所有分頁",
+    "closeTabsToLeft": "關閉左側分頁",
+    "closeTabsToRight": "關閉右側分頁",
     "sendMessage": "給 {{provider}} 發送訊息",
     "createNewSession": "建立新會話",
     "confirmInterrupt": "目前正在對話中，建立新會話將中斷目前對話，是否繼續？",

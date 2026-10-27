@@ -860,7 +860,9 @@ tasks.register('checkLegacyPatterns') {
         'mixed-session-map-keys':  [files: javaSources, pattern: /sessions\.put|sessionCoalescers\.keySet/],
         // The catalog's events travel as named events; calling the legacy
         // function names positionally would put the protocol back in the dark.
-        'positional-event-calls':  [files: javaSources, pattern: /callJavaScript\("(onContentDelta|onThinkingDelta|onStreamStart|onStreamEnd|onTurnEnd|onStreamingHeartbeat|onBlockReset|onUsageUpdate|onTodoUpdated|onTaskEvent|onRevertStateUpdate|onMessagesRemoved|updateMessages|updateMessageTail|updateStatus|updateSessionTitle|showLoading|showThinkingStatus|showSummary|updateRetryStatus|patchMessageUuid|setSessionId|historyLoadComplete|clearMessages|commandRejected|window\.showPermissionDialog|window\.showAskUserQuestionDialog|window\.showPlanApprovalDialog|window\.forceClose[A-Za-z]*)"/],
+        // The audit normalizes a leading "window." away before matching, so the
+        // compatible call spelling cannot be used to slip past this rule.
+        'positional-event-calls':  [files: javaSources, pattern: /callJavaScript\("(onContentDelta|onThinkingDelta|onStreamStart|onStreamEnd|onTurnEnd|onStreamingHeartbeat|onBlockReset|onUsageUpdate|onTodoUpdated|onTaskEvent|onRevertStateUpdate|onMessagesRemoved|updateMessages|updateMessageTail|updateStatus|updateSessionTitle|showLoading|showThinkingStatus|showSummary|updateRetryStatus|patchMessageUuid|setSessionId|historyLoadComplete|clearMessages|commandRejected|showPermissionDialog|showAskUserQuestionDialog|showPlanApprovalDialog|forceClose[A-Za-z]*)"/],
     ]
     def debt = [
         // The event handlers must not route by "the session on screen": a
@@ -879,7 +881,11 @@ tasks.register('checkLegacyPatterns') {
         forbidden.each { name, rule ->
             rule.files.each { file ->
                 file.eachLine { line, number ->
-                    if ((line =~ rule.pattern).find() && !line.contains('legacy-allow:')) {
+                    // The bridge accepts "window.<fn>" as a compatible spelling of
+                    // "<fn>". Auditing only the raw line let that spelling bypass
+                    // every rule, so the check looks at the normalized call too.
+                    def audited = line.replace('callJavaScript("window.', 'callJavaScript("')
+                    if ((audited =~ rule.pattern).find() && !line.contains('legacy-allow:')) {
                         violations << "${name}: ${project.relativePath(file)}:${number}"
                     }
                 }

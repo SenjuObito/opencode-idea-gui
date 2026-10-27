@@ -41,6 +41,7 @@ import {
 } from './hooks/index.js';
 import { debounce } from './utils/debounce.js';
 import { perfTimer } from '../../utils/debug.js';
+import { registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 import { DEBOUNCE_TIMING } from '../../constants/performance.js';
 import { SessionContext } from '../../contexts/SessionContext.js';
 import { ContextMenu } from '../ContextMenu';
@@ -522,15 +523,16 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       handleSubmit,
     });
 
-    // Listen for IDEA shortcut send event (dispatched by window.execContextAction)
+    // IDEA's send shortcut lands on the semantic bus like every other internal
+    // action; there is no DOM event of its own.
     useEffect(() => {
-      const handler = () => {
+      const send = () => {
         if (!isLoading && !isComposingRef.current) {
           handleSubmit();
         }
       };
-      document.addEventListener('ideaSend', handler);
-      return () => document.removeEventListener('ideaSend', handler);
+      registerHostEvents({ 'internal.chat.send': send });
+      return () => unregisterHostEvents(['internal.chat.send']);
     }, [handleSubmit, isLoading]);
 
     // Paste and drop hook

@@ -86,14 +86,6 @@ export function setupDollarCommandsCallback() {
   });
   callbackRegistered = true;
   debugLog('[DollarCommand] Callback registered');
-
-  // Process pending data if backend sent before callback was registered
-  if (window.__pendingDollarCommands) {
-    debugLog('[DollarCommand] Processing pending commands');
-    const pending = window.__pendingDollarCommands;
-    window.__pendingDollarCommands = undefined;
-    handler(pending);
-  }
 }
 
 /**

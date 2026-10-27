@@ -11,25 +11,7 @@ import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { setQuestionAnswer, removeQuestionAnswerByRequestId } from '../../../store/questionAnswerStore';
 import type { HostEventPayload } from '../../../utils/hostEventTypes';
-
-/**
- * The pre-mount queue holds what the host sent before React mounted: a JSON
- * document. The handler takes the named payload, so the queue is parsed here.
- */
-function parseQueuedPrompt(payload: unknown): HostEventPayload | undefined {
-  if (payload && typeof payload === 'object') {
-    return payload as HostEventPayload;
-  }
-  if (typeof payload === 'string') {
-    try {
-      const parsed = JSON.parse(payload);
-      return parsed && typeof parsed === 'object' ? parsed as HostEventPayload : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
-}
+import { getTabStore } from '../../../store/tabStore';
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -49,14 +31,6 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     cardDebugLog(`[PCard][webview] showToast: ${message}`);
     addToast(String(message ?? ''), 'error');
   };
-
-  if (Array.isArray(window.__pendingToasts) && window.__pendingToasts.length > 0) {
-    for (const msg of window.__pendingToasts) {
-      cardDebugLog(`[PCard][webview] draining pending showToast: ${msg}`);
-      addToast(String(msg ?? ''), 'error');
-    }
-    delete window.__pendingToasts;
-  }
 
   // A question reply failed server-side — flip the optimistic "answered"
   // record back to an honest skipped state.
@@ -81,48 +55,66 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       }
       cardDebugLog(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId} tabId=${request.tabId}`);
       const targetSessionId = request.sessionId;
+      const tabStore = getTabStore();
       const tabsStore = window.__sessionTabsStore;
       // The host stamps the owning tab: routing by tab id is exact, routing by
       // session id only finds the tab when it happens to be bound already.
       const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
 
-      if (targetTabId && tabsStore && tabsStore.isActiveTab && !tabsStore.isActiveTab(targetTabId)) {
-        const stored = tabsStore.updateTab?.(targetTabId, (t: any) => {
-          const list = t.pendingPermissions || [];
-          if (!list.some((r: any) => r.channelId === request.channelId)) {
-            t.pendingPermissions = [...list, request];
-          }
-        });
-        if (stored) {
-          return;
+      let isCurrentActive = false;
+      if (targetTabId) {
+        if (tabStore.size() > 0) {
+          isCurrentActive = tabStore.isActiveTab(targetTabId);
+        } else if (tabsStore?.isActiveTab) {
+          isCurrentActive = tabsStore.isActiveTab(targetTabId);
         }
-        cardDebugLog(
-          `[PCard][webview] no tab ${targetTabId}; showing permission prompt in the active window instead of dropping it`
-        );
-      } else if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
-        const stored = tabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
-          (t) => {
+      } else if (targetSessionId) {
+        if (tabStore.size() > 0) {
+          isCurrentActive = tabStore.isActiveSession(targetSessionId);
+        } else if (tabsStore?.isActiveSession) {
+          isCurrentActive = tabsStore.isActiveSession(targetSessionId);
+        }
+      } else {
+        isCurrentActive = true;
+      }
+
+      if (!isCurrentActive && (targetTabId || targetSessionId)) {
+        let stored = false;
+        if (targetTabId) {
+          stored = (tabStore.size() > 0 && tabStore.updateTab(targetTabId, (t: any) => {
+            const list = t.pendingPermissions || [];
+            if (!list.some((r: any) => r.channelId === request.channelId)) {
+              return { ...t, pendingPermissions: [...list, request] };
+            }
+            return t;
+          })) || (tabsStore?.updateTab?.(targetTabId, (t: any) => {
             const list = t.pendingPermissions || [];
             if (!list.some((r: any) => r.channelId === request.channelId)) {
               t.pendingPermissions = [...list, request];
             }
-          }
-        );
-        // `stored === false` means no tab claims this session yet. Previously the
-        // prompt was dropped here and the server later settled it as rejected —
-        // the user saw a "已取消" card without ever seeing a dialog.
-        //
-        // Showing it in the active window is the lesser evil: the *reply* is
-        // routed by permission id through OpencodePermissionRegistry (which
-        // carries the request's own sessionId + directory), so answering here
-        // still reaches the right session. Only the visual placement can be off,
-        // and a misplaced dialog beats a lost prompt.
+          }) ?? false);
+        } else if (targetSessionId) {
+          stored = (tabStore.size() > 0 && tabStore.updateBackgroundTab(targetSessionId, (t: any) => {
+            const list = t.pendingPermissions || [];
+            if (!list.some((r: any) => r.channelId === request.channelId)) {
+              return { ...t, pendingPermissions: [...list, request] };
+            }
+            return t;
+          })) || (tabsStore?.updateBackgroundTab?.(
+            (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
+            (t) => {
+              const list = t.pendingPermissions || [];
+              if (!list.some((r: any) => r.channelId === request.channelId)) {
+                t.pendingPermissions = [...list, request];
+              }
+            }
+          ) ?? false);
+        }
         if (stored) {
           return;
         }
         cardDebugLog(
-          `[PCard][webview] no tab for sessionId=${targetSessionId}; showing permission prompt in the active window instead of dropping it`
+          `[PCard][webview] background tab not found for ${targetTabId || targetSessionId}; showing permission prompt in the active window instead of dropping it`
         );
       }
 
@@ -167,17 +159,6 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     forceClosePlanApprovalDialog(requestId || null);
   };
 
-  if (
-    Array.isArray(window.__pendingPermissionDialogRequests) &&
-    window.__pendingPermissionDialogRequests.length > 0
-  ) {
-    const pending = window.__pendingPermissionDialogRequests.slice();
-    window.__pendingPermissionDialogRequests = [];
-    for (const payload of pending) {
-      showPermissionDialog(parseQueuedPrompt(payload));
-    }
-  }
-
   const showAskUserQuestionDialog = (payload: HostEventPayload | undefined) => {
     try {
       const request = payload as any;
@@ -187,39 +168,64 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       }
       cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} sessionId=${request.sessionId} tabId=${request.tabId}`);
       const targetSessionId = request.sessionId;
+      const tabStore = getTabStore();
       const tabsStore = window.__sessionTabsStore;
       const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
 
-      if (targetTabId && tabsStore && tabsStore.isActiveTab && !tabsStore.isActiveTab(targetTabId)) {
-        const stored = tabsStore.updateTab?.(targetTabId, (t: any) => {
-          const list = t.pendingQuestions || [];
-          if (!list.some((r: any) => r.requestId === request.requestId)) {
-            t.pendingQuestions = [...list, request];
-          }
-        });
-        if (stored) {
-          return;
+      let isCurrentActive = false;
+      if (targetTabId) {
+        if (tabStore.size() > 0) {
+          isCurrentActive = tabStore.isActiveTab(targetTabId);
+        } else if (tabsStore?.isActiveTab) {
+          isCurrentActive = tabsStore.isActiveTab(targetTabId);
         }
-        cardDebugLog(
-          `[QCard][webview] no tab ${targetTabId}; showing question prompt in the active window instead of dropping it`
-        );
-      } else if (targetSessionId && tabsStore && !tabsStore.isActiveSession(targetSessionId)) {
-        const stored = tabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
-          (t) => {
+      } else if (targetSessionId) {
+        if (tabStore.size() > 0) {
+          isCurrentActive = tabStore.isActiveSession(targetSessionId);
+        } else if (tabsStore?.isActiveSession) {
+          isCurrentActive = tabsStore.isActiveSession(targetSessionId);
+        }
+      } else {
+        isCurrentActive = true;
+      }
+
+      if (!isCurrentActive && (targetTabId || targetSessionId)) {
+        let stored = false;
+        if (targetTabId) {
+          stored = (tabStore.size() > 0 && tabStore.updateTab(targetTabId, (t: any) => {
+            const list = t.pendingQuestions || [];
+            if (!list.some((r: any) => r.requestId === request.requestId)) {
+              return { ...t, pendingQuestions: [...list, request] };
+            }
+            return t;
+          })) || (tabsStore?.updateTab?.(targetTabId, (t: any) => {
             const list = t.pendingQuestions || [];
             if (!list.some((r: any) => r.requestId === request.requestId)) {
               t.pendingQuestions = [...list, request];
             }
-          }
-        );
-        // Same reasoning as permissions: never lose a prompt just because no tab
-        // claims the session yet.
+          }) ?? false);
+        } else if (targetSessionId) {
+          stored = (tabStore.size() > 0 && tabStore.updateBackgroundTab(targetSessionId, (t: any) => {
+            const list = t.pendingQuestions || [];
+            if (!list.some((r: any) => r.requestId === request.requestId)) {
+              return { ...t, pendingQuestions: [...list, request] };
+            }
+            return t;
+          })) || (tabsStore?.updateBackgroundTab?.(
+            (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
+            (t) => {
+              const list = t.pendingQuestions || [];
+              if (!list.some((r: any) => r.requestId === request.requestId)) {
+                t.pendingQuestions = [...list, request];
+              }
+            }
+          ) ?? false);
+        }
         if (stored) {
           return;
         }
         cardDebugLog(
-          `[QCard][webview] no tab for sessionId=${targetSessionId}; showing question prompt in the active window instead of dropping it`
+          `[QCard][webview] background tab not found for ${targetTabId || targetSessionId}; showing question prompt in active window`
         );
       }
 
@@ -240,17 +246,6 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       console.error('[Frontend] Failed to parse onQuestionAnswered:', error);
     }
   };
-
-  if (
-    Array.isArray(window.__pendingAskUserQuestionDialogRequests) &&
-    window.__pendingAskUserQuestionDialogRequests.length > 0
-  ) {
-    const pending = window.__pendingAskUserQuestionDialogRequests.slice();
-    window.__pendingAskUserQuestionDialogRequests = [];
-    for (const payload of pending) {
-      showAskUserQuestionDialog(parseQueuedPrompt(payload));
-    }
-  }
 
   const showPlanApprovalDialog = (payload: HostEventPayload | undefined) => {
     try {
@@ -280,17 +275,6 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       console.error('[Frontend] Failed to parse plan approval request:', error);
     }
   };
-
-  if (
-    Array.isArray(window.__pendingPlanApprovalDialogRequests) &&
-    window.__pendingPlanApprovalDialogRequests.length > 0
-  ) {
-    const pending = window.__pendingPlanApprovalDialogRequests.slice();
-    window.__pendingPlanApprovalDialogRequests = [];
-    for (const payload of pending) {
-      showPlanApprovalDialog(parseQueuedPrompt(payload));
-    }
-  }
 
   // The semantic catalog is the routing table.
   registerHostEvents({

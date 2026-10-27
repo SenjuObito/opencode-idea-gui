@@ -1,5 +1,6 @@
 import { isJavaFqcnCandidate, normalizeFileNavigationTarget, parseFileLinkTarget } from './linkify';
 import { registerHostEvents } from './hostEventRegistry';
+import { getTabStore } from '../store/tabStore';
 
 const BRIDGE_UNAVAILABLE_WARNED = new Set<string>();
 const SAFE_BROWSER_PROTOCOLS = /^(https?|mailto):/i;
@@ -259,12 +260,13 @@ export const sendHostCommand = (
 export const sendInterrupt = (
   options: { tabId?: string | null; sessionId?: string | null } = {},
 ): boolean => {
+  const tabStore = getTabStore();
   const ownerTabId = options.sessionId
-    ? window.__sessionTabsStore?.getTabIdForSession?.(options.sessionId)
+    ? tabStore.findIdBySession(options.sessionId)
     : null;
   const tabId = options.tabId
     ?? ownerTabId
-    ?? window.__sessionTabsStore?.getActiveTabId?.()
+    ?? tabStore.getActiveTabId()
     ?? '';
   // The interrupt is a command like every other: it names the tab it stops.
   return sendHostCommand(tabId, 'session.interrupt', {}, options.sessionId ?? null);
@@ -282,9 +284,13 @@ export const sendSessionCommand = (
   sessionId: string | null | undefined,
   payload: Record<string, unknown> = {},
 ): boolean => {
+  // The store exists from module load, while the tab strip's external facade
+  // only appears after mount: reading it here keeps early commands from being
+  // dropped.
+  const tabStore = getTabStore();
   const tabId = sessionId
-    ? window.__sessionTabsStore?.getTabIdForSession?.(sessionId)
-    : window.__sessionTabsStore?.getActiveTabId?.();
+    ? tabStore.findIdBySession(sessionId)
+    : tabStore.getActiveTabId();
   if (!tabId) {
     console.warn(`[bridge] dropped the ${type} command: no tab owns the session`);
     return false;

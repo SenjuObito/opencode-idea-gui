@@ -2,13 +2,18 @@
  * The semantic event catalog, webview side.
  *
  * <p>The host names an event semantically ({@code content.delta},
- * {@code message.snapshot}, {@code turn.ended}); this table says which handler
- * answers it. A type that is not listed falls back to the legacy
- * {@code window.<fn>} lookup, so the protocol can be completed step by step
- * without a flag day.</p>
+ * {@code message.snapshot}, {@code turn.ended}). This table is the webview's
+ * half of the protocol contract: it records the legacy function name each
+ * semantic type replaced, which is the name the Java catalog also carries.</p>
  *
- * <p>Keep this table in sync with {@code com.opencodebuddy.bridge.EventCatalog}
- * — the Java test {@code EventCatalogTest} asserts that both sides agree.</p>
+ * <p>Routing itself is not done here. {@code hostEventRegistry} is the only
+ * routing table, and {@code hostDispatcher} has no {@code window.<fn>}
+ * fallback: an event whose semantic type has no registered handler waits in
+ * the dispatcher queue and is dropped on timeout. This table exists so the two
+ * sides cannot drift.</p>
+ *
+ * <p>Keep it in sync with {@code com.opencodebuddy.bridge.EventCatalog} — the
+ * Java test {@code EventCatalogTest} asserts that both sides agree.</p>
  */
 export const SEMANTIC_HANDLERS: Record<string, string> = {
   // ── lifecycle ──────────────────────────────────────────────────────
@@ -167,9 +172,10 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
 };
 
 /**
- * The handler name for a semantic event type.
+ * The legacy function name of a semantic type, or {@code null} when unknown.
  *
- * @returns the window handler, or {@code null} when the type is unknown
+ * <p>For catalog cross-checks and diagnostics only: the dispatcher resolves
+ * handlers through {@code hostEventRegistry}, never by this name.</p>
  */
 export function handlerForSemanticType(type: string): string | null {
   if (!type) return null;

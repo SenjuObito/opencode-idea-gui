@@ -22,7 +22,8 @@ public class CliModelsHandlerTest {
 
         @Override
         public void callJavaScript(String functionName, String... args) {
-            if ("window.setCliModels".equals(functionName) && args.length > 0) {
+            if (("setCliModels".equals(functionName) || "window.setCliModels".equals(functionName))
+                    && args.length > 0) {
                 pushed.add(JsonParser.parseString(args[0]).getAsJsonObject());
             }
         }

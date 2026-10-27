@@ -209,6 +209,55 @@ export class TabStore {
     )?.id ?? null;
   }
 
+  findTabBySessionId(sessionId: string | null | undefined): SessionTabData | undefined {
+    if (!sessionId) return undefined;
+    return this.tabs.find((tab) => tab.sessionId === sessionId || tab.id === sessionId);
+  }
+
+  getActiveSessionId(): string | null {
+    const active = this.getActiveTab();
+    return active?.sessionId ?? (active?.id || null);
+  }
+
+  updateTab(
+    tabId: string | null | undefined,
+    updater: (tab: SessionTabData) => SessionTabData,
+  ): boolean {
+    if (!tabId) return false;
+    let found = false;
+    this.setTabs((prev) =>
+      prev.map((tab) => {
+        if (tab.id === tabId) {
+          found = true;
+          return updater(tab);
+        }
+        return tab;
+      }),
+    );
+    return found;
+  }
+
+  updateBackgroundTab(
+    sessionId: string | null | undefined,
+    updater: (tab: SessionTabData) => SessionTabData,
+  ): boolean {
+    const tabId = this.findIdBySession(sessionId);
+    if (!tabId) return false;
+    return this.updateTab(tabId, updater);
+  }
+
+  isActiveTab(tabId: string | null | undefined): boolean {
+    if (!tabId) return false;
+    return this.activeTabId === tabId;
+  }
+
+  isActiveSession(sessionId: string | null | undefined): boolean {
+    if (!sessionId) return false;
+    const active = this.getActiveTab();
+    if (!active) return false;
+    return active.id === sessionId || active.sessionId === sessionId;
+  }
+
   private emit(): void {
     for (const listener of this.listeners) {
       listener();

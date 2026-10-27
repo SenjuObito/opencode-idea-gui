@@ -824,3 +824,51 @@ IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与
   - 渲染层在 `userContext` 与摘要正文相同时不显示，避免重复整段摘要。
 - 回归：core 287 用例、gradle 890 用例、tsc 0 错误、vitest 178 文件 /
   1577 测试全通过。
+
+## 第六轮：门禁失明修复与死队列清理
+
+- `checkLegacyPatterns` 的门禁不再被 `window.` 前缀绕过：
+  - `forbidden` 扫描先把 `callJavaScript("window.` 归一化成
+    `callJavaScript("` 再匹配，`positional-event-calls` 候选表改为裸函数名。
+    此前带前缀的位置参数调用完全隐形。
+- 归一化后立刻暴露并修掉两处真实断链：
+  - `MessageJsonConverter.pushUsageUpdateFromMessages` 以位置参数调
+    `window.onUsageUpdate`，而 `dispatchHostEnvelope` 的位置参数分支不传信封，
+    处理器取不到 `env.sessionId`，每次快照的用量推送都被静默丢弃。改为发布
+    `usage.updated` 具名事件（`session` + `usage` 字段）。
+  - `HistoryMessageInjector.notifyHistoryLoadComplete` 同理丢失会话归属，
+    改为发布带 `tabId` / `sessionId` 的 `session.loaded`。
+- 删除没有写入方的 pre-mount 队列（只保留读取与自删）：
+  `__pendingSlashCommands` / `__pendingDollarCommands` / `__pendingCliModels` /
+  `__pendingToasts` / `__pendingPermissionDialogRequests` /
+  `__pendingAskUserQuestionDialogRequests` / `__pendingPlanApprovalDialogRequests` /
+  `__pendingUsageUpdate` / `__pendingBackendTabState` / `__pendingHistoryData` /
+  `__pendingUpdateMessages` / `__pendingStatusText` / `__pendingSummaryText` /
+  `__pendingUserMessage` / `__pendingLoadingState` / `__pendingCommandRejections` /
+  `__pendingHistoryLoadComplete` / `__pendingSendShortcut` /
+  `__pendingAutoOpenFileEnabled` / `__pendingPermissionDialogTimeout` /
+  `__pendingModeReceived`。早到事件由 `hostDispatcher` 队列负责。
+  （`__pendingFontConfig` 等 5 个由 `WebviewInitializer` 裸脚本写入的配置槽
+  不属于事件通道，保留。）
+- `daemon.status` 收归单一 owner：`useUsageTracking` 注册注册表键，
+  `main.tsx` 不再写 `__pendingDaemonStatus`、不再派发 `updateDaemonStatus`
+  DOM 事件。
+- 启动期 tab 查询改用单例：`utils/bridge.ts`、`main.tsx`、
+  `slashCommandProvider`、`useResetAttachmentsOnSessionChange`、
+  `useSessionManagement` 读 `getTabStore()`。窗口级 facade 只在挂载后存在，
+  此前的读法会在启动窗口期丢命令。
+- 设置页 bootstrap 改走窗口级命令：`SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES`
+  （带冒号的 `get_xxx:` 字符串）改为 `SETTINGS_BOOTSTRAP_COMMANDS` +
+  `sendWindowCommand`，命令名沿用宿主 `SUPPORTED_TYPES` 的规范名，
+  Java 侧零改动。
+- 组件内部动作去 DOM 事件化：`PromptSection` 的 `on-commands-list` /
+  `on-commands-read` 自发自收删除；`ideaSend` 改为注册表
+  `internal.chat.send`；无监听者的 `nodePathReady` 删除。
+- `semanticEvents.ts` 保留：它是 `EventCatalogTest` 双端目录交叉校验的
+  webview 半边表，不是运行时回退；注释已纠正（dispatcher 没有
+  `window.<fn>` 回退）。
+- 验证：gradle 896 用例 0 失败、`checkLegacyPatterns -PstrictLegacy=true`
+  0 forbidden / 0 debt、tsc 0 错误、vitest 179 文件 / 1583 测试。
+- 未做（需与进行中的 tab 工作合流后再做）：`window.__sessionTabsStore`
+  facade 退场（175 处引用，`TabStore` 还需补 drafts / close / rename 等 8 个
+  能力）。

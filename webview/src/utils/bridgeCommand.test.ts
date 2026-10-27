@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { sendHostCommand, sendInterrupt } from './bridge';
+import { clearTabStore, seedTabStore } from '../test/seedTabStore';
 
 describe('bridge v2 command envelope', () => {
   beforeEach(() => {
     window.sendToJava = vi.fn();
-    delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
+    clearTabStore();
   });
 
   const lastCall = () => {
@@ -61,7 +62,7 @@ describe('bridge v2 command envelope', () => {
 describe('bridge interrupt', () => {
   beforeEach(() => {
     window.sendToJava = vi.fn();
-    delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
+    clearTabStore();
   });
 
   const payloadRaw = () => {
@@ -70,10 +71,7 @@ describe('bridge interrupt', () => {
   };
 
   it('names the tab it stops', () => {
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => 'tab-7',
-      getTabIdForSession: () => 'tab-7',
-    };
+    seedTabStore([{ id: 'tab-7', sessionId: 'ses_a' }], 'tab-7');
 
     expect(sendInterrupt({ sessionId: 'ses_a' })).toBe(true);
     const envelope = JSON.parse(payloadRaw().substring('host_command:'.length));
@@ -83,11 +81,10 @@ describe('bridge interrupt', () => {
   });
 
   it('stops the tab that owns the session, not the active one', () => {
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => 'tab-active',
-      getTabIdForSession: (sessionId: string | null | undefined) =>
-        sessionId === 'ses_background' ? 'tab-background' : null,
-    };
+    seedTabStore([
+      { id: 'tab-active', sessionId: 'ses_active' },
+      { id: 'tab-background', sessionId: 'ses_background' },
+    ], 'tab-active');
 
     sendInterrupt({ sessionId: 'ses_background' });
     const envelope = JSON.parse(payloadRaw().substring('host_command:'.length));
@@ -95,10 +92,7 @@ describe('bridge interrupt', () => {
   });
 
   it('prefers an explicit tab id', () => {
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => 'tab-active',
-      getTabIdForSession: () => 'tab-other',
-    };
+    seedTabStore([{ id: 'tab-active', sessionId: 'ses_a' }], 'tab-active');
 
     sendInterrupt({ tabId: 'tab-explicit', sessionId: 'ses_a' });
     const envelope = JSON.parse(payloadRaw().substring('host_command:'.length));

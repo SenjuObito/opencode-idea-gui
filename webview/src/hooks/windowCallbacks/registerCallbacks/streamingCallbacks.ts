@@ -17,6 +17,7 @@ import { parseSequence, advanceMinAcceptedSequence } from '../sequenceBarrier';
 import { getStreamEndHandlingMode } from '../messageSync';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { resolveSessionId } from '../../../utils/sessionIdentity';
+import { getTabStore } from '../../../store/tabStore';
 
 /**
  * Per-session turn start timestamp registry to prevent cross-session timer pollution
@@ -261,9 +262,14 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     const targetTabId: string | null = env?.tabId ?? null;
     const mode = payload?.mode as string | boolean | undefined;
 
-    const isBackground = targetTabId
-      ? (window.__sessionTabsStore?.isActiveTab ? !window.__sessionTabsStore.isActiveTab(targetTabId) : false)
-      : Boolean(targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const isBackground = hasTabs && (targetTabId
+      ? (tabStore.size() > 0 ? !tabStore.isActiveTab(targetTabId) : (window.__sessionTabsStore?.isActiveTab ? !window.__sessionTabsStore.isActiveTab(targetTabId) : false))
+      : Boolean(targetSessionId && (
+          (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+          (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+        )));
     if (isBackground) {
       const now = Date.now();
       if (targetSessionId) {
@@ -273,14 +279,23 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         t.streamingActive = true;
         t.loading = true;
         t.turnStartedAt = now;
+        return { ...t, streamingActive: true, loading: true, turnStartedAt: now };
       };
       if (targetTabId) {
+        if (tabStore.size() > 0) {
+          tabStore.updateTab(targetTabId, markStarted as any);
+        }
         window.__sessionTabsStore?.updateTab?.(targetTabId, markStarted);
       } else if (targetSessionId) {
-        window.__sessionTabsStore?.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          markStarted
-        );
+        if (tabStore.size() > 0) {
+          tabStore.updateBackgroundTab(targetSessionId, markStarted as any);
+        }
+        if (window.__sessionTabsStore) {
+          window.__sessionTabsStore.updateBackgroundTab(
+            (t) => t.sessionId === targetSessionId,
+            markStarted
+          );
+        }
       }
       return;
     }
@@ -305,7 +320,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // Record turn start time for duration calculation in onStreamEnd
     const turnNow = Date.now();
     window.__turnStartedAt = turnNow;
-    const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    const activeSessionId = tabStore.getActiveSessionId() || window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
     if (activeSessionId) {
       sessionTurnStartTimes.set(activeSessionId, turnNow);
     }
@@ -402,12 +417,13 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   ) => {
     const scheduleRaf = (): void => {
       if (timeoutRef.current != null) return;
-      const scheduledTabId = window.__sessionTabsStore?.getActiveTabId?.() || null;
+      const tabStore = getTabStore();
+      const scheduledTabId = tabStore.getActiveTabId() || window.__sessionTabsStore?.getActiveTabId?.() || null;
       timeoutRef.current = requestAnimationFrame(() => {
         timeoutRef.current = null;
         // A tab switch between scheduling and this frame must not paint the
         // outgoing tab's buffer into the new active tab.
-        const currentTabId = window.__sessionTabsStore?.getActiveTabId?.() || null;
+        const currentTabId = tabStore.getActiveTabId() || window.__sessionTabsStore?.getActiveTabId?.() || null;
         if (scheduledTabId && currentTabId && scheduledTabId !== currentTabId) {
           return;
         }
@@ -535,18 +551,31 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // The host names the owning tab: routing by tab id is exact.
     const targetTabId = env?.tabId ?? null;
 
-    if (targetTabId && window.__sessionTabsStore?.isActiveTab
-        && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
-      window.__sessionTabsStore.updateTab?.(targetTabId, (t: any) => appendDeltaToTab(t, delta));
-      return;
-    }
-
-    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => appendDeltaToTab(t, delta)
-      );
-      return;
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    if (targetTabId && hasTabs) {
+      if (!tabStore.isActiveTab(targetTabId)) {
+        tabStore.updateTab(targetTabId, (t: any) => {
+          appendDeltaToTab(t, delta);
+          return { ...t };
+        });
+        window.__sessionTabsStore?.updateTab?.(targetTabId, (t: any) => appendDeltaToTab(t, delta));
+        return;
+      }
+    } else if (targetSessionId && hasTabs) {
+      const isBackground = (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+        (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+      if (isBackground) {
+        tabStore.updateBackgroundTab(targetSessionId, (t: any) => {
+          appendDeltaToTab(t, delta);
+          return { ...t };
+        });
+        window.__sessionTabsStore?.updateBackgroundTab?.(
+          (t) => t.sessionId === targetSessionId,
+          (t) => appendDeltaToTab(t, delta)
+        );
+        return;
+      }
     }
 
     if (isSessionTransitioning(targetSessionId)) return;
@@ -567,20 +596,28 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       t.streamingActive = true;
       t.loading = true;
       t.isThinking = true;
+      return { ...t, streamingActive: true, loading: true, isThinking: true };
     };
 
-    if (targetTabId && window.__sessionTabsStore?.isActiveTab
-        && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
-      window.__sessionTabsStore.updateTab?.(targetTabId, markThinking);
-      return;
-    }
-
-    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        markThinking
-      );
-      return;
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    if (targetTabId && hasTabs) {
+      if (!tabStore.isActiveTab(targetTabId)) {
+        tabStore.updateTab(targetTabId, markThinking as any);
+        window.__sessionTabsStore?.updateTab?.(targetTabId, markThinking);
+        return;
+      }
+    } else if (targetSessionId && hasTabs) {
+      const isBackground = (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+        (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+      if (isBackground) {
+        tabStore.updateBackgroundTab(targetSessionId, markThinking as any);
+        window.__sessionTabsStore?.updateBackgroundTab?.(
+          (t) => t.sessionId === targetSessionId,
+          markThinking
+        );
+        return;
+      }
     }
 
     if (isSessionTransitioning(targetSessionId)) return;
@@ -671,22 +708,40 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       }
     };
 
-    const isBackground = targetTabId
-      ? (window.__sessionTabsStore?.isActiveTab ? !window.__sessionTabsStore.isActiveTab(targetTabId) : false)
-      : Boolean(targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+    const tabStore = getTabStore();
+    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const isBackground = hasTabs && (targetTabId
+      ? (tabStore.size() > 0 ? !tabStore.isActiveTab(targetTabId) : (window.__sessionTabsStore?.isActiveTab ? !window.__sessionTabsStore.isActiveTab(targetTabId) : false))
+      : Boolean(targetSessionId && (
+          (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+          (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+        )));
     if (isBackground) {
       const turnStartedAt = sessionTurnStartTimes.get(targetSessionId);
       sessionTurnStartTimes.delete(targetSessionId);
       const streamEndedAt = Date.now();
       const calculatedDurationMs = turnStartedAt ? streamEndedAt - turnStartedAt : undefined;
 
+      const finishAndReturn = (t: any) => {
+        finishTurn(t, calculatedDurationMs);
+        return { ...t };
+      };
+
       if (targetTabId) {
+        if (tabStore.size() > 0) {
+          tabStore.updateTab(targetTabId, finishAndReturn as any);
+        }
         window.__sessionTabsStore?.updateTab?.(targetTabId, (t: any) => finishTurn(t, calculatedDurationMs));
       } else if (targetSessionId) {
-        window.__sessionTabsStore?.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          (t) => finishTurn(t, calculatedDurationMs)
-        );
+        if (tabStore.size() > 0) {
+          tabStore.updateBackgroundTab(targetSessionId, finishAndReturn as any);
+        }
+        if (window.__sessionTabsStore) {
+          window.__sessionTabsStore.updateBackgroundTab(
+            (t) => t.sessionId === targetSessionId,
+            (t) => finishTurn(t, calculatedDurationMs)
+          );
+        }
       }
       // The turn is over: drop the runtime of that tab. Keeping it would make
       // the tab restore `isStreaming=true` the next time it is activated,
@@ -844,7 +899,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     const keysToCollapse = new Set(autoExpandedThinkingKeysRef.current);
 
     // Snapshot turn start time BEFORE entering the updater
-    const currentActiveSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    const currentActiveSessionId = tabStore.getActiveSessionId() || window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
     const turnStartedAt = window.__turnStartedAt ?? (currentActiveSessionId ? sessionTurnStartTimes.get(currentActiveSessionId) : undefined);
     window.__turnStartedAt = undefined;
     if (currentActiveSessionId) {
@@ -1123,7 +1178,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // would append to previous turn's buffered content.
   const onBlockReset = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
     const targetSessionId = env?.sessionId ?? null;
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    const tabStore = getTabStore();
+    const isBackground = targetSessionId && (
+      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+    );
+    if (isBackground) {
       return;
     }
     if (!isStreamingRef.current) {
@@ -1160,7 +1220,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   const onStreamingHeartbeat = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
     const targetSessionId = env?.sessionId ?? null;
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+    const tabStore = getTabStore();
+    const isBackground = targetSessionId && (
+      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
+    );
+    if (isBackground) {
       return;
     }
     window.__lastStreamActivityAt = Date.now();
@@ -1200,6 +1265,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       processedTurnEndKeys.clear();
     }
 
+    const tabStore = getTabStore();
     const tabsStore = window.__sessionTabsStore;
     // The host names the owning tab: routing by tab id is exact.
     const targetTabId = typeof tabId === 'string' && tabId.length > 0 ? tabId : null;
@@ -1207,17 +1273,32 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       t.streamingActive = false;
       t.loading = false;
       t.isThinking = false;
+      return { ...t, streamingActive: false, loading: false, isThinking: false };
     };
-    if (targetTabId && tabsStore?.isActiveTab && !tabsStore.isActiveTab(targetTabId)) {
-      tabsStore.updateTab?.(targetTabId, settleTurn);
-      return;
-    }
-    if (tabsStore && !tabsStore.isActiveSession(sessionId)) {
-      tabsStore.updateBackgroundTab(
-        (t) => t.sessionId === sessionId,
-        settleTurn
-      );
-      return;
+    const hasTabs = tabStore.size() > 0 || Boolean(tabsStore);
+    if (targetTabId && hasTabs) {
+      const isBackground = (tabStore.size() > 0 ? !tabStore.isActiveTab(targetTabId) : false) ||
+        (tabsStore?.isActiveTab ? !tabsStore.isActiveTab(targetTabId) : false);
+      if (isBackground) {
+        if (tabStore.size() > 0) {
+          tabStore.updateTab(targetTabId, settleTurn as any);
+        }
+        tabsStore?.updateTab?.(targetTabId, settleTurn);
+        return;
+      }
+    } else if (sessionId && hasTabs) {
+      const isBackground = (tabStore.size() > 0 ? !tabStore.isActiveSession(sessionId) : false) ||
+        (tabsStore ? !tabsStore.isActiveSession(sessionId) : false);
+      if (isBackground) {
+        if (tabStore.size() > 0) {
+          tabStore.updateBackgroundTab(sessionId, settleTurn as any);
+        }
+        tabsStore?.updateBackgroundTab?.(
+          (t) => t.sessionId === sessionId,
+          settleTurn
+        );
+        return;
+      }
     }
 
     clearStallWatchdog();

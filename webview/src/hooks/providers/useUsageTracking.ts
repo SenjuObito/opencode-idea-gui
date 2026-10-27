@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { cardDebugLog } from '../../utils/bridge';
 import { sendWindowCommand } from '../../utils/bridge';
+import { registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 
 /**
  * The engine resolution snapshot the daemon reports (see `daemon.js` →
@@ -56,7 +57,7 @@ export function useUsageTracking() {
             data = inner;
           }
         }
-        cardDebugLog('[Probe] updateDaemonStatus handler fired:', JSON.stringify(data));
+        cardDebugLog('[Probe] daemon.status handler fired:', JSON.stringify(data));
         setDaemonAlive(!!data.alive);
         if (data.engine && typeof data.engine === 'object') {
           setDaemonEngine(data.engine as DaemonEngineStatus);
@@ -88,26 +89,15 @@ export function useUsageTracking() {
       }
     };
 
-    const handler = (event: Event) => {
-      applyStatus((event as CustomEvent).detail);
+    // The host event is registered here and nowhere else: one owner means one
+    // payload path. An event that arrives before this effect runs waits in the
+    // dispatcher queue instead of in a window slot.
+    registerHostEvents({ 'daemon.status': (payload: unknown) => applyStatus(payload) });
+    cardDebugLog('[Probe] daemon.status handler registered');
+
+    return () => {
+      unregisterHostEvents(['daemon.status']);
     };
-
-    window.addEventListener('updateDaemonStatus', handler as EventListener);
-    cardDebugLog(
-      '[Probe] updateDaemonStatus listener installed, window.updateDaemonStatus='
-      + (typeof window.updateDaemonStatus),
-    );
-
-    // Drain any status that arrived before this listener was attached.
-    // main.tsx stores the latest payload in window.__pendingDaemonStatus.
-    const w = window as unknown as Record<string, unknown>;
-    if (w.__pendingDaemonStatus !== undefined) {
-      const pending = w.__pendingDaemonStatus;
-      delete w.__pendingDaemonStatus;
-      applyStatus(pending);
-    }
-
-    return () => window.removeEventListener('updateDaemonStatus', handler as EventListener);
   }, []);
 
   const isSdkInstalled = useCallback(

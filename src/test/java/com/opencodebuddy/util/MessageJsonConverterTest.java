@@ -2,6 +2,7 @@ package com.opencodebuddy.util;
 
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.session.OpencodeSession;
+import com.opencodebuddy.tab.TabEvent;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -112,15 +113,18 @@ public class MessageJsonConverterTest {
     }
 
     @Test
-    public void usageUpdateIsTaggedWithTheOwningSessionInsteadOfTheActiveOne() {
-        List<String[]> calls = new ArrayList<>();
+    public void usageUpdateIsPublishedAsANamedEventForTheOwningSession() {
+        List<TabEvent> events = new ArrayList<>();
+        List<String> calls = new ArrayList<>();
         HandlerContext context = new HandlerContext(null, null, null, new HandlerContext.JsCallback() {
             @Override
             public void callJavaScript(String functionName, String... args) {
-                List<String> call = new ArrayList<>();
-                call.add(functionName);
-                java.util.Collections.addAll(call, args);
-                calls.add(call.toArray(new String[0]));
+                calls.add(functionName);
+            }
+
+            @Override
+            public void publishEvent(TabEvent event) {
+                events.add(event);
             }
 
             @Override
@@ -141,24 +145,31 @@ public class MessageJsonConverterTest {
         MessageJsonConverter.pushUsageUpdateFromMessages(
                 List.of(assistant), "session-a", "opencode", "model-a[200k]", context);
 
-        assertEquals(1, calls.size());
-        assertEquals("window.onUsageUpdate", calls.get(0)[0]);
-        assertEquals("session-a", calls.get(0)[1]);
-        // HandlerContext callers receive the JsUtils-escaped payload.
-        JsonObject payload = JsonParser.parseString(
-                calls.get(0)[2].replace("\\\"", "\"")).getAsJsonObject();
-        assertEquals(2_000, payload.get("usedTokens").getAsInt());
-        assertEquals(200_000, payload.get("maxTokens").getAsInt());
-        assertEquals(1, payload.get("percentage").getAsInt());
+        // A positional call reaches the handler without an envelope, and the
+        // handler drops an update it cannot attribute to a session.
+        assertTrue(calls.isEmpty());
+        assertEquals(1, events.size());
+        TabEvent event = events.get(0);
+        assertEquals("usage.updated", event.getType());
+        assertEquals("session-a", event.getSessionId());
+        JsonObject usage = (JsonObject) event.getPayload().get("usage");
+        assertEquals(2_000, usage.get("usedTokens").getAsInt());
+        assertEquals(200_000, usage.get("maxTokens").getAsInt());
+        assertEquals(1, usage.get("percentage").getAsInt());
     }
 
     @Test
     public void usageUpdateWithoutSessionIdIsDropped() {
-        List<String> calls = new ArrayList<>();
+        List<TabEvent> events = new ArrayList<>();
         HandlerContext context = new HandlerContext(null, null, null, new HandlerContext.JsCallback() {
             @Override
             public void callJavaScript(String functionName, String... args) {
-                calls.add(functionName);
+                // A positional call would be the regression this test guards against.
+            }
+
+            @Override
+            public void publishEvent(TabEvent event) {
+                events.add(event);
             }
 
             @Override
@@ -180,7 +191,7 @@ public class MessageJsonConverterTest {
         MessageJsonConverter.pushUsageUpdateFromMessages(
                 List.of(assistant), "", "opencode", "model-a", context);
 
-        assertTrue(calls.isEmpty());
+        assertTrue(events.isEmpty());
     }
 
     @Test

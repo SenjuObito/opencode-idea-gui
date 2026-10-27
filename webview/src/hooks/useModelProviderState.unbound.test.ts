@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useModelProviderState } from './useModelProviderState';
 import { sendBridgeEvent } from '../utils/bridge';
+import { seedTabStore } from '../test/seedTabStore';
 
 vi.mock('../utils/bridge', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/bridge')>();
@@ -29,10 +30,7 @@ describe('useModelProviderState - unbound tab', () => {
     window.sendToJava = vi.fn();
     localStorage.clear();
     // The commands name the tab that owns the session.
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => 'tab-1',
-      getTabIdForSession: () => 'tab-1',
-    };
+    seedTabStore([{ id: 'tab-1', sessionId: 'ses_bound' }], 'tab-1');
   });
 
   it('does not write model/mode/effort while the active tab has no session', () => {

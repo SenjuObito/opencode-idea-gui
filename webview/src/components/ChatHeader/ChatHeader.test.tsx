@@ -112,6 +112,91 @@ describe('ChatHeader', () => {
     expect(onExportTab).toHaveBeenCalledWith(expect.objectContaining({ id: 'tab-1' }));
   });
 
+  it('triggers batch close actions from tab context menu', () => {
+    const onCloseOtherTabs = vi.fn();
+    const onCloseTabsToLeft = vi.fn();
+    const onCloseTabsToRight = vi.fn();
+    const onCloseAllTabs = vi.fn();
+
+    const threeTabs = [
+      { id: 'tab-1', title: 'Tab 1', messages: [] },
+      { id: 'tab-2', title: 'Tab 2', messages: [] },
+      { id: 'tab-3', title: 'Tab 3', messages: [] },
+    ];
+
+    render(
+      <ChatHeader
+        {...defaultProps}
+        tabs={threeTabs}
+        onCloseOtherTabs={onCloseOtherTabs}
+        onCloseTabsToLeft={onCloseTabsToLeft}
+        onCloseTabsToRight={onCloseTabsToRight}
+        onCloseAllTabs={onCloseAllTabs}
+      />
+    );
+
+    // Right click on middle tab (Tab 2)
+    fireEvent.contextMenu(screen.getByText('Tab 2'));
+
+    // Verify all 4 batch close options are present and enabled
+    const closeOthersBtn = screen.getByText('chat.closeOtherTabs').closest('button')!;
+    const closeRightBtn = screen.getByText('chat.closeTabsToRight').closest('button')!;
+    const closeLeftBtn = screen.getByText('chat.closeTabsToLeft').closest('button')!;
+    const closeAllBtn = screen.getByText('chat.closeAllTabs').closest('button')!;
+
+    expect(closeOthersBtn.disabled).toBe(false);
+    expect(closeRightBtn.disabled).toBe(false);
+    expect(closeLeftBtn.disabled).toBe(false);
+    expect(closeAllBtn.disabled).toBe(false);
+
+    fireEvent.click(closeOthersBtn);
+    expect(onCloseOtherTabs).toHaveBeenCalledWith('tab-2');
+
+    // Right click again to test close to right
+    fireEvent.contextMenu(screen.getByText('Tab 2'));
+    fireEvent.click(screen.getByText('chat.closeTabsToRight'));
+    expect(onCloseTabsToRight).toHaveBeenCalledWith('tab-2');
+
+    // Right click again to test close to left
+    fireEvent.contextMenu(screen.getByText('Tab 2'));
+    fireEvent.click(screen.getByText('chat.closeTabsToLeft'));
+    expect(onCloseTabsToLeft).toHaveBeenCalledWith('tab-2');
+
+    // Right click again to test close all
+    fireEvent.contextMenu(screen.getByText('Tab 2'));
+    fireEvent.click(screen.getByText('chat.closeAllTabs'));
+    expect(onCloseAllTabs).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables close left on first tab and close right on last tab', () => {
+    const threeTabs = [
+      { id: 'tab-1', title: 'Tab 1', messages: [] },
+      { id: 'tab-2', title: 'Tab 2', messages: [] },
+      { id: 'tab-3', title: 'Tab 3', messages: [] },
+    ];
+
+    const { rerender } = render(
+      <ChatHeader {...defaultProps} tabs={threeTabs} />
+    );
+
+    // Right click first tab -> close to left is disabled
+    fireEvent.contextMenu(screen.getByText('Tab 1'));
+    const closeLeftFirst = screen.getByText('chat.closeTabsToLeft').closest('button')!;
+    const closeRightFirst = screen.getByText('chat.closeTabsToRight').closest('button')!;
+    expect(closeLeftFirst.disabled).toBe(true);
+    expect(closeRightFirst.disabled).toBe(false);
+
+    // Close menu by clicking outside
+    fireEvent.mouseDown(document.body);
+
+    // Right click last tab -> close to right is disabled
+    fireEvent.contextMenu(screen.getByText('Tab 3'));
+    const closeLeftLast = screen.getByText('chat.closeTabsToLeft').closest('button')!;
+    const closeRightLast = screen.getByText('chat.closeTabsToRight').closest('button')!;
+    expect(closeLeftLast.disabled).toBe(false);
+    expect(closeRightLast.disabled).toBe(true);
+  });
+
   it('triggers onReorderTabs on drag (no long-press wait)', () => {
     const onReorderTabs = vi.fn();
     const onSelectTab = vi.fn();

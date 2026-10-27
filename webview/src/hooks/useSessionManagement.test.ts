@@ -4,6 +4,7 @@ import { useSessionManagement } from './useSessionManagement.js';
 import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor } from './windowCallbacks/tabTransition';
 import type { HistoryData } from '../types/index.js';
 import { sentCommands } from '../utils/testEvents';
+import { seedTabStore } from '../test/seedTabStore';
 
 describe('useSessionManagement', () => {
   const t = ((key: string) => key) as any;
@@ -28,10 +29,7 @@ describe('useSessionManagement', () => {
   });
 
   const withActiveTab = (tabId = 'tab-1') => {
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => tabId,
-      getTabIdForSession: () => tabId,
-    };
+    seedTabStore([{ id: tabId }], tabId);
   };
 
   /** Did a `session.load` command go out for this session? */

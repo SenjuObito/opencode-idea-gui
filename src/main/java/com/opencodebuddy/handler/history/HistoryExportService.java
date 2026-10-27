@@ -119,6 +119,6 @@ class HistoryExportService {
     }
 
     private void showToast(String message, String type) {
-        context.callJavaScript("window.addToast", context.escapeJs(message), type);
+        context.callJavaScript("addToast", context.escapeJs(message), type);
     }
 }

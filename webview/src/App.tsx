@@ -1271,6 +1271,10 @@ const App = () => {
     selectTab,
     createTab,
     closeTab,
+    closeOtherTabs,
+    closeTabsToLeft,
+    closeTabsToRight,
+    closeAllTabs,
     renameTab,
     forkTab,
     reorderTabs,
@@ -1374,6 +1378,10 @@ const App = () => {
         activeTabId={activeTabId}
         onSelectTab={selectTab}
         onCloseTab={closeTab}
+        onCloseOtherTabs={closeOtherTabs}
+        onCloseTabsToLeft={closeTabsToLeft}
+        onCloseTabsToRight={closeTabsToRight}
+        onCloseAllTabs={closeAllTabs}
         onRenameTab={renameTab}
         onForkTab={forkTab}
         onReorderTabs={reorderTabs}

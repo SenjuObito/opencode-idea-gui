@@ -9,11 +9,12 @@
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
-import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBootstrap';
+import { startInitialSettingsRequest } from '../settingsBootstrap';
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
 import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
+import { getTabStore } from '../../../store/tabStore';
 
 export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -75,21 +76,34 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
           tab.usagePercentage = safePercentage;
           tab.usageUsedTokens = used;
           tab.usageMaxTokens = max;
+          return {
+            ...tab,
+            usagePercentage: safePercentage,
+            usageUsedTokens: used,
+            usageMaxTokens: max,
+          };
         };
 
         // If the update belongs to a background tab, update that tab's data
         // directly. Never touch the active view from a background update.
-        if (targetTabId && window.__sessionTabsStore?.isActiveTab
-            && !window.__sessionTabsStore.isActiveTab(targetTabId)) {
-          window.__sessionTabsStore.updateTab?.(targetTabId, applyUsage);
-          return;
-        }
-        if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-          window.__sessionTabsStore.updateBackgroundTab(
-            (t) => t.sessionId === targetSessionId,
-            applyUsage
-          );
-          return;
+        const tabStore = getTabStore();
+        if (targetTabId) {
+          if (!tabStore.isActiveTab(targetTabId)) {
+            tabStore.updateTab(targetTabId, applyUsage);
+            window.__sessionTabsStore?.updateTab?.(targetTabId, applyUsage);
+            return;
+          }
+        } else if (targetSessionId) {
+          const isBackground = (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
+            (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+          if (isBackground) {
+            tabStore.updateBackgroundTab(targetSessionId, applyUsage);
+            window.__sessionTabsStore?.updateBackgroundTab?.(
+              (t) => t.sessionId === targetSessionId,
+              applyUsage
+            );
+            return;
+          }
         }
 
         // Active session (or the tab store has not mounted yet): update global
@@ -99,6 +113,9 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         setUsageUsedTokens(used);
         setUsageMaxTokens(max);
 
+        if (targetSessionId) {
+          tabStore.updateBackgroundTab(targetSessionId, applyUsage);
+        }
         if (window.__sessionTabsStore) {
           window.__sessionTabsStore.updateBackgroundTab(
             (t) => t.sessionId === targetSessionId,
@@ -110,16 +127,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
       console.error('[Frontend] Failed to parse usage update:', error);
     }
   };
-
-  if (window.__pendingUsageUpdate) {
-    const pending = window.__pendingUsageUpdate as
-      | { payload: HostEventPayload; env?: HostEventEnvelope }
-      | undefined;
-    delete window.__pendingUsageUpdate;
-    if (pending && typeof pending === 'object' && 'payload' in pending) {
-      onUsageUpdate(pending.payload, pending.env);
-    }
-  }
 
   const updateMode = (mode?: PermissionMode) => {
     if (typeof mode === 'string' && mode.length > 0) {
@@ -200,12 +207,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     }
   };
 
-  if (typeof window.__pendingBackendTabState === 'string') {
-    const pending = window.__pendingBackendTabState;
-    delete window.__pendingBackendTabState;
-    applyBackendTabState(pending);
-  }
-
   const updateSendShortcut = (jsonStr: string) => {
     try {
       const data = JSON.parse(jsonStr);
@@ -250,8 +251,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     'internal.session.stateRestored': onSessionStateRestored,
   });
 
-  // Drain any pending settings that arrived before callback registration.
-  drainPendingSettings();
   // Kick off initial settings requests
   startInitialSettingsRequest();
 }

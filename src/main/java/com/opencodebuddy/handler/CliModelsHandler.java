@@ -207,7 +207,7 @@ public class CliModelsHandler extends BaseMessageHandler {
         // Teach the context-window catalog before the webview sees the list, so
         // the very next usage push resolves the real model limit.
         boolean catalogChanged = ModelContextWindowCatalog.getInstance().updateFromModelsPayload(payload);
-        callJavaScript("window.setCliModels", escapeJs(gson.toJson(payload)));
+        callJavaScript("setCliModels", escapeJs(gson.toJson(payload)));
         republishUsageIfLimitChanged(catalogChanged);
     }
 
@@ -243,6 +243,6 @@ public class CliModelsHandler extends BaseMessageHandler {
         error.addProperty("provider", provider != null ? provider : "");
         error.addProperty("error", message != null ? message : "unknown error");
         error.add("models", gson.toJsonTree(new ArrayList<>()));
-        callJavaScript("window.setCliModels", escapeJs(gson.toJson(error)));
+        callJavaScript("setCliModels", escapeJs(gson.toJson(error)));
     }
 }

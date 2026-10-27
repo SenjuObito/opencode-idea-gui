@@ -30,6 +30,10 @@
     "recommended": "Recommended"
   },
   "chat": {
+    "closeOtherTabs": "Close Others",
+    "closeAllTabs": "Close All",
+    "closeTabsToLeft": "Close to the Left",
+    "closeTabsToRight": "Close to the Right",
     "exportMarkdown": "Export as Markdown",
     "sendMessage": "Send message to {{provider}}",
     "createNewSession": "Create New Session",

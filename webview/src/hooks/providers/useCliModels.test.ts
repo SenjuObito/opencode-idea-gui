@@ -155,15 +155,18 @@ describe('useCliModels', () => {
     expect(second.result.current.cliModels.map((m) => m.id)).toEqual(['openai/gpt-5']);
   });
 
-  it('hydrates immediately from window.__pendingCliModels if present on mount', () => {
-    window.__pendingCliModels = JSON.stringify({
-      success: true,
-      provider: 'opencode',
-      models: [{ id: 'opencode/nemotron-3-ultra-free', label: 'Nemotron' }],
+  it('hydrates from a cli.models event that arrived before mount', () => {
+    // The dispatcher replays an early event to the handler the module registers
+    // on import, so the catalog is ready on the first render.
+    act(() => {
+      hostEventHandler('cli.models')?.(JSON.stringify({
+        success: true,
+        provider: 'opencode',
+        models: [{ id: 'opencode/nemotron-3-ultra-free', label: 'Nemotron' }],
+      }));
     });
 
     const { result } = renderHook(() => useCliModels('opencode'));
-    expect(window.__pendingCliModels).toBeUndefined();
     expect(result.current.cliModels).toEqual([
       { id: 'opencode/nemotron-3-ultra-free', label: 'Nemotron' },
     ]);

@@ -1,9 +1,20 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useUsageTracking } from './useUsageTracking';
+import { dispatchHostEvent, resetHostDispatcher } from '../../utils/hostDispatcher';
+import { resetHostEvents } from '../../utils/hostEventRegistry';
+
+/** Deliver a daemon status the way the host does: through the dispatcher. */
+function sendDaemonStatus(payload: unknown) {
+  act(() => {
+    dispatchHostEvent('daemon.status', [payload]);
+  });
+}
 
 describe('useUsageTracking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetHostEvents();
+    resetHostDispatcher();
   });
 
   it('initializes with daemon status unknown', () => {
@@ -19,26 +30,14 @@ describe('useUsageTracking', () => {
     const { result } = renderHook(() => useUsageTracking());
 
     // daemon 进程已起、但 serve 尚未就绪：状态栏保持加载中（daemonStatusLoaded=false）
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('updateDaemonStatus', {
-          detail: JSON.stringify({ alive: true, serveReady: false }),
-        })
-      );
-    });
+    sendDaemonStatus(JSON.stringify({ alive: true, serveReady: false }));
 
     expect(result.current.daemonStatusLoaded).toBe(false);
     expect(result.current.isSdkInstalled('opencode')).toBe(true);
     expect(result.current.isSdkStatusKnown('opencode')).toBe(false);
 
     // serve 真正就绪后才隐藏状态栏、视为状态已知
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('updateDaemonStatus', {
-          detail: JSON.stringify({ alive: true, serveReady: true }),
-        })
-      );
-    });
+    sendDaemonStatus(JSON.stringify({ alive: true, serveReady: true }));
 
     expect(result.current.daemonStatusLoaded).toBe(true);
     expect(result.current.isSdkInstalled('opencode')).toBe(true);
@@ -48,18 +47,12 @@ describe('useUsageTracking', () => {
   it('unwraps the named daemon.status payload', () => {
     const { result } = renderHook(() => useUsageTracking());
 
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('updateDaemonStatus', {
-          detail: {
-            data: JSON.stringify({
-              alive: true,
-              serveReady: true,
-              engine: { state: 'v2', locked: true },
-            }),
-          },
-        })
-      );
+    sendDaemonStatus({
+      data: JSON.stringify({
+        alive: true,
+        serveReady: true,
+        engine: { state: 'v2', locked: true },
+      }),
     });
 
     expect(result.current.daemonStatusLoaded).toBe(true);
@@ -67,27 +60,23 @@ describe('useUsageTracking', () => {
     expect(result.current.daemonEngine?.state).toBe('v2');
   });
 
-  it('drains a named daemon.status payload buffered before mount', () => {
-    (window as unknown as Record<string, unknown>).__pendingDaemonStatus = {
-      data: JSON.stringify({ alive: true, serveReady: true }),
-    };
+  it('delivers a daemon.status that arrived before mount', async () => {
+    // The dispatcher holds an event whose handler is not registered yet and
+    // replays it once the hook registers: no window slot is involved.
+    dispatchHostEvent('daemon.status', [
+      JSON.stringify({ alive: true, serveReady: true }),
+    ]);
 
     const { result } = renderHook(() => useUsageTracking());
 
-    expect(result.current.daemonStatusLoaded).toBe(true);
+    await waitFor(() => expect(result.current.daemonStatusLoaded).toBe(true));
     expect(result.current.isSdkInstalled('opencode')).toBe(true);
   });
 
   it('enters not-running state when daemon is not alive', () => {
     const { result } = renderHook(() => useUsageTracking());
 
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('updateDaemonStatus', {
-          detail: JSON.stringify({ alive: false, serveReady: false }),
-        })
-      );
-    });
+    sendDaemonStatus(JSON.stringify({ alive: false, serveReady: false }));
 
     // daemon 未运行：状态栏切到「未运行」可重试态（daemonStatusLoaded=true，isSdkInstalled=false）
     expect(result.current.daemonStatusLoaded).toBe(true);
@@ -98,11 +87,7 @@ describe('useUsageTracking', () => {
   it('falls back to loaded on unparseable payload', () => {
     const { result } = renderHook(() => useUsageTracking());
 
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('updateDaemonStatus', { detail: 'not-json' })
-      );
-    });
+    sendDaemonStatus('not-json');
 
     // 兜底：解析失败也视为状态已知，避免永久卡在 loading。
     expect(result.current.daemonStatusLoaded).toBe(true);
@@ -111,26 +96,22 @@ describe('useUsageTracking', () => {
   it('exposes the engine snapshot instead of discarding it', () => {
     const { result } = renderHook(() => useUsageTracking());
 
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('updateDaemonStatus', {
-          detail: JSON.stringify({
-            alive: true,
-            serveReady: true,
-            engine: {
-              state: 'v2',
-              locked: true,
-              cliPath: 'C:\\tools\\opencode.cmd',
-              cliSource: 'settings',
-              cliVersion: 'opencode v2.0.27',
-              probePath: '/api/info',
-              httpStatus: 200,
-              apiVersion: 2,
-            },
-          }),
-        })
-      );
-    });
+    sendDaemonStatus(
+      JSON.stringify({
+        alive: true,
+        serveReady: true,
+        engine: {
+          state: 'v2',
+          locked: true,
+          cliPath: 'C:\\tools\\opencode.cmd',
+          cliSource: 'settings',
+          cliVersion: 'opencode v2.0.27',
+          probePath: '/api/info',
+          httpStatus: 200,
+          apiVersion: 2,
+        },
+      }),
+    );
 
     expect(result.current.daemonEngine?.state).toBe('v2');
     expect(result.current.daemonEngine?.locked).toBe(true);
@@ -142,23 +123,19 @@ describe('useUsageTracking', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() => useUsageTracking());
 
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('updateDaemonStatus', {
-          detail: JSON.stringify({
-            alive: true,
-            serveReady: false,
-            engine: {
-              state: 'unknown',
-              locked: false,
-              blocking: true,
-              reasonKind: 'cli-not-found',
-              reasonMessage: 'no opencode binary on any candidate path',
-            },
-          }),
-        })
-      );
-    });
+    sendDaemonStatus(
+      JSON.stringify({
+        alive: true,
+        serveReady: false,
+        engine: {
+          state: 'unknown',
+          locked: false,
+          blocking: true,
+          reasonKind: 'cli-not-found',
+          reasonMessage: 'no opencode binary on any candidate path',
+        },
+      }),
+    );
 
     // unknown 是一等状态：不能被折叠成 v1，也不能只在日志里静默。
     expect(result.current.daemonEngine?.state).toBe('unknown');
@@ -169,13 +146,7 @@ describe('useUsageTracking', () => {
   it('tolerates a payload without an engine field', () => {
     const { result } = renderHook(() => useUsageTracking());
 
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('updateDaemonStatus', {
-          detail: JSON.stringify({ alive: true, serveReady: true }),
-        })
-      );
-    });
+    sendDaemonStatus(JSON.stringify({ alive: true, serveReady: true }));
 
     // 旧版宿主不推 engine；此时保持 null，而不是抛出或伪造一个状态。
     expect(result.current.daemonEngine).toBeNull();

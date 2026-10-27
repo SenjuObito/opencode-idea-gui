@@ -113,10 +113,6 @@ const questionJson = (requestId: string, sessionId: string | null) =>
 describe('showPermissionDialog — session routing', () => {
   beforeEach(() => {
     delete window.__sessionTabsStore;
-    delete window.__pendingPermissionDialogRequests;
-    delete window.__pendingAskUserQuestionDialogRequests;
-    delete window.__pendingPlanApprovalDialogRequests;
-    delete window.__pendingToasts;
   });
 
   afterEach(() => {
@@ -207,24 +203,11 @@ describe('showPermissionDialog — session routing', () => {
     expect(h.forceClosePermissionDialog).toHaveBeenCalledWith('per_b1');
     expect(tabs[0].pendingPermissions).toHaveLength(0);
   });
-
-  it('drains prompts queued before React mounted', () => {
-    window.__pendingPermissionDialogRequests = [permissionJson('per_pre', 'ses_a')];
-    const h = createHarness([], 'tab-a');
-
-    expect(window.__pendingPermissionDialogRequests).toHaveLength(0);
-    expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
-    expect(h.openPermissionDialog.mock.calls[0][0].channelId).toBe('per_pre');
-  });
 });
 
 describe('showAskUserQuestionDialog — session routing', () => {
   beforeEach(() => {
     delete window.__sessionTabsStore;
-    delete window.__pendingPermissionDialogRequests;
-    delete window.__pendingAskUserQuestionDialogRequests;
-    delete window.__pendingPlanApprovalDialogRequests;
-    delete window.__pendingToasts;
   });
 
   afterEach(() => {
@@ -282,13 +265,5 @@ describe('showAskUserQuestionDialog — session routing', () => {
 
     expect(h.forceCloseAskUserQuestionDialog).toHaveBeenCalledWith('q_b1');
     expect(tabs[0].pendingQuestions).toHaveLength(0);
-  });
-
-  it('drains questions queued before React mounted', () => {
-    window.__pendingAskUserQuestionDialogRequests = [questionJson('q_pre', 'ses_a')];
-    const h = createHarness([], 'tab-a');
-
-    expect(window.__pendingAskUserQuestionDialogRequests).toHaveLength(0);
-    expect(h.openAskUserQuestionDialog).toHaveBeenCalledTimes(1);
   });
 });

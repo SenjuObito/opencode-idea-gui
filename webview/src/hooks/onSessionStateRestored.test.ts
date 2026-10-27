@@ -83,8 +83,6 @@ describe('onSessionStateRestored', () => {
 
   beforeEach(() => {
     window.sendToJava = vi.fn();
-    delete window.__pendingBackendTabState;
-    delete window.__pendingUsageUpdate;
   });
 
   it('applies model / mode / effort locally without echoing bridge events', () => {

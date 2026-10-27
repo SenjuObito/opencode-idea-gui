@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+import { getTabStore } from '../../../store/tabStore';
+
 export interface UseResetAttachmentsOnSessionChangeOptions {
   /** Active session id from SessionContext; null when there is no session/provider. */
   currentSessionId: string | null;
@@ -28,15 +30,13 @@ export function useResetAttachmentsOnSessionChange({
   clearInternalAttachments,
 }: UseResetAttachmentsOnSessionChangeOptions): void {
   const prevSessionIdRef = useRef(currentSessionId);
-  const prevTabIdRef = useRef<string | null>(
-    window.__sessionTabsStore?.getActiveTabId?.() ?? null,
-  );
+  const prevTabIdRef = useRef<string | null>(getTabStore().getActiveTabId());
 
   useEffect(() => {
     if (prevSessionIdRef.current === currentSessionId) return;
     prevSessionIdRef.current = currentSessionId;
 
-    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+    const activeTabId = getTabStore().getActiveTabId();
     const tabChanged = prevTabIdRef.current !== activeTabId;
     prevTabIdRef.current = activeTabId;
     if (tabChanged) {

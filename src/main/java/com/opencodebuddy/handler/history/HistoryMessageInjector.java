@@ -64,7 +64,7 @@ public class HistoryMessageInjector {
         String projectPath = NodeDetector.isWslPath(nodePath) ? NodeDetector.convertToWslPath(rawPath) : rawPath;
         if (projectPath == null) {
             LOG.warn("[HistoryHandler] Project base path is null");
-            notifyHistoryLoadComplete();
+            notifyHistoryLoadComplete(resolvedSessionId, tabId);
             return;
         }
         LOG.info("[HistoryHandler] Loading history session: " + resolvedSessionId
@@ -75,12 +75,22 @@ public class HistoryMessageInjector {
             sessionLoadCallback.onLoadSession(resolvedSessionId, projectPath, provider, model, tabId);
         } else {
             LOG.warn("[HistoryHandler] WARNING: No session load callback set");
-            notifyHistoryLoadComplete();
+            notifyHistoryLoadComplete(resolvedSessionId, tabId);
         }
     }
 
-    void notifyHistoryLoadComplete() {
-        context.callJavaScript("window.historyLoadComplete");
+    /**
+     * Release the frontend's load guard for the session that failed to load.
+     *
+     * <p>The event names the tab and the session: the frontend routes
+     * {@code session.loaded} by envelope identity, so an event without one would
+     * release whichever tab happens to be on screen.</p>
+     */
+    void notifyHistoryLoadComplete(String sessionId, String tabId) {
+        context.publishEvent(com.opencodebuddy.tab.TabEvent.of("session.loaded")
+                .tab(tabId)
+                .session(sessionId)
+                .build());
     }
 
     /**

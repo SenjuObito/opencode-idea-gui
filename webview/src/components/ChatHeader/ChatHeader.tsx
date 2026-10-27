@@ -11,6 +11,10 @@ export interface ChatHeaderProps {
   activeTabId: string;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
+  onCloseOtherTabs?: (tabId: string) => void;
+  onCloseTabsToLeft?: (tabId: string) => void;
+  onCloseTabsToRight?: (tabId: string) => void;
+  onCloseAllTabs?: () => void;
   onRenameTab: (tabId: string, newTitle: string) => void;
   onForkTab: (tab: SessionTabData) => void;
   onExportTab?: (tab: SessionTabData) => void;
@@ -32,6 +36,10 @@ export function ChatHeader({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onCloseOtherTabs,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
+  onCloseAllTabs,
   onRenameTab,
   onForkTab,
   onExportTab,
@@ -63,6 +71,10 @@ export function ChatHeader({
             activeTabId={activeTabId}
             onSelectTab={onSelectTab}
             onCloseTab={onCloseTab}
+            onCloseOtherTabs={onCloseOtherTabs}
+            onCloseTabsToLeft={onCloseTabsToLeft}
+            onCloseTabsToRight={onCloseTabsToRight}
+            onCloseAllTabs={onCloseAllTabs}
             onRenameTab={onRenameTab}
             onForkTab={onForkTab}
             onExportTab={onExportTab ?? (() => {})}

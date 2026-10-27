@@ -30,6 +30,10 @@
     "recommended": "推荐"
   },
   "chat": {
+    "closeOtherTabs": "关闭其他标签页",
+    "closeAllTabs": "关闭所有标签页",
+    "closeTabsToLeft": "关闭左侧标签页",
+    "closeTabsToRight": "关闭右侧标签页",
     "exportMarkdown": "导出会话为 Markdown",
     "sendMessage": "向 {{provider}} 发送消息",
     "createNewSession": "创建新会话",

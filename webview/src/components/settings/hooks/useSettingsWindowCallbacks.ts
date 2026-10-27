@@ -8,33 +8,31 @@ import type { AlertType } from '../../AlertDialog';
 import type { ToastMessage } from '../../Toast';
 import { scheduleBatchedBridgeRequests } from './scheduleBatchedBridgeRequests';
 import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../../utils/hostEventRegistry';
-
-const sendToJava = (message: string) => {
-  if (window.sendToJava) {
-    window.sendToJava(message);
-  }
-};
+import { sendWindowCommand } from '../../../utils/bridge';
 
 /**
- * Settings bootstrap bridge messages, ordered by first-paint priority.
- * Batched on open so CEF/Java is not hit with ~20 messages in one frame.
+ * Settings bootstrap commands, ordered by first-paint priority.
+ *
+ * <p>Settings are window-level: they describe the project, not a tab, so they
+ * travel as window commands. Batched on open so CEF/Java is not hit with ~20
+ * commands in one frame.</p>
  */
-export const SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES = [
+export const SETTINGS_BOOTSTRAP_COMMANDS = [
   // Environment + permissions (visible / used early on basic tab)
-  'get_node_path:',
-  'get_opencode_cli_path:',
-  'get_working_directory:',
-  'get_permission_dialog_timeout:',
+  'get_node_path',
+  'get_opencode_cli_path',
+  'get_working_directory',
+  'get_permission_dialog_timeout',
   // Appearance fonts
-  'get_editor_font_config:',
-  'get_ui_font_config:',
-  'get_code_font_config:',
+  'get_editor_font_config',
+  'get_ui_font_config',
+  'get_code_font_config',
   // Behavior / feature toggles (basic tab sub-views)
-  'get_sound_notification_config:',
-  'get_task_completion_notification_enabled:',
-  'get_ask_user_question_notification_enabled:',
-  'get_system_notification_only_when_unfocused:',
-  'get_ask_user_question_sound_notification_enabled:',
+  'get_sound_notification_config',
+  'get_task_completion_notification_enabled',
+  'get_ask_user_question_notification_enabled',
+  'get_system_notification_only_when_unfocused',
+  'get_ask_user_question_sound_notification_enabled',
   // NOTE: commit prompt / commit AI / prompt-enhancer configs are intentionally
   // NOT bootstrapped here. Their handlers probe CLI availability (spawn processes)
   // on the JCEF UI thread and freeze Settings until complete. Load on tab open.
@@ -122,7 +120,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         d().setNodePath(jsonStr || '');
       }
       d().setSavingNodePath(false);
-      window.dispatchEvent(new CustomEvent('nodePathReady'));
     };
 
     const updateOpencodeCliPath = (jsonStr: string) => {
@@ -366,10 +363,12 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     // Provider / agent / prompt lists are fetched when their tabs first mount.
     // Bootstrap messages are batched so open-settings does not stampede CEF.
     const bootstrapRequests = scheduleBatchedBridgeRequests({
-      messages: SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES,
+      messages: SETTINGS_BOOTSTRAP_COMMANDS,
       batchSize: 5,
       batchDelayMs: 16,
-      send: sendToJava,
+      send: (type) => {
+        sendWindowCommand(type);
+      },
     });
 
     return () => {

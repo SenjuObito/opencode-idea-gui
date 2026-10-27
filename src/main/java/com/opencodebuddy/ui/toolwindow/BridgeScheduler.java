@@ -590,8 +590,11 @@ class BridgeScheduler<T> {
     }
 
     private static String legacyCall(JsCall<?> call) {
-        String callee = call.functionName.contains(".")
-                ? call.functionName : "window." + call.functionName;
+        String bare = call.functionName.startsWith("window.")
+                ? call.functionName.substring("window.".length())
+                : call.functionName;
+        String callee = "window." + bare;
+        String semanticType = EventCatalog.semanticType(bare);
         StringBuilder argList = new StringBuilder();
         for (int i = 0; i < call.args.length; i++) {
             if (i > 0) {
@@ -602,7 +605,7 @@ class BridgeScheduler<T> {
                     .append('\'');
         }
         return "  try { if (typeof window.__opencodeDispatch === 'function') { window.__opencodeDispatch('"
-                + sanitizeArgForJsLiteral(call.functionName)
+                + sanitizeArgForJsLiteral(semanticType)
                 + "', ["
                 + argList
                 + "]); } else if (typeof "

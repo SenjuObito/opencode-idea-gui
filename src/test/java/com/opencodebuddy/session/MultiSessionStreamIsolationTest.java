@@ -243,13 +243,25 @@ public class MultiSessionStreamIsolationTest {
                     usageCall = call;
                 }
             }
-            assertNotNull("no usage update was pushed", usageCall);
-            assertTrue("usage was attributed to the wrong session: " + usageCall,
-                    usageCall.startsWith("window.onUsageUpdate:ses_a:"));
-            assertFalse("usage leaked to the active session: " + usageCall,
-                    usageCall.contains("ses_b"));
-            assertTrue("usage used the active session's context window: " + usageCall,
-                    usageCall.contains("\\\"maxTokens\\\":200000"));
+            // Usage travels as the named event; the envelope carries the session
+            // and the payload carries the counters.
+            com.opencodebuddy.tab.TabEvent usageEvent = null;
+            for (com.opencodebuddy.tab.TabEvent event : target.events) {
+                if ("usage.updated".equals(event.getType())) {
+                    usageEvent = event;
+                }
+            }
+            assertNull("the legacy positional usage call is gone", usageCall);
+            assertNotNull("no usage update was pushed", usageEvent);
+            assertEquals("usage was attributed to the wrong session",
+                    "ses_a", usageEvent.getSessionId());
+            assertFalse("usage leaked to the active session",
+                    "ses_b".equals(usageEvent.getSessionId()));
+            com.google.gson.JsonObject usagePayload =
+                    (com.google.gson.JsonObject) usageEvent.getPayload().get("usage");
+            assertNotNull("usage payload is missing", usagePayload);
+            assertTrue("usage used the active session's context window",
+                    usagePayload.get("maxTokens").getAsInt() == 200_000);
         } finally {
             coalescer.dispose();
         }
@@ -455,6 +467,7 @@ public class MultiSessionStreamIsolationTest {
     private static final class RecordingTarget implements StreamMessageCoalescer.JsCallbackTarget {
         private final List<String> calls = Collections.synchronizedList(new ArrayList<>());
         private final List<String> updateCalls = Collections.synchronizedList(new ArrayList<>());
+        private final List<com.opencodebuddy.tab.TabEvent> events = Collections.synchronizedList(new ArrayList<>());
         private final HandlerContext handlerContext;
         private volatile OpencodeSession owner;
 
@@ -463,6 +476,11 @@ public class MultiSessionStreamIsolationTest {
                 @Override
                 public void callJavaScript(String functionName, String... args) {
                     record(functionName, args);
+                }
+
+                @Override
+                public void publishEvent(com.opencodebuddy.tab.TabEvent event) {
+                    events.add(event);
                 }
 
                 @Override

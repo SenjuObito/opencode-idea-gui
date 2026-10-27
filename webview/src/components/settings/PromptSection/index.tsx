@@ -155,24 +155,20 @@ const PromptSection = () => {
     sendCommandsCommand('commands.list', { scope: targetScope });
   }, []);
 
+  const applyList = useCallback((json: string) => {
+    try {
+      const data = JSON.parse(json);
+      if (data.scope && data.scope !== scope) {
+        return;
+      }
+      if (Array.isArray(data.commands)) {
+        setCommands(data.commands);
+        setDir(data.dir || '');
+      }
+    } catch { /* ignore */ }
+  }, [scope]);
+
   useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<string>).detail;
-      try {
-        const data = JSON.parse(detail);
-        if (data.scope && data.scope !== scope) {
-          return;
-        }
-        if (Array.isArray(data.commands)) {
-          setCommands(data.commands);
-          setDir(data.dir || '');
-        }
-      } catch { /* ignore */ }
-    };
-    window.addEventListener('on-commands-list', handler as EventListener);
-    const onList = (json: string) => {
-      window.dispatchEvent(new CustomEvent('on-commands-list', { detail: json }));
-    };
     const onSaved = (json: string) => {
       try {
         const data = JSON.parse(json);
@@ -191,31 +187,34 @@ const PromptSection = () => {
     };
 
     registerHostEvents({
-      'commands.listed': onList,
+      'commands.listed': applyList,
       'commands.saved': onSaved,
       'commands.deleted': onDeleted,
     });
 
     return () => {
-      window.removeEventListener('on-commands-list', handler as EventListener);
       unregisterHostEvents(['commands.listed', 'commands.saved', 'commands.deleted']);
     };
-  }, [scope]);
+  }, [scope, applyList]);
 
   useEffect(() => {
     refresh(scope);
   }, [scope, refresh]);
 
   const openEditor = (name: string) => {
-    const handler = (event: Event) => {
-      window.removeEventListener('on-commands-read', handler as EventListener);
-      const data = JSON.parse((event as CustomEvent<string>).detail);
-      setEditor({ open: true, name, original: data.exists ? name : '', content: data.content || '' });
-    };
-    window.addEventListener('on-commands-read', handler as EventListener);
+    // The reply is awaited exactly once: the handler unregisters itself before
+    // it opens the editor, so a late duplicate cannot overwrite user edits.
     const onRead = (json: string) => {
-      window.dispatchEvent(new CustomEvent('on-commands-read', { detail: json }));
       unregisterHostEvents(['commands.detail']);
+      try {
+        const data = JSON.parse(json);
+        setEditor({
+          open: true,
+          name,
+          original: data.exists ? name : '',
+          content: data.content || '',
+        });
+      } catch { /* ignore */ }
     };
     registerHostEvents({ 'commands.detail': onRead });
     sendCommandsCommand('commands.read', { scope, name });

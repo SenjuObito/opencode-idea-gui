@@ -10,7 +10,7 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
 import { sendWindowCommand, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
-import { isSessionTransitioning } from '../tabTransition';
+import { isSessionTransitioning, owningTabIdForSession } from '../tabTransition';
 import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../../utils/hostEventTypes';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
 import { parseSequence, advanceMinAcceptedSequence } from '../sequenceBarrier';
@@ -204,6 +204,15 @@ const getTextLenFromRaw = (raw: unknown): number => {
 };
 
 export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): void {
+  /**
+   * The tab an event belongs to: the named tab, else the session's binding
+   * (including a tab that is still switching to that session).
+   */
+  const ownerTabFor = (
+    targetTabId: string | null | undefined,
+    targetSessionId: string | null | undefined,
+  ): string | null => targetTabId ?? owningTabIdForSession(targetSessionId);
+
   const {
     setMessages,
     setStreamingActive,
@@ -264,9 +273,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
-    const isBackground = hasTabs && (targetTabId
-      ? !tabStore.isActiveTab(targetTabId)
-      : Boolean(targetSessionId && !tabStore.isActiveSession(targetSessionId)));
+    const ownerTabId = ownerTabFor(targetTabId, targetSessionId);
+    // No tab owns this identity: a closed tab has nowhere to write, and falling
+    // through would start the stream of whichever tab is on screen.
+    if (hasTabs && !ownerTabId) return;
+    const isBackground = Boolean(ownerTabId) && !tabStore.isActiveTab(ownerTabId);
     if (isBackground) {
       const now = Date.now();
       if (targetSessionId) {
@@ -277,11 +288,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         t.loading = true;
         t.turnStartedAt = now;
       };
-      if (targetTabId) {
-        tabStore.updateTab(targetTabId, markStarted);
-      } else if (targetSessionId) {
-        tabStore.updateBackgroundTab(targetSessionId, markStarted);
-      }
+      tabStore.updateTab(ownerTabId, markStarted);
       return;
     }
 
@@ -305,9 +312,13 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // Record turn start time for duration calculation in onStreamEnd
     const turnNow = Date.now();
     window.__turnStartedAt = turnNow;
-    const activeSessionId = tabStore.getActiveSessionId() || getTabStore().getActiveSessionId() || options.currentSessionIdRef?.current;
-    if (activeSessionId) {
-      sessionTurnStartTimes.set(activeSessionId, turnNow);
+    // Record the start against the event's own session: during a switch the
+    // active tab still carries the outgoing one, which lost the duration.
+    const turnSessionId = targetSessionId
+      ?? tabStore.getActiveSessionId()
+      ?? options.currentSessionIdRef?.current; // legacy-allow: a window with no tab strip has only the view's session
+    if (turnSessionId) {
+      sessionTurnStartTimes.set(turnSessionId, turnNow);
     }
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
@@ -538,20 +549,13 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
-    if (targetTabId && hasTabs) {
-      if (!tabStore.isActiveTab(targetTabId)) {
-        tabStore.updateTab(targetTabId, (t: any) => {
-          appendDeltaToTab(t, delta);
-        });
-        return;
-      }
-    } else if (targetSessionId && hasTabs) {
-      if (!tabStore.isActiveSession(targetSessionId)) {
-        tabStore.updateBackgroundTab(targetSessionId, (t: any) => {
-          appendDeltaToTab(t, delta);
-        });
-        return;
-      }
+    const ownerTabId = ownerTabFor(targetTabId, targetSessionId);
+    if (hasTabs && !ownerTabId) return;
+    if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
+      tabStore.updateTab(ownerTabId, (t: any) => {
+        appendDeltaToTab(t, delta);
+      });
+      return;
     }
 
     if (isSessionTransitioning(targetSessionId)) return;
@@ -576,16 +580,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
-    if (targetTabId && hasTabs) {
-      if (!tabStore.isActiveTab(targetTabId)) {
-        tabStore.updateTab(targetTabId, markThinking);
-        return;
-      }
-    } else if (targetSessionId && hasTabs) {
-      if (!tabStore.isActiveSession(targetSessionId)) {
-        tabStore.updateBackgroundTab(targetSessionId, markThinking);
-        return;
-      }
+    const ownerTabId = ownerTabFor(targetTabId, targetSessionId);
+    if (hasTabs && !ownerTabId) return;
+    if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
+      tabStore.updateTab(ownerTabId, markThinking);
+      return;
     }
 
     if (isSessionTransitioning(targetSessionId)) return;
@@ -677,10 +676,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     };
 
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0;
-    const isBackground = hasTabs && (targetTabId
-      ? !tabStore.isActiveTab(targetTabId)
-      : Boolean(targetSessionId && !tabStore.isActiveSession(targetSessionId)));
+    const ownerTabId = ownerTabFor(targetTabId, targetSessionId);
+    // A terminal for a session no tab owns (a closed tab) has no spinner to
+    // clear; applying it to the active tab would stop an unrelated turn.
+    if (tabStore.size() > 0 && !ownerTabId) return;
+    const isBackground = Boolean(ownerTabId) && !tabStore.isActiveTab(ownerTabId);
     if (isBackground) {
       const turnStartedAt = sessionTurnStartTimes.get(targetSessionId);
       sessionTurnStartTimes.delete(targetSessionId);
@@ -691,11 +691,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         finishTurn(t, calculatedDurationMs);
       };
 
-      if (targetTabId) {
-        tabStore.updateTab(targetTabId, finishAndReturn);
-      } else if (targetSessionId) {
-        tabStore.updateBackgroundTab(targetSessionId, finishAndReturn);
-      }
+      tabStore.updateTab(ownerTabId, finishAndReturn);
       // The turn is over: drop the runtime of that tab. Keeping it would make
       // the tab restore `isStreaming=true` the next time it is activated,
       // leaving its spinner stuck forever.
@@ -852,7 +848,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     const keysToCollapse = new Set(autoExpandedThinkingKeysRef.current);
 
     // Snapshot turn start time BEFORE entering the updater
-    const currentActiveSessionId = tabStore.getActiveSessionId() || getTabStore().getActiveSessionId() || options.currentSessionIdRef?.current;
+    const currentActiveSessionId = targetSessionId
+      ?? tabStore.getActiveSessionId()
+      ?? options.currentSessionIdRef?.current; // legacy-allow: a window with no tab strip has only the view's session
     const turnStartedAt = window.__turnStartedAt ?? (currentActiveSessionId ? sessionTurnStartTimes.get(currentActiveSessionId) : undefined);
     window.__turnStartedAt = undefined;
     if (currentActiveSessionId) {
@@ -1132,8 +1130,8 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   const onBlockReset = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
     const targetSessionId = env?.sessionId ?? null;
     const tabStore = getTabStore();
-    const isBackground = Boolean(targetSessionId) && tabStore.size() > 0
-      && !tabStore.isActiveSession(targetSessionId);
+    const ownerTabId = ownerTabFor(null, targetSessionId);
+    const isBackground = Boolean(ownerTabId) && !tabStore.isActiveTab(ownerTabId);
     if (isBackground) {
       return;
     }
@@ -1172,8 +1170,8 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   const onStreamingHeartbeat = (_payload?: HostEventPayload, env?: HostEventEnvelope) => {
     const targetSessionId = env?.sessionId ?? null;
     const tabStore = getTabStore();
-    const isBackground = Boolean(targetSessionId) && tabStore.size() > 0
-      && !tabStore.isActiveSession(targetSessionId);
+    const ownerTabId = ownerTabFor(null, targetSessionId);
+    const isBackground = Boolean(ownerTabId) && !tabStore.isActiveTab(ownerTabId);
     if (isBackground) {
       return;
     }
@@ -1223,16 +1221,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       t.isThinking = false;
     };
     const hasTabs = tabStore.size() > 0;
-    if (targetTabId && hasTabs) {
-      if (!tabStore.isActiveTab(targetTabId)) {
-        tabStore.updateTab(targetTabId, settleTurn);
-        return;
-      }
-    } else if (sessionId && hasTabs) {
-      if (!tabStore.isActiveSession(sessionId)) {
-        tabStore.updateBackgroundTab(sessionId, settleTurn);
-        return;
-      }
+    const ownerTabId = ownerTabFor(targetTabId, sessionId);
+    if (hasTabs && !ownerTabId) return;
+    if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
+      tabStore.updateTab(ownerTabId, settleTurn);
+      return;
     }
 
     clearStallWatchdog();

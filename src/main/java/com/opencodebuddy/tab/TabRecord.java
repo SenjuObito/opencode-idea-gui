@@ -50,7 +50,6 @@ public final class TabRecord {
     private volatile TabState state = TabState.NEW;
     private volatile SessionId sessionId;
     private volatile OpencodeSession session;
-    private volatile String title;
     private volatile long streamingStartedAtMillis;
     private volatile long lastTurnDurationMs;
 
@@ -159,11 +158,10 @@ public final class TabRecord {
     }
 
     public String getTitle() {
-        return title != null ? title : settings.getTitle();
+        return settings.getTitle();
     }
 
     public void setTitle(String title) {
-        this.title = title;
         settings.applyAutoTitle(title);
     }
 
@@ -175,7 +173,6 @@ public final class TabRecord {
      * the tab strip used to drift from the history list.</p>
      */
     public void setUserTitle(String title) {
-        this.title = title;
         settings.applyUserTitle(title);
     }
 

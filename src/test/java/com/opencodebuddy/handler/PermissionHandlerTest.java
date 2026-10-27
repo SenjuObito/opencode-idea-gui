@@ -56,6 +56,33 @@ public class PermissionHandlerTest {
     }
 
     @Test
+    public void denialNamesTheSessionThatOwnsThePromptNotTheActiveOne() throws Exception {
+        // Regression: every denial interrupted "the session on screen". Cancelling
+        // a background tab's prompt ended the foreground conversation and left the
+        // denied session running, so the dialog looked cancelled but the turn
+        // never stopped.
+        CompletableFuture<Integer> future = new CompletableFuture<>();
+        injectPermissionFuture("ch-bg", future);
+        injectSession("permissionRequestSessions", "ch-bg", "ses_bg");
+
+        java.util.List<String[]> denials = new java.util.ArrayList<>();
+        handler.setPermissionDeniedCallback((sessionId, tabId) -> denials.add(new String[]{sessionId, tabId}));
+
+        JsonObject reply = new JsonObject();
+        reply.addProperty("channelId", "ch-bg");
+        reply.addProperty("sessionId", "ses_bg");
+        reply.addProperty("allow", false);
+        reply.addProperty("remember", false);
+
+        assertTrue(handler.handle("permission.reply", reply.toString()));
+
+        assertEquals(PermissionHandler.PermissionResponse.DENY.getValue(), future.get(1, TimeUnit.SECONDS).intValue());
+        assertEquals(1, denials.size());
+        assertEquals("ses_bg", denials.get(0)[0]);
+        assertNull(denials.get(0)[1]);
+    }
+
+    @Test
     public void getSupportedTypesReturnsTheExpectedIpcMessageTypes() {
         // Order is part of the dispatch contract documented in PermissionHandler.SUPPORTED_TYPES,
         // but the asserted property here is set-membership: the bridge will deliver any of these

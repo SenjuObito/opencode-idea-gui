@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { SessionTabData } from '../../components/ChatHeader/types';
-import { createTabId } from '../../store/tabStore';
+import { createTabId, getTabStore } from '../../store/tabStore';
 import { TabMessageStore } from '../../store/tabMessageStore';
 import type { TabDraftStore } from '../../store/tabDraftStore';
 import type { TabStatusStore } from '../../store/tabStatusStore';
@@ -429,7 +429,11 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       }
       setCurrentSessionId?.(targetTab.sessionId);
       setCustomSessionTitle(targetTab.title || null);
-      sendHostCommand(targetTab.id, 'tab.title.set', { title: targetTab.title || '' });
+      // Read the live store, not tabsRef: a title event may have landed
+      // after the ref's last effect and must not be replaced by a stale
+      // placeholder here.
+      const liveTitle = getTabStore().findById(targetTab.id)?.title ?? targetTab.title ?? '';
+      sendHostCommand(targetTab.id, 'tab.title.sync', { title: liveTitle });
       restoreScrollState?.(targetTab.scrollState ?? null);
       setMessages?.(targetTab.messages ?? []);
 
@@ -634,7 +638,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       }
 
       syncHostActiveTabTo(activeTabIdRef.current);
-      sendHostCommand(activeTabIdRef.current, 'tab.title.set', { title: resolvedTitle });
+      sendHostCommand(activeTabIdRef.current, 'tab.title.sync', { title: resolvedTitle });
 
       setMessages([]);
       restoreScrollState?.(null);

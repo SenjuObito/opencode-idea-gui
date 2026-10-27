@@ -93,7 +93,11 @@ public class PermissionHandler extends BaseMessageHandler {
 
     // Permission denied callback
     public interface PermissionDeniedCallback {
-        void onPermissionDenied();
+        /**
+         * @param sessionId the session whose prompt was denied (never "the active one")
+         * @param tabId     the tab that owns it, when the prompt carried one
+         */
+        void onPermissionDenied(String sessionId, String tabId);
     }
 
     private PermissionDeniedCallback deniedCallback;
@@ -312,7 +316,8 @@ public class PermissionHandler extends BaseMessageHandler {
                     "Failed to show permission dialog"
                 );
             }
-            notifyPermissionDenied();
+            String deniedSession = request.getSessionId();
+            notifyPermissionDenied(deniedSession, context.getTabIdForSession(deniedSession));
         }
     }
 
@@ -405,11 +410,16 @@ public class PermissionHandler extends BaseMessageHandler {
                     ? decision.get("sessionId").getAsString() : null;
             String decisionTabId = decision.has("tabId") && !decision.get("tabId").isJsonNull()
                     ? decision.get("tabId").getAsString() : null;
+            String ownerSessionId = prompts.permissionSessions.get(channelId);
+            String ownerTabId = prompts.permissionTabs.get(channelId);
             if (!replyMatchesOwner(channelId, decisionSessionId, decisionTabId,
-                    prompts.permissionSessions.get(channelId),
-                    prompts.permissionTabs.get(channelId))) {
+                    ownerSessionId, ownerTabId)) {
                 return;
             }
+            // The denial interrupts the session that asked, never "the session on
+            // screen": a background prompt's cancel used to end the active turn.
+            final String deniedSessionId = ownerSessionId != null ? ownerSessionId : decisionSessionId;
+            final String deniedTabId = ownerTabId != null ? ownerTabId : decisionTabId;
             boolean allow = decision.get("allow").getAsBoolean();
             boolean remember = decision.get("remember").getAsBoolean();
             String rejectMessage = "";
@@ -422,6 +432,7 @@ public class PermissionHandler extends BaseMessageHandler {
 
             CompletableFuture<Integer> pendingFuture = prompts.permissions.remove(channelId);
             prompts.permissionSessions.remove(channelId);
+            prompts.permissionTabs.remove(channelId);
 
             if (pendingFuture != null) {
                 LOG.info("[PERM_DECISION] Found pending future, completing with allow=" + allow);
@@ -437,7 +448,7 @@ public class PermissionHandler extends BaseMessageHandler {
                 LOG.info("[PERM_DECISION] Future completed with value=" + responseValue);
 
                 if (!allow) {
-                    notifyPermissionDenied();
+                    notifyPermissionDenied(deniedSessionId, deniedTabId);
                 }
             } else {
                 LOG.warn("[PERM_DECISION] No pending future found for channelId=" + channelId + ", falling back to session handler");
@@ -455,7 +466,7 @@ public class PermissionHandler extends BaseMessageHandler {
                     target.handlePermissionDecision(channelId, allow, false, rejectMessage);
                 }
                 if (!allow) {
-                    notifyPermissionDenied();
+                    notifyPermissionDenied(deniedSessionId, deniedTabId);
                 }
             }
         } catch (Exception e) {
@@ -466,9 +477,9 @@ public class PermissionHandler extends BaseMessageHandler {
     /**
      * Notify that permission was denied.
      */
-    private void notifyPermissionDenied() {
+    private void notifyPermissionDenied(String sessionId, String tabId) {
         if (deniedCallback != null) {
-            deniedCallback.onPermissionDenied();
+            deniedCallback.onPermissionDenied(sessionId, tabId);
         }
     }
 
@@ -836,6 +847,11 @@ public class PermissionHandler extends BaseMessageHandler {
             JsonObject answers = response.has("answers") && !response.get("answers").isJsonNull()
                 ? response.get("answers").getAsJsonObject()
                 : new JsonObject();
+            // The user pressed cancel/skip. Treating it as "empty answers" asked
+            // the daemon a question with no answer: the reply either failed
+            // (error toast) or the tool never failed, so the turn never settled.
+            boolean rejected = response.has("rejected") && !response.get("rejected").isJsonNull()
+                    && response.get("rejected").getAsBoolean();
 
             CompletableFuture<JsonObject> pendingFuture = prompts.askFutures.remove(requestId);
             prompts.askSessions.remove(requestId);
@@ -849,6 +865,30 @@ public class PermissionHandler extends BaseMessageHandler {
             PromptBroker.PendingQuestion pending = prompts.questions.remove(requestId);
             if (pending == null) {
                 LOG.warn("[ASK_USER_QUESTION][HANDLE_RESPONSE] No pending request found for requestId: " + requestId);
+                return;
+            }
+
+            if (rejected) {
+                OpenCodeSDKBridge rejectBridge = context.getOpenCodeSDKBridge();
+                if (rejectBridge == null) {
+                    prompts.questions.put(requestId, pending);
+                    callJavaScript("window.showToast", escapeJs("取消提问失败: bridge is not available"));
+                    return;
+                }
+                rejectBridge.rejectQuestion(pending.sessionId, requestId, pending.directory)
+                        .whenComplete((ok, error) -> {
+                            if (error != null || !Boolean.TRUE.equals(ok)) {
+                                String msg = error != null ? error.getMessage() : "daemon rejected";
+                                // A question that already expired/closed is the
+                                // normal timeout outcome: opencode has no
+                                // "timed out" state, so the reject cannot settle
+                                // and there is nothing to report. The card is
+                                // already closed and the turn is being stopped.
+                                LOG.warn("[OpenCode] rejectQuestion did not settle: id=" + requestId + " error=" + msg);
+                                prompts.questions.put(requestId, pending);
+                                forceCloseFrontendDialog("invalidateQuestionCard", requestId);
+                            }
+                        });
                 return;
             }
 

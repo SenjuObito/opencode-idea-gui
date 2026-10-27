@@ -335,14 +335,21 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
 
     @Override
     public void onSessionTitleReceived(String sessionId, String title) {
-        if (isInactive() || sessionId == null || title == null) {
+        // Title events are addressed by session, not by adapter liveness. A tab
+        // switch can replace this adapter between the engine event and its
+        // delivery; dropping on isInactive() lost exactly those titles. The
+        // publish choke point re-addresses to the tab that holds the session,
+        // and a closed tab is filtered there.
+        if (sessionId == null || title == null || title.isBlank()) {
+            return;
+        }
+        // The engine's placeholder is not a conversation name: keep the tab's
+        // localized label until the engine generates the real title.
+        if (SessionTitles.isEnginePlaceholder(title)) {
             return;
         }
         LOG.info("Session Title update: " + sessionId + " -> " + title);
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
-                return;
-            }
             publish("tab.title.changed", sessionId, b -> b.field("title", title));
         });
     }

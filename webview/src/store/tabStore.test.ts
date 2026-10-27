@@ -93,4 +93,42 @@ describe('TabStore', () => {
 
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it('decides "active session" from the tab binding, never from a view projection', () => {
+    // The regression this guards: routing asked the view's current session,
+    // which lags a commit behind, so the tab that really held the session was
+    // treated as background while the previous session's events were treated
+    // as foreground.
+    const store = new TabStore([tab('tab-1', 'ses_a'), tab('tab-2', 'ses_b')], 'tab-1');
+
+    expect(store.isActiveSession('ses_a')).toBe(true);
+    expect(store.isActiveSession('ses_b')).toBe(false);
+    expect(store.getActiveSessionId()).toBe('ses_a');
+
+    store.setActiveTabId('tab-2');
+    expect(store.isActiveSession('ses_a')).toBe(false);
+    expect(store.isActiveSession('ses_b')).toBe(true);
+    expect(store.getActiveSessionId()).toBe('ses_b');
+  });
+
+  it('keeps a title that arrived before the session was bound', () => {
+    const store = new TabStore([tab('tab-1', null)], 'tab-1');
+
+    store.updateTabTitle('ses_late', 'AI title');
+    expect(store.findById('tab-1')?.title).toBe('tab-1');
+
+    store.updateTabSessionId('tab-1', 'ses_late');
+    expect(store.findById('tab-1')?.title).toBe('AI title');
+    expect(store.findById('tab-1')?.sessionId).toBe('ses_late');
+  });
+
+  it('never lets a generated title replace a title the user set', () => {
+    const store = new TabStore([
+      { ...tab('tab-1', 'ses_a'), title: '我的会话', isCustomTitle: true },
+    ], 'tab-1');
+
+    store.updateTabTitle('ses_a', 'AI title', 'tab-1');
+
+    expect(store.findById('tab-1')?.title).toBe('我的会话');
+  });
 });

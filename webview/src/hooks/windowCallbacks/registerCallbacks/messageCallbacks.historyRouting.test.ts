@@ -13,6 +13,7 @@
 
 import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act } from '@testing-library/react';
 import { registerMessageCallbacks } from './messageCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
@@ -283,5 +284,64 @@ describe('patchMessageUuid — 会话归属与签名', () => {
     hostEventHandler('message.uuid.patched')!(...sessionEvent(null, { content: undefined as unknown as string, uuid: '同一个问题', value: 'uuid-999' }));
 
     expect(h.getMessages()[0]).not.toHaveProperty('raw.uuid');
+  });
+});
+
+describe('transition ownership', () => {
+  beforeEach(() => {
+    resetTabStore();
+    endTransition('tab-fg');
+    delete (window as unknown as Record<string, unknown>).__pendingUpdateJson;
+  });
+
+  it('treats the session a tab is switching to as its own before the rebind lands', () => {
+    // loadHistorySession starts the transition and rebinds the tab a moment
+    // later. Events for the incoming session arrive in that window and must
+    // still be recognised as the foreground instead of having no owner.
+    const h = createHarness('ses_old');
+    seedTabStore([{ id: 'tab-fg', sessionId: 'ses_old', messages: [] }], 'tab-fg');
+    beginTransition('tab-fg', 'ses_new', 'transition-new');
+
+    hostEventHandler('message.snapshot')!(...snapshotEvent('ses_new', JSON.stringify(historySnapshot()), '3'));
+
+    expect(h.getMessages()).toHaveLength(2);
+    expect(h.getMessages()[0].content).toBe('history question');
+    endTransition('tab-fg');
+  });
+});
+
+describe('deferred snapshot routing', () => {
+  beforeEach(() => {
+    resetTabStore();
+    endTransition('tab-fg');
+    delete (window as unknown as Record<string, unknown>).__pendingUpdateJson;
+    delete (window as unknown as Record<string, unknown>).__pendingUpdateSequence;
+  });
+
+  it('writes a deferred snapshot to the tab that owns it after the user switched away', () => {
+    // During streaming the snapshot is deferred to the next frame. If the user
+    // switches tabs before that frame runs, the frame used to be dropped as
+    // "background": the tab kept a stale transcript and the cards that arrived
+    // in it only appeared after some later snapshot.
+    const h = createHarness('ses_fg');
+    seedTabStore([
+      { id: 'tab-fg', sessionId: 'ses_fg', messages: [] },
+      { id: 'tab-bg', sessionId: 'ses_bg', messages: [] },
+    ], 'tab-fg');
+    h.options.isStreamingRef.current = true;
+
+    hostEventHandler('message.snapshot')!(...snapshotEvent('ses_fg', JSON.stringify(historySnapshot()), '11'));
+
+    getTabStore().setActiveTabId('tab-bg');
+    act(() => {
+      (window as unknown as { __flushPendingUpdateMessages?: (sessionId?: string | null) => void })
+        .__flushPendingUpdateMessages?.('ses_fg');
+    });
+
+    // The frame belongs to tab-fg: it is written there, not into the view.
+    expect(h.setMessages).not.toHaveBeenCalled();
+    expect(storedTab('tab-fg').messages).toHaveLength(2);
+    expect(storedTab('tab-fg').messages![0].content).toBe('history question');
+    expect(storedTab('tab-bg').messages).toEqual([]);
   });
 });

@@ -36,10 +36,7 @@ export interface UseTabBarStateOptions extends Pick<
 
 export function useTabBarState(options: UseTabBarStateOptions) {
   const {
-    currentSessionId,
-    currentSessionIdRef,
     setCurrentSessionId,
-    sessionTitle,
     setCustomSessionTitle,
     updateHistoryTitle,
     revertBoundaryId,
@@ -54,7 +51,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     usageMaxTokens,
     isCompacting,
     compactingStartTime,
-    isShared,
     defaultAutoOpenFileEnabled,
     deleteTabRuntime,
     t,
@@ -109,14 +105,15 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
 
-  // Sync active tab's metadata as conversation progresses
+  // Sync the fields the view owns onto the active tab (user choices: model,
+  // mode, effort, usage mirrors). Binding fields are NOT mirrored here: the
+  // tab's `sessionId`/`title`/`isShared` are written by their events and by
+  // activation, so a stale projection can never overwrite them.
   useEffect(() => {
     setTabs((prev) => {
       const active = prev.find((t) => t.id === activeTabId);
       if (!active) return prev;
 
-      const nextSessionId = currentSessionId ?? active.sessionId;
-      const nextTitle = (!sessionTitle || sessionTitle === t('common.newSession')) ? active.title : (sessionTitle || active.title);
       const nextUsagePercentage = usagePercentage ?? active.usagePercentage;
       const nextUsageUsedTokens = usageUsedTokens !== undefined ? usageUsedTokens : active.usageUsedTokens;
       const nextUsageMaxTokens = usageMaxTokens !== undefined ? usageMaxTokens : active.usageMaxTokens;
@@ -131,9 +128,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
         : (active.compactingStartTime ?? null);
 
       if (
-        active.sessionId === nextSessionId &&
-        active.title === nextTitle &&
-        active.isShared === isShared &&
         active.revertBoundaryId === revertBoundaryId &&
         active.taskEvents === taskEvents &&
         active.filteredFileChanges === filteredFileChanges &&
@@ -157,9 +151,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
         if (tab.id === activeTabId) {
           return {
             ...tab,
-            sessionId: nextSessionId,
-            title: nextTitle,
-            isShared,
             revertBoundaryId,
             taskEvents,
             filteredFileChanges,
@@ -182,9 +173,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     });
   }, [
     activeTabId,
-    currentSessionId,
-    sessionTitle,
-    isShared,
     revertBoundaryId,
     taskEvents,
     filteredFileChanges,
@@ -210,7 +198,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
       deleteTabRuntime,
       closeTab: (tabId: string) => closeTabRef.current(tabId),
       getDrafts: () => draftStore.getAll(),
-      getCurrentSessionId: () => currentSessionIdRef?.current ?? null,
       defaultAutoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
     });
   }, [
@@ -219,7 +206,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     setCustomSessionTitle,
     deleteTabRuntime,
     draftStore,
-    currentSessionIdRef,
     defaultAutoOpenFileEnabled,
   ]);
 
@@ -231,17 +217,15 @@ export function useTabBarState(options: UseTabBarStateOptions) {
       sendHostCommand(tabId, 'tab.title.set', { title: newTitle });
       if (tabId === activeTabIdRef.current) {
         setCustomSessionTitle(newTitle);
-        if (currentSessionId) {
-          updateHistoryTitle(currentSessionId, newTitle);
-        }
-      } else {
-        const target = tabsRef.current.find((t) => t.id === tabId);
-        if (target?.sessionId) {
-          updateHistoryTitle(target.sessionId, newTitle);
-        }
+      }
+      // The tab owns its session id; the view's `currentSessionId` is only a
+      // projection and may still point at the tab the user just left.
+      const target = tabsRef.current.find((t) => t.id === tabId);
+      if (target?.sessionId) {
+        updateHistoryTitle(target.sessionId, newTitle);
       }
     },
-    [setTabs, currentSessionId, setCustomSessionTitle, updateHistoryTitle]
+    [setTabs, setCustomSessionTitle, updateHistoryTitle]
   );
 
   const activeTab = tabs.find((t) => t.id === activeTabId);

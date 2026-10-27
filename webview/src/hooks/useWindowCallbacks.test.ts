@@ -471,6 +471,24 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setCustomSessionTitle).not.toHaveBeenCalled();
   });
 
+  it('updateSessionTitle applies an AI title to its own background tab', () => {
+    seedTabStore([
+      { id: 'tab-active', sessionId: 'sess-active' },
+      { id: 'tab-bg', sessionId: 'sess-bg' },
+    ], 'tab-active');
+    const opts = createOptions({ currentSessionIdRef: { current: 'sess-active' } });
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      hostEventHandler('tab.title.changed')!(...sessionEvent('sess-bg', { title: 'Background title' }, 'tab-bg'));
+    });
+
+    expect(getTabStore().findById('tab-bg')?.title).toBe('Background title');
+    expect(getTabStore().findById('tab-active')?.title).not.toBe('Background title');
+    expect(opts.setCustomSessionTitle).not.toHaveBeenCalled();
+    expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-bg', 'Background title');
+  });
+
   it('updateSessionTitle does not title an unbound draft tab while currentSessionId is null', () => {
     const opts = createOptions({
       currentSessionIdRef: { current: null },
@@ -505,7 +523,7 @@ describe('useWindowCallbacks integration', () => {
 
   it('setSessionId with title > 50 chars uses applyHistoryTitleLocal to avoid backend 50-char limit', () => {
     const longTitle = 'A very long AI-generated session title that exceeds fifty characters easily';
-    seedTabStore([{ id: 'tab-new', sessionId: null }], 'tab-new');
+    seedTabStore([{ id: 'tab-new', sessionId: null, isCustomTitle: true }], 'tab-new');
     const opts = createOptions({
       customSessionTitleRef: { current: longTitle },
       currentSessionIdRef: { current: 'sess-old' },
@@ -522,7 +540,7 @@ describe('useWindowCallbacks integration', () => {
 
   it('setSessionId with title <= 50 chars uses updateHistoryTitle for backend persistence', () => {
     const shortTitle = 'Short user-set title';
-    seedTabStore([{ id: 'tab-new', sessionId: null }], 'tab-new');
+    seedTabStore([{ id: 'tab-new', sessionId: null, isCustomTitle: true }], 'tab-new');
     const opts = createOptions({
       customSessionTitleRef: { current: shortTitle },
       currentSessionIdRef: { current: 'sess-old' },
@@ -535,6 +553,26 @@ describe('useWindowCallbacks integration', () => {
 
     expect(opts.updateHistoryTitle).toHaveBeenCalledWith('sess-new', shortTitle);
     expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
+  });
+
+  it('setSessionId does not persist a draft placeholder as the session title', () => {
+    // The tab shows "新会话" until the engine titles the session. Persisting
+    // that placeholder made the server session non-default, which suppressed
+    // the automatic title generated after the first reply.
+    seedTabStore([{ id: 'tab-new', sessionId: null }], 'tab-new');
+    const opts = createOptions({
+      customSessionTitleRef: { current: '新会话' },
+      currentSessionIdRef: { current: null },
+    });
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      hostEventHandler('session.bound')!(...boundEvent('sess-new', undefined, 'tab-new'));
+    });
+
+    expect(opts.updateHistoryTitle).not.toHaveBeenCalled();
+    expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
+    expect(getTabStore().findById('tab-new')?.sessionId).toBe('sess-new');
   });
 
   // ===== updateMessages is blocked during transition =====

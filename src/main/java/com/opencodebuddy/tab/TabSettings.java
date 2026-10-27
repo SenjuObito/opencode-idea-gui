@@ -86,7 +86,7 @@ public final class TabSettings {
     }
 
     /** Apply an auto title. A user-edited title wins until explicitly changed. */
-    public void applyAutoTitle(String title) {
+    public synchronized void applyAutoTitle(String title) {
         if (title == null || title.isBlank()) {
             return;
         }
@@ -98,7 +98,7 @@ public final class TabSettings {
     }
 
     /** Apply a user title and make it authoritative over later auto titles. */
-    public void applyUserTitle(String title) {
+    public synchronized void applyUserTitle(String title) {
         if (title == null || title.isBlank()) {
             return;
         }

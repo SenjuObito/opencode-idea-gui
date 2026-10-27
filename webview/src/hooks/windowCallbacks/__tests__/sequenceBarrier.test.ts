@@ -12,7 +12,8 @@ import { beginTransition, endTransition, isTabTransitioning } from '../tabTransi
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import { sessionEvent, snapshotEvent } from '../../../utils/testEvents';
-import { bindTabStoreSession, seedTabStore } from '../../../test/seedTabStore';
+import { getTabStore } from '../../../store/tabStore';
+import { seedTabStore } from '../../../test/seedTabStore';
 
 const createOptions = (overrides?: Partial<UseWindowCallbacksOptions>): UseWindowCallbacksOptions => ({
   addToast: vi.fn(),
@@ -146,7 +147,6 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
 
     // The transition guard belongs to a tab, so the webview needs one.
     seedTabStore([{ id: 'tab-active', sessionId: 'session-active' }], 'tab-active');
-    bindTabStoreSession(() => currentSessionIdRef.current);
 
     renderHook(() => useWindowCallbacks(opts));
 
@@ -159,8 +159,10 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
     expect(currentMessages).toHaveLength(1);
     expect(currentMessages[0].content).toBe('Turn 1 in active session');
 
-    // 2. User navigates to history drawer and opens session-history
+    // 2. User navigates to history drawer and opens session-history. Opening a
+    // session rebinds the tab first; routing follows the binding, not a ref.
     currentSessionIdRef.current = 'session-history';
+    getTabStore().updateTabSessionId('tab-active', 'session-history');
     beginTransition('tab-active', 'session-history', 'transition-history');
 
     // Backend resets stream state and calls clearMessages for session-history with barrier=1

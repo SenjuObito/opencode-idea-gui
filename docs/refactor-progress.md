@@ -896,3 +896,102 @@ IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与
   改为真实的 `transitionTargetFor` + `endTransition`。
 - 验证：gradle 896 用例 0 失败、`checkLegacyPatterns -PstrictLegacy=true`
   0 forbidden / 0 debt、tsc 0 错误、vitest 179 文件 / 1583 测试、vite build 成功。
+
+## 第八轮：多 tab 串流与归属修复
+
+- 路由不变量（对齐 §9.16.3 / §12.4 / 静态规则 2）：
+  - `TabStore` 不再注入 `getCurrentSessionId`；`isActiveSession` / `getActiveSessionId`
+    只读 tab 绑定。视图 ref 不再有否决权——它滞后一帧，曾让活跃会话被判后台、
+    旧会话被判前台。
+  - 事件归属 = `tabId` → `sessionId` 绑定；两者都没有才按窗口级处理。
+    `owningTabIdForSession` 额外承认「正在切往该会话的 tab」，覆盖重绑落地前的窗口。
+  - 「后台」只决定落点：后台事件写入目标 tab 快照，**不再丢弃**
+    （`processUpdateMessages` / `processMessageTail` 的 `DROPPED` 分支删除）。
+- 视图投影：`useTabBarState` 的镜像 effect 不再写回 `sessionId` / `title` /
+  `isShared`；这三项由绑定事件、标题事件、分享事件与激活投影负责。
+- 标题：`updateTabTitle` 在 tab 尚未绑定时按 session 暂存，绑定后补发；
+  用户重命名过的 tab（`isCustomTitle`）不被自动标题覆盖（§1391）。
+- 权限：拒绝回调带 `sessionId/tabId`，只中断被拒绝的会话；
+  `permission.denied` 事件带身份。此前取消后台 prompt 会中断活动会话。
+- 提问：`question.reply { rejected: true }` 走 `rejectQuestion`，不再当作空答案；
+  用户主动取消不报错。
+- 分享：未绑定 session 的 tab 禁用菜单项；菜单调用不再回退到当前会话；
+  `share.done` 按 `env.tabId` 标记目标 tab。
+- 停止：`interruptSession` 始终带活动 tab id（恢复中 ref 为空时不再被宿主拒绝）。
+- 批量关闭：`closeTabsBatch` 把 `activateTab` 移出 `setTabs` updater，避免在
+  替换 tab 列表的过程中重入写入消息投影。
+- 宿主：`publishTabEvent` 统一补齐 tabId（按 session 反解），覆盖旧 6 参 adapter
+  与 `HistoryMetadataService` 等只知 session 的发布路径。
+- 验证：gradle 全部用例通过、`checkLegacyPatterns -PstrictLegacy=true` 0/0、
+  tsc 0 错误、vitest 179 文件 / 1588 测试、vite build 成功。
+
+## 第九轮：标题、提问超时与分享入口
+
+- 标题：`session.bound` 的 `syncTitle` 只把**用户改名**（`isCustomTitle`）持久化到
+  服务端。此前会把新 tab 的占位标题「新会话」当成改名写回（日志：bind →
+  `session.rename 新会话` → PATCH 成功），服务端标题从此非默认，引擎首轮回复后的
+  自动标题不再触发，tab 永远停在占位值。
+- 提问：`question.reply { rejected: true }` 的 reject 失败只记日志，不再弹
+  「取消提问失败」。opencode 没有超时态，问题过期后 reject 无法结算属于正常结果；
+  卡片照常关闭，会话由前端的中断停止。
+- 分享：opencode v2.1.4 已移除 share 端点（请求落到 SPA 路由返回 405），
+  菜单用 `SHARE_MENU_ENABLED = false` 隐藏分享项；后端代码保留，等引擎恢复能力。
+- 验证：gradle 全部用例通过、`checkLegacyPatterns -PstrictLegacy=true` 0/0、
+  tsc 0 错误、vitest 179 文件 / 1589 测试、vite build 成功。
+
+
+## 第十轮：标题只认事件，视图同步不再冒充用户改名
+
+- 回退「首条消息派生标题」：daemon 不在回合结束后 PATCH 标题，插件不生成、不派生
+  标题；只有用户手动改名才调 opencode `session.rename`。其余场景不主动调 opencode
+  更新标题。
+- 根因（宿主侧）：`App.tsx` 的 effect 在 `tabs` 每次变化（含每个流式增量）时发
+  `tab.title.set`，宿主把它当用户改名（`TabRecord.setUserTitle` →
+  `titleSource=USER`）。标题事件到达后 `TabRecord.setTitle` 被 USER 挡住，IDE tab
+  只能等前端 effect 再回写一次；切 tab、后台 tab、时序抖动时就表现为「偶现不更新」。
+- 修复：
+  - `publishTabEvent` 对 `tab.title.changed` 按 `sessionId` 找回真正持有会话的 tab，
+    `record.setTitle`（AUTO，用户改名优先）并直接 `updateTabTitle` 活动 tab；
+    不再依赖前端 effect 回写。
+  - 新增 `tab.title.sync`：tab 创建/激活/打开历史时只同步显示，不改
+    `titleSource`，也不调 opencode。
+  - `tab.title.set` 只保留给用户改名（`setUserTitle`）；前端 `renameTab` 仍通过
+    `updateHistoryTitle` → opencode `session.rename` 持久化。
+  - `TabRecord` 不再保留独立的 title 字段，统一走 `TabSettings`；`applyAutoTitle` /
+    `applyUserTitle` 同步化，避免引擎事件与用户改名并发时 AUTO 覆盖用户标题。
+  - `SessionCallbackAdapter.onSessionTitleReceived` 不再因 `isInactive()` 丢弃标题：
+    标题按 session 路由，切 tab 造成的 adapter 替换不再丢事件。
+  - daemon 在 `session.renamed` / 带 title 的 `session.updated` 上打
+    `title-event session=... title=...`（按标题去重），用于区分「事件没到」和
+    「事件到了没接住」。
+- 验证：tsc 0 错误；vitest 179 文件 / 1590 测试；gradle 899 用例 0 失败
+  （13 skipped）；checkLegacyPatterns 0 forbidden / 0 debt；core 290 测试；
+  vite build 成功；sandbox 已重打包。
+
+
+## 第十一轮：标题由引擎生成，插件只请求、只转发
+
+- 现象：插件新建的会话发完首条消息，tab 仍停在「新会话」；`opencode-plugin.log`
+  没有任何 `[SESSION_TITLE]`，引擎库 `session_v2.title` 为 NULL。
+- 根因：插件 `POST /api/session` 不带 title，opencode **v2 不会自己起名**（v1 会），
+  落库 NULL 后既没有 `session.renamed` 也没有 `session.updated`——daemon 无事件可转。
+  第十轮去掉「首条消息派生标题」后，这条链路的缺口就暴露了。
+- 修复（core）：
+  - 每轮成功结束后，对**还没有真实标题**的会话请求一次生成：先
+    `PATCH /api/session/:id {title:""}`（引擎自带生成器）；该调用在 2.1.4 返回 204
+    但不产生标题（实测无事件、DB 不变），1.5s/2.5s 仍未命名则退回
+    `POST /api/session/:id/generate`（用会话自己的模型生成标题文本）并写回会话。
+    标题始终由 opencode 生成、存在 opencode 里，tab 与 opencode UI 读到同一个值。
+  - 只在没有真实标题时执行，一次/会话；生成失败下一轮重试；用户改过名的会话跳过。
+  - `[SESSION_TITLE]` 统一走 `_emitSessionTitle`：过滤引擎占位标题
+    （`New session - <ISO>` / `Child session - <ISO>`）、按值去重；每轮结束
+    `getSession` 对账一次，防事件漏发。
+  - v1 完全跳过：v1 自己起名，且 `PATCH {title:""}` 在 v1 会清空标题。
+- 修复（宿主 / webview）：`SessionCallbackAdapter`、`applyTitleEvent`、
+  `tab.title.sync`、webview `updateSessionTitle` 四处过滤占位标题；删除已死的
+  `title_generated` 监听（它绕过 tab 身份，会把别的会话标题写到当前可见 tab）。
+- 验证：core 302 测试（新增 `session-title.test.mjs` 12 例，含 v1/v2 建会话与
+  生成路径）；webview 180 文件 / 1592 测试；tsc 0 错误；gradle 901 用例 0 失败
+  （13 skipped）；sandbox 已重打包。
+- 待真机：重启 IDE 沙箱后新建会话发一条消息，`opencode-plugin.log` 应出现
+  `title-request ... named by the engine` 与 `title-event`，DB 中该会话 title 非空。

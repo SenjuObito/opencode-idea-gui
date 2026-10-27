@@ -23,8 +23,6 @@ export interface TabStoreViewBindings {
   closeTab?: (tabId: string) => void;
   /** Drafts are keyed by tab id and owned by the strip. */
   getDrafts?: () => TabDraft[];
-  /** The session the view shows while a switch is still in flight. */
-  getCurrentSessionId?: () => string | null;
   /** Fallback for a tab that never set the auto-open flag. */
   defaultAutoOpenFileEnabled?: boolean;
 }
@@ -106,6 +104,14 @@ export class TabStore {
   private updatingTabs = false;
   private activeChangedDuringUpdate = false;
   private view: TabStoreViewBindings = {};
+  /**
+   * Titles that arrived before their session was bound to a tab.
+   *
+   * <p>The host publishes `tab.title.changed` and `session.bound` as separate
+   * events, so a generated title can reach the webview first. Holding it here
+   * keeps the title from being dropped without inventing a second copy.</p>
+   */
+  private readonly pendingTitles = new Map<string, string>();
 
   constructor(initialTabs: SessionTabData[], activeTabId: string) {
     this.tabs = initialTabs;
@@ -253,13 +259,11 @@ export class TabStore {
   }
 
   getActiveSessionId(): string | null {
-    // While a switch is in flight the view already shows the incoming session,
-    // and the tab record is rebound a moment later; the view wins so routing
-    // never attributes an event to the session that just left the screen.
-    const bound = this.view.getCurrentSessionId?.();
-    if (bound) return bound;
+    // Routing reads the tab binding, never a view-level ref: the ref is a
+    // projection that lags a commit behind, and using it as "the active
+    // session" is what moved one session's events into another tab.
     const active = this.getActiveTab();
-    return active?.sessionId ?? (active?.id || null);
+    return active.sessionId ?? (active.id || null);
   }
 
   /**
@@ -312,6 +316,12 @@ export class TabStore {
     if (this.activeTabId === tabId) {
       this.view.setCurrentSessionId?.(sessionId);
     }
+    // A title announced before the binding waited here; apply it now.
+    const pendingTitle = this.pendingTitles.get(sessionId);
+    if (pendingTitle !== undefined) {
+      this.pendingTitles.delete(sessionId);
+      this.updateTabTitle(sessionId, pendingTitle, tabId);
+    }
   }
 
   /** Rename the tab that owns {@code sessionId} (or the one named by {@code tabId}). */
@@ -319,7 +329,17 @@ export class TabStore {
     const trimmed = newTitle?.trim();
     if (!trimmed || !sessionId) return;
     const target = tabId ? this.findById(tabId) : this.findTabBySessionId(sessionId);
-    if (!target) return;
+    if (!target) {
+      // No tab claims this session yet: hold the title for the binding instead
+      // of dropping it. A host path that omits tabId is the only way here.
+      this.pendingTitles.set(sessionId, trimmed);
+      return;
+    }
+    if (target.isCustomTitle) {
+      // A generated title never replaces the name the user gave the tab.
+      return;
+    }
+    this.pendingTitles.delete(sessionId);
     this.updateTab(target.id, (tab) => ({ ...tab, title: trimmed }));
     if (target.id === this.activeTabId) {
       this.view.setCustomSessionTitle?.(trimmed);
@@ -356,13 +376,10 @@ export class TabStore {
 
   isActiveSession(sessionId: string | null | undefined): boolean {
     if (!sessionId) return false;
-    // The view's bound session may already be the incoming one while the tab
-    // record still carries the outgoing session; a tab id always identifies
-    // the active tab outright.
-    const bound = this.view.getCurrentSessionId?.();
-    if (bound) {
-      return bound === sessionId || this.activeTabId === sessionId;
-    }
+    // Store-only: the binding table decides ownership. A view ref must never
+    // be able to veto the tab that actually holds this session, or the
+    // session's events are treated as background while another session's late
+    // events are treated as foreground.
     const active = this.getActiveTab();
     return active.id === sessionId || active.sessionId === sessionId;
   }

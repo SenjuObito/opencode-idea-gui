@@ -204,7 +204,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
 
     window.__dialogStore?.clearActive?.();
 
-    sendHostCommand(newId, 'tab.title.set', { title: newTab.title });
+    sendHostCommand(newId, 'tab.title.sync', { title: newTab.title });
     syncHostActiveTabTo(newId);
   }, [
     saveCurrentTabSnapshot,
@@ -484,6 +484,9 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     (tabId: string) => {
       cleanupSingleTabResources(tabId);
 
+      // Activate after the list commits: activateTab writes through the
+      // message/session projections, which re-enter setTabs.
+      let tabToActivate: SessionTabData | null = null;
       setTabs((prev) => {
         if (prev.length <= 1) {
           const freshTab = createAndActivateFreshTab();
@@ -495,11 +498,15 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
           const closedIndex = prev.findIndex((t) => t.id === tabId);
           const nextActive = nextTabs[Math.max(0, closedIndex - 1)];
           if (nextActive) {
-            activateTab(nextActive);
+            tabToActivate = nextActive;
           }
         }
         return nextTabs;
       });
+
+      if (tabToActivate) {
+        activateTab(tabToActivate);
+      }
     },
     [
       cleanupSingleTabResources,
@@ -519,6 +526,11 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
         cleanupSingleTabResources(id);
       }
 
+      // Pick the next active tab inside the updater, but project it afterwards:
+      // activateTab writes through the message/session projections, and those
+      // re-enter setTabs. Doing that inside the updater committed the new
+      // transcript against the tab list that was being replaced.
+      let tabToActivate: SessionTabData | null = null;
       setTabs((prev) => {
         const remainingTabs = prev.filter((t) => !closingSet.has(t.id));
         if (remainingTabs.length === 0) {
@@ -526,22 +538,27 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
           return [freshTab];
         }
 
+        const previousActiveId = activeTabIdRef.current;
         let nextActive = remainingTabs.find((t) => t.id === explicitNextActiveId);
         if (!nextActive) {
-          if (closingSet.has(activeTabIdRef.current)) {
-            const prevActiveIndex = prev.findIndex((t) => t.id === activeTabIdRef.current);
+          if (closingSet.has(previousActiveId)) {
+            const prevActiveIndex = prev.findIndex((t) => t.id === previousActiveId);
             nextActive = remainingTabs[Math.max(0, Math.min(prevActiveIndex, remainingTabs.length - 1))];
           } else {
-            nextActive = remainingTabs.find((t) => t.id === activeTabIdRef.current);
+            nextActive = remainingTabs.find((t) => t.id === previousActiveId);
           }
         }
 
-        if (nextActive && nextActive.id !== activeTabIdRef.current) {
-          activateTab(nextActive);
+        if (nextActive && nextActive.id !== previousActiveId) {
+          tabToActivate = nextActive;
         }
 
         return remainingTabs;
       });
+
+      if (tabToActivate) {
+        activateTab(tabToActivate);
+      }
     },
     [
       cleanupSingleTabResources,

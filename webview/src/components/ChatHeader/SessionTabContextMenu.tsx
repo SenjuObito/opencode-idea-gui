@@ -2,6 +2,15 @@ import React, { useEffect, useRef } from 'react';
 import type { TFunction } from 'i18next';
 import type { SessionTabData } from './types';
 
+/**
+ * Whether the tab menu offers session sharing.
+ *
+ * <p>Off because the bundled opencode server (v2.1.4) removed the share
+ * endpoint: the request falls through to the SPA route and returns HTTP 405.
+ * Flip this back on once the engine exposes sharing again.</p>
+ */
+const SHARE_MENU_ENABLED = false;
+
 export interface SessionTabContextMenuProps {
   x: number;
   y: number;
@@ -115,45 +124,57 @@ export const SessionTabContextMenu: React.FC<SessionTabContextMenuProps> = ({
         <span>{t('chat.exportMarkdown', { defaultValue: '导出会话为 Markdown' })}</span>
       </button>
 
-      <div className="context-menu-divider" />
-
-      {tab.isShared ? (
+      {/*
+       * Session sharing is off: the current opencode server no longer exposes
+       * a share endpoint (v2.1.4 removed it), so the entry only produced an
+       * HTTP 405. Keep the code and the handlers for the day the engine brings
+       * the capability back, but do not offer it in the menu.
+       */}
+      {SHARE_MENU_ENABLED && (
         <>
-          <button
-            className="context-menu-item"
-            role="menuitem"
-            onClick={() => {
-              onClose();
-              onCopyShareLink();
-            }}
-          >
-            <span className="codicon codicon-copy" />
-            <span>{t('chat.copyShareLink', { defaultValue: '复制分享链接' })}</span>
-          </button>
-          <button
-            className="context-menu-item"
-            role="menuitem"
-            onClick={() => {
-              onClose();
-              onUnshare();
-            }}
-          >
-            <span className="codicon codicon-close" />
-            <span>{t('chat.unshareSession', { defaultValue: '关闭分享' })}</span>
-          </button>
+          <div className="context-menu-divider" />
+
+          {tab.isShared ? (
+            <>
+              <button
+                className="context-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  onClose();
+                  onCopyShareLink();
+                }}
+              >
+                <span className="codicon codicon-copy" />
+                <span>{t('chat.copyShareLink', { defaultValue: '复制分享链接' })}</span>
+              </button>
+              <button
+                className="context-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  onClose();
+                  onUnshare();
+                }}
+              >
+                <span className="codicon codicon-close" />
+                <span>{t('chat.unshareSession', { defaultValue: '关闭分享' })}</span>
+              </button>
+            </>
+          ) : (
+            <button
+              className="context-menu-item"
+              role="menuitem"
+              disabled={!tab.sessionId}
+              title={!tab.sessionId ? t('chat.shareNeedsSession', { defaultValue: '先发送一条消息，再分享这个会话' }) : undefined}
+              onClick={() => {
+                onClose();
+                onShare();
+              }}
+            >
+              <span className="codicon codicon-share" />
+              <span>{t('chat.shareSession', { defaultValue: '分享会话' })}</span>
+            </button>
+          )}
         </>
-      ) : (
-        <button
-          className="context-menu-item"
-          role="menuitem"
-          onClick={() => {
-            onClose();
-            onShare();
-          }}
-        >
-          <span className="codicon codicon-share" />
-          <span>{t('chat.shareSession', { defaultValue: '分享会话' })}</span>
-        </button>
       )}
 
       <div className="context-menu-divider" />

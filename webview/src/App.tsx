@@ -400,7 +400,9 @@ const App = () => {
    * the active session here would share the tab the user just left.
    */
   const handleShare = useCallback(async (sessionIdArg?: string | null) => {
-    const sessionId = sessionIdArg ?? currentSessionIdRef.current;
+    // A tab menu names the tab it opened for. `null` means that tab has no
+    // session yet: sharing must not fall back to whichever session is active.
+    const sessionId = sessionIdArg === undefined ? currentSessionIdRef.current : sessionIdArg;
     if (!sessionId || sharePending || shareHidden) return;
     // No premature success toast here: the share URL only becomes copyable
     // when the host round-trips onShareSuccess. Feedback happens there.
@@ -409,11 +411,18 @@ const App = () => {
   }, [sharePending, shareHidden, currentSessionIdRef]);
 
   const handleUnshare = useCallback(async (sessionIdArg?: string | null) => {
-    const sessionId = sessionIdArg ?? currentSessionIdRef.current;
+    const sessionId = sessionIdArg === undefined ? currentSessionIdRef.current : sessionIdArg;
     if (!sessionId) return;
     sendSessionCommand('session.unshare', sessionId);
-    setIsShared(false);
-    setShareUrl(null);
+    const tabStore = getTabStore();
+    const tabId = tabStore.findIdBySession(sessionId);
+    if (tabId) {
+      tabStore.updateTab(tabId, (tab) => ({ ...tab, isShared: false }));
+      if (tabStore.isActiveTab(tabId)) {
+        setIsShared(false);
+        setShareUrl(null);
+      }
+    }
   }, [currentSessionIdRef]);
 
   const handleCopyShareLink = useCallback(() => {
@@ -736,14 +745,24 @@ const App = () => {
       console.warn('[App] onForkError', detail);
       addToast(`${t('chat.forkFailed')}${detail ? `: ${detail}` : ''}`, 'error');
     };
-    const onShareSuccess = (url: string) => {
+    const onShareSuccess = (url: string, env?: HostEventEnvelope) => {
       if (!url) {
         return;
       }
       console.debug('[App] onShareSuccess, copying url to clipboard');
       setSharePending(false);
-      setIsShared(true);
-      setShareUrl(url);
+      // Share state belongs to the tab that was shared. Marking the window and
+      // letting a mirror copy it onto the active tab marked the wrong tab when
+      // the share came from a background tab's menu.
+      const tabStore = getTabStore();
+      const tabId = env?.tabId ?? (env?.sessionId ? tabStore.findIdBySession(env.sessionId) : null);
+      if (tabId) {
+        tabStore.updateTab(tabId, (tab) => ({ ...tab, isShared: true }));
+      }
+      if (!tabId || tabStore.isActiveTab(tabId)) {
+        setIsShared(true);
+        setShareUrl(url);
+      }
       void copyViaHost(url).then((ok) => {
         if (ok) {
           addToast(t('chat.shareSuccess'), 'success');
@@ -1350,15 +1369,6 @@ const App = () => {
     setAnchorCollapsedCount(0);
   }, [activeTabId, currentSessionId]);
 
-  // Synchronize active tab title to IDE ToolWindow
-  useEffect(() => {
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    const title = activeTab?.title || sessionTitle;
-    if (activeTabId && title) {
-      sendHostCommand(activeTabId, 'tab.title.set', { title });
-    }
-  }, [activeTabId, tabs, sessionTitle]);
-
   // ── Render ──
   return (
     <>
@@ -1379,7 +1389,7 @@ const App = () => {
         onReorderTabs={reorderTabs}
         onShareTab={(tab) => {
           if (tab.id !== activeTabId) selectTab(tab.id);
-          void handleShare(tab.sessionId);
+          void handleShare(tab.sessionId ?? null);
         }}
         onCopyShareLinkTab={(tab) => {
           if (tab.id !== activeTabId) selectTab(tab.id);

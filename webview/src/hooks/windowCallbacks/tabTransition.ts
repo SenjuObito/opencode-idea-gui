@@ -43,6 +43,23 @@ export function tabIdForSession(sessionId: string | null | undefined): string | 
   return getTabStore().findIdBySession(sessionId);
 }
 
+/**
+ * The tab that owns a session, counting a tab that is switching to it.
+ *
+ * <p>Rebinding lands a moment after a switch starts: events for the incoming
+ * session arrive in that window and must still find their tab. The transition
+ * target is per tab, so this stays a statement about the binding rather than a
+ * window-level guess.</p>
+ */
+export function owningTabIdForSession(sessionId: string | null | undefined): string | null {
+  if (!sessionId) return null;
+  const store = getTabStore();
+  const owner = store.findIdBySession(sessionId);
+  if (owner) return owner;
+  const switching = store.getTabs().find((tab) => transitionTargetFor(tab.id) === sessionId);
+  return switching?.id ?? null;
+}
+
 /** Start a transition for a tab. */
 export function beginTransition(
   tabId: string | null | undefined,

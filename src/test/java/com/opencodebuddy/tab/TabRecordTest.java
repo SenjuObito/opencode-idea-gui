@@ -85,6 +85,25 @@ public class TabRecordTest {
     }
 
     @Test
+    public void autoTitleAppliesUntilTheUserNamesTheTab() {
+        TabRecord record = record();
+
+        record.setTitle("新会话");
+        assertEquals("新会话", record.getTitle());
+        assertEquals(TabSettings.TitleSource.AUTO, record.getSettings().getTitleSource());
+
+        record.setTitle("引擎标题");
+        assertEquals("引擎标题", record.getTitle());
+
+        record.setUserTitle("我的会话");
+        assertEquals(TabSettings.TitleSource.USER, record.getSettings().getTitleSource());
+
+        // A late engine event must never undo the user's name.
+        record.setTitle("迟到的引擎标题");
+        assertEquals("我的会话", record.getTitle());
+    }
+
+    @Test
     public void turnIdRejectsNonPositiveAndParsesDecimalStrings() {
         assertEquals(42, TurnId.tryParse("42").value());
         assertNull(TurnId.tryParse("0"));

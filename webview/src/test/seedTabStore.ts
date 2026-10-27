@@ -12,6 +12,8 @@ import { getTabStore, resetTabStore } from '../store/tabStore';
 export interface SeedTab {
   id: string;
   sessionId?: string | null;
+  /** A title the user typed; auto titles must never be persisted on bind. */
+  isCustomTitle?: boolean;
 }
 
 /** Replace the store's tabs and active tab. */
@@ -25,15 +27,4 @@ export function seedTabStore(tabs: SeedTab[], activeTabId: string): void {
 /** Drop the store's state between tests. */
 export function clearTabStore(): void {
   resetTabStore();
-}
-
-/**
- * Let the store answer "which session is on screen" the way the tab strip does.
- *
- * <p>Production binds the same ref through {@code useTabBarState}; a test that
- * simulates a session switch without mounting the strip needs the binding to
- * keep {@code isActiveSession} truthful.</p>
- */
-export function bindTabStoreSession(getCurrentSessionId: () => string | null): void {
-  getTabStore().bindView({ getCurrentSessionId });
 }

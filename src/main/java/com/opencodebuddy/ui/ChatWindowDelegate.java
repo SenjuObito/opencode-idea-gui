@@ -92,7 +92,8 @@ public class ChatWindowDelegate {
         StreamMessageCoalescer getStreamCoalescer();
         WebviewWatchdog getWebviewWatchdog();
         PermissionHandler getPermissionHandler();
-        void interruptDueToPermissionDenial();
+        /** End the turn that asked for permission; ids come from the denied prompt. */
+        void interruptDueToPermissionDenial(String sessionId, String tabId);
         boolean isFrontendReady();
         boolean isRuntimeRecoveryPage();
         void setFrontendReady(boolean ready);

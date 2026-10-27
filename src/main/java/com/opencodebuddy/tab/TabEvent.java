@@ -123,6 +123,21 @@ public final class TabEvent {
                 + (sessionId != null ? " session=" + sessionId : "") + "}";
     }
 
+    /**
+     * The same event addressed to {@code tabId}.
+     *
+     * <p>Every tab-scoped event must name its tab: the webview routes by that
+     * id and cannot fall back to "the session on screen" without risking a
+     * cross-session write. Events produced by a path that only knows the
+     * session are re-addressed at the single publish choke point.</p>
+     */
+    public TabEvent withTabId(String tabId) {
+        if (tabId == null || tabId.equals(this.tabId)) {
+            return this;
+        }
+        return new TabEvent(type, tabId, sessionId, turnId, seq, new LinkedHashMap<>(payload));
+    }
+
     /** Builds an event: identity first, content second. */
     public static final class Builder {
         private final String type;

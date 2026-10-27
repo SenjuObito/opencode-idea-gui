@@ -15,6 +15,7 @@ import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 import { getTabStore } from '../../../store/tabStore';
+import { owningTabIdForSession } from '../tabTransition';
 
 export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -87,16 +88,12 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         // If the update belongs to a background tab, update that tab's data
         // directly. Never touch the active view from a background update.
         const tabStore = getTabStore();
-        if (targetTabId) {
-          if (!tabStore.isActiveTab(targetTabId)) {
-            tabStore.updateTab(targetTabId, applyUsage);
-            return;
-          }
-        } else if (targetSessionId) {
-          if (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) {
-            tabStore.updateBackgroundTab(targetSessionId, applyUsage);
-            return;
-          }
+        const ownerTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
+        // A closed tab has nowhere to write; never fall through to the view.
+        if (tabStore.size() > 0 && !ownerTabId) return;
+        if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
+          tabStore.updateTab(ownerTabId, applyUsage);
+          return;
         }
 
         // Active session (or the tab store has not mounted yet): update global
@@ -106,8 +103,8 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         setUsageUsedTokens(used);
         setUsageMaxTokens(max);
 
-        if (targetSessionId) {
-          tabStore.updateBackgroundTab(targetSessionId, applyUsage);
+        if (ownerTabId) {
+          tabStore.updateTab(ownerTabId, applyUsage);
         }
       }
     } catch (error) {

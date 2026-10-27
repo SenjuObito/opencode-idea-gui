@@ -12,6 +12,7 @@ import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { setQuestionAnswer, removeQuestionAnswerByRequestId } from '../../../store/questionAnswerStore';
 import type { HostEventPayload } from '../../../utils/hostEventTypes';
 import { getTabStore } from '../../../store/tabStore';
+import { owningTabIdForSession } from '../tabTransition';
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -60,11 +61,10 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       // session id only finds the tab when it happens to be bound already.
       const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
 
-      const isCurrentActive = targetTabId
-        ? tabStore.isActiveTab(targetTabId)
-        : targetSessionId
-          ? tabStore.isActiveSession(targetSessionId)
-          : true;
+      const ownerTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
+      const isCurrentActive = ownerTabId
+        ? tabStore.isActiveTab(ownerTabId)
+        : !targetSessionId;
 
       if (!isCurrentActive && (targetTabId || targetSessionId)) {
         const enqueue = (t: any) => {
@@ -73,9 +73,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
             t.pendingPermissions = [...list, request];
           }
         };
-        const stored = targetTabId
-          ? tabStore.updateTab(targetTabId, enqueue)
-          : tabStore.updateBackgroundTab(targetSessionId, enqueue);
+        const stored = ownerTabId ? tabStore.updateTab(ownerTabId, enqueue) : false;
         if (stored) {
           return;
         }
@@ -137,11 +135,10 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       const tabStore = getTabStore();
       const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
 
-      const isCurrentActive = targetTabId
-        ? tabStore.isActiveTab(targetTabId)
-        : targetSessionId
-          ? tabStore.isActiveSession(targetSessionId)
-          : true;
+      const ownerTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
+      const isCurrentActive = ownerTabId
+        ? tabStore.isActiveTab(ownerTabId)
+        : !targetSessionId;
 
       if (!isCurrentActive && (targetTabId || targetSessionId)) {
         const enqueue = (t: any) => {
@@ -150,9 +147,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
             t.pendingQuestions = [...list, request];
           }
         };
-        const stored = targetTabId
-          ? tabStore.updateTab(targetTabId, enqueue)
-          : tabStore.updateBackgroundTab(targetSessionId, enqueue);
+        const stored = ownerTabId ? tabStore.updateTab(ownerTabId, enqueue) : false;
         if (stored) {
           return;
         }
@@ -188,10 +183,11 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       }
       const targetTabId = typeof request.tabId === 'string' ? request.tabId : null;
       const tabStore = getTabStore();
-      if (targetTabId && !tabStore.isActiveTab(targetTabId)) {
+      const ownerTabId = targetTabId ?? owningTabIdForSession(request.sessionId);
+      if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
         // A background tab's plan approval waits in that tab's queue instead of
         // stealing the foreground.
-        const stored = tabStore.updateTab(targetTabId, (t: any) => {
+        const stored = tabStore.updateTab(ownerTabId, (t: any) => {
           const list = t.pendingPlans || [];
           if (!list.some((r: any) => r.requestId === request.requestId)) {
             t.pendingPlans = [...list, request];

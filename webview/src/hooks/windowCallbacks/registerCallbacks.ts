@@ -35,6 +35,7 @@ import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCal
 import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../utils/hostEventTypes';
 import { hostEventHandler, registerHostEvents } from '../../utils/hostEventRegistry';
 import { getTabStore } from '../../store/tabStore';
+import { owningTabIdForSession } from './tabTransition';
 
 function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, nextMessages: unknown[] | undefined): boolean {
   if (previousMessages === nextMessages) return true;
@@ -234,10 +235,12 @@ export function registerWindowCallbacks(
    */
   const applyTaskEvent = (taskEvent: TaskEvent, targetSessionId: string | null) => {
     const tabStore = getTabStore();
-    const isBackground = Boolean(targetSessionId) && tabStore.size() > 0
-      && !tabStore.isActiveSession(targetSessionId);
-    if (isBackground && targetSessionId) {
-      tabStore.updateBackgroundTab(targetSessionId, (t) => ({
+    const ownerTabId = owningTabIdForSession(targetSessionId);
+    // Only an identity no tab claims is dropped; an event without any identity
+    // keeps the window-level behaviour.
+    if (targetSessionId && tabStore.size() > 0 && !ownerTabId) return;
+    if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
+      tabStore.updateTab(ownerTabId, (t) => ({
         ...t,
         taskEvents: { ...(t.taskEvents || {}), [taskEvent.toolUseId]: taskEvent },
       }));
@@ -337,23 +340,12 @@ export function registerWindowCallbacks(
       const tabStore = getTabStore();
       const activeTabId = tabStore.getActiveTabId();
 
-      // Resolve tab identity
-      const resolvedTabId = targetTabId || (effectiveSessionId ? tabStore.findIdBySession(effectiveSessionId) : null);
+      // Resolve tab identity from the binding (including a pending switch).
+      const resolvedTabId = targetTabId ?? owningTabIdForSession(effectiveSessionId);
 
-      // Check active state:
-      // 1. Explicit tabId match against activeTabId
-      // 2. tabStore.isActiveSession check
-      // 3. options.currentSessionIdRef fallback
-      let isCurrentActive = false;
-      if (resolvedTabId && activeTabId) {
-        isCurrentActive = resolvedTabId === activeTabId;
-      } else if (tabStore.isActiveSession(effectiveSessionId)) {
-        isCurrentActive = true;
-      } else if (options.currentSessionIdRef?.current && effectiveSessionId) { // legacy-allow: fallback when no tab strip exists
-        isCurrentActive = effectiveSessionId === options.currentSessionIdRef.current;
-      } else if (!effectiveSessionId && !targetTabId) {
-        isCurrentActive = true;
-      }
+      const isCurrentActive = resolvedTabId
+        ? resolvedTabId === activeTabId
+        : !effectiveSessionId;
 
       if (isCurrentActive) {
         cardDebugLog('[onTodoUpdated] updating active tab with', normalizedTodos.length, 'todos');
@@ -366,8 +358,6 @@ export function registerWindowCallbacks(
         cardDebugLog('[onTodoUpdated] updating background tab:', resolvedTabId || effectiveSessionId, 'with', normalizedTodos.length, 'todos');
         if (resolvedTabId) {
           tabStore.updateTab(resolvedTabId, (t) => ({ ...t, sseTodos: normalizedTodos }));
-        } else if (effectiveSessionId) {
-          tabStore.updateBackgroundTab(effectiveSessionId, (t) => ({ ...t, sseTodos: normalizedTodos }));
         }
       }
     } catch (e) {

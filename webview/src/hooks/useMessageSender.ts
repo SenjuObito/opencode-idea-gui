@@ -482,10 +482,15 @@ export function useMessageSender({
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
 
-    const targetSessionId = currentSessionIdRef
-      ? (currentSessionIdRef.current ?? undefined)
-      : (currentSessionId ?? undefined);
-    sendInterrupt({ sessionId: targetSessionId });
+    // Name the tab, not just the session: during a history restore the view's
+    // session ref can still be empty, and an unattributable stop was rejected
+    // by the host (visible as a red "MISSING_TAB_ID" toast).
+    const tabStore = getTabStore();
+    const tabId = tabStore.getActiveTabId();
+    const targetSessionId = tabStore.getActiveTab().sessionId
+      ?? (currentSessionIdRef ? currentSessionIdRef.current : currentSessionId)
+      ?? undefined;
+    sendInterrupt({ tabId, sessionId: targetSessionId ?? null });
   }, [
     isStreamingRef,
     streamingContentRef,

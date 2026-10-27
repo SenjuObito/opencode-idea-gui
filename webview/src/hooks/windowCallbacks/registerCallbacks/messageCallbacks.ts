@@ -26,7 +26,7 @@ import {
   preserveStreamingAssistantContent,
   stripDuplicateTrailingToolMessages,
 } from '../messageSync';
-import { activeTabId, endTransition, transitionTargetFor } from '../tabTransition';
+import { activeTabId, endTransition, owningTabIdForSession, transitionTargetFor } from '../tabTransition';
 import {
   parseSequence,
   getMinAcceptedSequence,
@@ -145,7 +145,8 @@ export function registerMessageCallbacks(
     if (tab) {
       tab.messageBaseIndex = baseIndex;
     }
-    const activeSessionId = tabStore.getActiveSessionId() || getTabStore().getActiveSessionId() || options.currentSessionIdRef?.current;
+    const activeSessionId = tabStore.getActiveSessionId()
+      ?? options.currentSessionIdRef?.current; // legacy-allow: a window with no tab strip has only the view's session
     if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
       window.__messageBaseIndex = baseIndex;
     }
@@ -182,6 +183,56 @@ export function registerMessageCallbacks(
     requestNativeHistoryRefresh();
   };
 
+  /**
+   * Apply a full snapshot to a tab that is not on screen.
+   *
+   * <p>Routing is by identity: a tab that is not the active one still keeps its
+   * own last snapshot. "Not on screen" only means "do not touch the view", not
+   * "discard the data".</p>
+   */
+  const writeSnapshotToTab = (tabId: string, json: string): boolean => (
+    getTabStore().updateTab(tabId, (tab) => {
+      try {
+        const raw = JSON.parse(json) as unknown;
+        if (!Array.isArray(raw)) return;
+        const store = tab.messageStore as TabMessageStore | undefined;
+        const nextMessages = store
+          ? store.applySnapshot(raw as ClaudeMessage[])
+          : (raw as ClaudeMessage[]);
+        tab.messages = nextMessages;
+      } catch (error) {
+        console.error('[MultiSession] Failed to parse background updateMessages', error);
+      }
+    })
+  );
+
+  /** Append a tail page to a tab that is not on screen. */
+  const writeTailToTab = (
+    tabId: string,
+    json: string,
+    baseIndexArg?: string | number | null,
+  ): boolean => (
+    getTabStore().updateTab(tabId, (tab) => {
+      try {
+        const raw = JSON.parse(json) as unknown;
+        if (!Array.isArray(raw)) return;
+        const tail = raw as ClaudeMessage[];
+        const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
+        const currentMessages = tab.messages || [];
+        let nextMessages = tail;
+        if (Number.isSafeInteger(base) && base >= 0 && base <= currentMessages.length) {
+          nextMessages = [...currentMessages.slice(0, base), ...tail];
+        } else if (currentMessages.length > 0) {
+          nextMessages = [...currentMessages, ...tail];
+        }
+        tab.messages = nextMessages;
+        tab.messageBaseIndex = Number.isSafeInteger(base) ? base : 0;
+      } catch (error) {
+        console.error('[MultiSession] Failed to parse background updateMessageTail', error);
+      }
+    })
+  );
+
   const processUpdateMessages = (
     json: string,
     sequence: number | null = null,
@@ -207,14 +258,17 @@ export function registerMessageCallbacks(
       }
       cardDebugLog('[processUpdateMessages] ALLOWED during transition for targetSessionId:', targetSessionId);
     }
-    // A frame deferred 16ms during streaming can outlive a tab switch. If the
-    // session is no longer the one on screen, applying it here would write one
-    // conversation into another tab's transcript (and retrigger auto-scroll).
+    // A frame deferred 16ms during streaming can outlive a tab switch. Identity
+    // decides the sink: the tab that owns this session keeps its own snapshot;
+    // only a session no tab claims (a closed tab) is dropped.
     const tabStore = getTabStore();
-    const isBackground = Boolean(targetSessionId) && tabStore.size() > 0
-      && !tabStore.isActiveSession(targetSessionId);
-    if (isBackground) {
-      cardDebugLog('[processUpdateMessages] DROPPED: target is not the active session', targetSessionId);
+    const owningTabId = owningTabIdForSession(targetSessionId);
+    if (owningTabId && !tabStore.isActiveTab(owningTabId)) {
+      writeSnapshotToTab(owningTabId, json);
+      return;
+    }
+    if (targetSessionId && tabStore.size() > 0 && !owningTabId) {
+      cardDebugLog('[processUpdateMessages] dropped: no tab owns', targetSessionId);
       return;
     }
     const effectiveSessionId = targetSessionId ?? null;
@@ -476,13 +530,16 @@ export function registerMessageCallbacks(
       const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
       if (!isTargetActiveSession) return;
     }
-    // Same deferred-frame guard as processUpdateMessages: a tail pushed for a
-    // background session must never be applied after the user switched away.
+    // Same deferred-frame rule as processUpdateMessages: write the owning tab,
+    // never the active view, and drop only when no tab owns the session.
     const tabStore = getTabStore();
-    const isBackground = Boolean(targetSessionId) && tabStore.size() > 0
-      && !tabStore.isActiveSession(targetSessionId);
-    if (isBackground) {
-      cardDebugLog('[processMessageTail] DROPPED: target is not the active session', targetSessionId);
+    const owningTabId = owningTabIdForSession(targetSessionId);
+    if (owningTabId && !tabStore.isActiveTab(owningTabId)) {
+      writeTailToTab(owningTabId, json, baseIndexArg);
+      return;
+    }
+    if (targetSessionId && tabStore.size() > 0 && !owningTabId) {
+      cardDebugLog('[processMessageTail] dropped: no tab owns', targetSessionId);
       return;
     }
     const effectiveSessionId = targetSessionId ?? null;
@@ -571,10 +628,12 @@ export function registerMessageCallbacks(
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
+    // Ownership includes a tab that is switching to this session, so the first
+    // frames of a load are still recognised as the foreground.
+    const ownerTabId = owningTabIdForSession(targetSessionId);
     const isForegroundSession = !hasTabs
       || !targetSessionId
-      || (targetSessionId === options.currentSessionIdRef?.current)
-      || tabStore.isActiveSession(targetSessionId);
+      || (ownerTabId ? tabStore.isActiveTab(ownerTabId) : false);
 
     if (!isForegroundSession && targetSessionId && hasTabs) {
       const applyToBackgroundTab = (t: any) => {
@@ -594,17 +653,17 @@ export function registerMessageCallbacks(
         return t;
       };
 
-      if (targetTabId) {
-        // The tab id is known: write to exactly that tab. No lookup, no
-        // guessing, and a closed tab simply has nowhere to write.
-        const written = tabStore.updateTab(targetTabId, applyToBackgroundTab);
+      // The host names the tab when it can; otherwise the binding (including a
+      // pending transition) resolves it. A closed tab has nowhere to write.
+      const writeTabId = targetTabId ?? ownerTabId;
+      if (writeTabId) {
+        const written = tabStore.updateTab(writeTabId, applyToBackgroundTab);
         if (!written) {
-          cardDebugLog('[updateMessages] dropped: no tab', targetTabId, 'owns this snapshot');
+          cardDebugLog('[updateMessages] dropped: no tab', writeTabId, 'owns this snapshot');
         }
-        return;
+      } else {
+        cardDebugLog('[updateMessages] dropped: no tab owns', targetSessionId);
       }
-
-      tabStore.updateBackgroundTab(targetSessionId, applyToBackgroundTab);
       // No tab claims this session: the user closed it (or the host pushed an
       // id the webview never bound). Drop the snapshot — falling through to the
       // active path would render another conversation's messages in the tab the
@@ -747,7 +806,10 @@ export function registerMessageCallbacks(
         return t;
       };
 
-      tabStore.updateBackgroundTab(targetSessionId, applyTail);
+      const tailTabId = owningTabIdForSession(targetSessionId);
+      if (tailTabId) {
+        tabStore.updateTab(tailTabId, applyTail);
+      }
       return;
     }
 
@@ -823,9 +885,10 @@ export function registerMessageCallbacks(
         return;
       }
     } else if (targetSessionId && hasTabs) {
-      const isBackground = tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId);
-      if (isBackground) {
-        tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, status: text }));
+      const ownerTabId = owningTabIdForSession(targetSessionId);
+      if (!ownerTabId) return;
+      if (!tabStore.isActiveTab(ownerTabId)) {
+        tabStore.updateTab(ownerTabId, (t) => ({ ...t, status: text }));
         return;
       }
     }
@@ -869,9 +932,10 @@ export function registerMessageCallbacks(
         return;
       }
     } else if (targetSessionId && hasTabs) {
-      const isBackground = tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId);
-      if (isBackground) {
-        tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, loading: isLoading }));
+      const ownerTabId = owningTabIdForSession(targetSessionId);
+      if (!ownerTabId) return;
+      if (!tabStore.isActiveTab(ownerTabId)) {
+        tabStore.updateTab(ownerTabId, (t) => ({ ...t, loading: isLoading }));
         return;
       }
     }
@@ -924,9 +988,10 @@ export function registerMessageCallbacks(
     const isThinkingVal = isTruthy(payload?.thinking);
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
-    const isBackground = hasTabs && Boolean(targetSessionId) && !tabStore.isActiveSession(targetSessionId);
-    if (isBackground && targetSessionId) {
-      tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, isThinking: isThinkingVal }));
+    const ownerTabId = owningTabIdForSession(targetSessionId);
+    if (hasTabs && !ownerTabId) return;
+    if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
+      tabStore.updateTab(ownerTabId, (t) => ({ ...t, isThinking: isThinkingVal }));
       return;
     }
     setIsThinking(isThinkingVal);
@@ -938,9 +1003,10 @@ export function registerMessageCallbacks(
     if (!summary || !summary.trim()) return;
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
-    const isBackground = hasTabs && Boolean(targetSessionId) && !tabStore.isActiveSession(targetSessionId);
-    if (isBackground && targetSessionId) {
-      tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, status: summary }));
+    const ownerTabId = owningTabIdForSession(targetSessionId);
+    if (hasTabs && !ownerTabId) return;
+    if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
+      tabStore.updateTab(ownerTabId, (t) => ({ ...t, status: summary }));
       return;
     }
     setStatus(summary);
@@ -1003,14 +1069,15 @@ export function registerMessageCallbacks(
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
-    const isBackground = hasTabs && Boolean(targetSessionId) && !tabStore.isActiveSession(targetSessionId);
-    if (isBackground && targetSessionId) {
+    const ownerTabId = owningTabIdForSession(targetSessionId);
+    if (hasTabs && !ownerTabId) return;
+    if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
       const applyPatch = (t: any) => {
         const nextMsgs = patchUuidInList(t.messages ?? [], content, uuid);
         t.messages = nextMsgs;
         return { ...t, messages: nextMsgs };
       };
-      tabStore.updateBackgroundTab(targetSessionId, applyPatch);
+      tabStore.updateTab(ownerTabId, applyPatch);
       return;
     }
 
@@ -1023,8 +1090,10 @@ export function registerMessageCallbacks(
     const barrierSequenceArg = payload?.sequence as string | number | undefined;
 
     const tabStore = getTabStore();
-    if (targetSessionId && tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) {
-      tabStore.updateBackgroundTab(targetSessionId, (t) => {
+    const ownerTabId = owningTabIdForSession(targetSessionId);
+    if (targetSessionId && tabStore.size() > 0 && (!ownerTabId || !tabStore.isActiveTab(ownerTabId))) {
+      if (!ownerTabId) return;
+      tabStore.updateTab(ownerTabId, (t) => {
         t.messages = [];
         t.loading = false;
         t.streamingActive = false;
@@ -1143,7 +1212,6 @@ export function registerMessageCallbacks(
     const hasTabs = tabStore.size() > 0;
     const isForeground = !hasTabs
       || !targetSessionId
-      || (targetSessionId === options.currentSessionIdRef?.current)
       || tabStore.isActiveSession(targetSessionId);
 
     if (!isForeground && targetSessionId && hasTabs) {
@@ -1154,7 +1222,7 @@ export function registerMessageCallbacks(
       }));
       // If the tab that owns this session is transitioning toward it, the
       // guard is released now that the history has arrived.
-      const ownerTabId = tabStore.findIdBySession(targetSessionId);
+      const ownerTabId = owningTabIdForSession(targetSessionId);
       if (ownerTabId && transitionTargetFor(ownerTabId) === targetSessionId) {
         endTransition(ownerTabId);
       }
@@ -1359,8 +1427,12 @@ export function registerMessageCallbacks(
       cardDebugLog('[onSessionHydrated] received for session:', targetSessionId, 'count:', authoritativeMessages.length);
 
       const tabStore = getTabStore();
-      const activeSessionId = tabStore.getActiveSessionId() || getTabStore().getActiveSessionId() || currentSessionIdRef?.current;
-      const isForeground = !activeSessionId || targetSessionId === activeSessionId;
+      // Ownership includes a pending transition: the hydrate for a session that
+      // is still being bound belongs to the tab switching to it.
+      const ownerTabId = owningTabIdForSession(targetSessionId);
+      const isForeground = ownerTabId
+        ? tabStore.isActiveTab(ownerTabId)
+        : tabStore.size() === 0;
 
       if (isForeground) {
         setMessages(authoritativeMessages);
@@ -1408,7 +1480,9 @@ export function registerMessageCallbacks(
         if (typeof revertBoundaryId !== 'undefined') t.revertBoundaryId = revertBoundaryId;
         return { ...t };
       };
-      tabStore.updateBackgroundTab(targetSessionId, applyHydrated);
+      if (ownerTabId) {
+        tabStore.updateTab(ownerTabId, applyHydrated);
+      }
     } catch (e) {
       console.error('[MultiSession] Failed to parse onSessionHydrated', e);
     }

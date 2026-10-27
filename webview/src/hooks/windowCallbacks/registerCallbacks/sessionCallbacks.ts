@@ -12,6 +12,7 @@ import { getTabStore } from '../../../store/tabStore';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
+import { isEnginePlaceholderTitle } from '../../../utils/sessionTitle';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
 const CUSTOM_TITLE_MAX_LENGTH = 50;
@@ -68,17 +69,6 @@ export function registerSessionCallbacks(
       }
     }
 
-    const syncTitle = () => {
-      const title = customSessionTitleRef.current;
-      if (title && oldId !== sessionId) {
-        if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
-          updateHistoryTitle(sessionId, title);
-        } else {
-          applyHistoryTitleLocal(sessionId, title);
-        }
-      }
-    };
-
     if (!targetTab) {
       cardDebugLog(
         '[setSessionId] no tab claims this identity; dropping binding',
@@ -98,6 +88,24 @@ export function registerSessionCallbacks(
 
     currentSessionIdRef.current = sessionId; // legacy-allow: the view's session, set when the tab binds
     setCurrentSessionId(sessionId);
+    // Carry a title the user typed onto the session that just got its id.
+    //
+    // Only a *user* rename may name the session: a draft tab's placeholder
+    // ("新会话") or an engine title is not a rename. Persisting the placeholder
+    // here made the server session non-default before the first reply, and the
+    // engine only generates its automatic title for a session that is still
+    // unnamed — so the AI title never arrived and the tab kept the placeholder.
+    const syncTitle = () => {
+      const title = customSessionTitleRef.current;
+      if (!title || oldId === sessionId || !targetTab.isCustomTitle) {
+        return;
+      }
+      if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
+        updateHistoryTitle(sessionId, title);
+      } else {
+        applyHistoryTitleLocal(sessionId, title);
+      }
+    };
     syncTitle();
     // Release a pending session transition only when this is NOT a history
     // load (those carry a transition target and must wait for
@@ -156,10 +164,17 @@ export function registerSessionCallbacks(
     const tabId = env?.tabId ?? (payload?.tabId as string | undefined);
     if (!title || !title.trim() || !sessionId) return;
     const cleanTitle = title.trim();
+    // The engine's own placeholder is not a conversation name: keep the
+    // localized "new session" label until the engine generates the real title.
+    if (isEnginePlaceholderTitle(cleanTitle)) return;
     // Only the session that is actually on screen may drive the header title.
     // An empty currentSessionId means the visible tab is still unbound (a new
     // draft tab) and must not inherit a title generated for another session.
-    if (currentSessionIdRef.current === sessionId) { // legacy-allow: foreground check for the header title, not routing
+    const tabStore = getTabStore();
+    const isForeground = tabStore.size() === 0
+      ? currentSessionIdRef.current === sessionId // legacy-allow: a window with no tab strip has only the view's session
+      : (tabId ? tabStore.isActiveTab(tabId) : tabStore.isActiveSession(sessionId));
+    if (isForeground) {
       setCustomSessionTitle(cleanTitle);
     }
     getTabStore().updateTabTitle(sessionId, cleanTitle, tabId);

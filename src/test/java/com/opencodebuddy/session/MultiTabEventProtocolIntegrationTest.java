@@ -304,6 +304,23 @@ public class MultiTabEventProtocolIntegrationTest {
     }
 
     @Test
+    public void titleSurvivesAdapterDeactivation() {
+        RecordingTarget target = new RecordingTarget();
+        SessionCallbackAdapter adapter = adapter("ses_a", "tab-a", target);
+        adapter.deactivate();
+
+        adapter.onSessionTitleReceived("ses_a", "Late title");
+
+        awaitCalls(target, 1);
+        assertEquals(1, target.calls.size());
+        com.opencodebuddy.tab.TabEvent event = target.calls.get(0);
+        assertEquals("tab.title.changed", event.getType());
+        assertEquals("tab-a", event.getTabId());
+        assertEquals("ses_a", event.getSessionId());
+        assertEquals("Late title", event.getPayload().get("title"));
+    }
+
+    @Test
     public void messageRemovalCarriesOnlyItsTargetTab() {
         RecordingTarget targetA = new RecordingTarget();
         RecordingTarget targetB = new RecordingTarget();

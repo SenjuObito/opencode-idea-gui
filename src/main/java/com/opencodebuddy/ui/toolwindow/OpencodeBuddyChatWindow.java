@@ -306,12 +306,33 @@ public class OpencodeBuddyChatWindow {
             TabRecord record = tabRegistry.get(command.tabId());
             String title = command.string("title");
             if (record != null && !record.isClosed()) {
+                // User rename: this is the only path that may make the title
+                // authoritative over later engine titles.
                 record.setUserTitle(title);
-                record.setTitle(title);
             }
             String currentActiveId = activeTabId;
             if (currentActiveId == null || command.tabId().value().equals(currentActiveId)) {
                 updateTabTitle(title);
+            }
+        });
+        // Display-only sync for tab creation/activation. It must never become a
+        // user title: otherwise every switch re-marks the placeholder as the
+        // user's name and TabRecord.setTitle then ignores the engine title.
+        tabCommandRouter.register("tab.title.sync", command -> {
+            TabRecord record = tabRegistry.get(command.tabId());
+            String title = command.string("title");
+            if (record == null || record.isClosed() || title == null || title.isBlank()) {
+                return;
+            }
+            // A placeholder must not become the tab's name; it only means the
+            // engine has not named the session yet.
+            if (com.opencodebuddy.session.SessionTitles.isEnginePlaceholder(title)) {
+                return;
+            }
+            record.setTitle(title);
+            String currentActiveId = activeTabId;
+            if (currentActiveId == null || command.tabId().value().equals(currentActiveId)) {
+                updateTabTitle(record.getTitle());
             }
         });
         String projectPath = project != null ? project.getBasePath() : null;
@@ -1787,9 +1808,72 @@ public class OpencodeBuddyChatWindow {
         if (event == null) {
             return;
         }
-        recordTabMetrics(event);
-        tabEventBus.publish(event);
+        // One choke point for identity: a tab-scoped event must name its tab.
+        // Legacy publishers that only know the session are re-addressed here so
+        // the webview never has to guess from "the active session".
+        com.opencodebuddy.tab.TabEvent addressed = event;
+        String eventTabId = event.getTabId();
+        String eventSessionId = event.getSessionId();
+        if ((eventTabId == null || eventTabId.isBlank())
+                && eventSessionId != null && !eventSessionId.isBlank()) {
+            String tabId = findTabIdForSession(eventSessionId);
+            if (tabId != null && !tabId.isBlank()) {
+                addressed = event.withTabId(tabId);
+            }
+        }
+        // A title belongs to the session, not to whichever adapter happened to
+        // carry it. Re-address to the tab that actually holds the session and
+        // apply it to the host record here: the IDE tab must update from the
+        // event itself, not from a React effect that may be a frame behind.
+        if ("tab.title.changed".equals(event.getType())) {
+            addressed = applyTitleEvent(addressed);
+        }
+        recordTabMetrics(addressed);
+        tabEventBus.publish(addressed);
         maybeLogBridgeMetrics();
+    }
+
+    /**
+     * Apply an engine title to the tab that owns {@code event.sessionId}.
+     *
+     * <p>{@link TabRecord#setTitle(String)} is the AUTO path: it ignores the
+     * title when the user renamed the tab, so a late event can never undo a
+     * user's name. The webview still receives the same event; the host record
+     * and the IDE tab are updated here so they do not depend on the webview
+     * echoing the title back.</p>
+     */
+    private com.opencodebuddy.tab.TabEvent applyTitleEvent(com.opencodebuddy.tab.TabEvent event) {
+        String sessionId = event.getSessionId();
+        Object rawTitle = event.getPayload().get("title");
+        if (sessionId == null || sessionId.isBlank() || !(rawTitle instanceof String)) {
+            return event;
+        }
+        String title = ((String) rawTitle).replaceAll("[\\r\\n]+", " ").trim();
+        if (title.isEmpty()) {
+            return event;
+        }
+        // The engine's placeholder means "not named yet": keep the localized
+        // label instead of painting a timestamp on the tab.
+        if (com.opencodebuddy.session.SessionTitles.isEnginePlaceholder(title)) {
+            return event;
+        }
+        String ownerTabId = findTabIdForSession(sessionId);
+        com.opencodebuddy.tab.TabEvent addressed = ownerTabId != null && !ownerTabId.isBlank()
+                ? event.withTabId(ownerTabId)
+                : event;
+        String tabId = addressed.getTabId();
+        if (tabId == null || tabId.isBlank()) {
+            return addressed;
+        }
+        TabRecord record = tabRegistry.get(TabId.of(tabId));
+        if (record == null || record.isClosed()) {
+            return addressed;
+        }
+        record.setTitle(title);
+        if (tabId.equals(activeTabId)) {
+            updateTabTitle(record.getTitle());
+        }
+        return addressed;
     }
 
     /** Track per-tab sequence and turn duration for the diagnostics report. */
@@ -3426,22 +3510,7 @@ public class OpencodeBuddyChatWindow {
         // per window. The listener is removed in dispose().
         if (this.titleEventListener == null) {
             this.titleEventListener = (event, data) -> {
-                if ("title_generated".equals(event)) {
-                    String genSessionId = data.has("sessionId") ? data.get("sessionId").getAsString() : null;
-                    String title = data.has("title") ? data.get("title").getAsString() : null;
-                    if (genSessionId != null && title != null) {
-                        ApplicationManager.getApplication().invokeLater(() -> {
-                            if (!disposed) {
-                                updateTabTitle(title);
-                                publishTabEvent(com.opencodebuddy.tab.TabEvent.of("tab.title.changed")
-                                        .session(genSessionId)
-                                        .tab(findTabIdForSession(genSessionId))
-                                        .field("title", title)
-                                        .build());
-                            }
-                        });
-                    }
-                } else if ("session_updated".equals(event)) {
+                if ("session_updated".equals(event)) {
                     // Handle inter-turn session updates (background task completion)
                     String updatedSessionId = data.has("sessionId") ? data.get("sessionId").getAsString() : null;
                     if (updatedSessionId == null) {
@@ -3847,25 +3916,49 @@ public class OpencodeBuddyChatWindow {
         OpencodeBuddyToolWindow.registerWindow(project, this);
     }
 
-    private void interruptDueToPermissionDenial() {
-        // Identity travels with the signal: a bare onStreamEnd/showLoading would
-        // be un-attributable and the frontend now drops those — which would leave
-        // this session's tab spinning after its own permission denial.
-        final String sid = getSession() != null && getSession().getSessionId() != null ? getSession().getSessionId() : "";
-        getSession().interrupt().thenRun(() -> ApplicationManager.getApplication().invokeLater(() -> {
-            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("permission.denied").build());
+    /**
+     * End the turn that asked for permission, and only that turn.
+     *
+     * <p>A denial used to interrupt whichever session was on screen: cancelling a
+     * background tab's prompt ended the foreground conversation while the denied
+     * one kept running. The ids come from the denied prompt.</p>
+     */
+    private void interruptDueToPermissionDenial(String sessionId, String tabId) {
+        String resolvedSessionId = sessionId;
+        if (resolvedSessionId == null || resolvedSessionId.isBlank()) {
+            OpencodeSession byTab = tabId != null ? getSession(tabId) : null;
+            resolvedSessionId = byTab != null ? byTab.getSessionId() : null;
+        }
+        final String sid = resolvedSessionId;
+        final String resolvedTabId = tabId != null && !tabId.isBlank()
+                ? tabId
+                : (sid != null ? findTabIdForSession(sid) : null);
+        final OpencodeSession target = sid != null ? getSession(sid) : null;
+
+        Runnable release = () -> ApplicationManager.getApplication().invokeLater(() -> {
+            publishTabEvent(com.opencodebuddy.tab.TabEvent.of("permission.denied")
+                    .session(sid)
+                    .tab(resolvedTabId)
+                    .build());
             publishTabEvent(com.opencodebuddy.tab.TabEvent.of("turn.ended")
                     .session(sid)
-                    .tab(findTabIdForSession(sid))
+                    .tab(resolvedTabId)
                     .field("sequence", -1)
                     .build());
             publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.loading")
                     .session(sid)
-                    .tab(findTabIdForSession(sid))
+                    .tab(resolvedTabId)
                     .field("loading", false)
                     .build());
             com.opencodebuddy.notifications.OpencodeNotifier.clearStatus(project);
-        }));
+        });
+
+        if (target != null) {
+            target.interrupt().thenRun(release);
+        } else {
+            // The session is already gone; the tab still has to stop spinning.
+            release.run();
+        }
     }
 
     // ==================== Code Snippets ====================
@@ -4397,8 +4490,8 @@ public class OpencodeBuddyChatWindow {
             }
 
             @Override
-            public void interruptDueToPermissionDenial() {
-                OpencodeBuddyChatWindow.this.interruptDueToPermissionDenial();
+            public void interruptDueToPermissionDenial(String sessionId, String tabId) {
+                OpencodeBuddyChatWindow.this.interruptDueToPermissionDenial(sessionId, tabId);
             }
 
             @Override

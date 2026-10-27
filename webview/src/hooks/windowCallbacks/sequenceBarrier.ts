@@ -40,10 +40,7 @@ const isForegroundSession = (sessionId?: string | null): boolean => {
   // A tab that is switching to this session is the foreground, even before the
   // switch has completed.
   if (transitionTargetOfSession(sessionId) === sessionId) return true;
-  const store = getTabStore();
-  if (store.isActiveSession(sessionId)) return true;
-  if (window.__sessionTabsStore?.isActiveSession(sessionId)) return true;
-  return false;
+  return getTabStore().isActiveSession(sessionId);
 };
 
 /**

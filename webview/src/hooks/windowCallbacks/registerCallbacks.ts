@@ -182,13 +182,12 @@ export function registerWindowCallbacks(
       if (!key) return;
 
       const tabStore = getTabStore();
-      const tabsStore = window.__sessionTabsStore;
       const targetTabId = result.sessionId
-        ? (tabStore.findIdBySession(result.sessionId) ?? tabsStore?.getTabIdForSession?.(result.sessionId) ?? null)
+        ? tabStore.findIdBySession(result.sessionId)
         : null;
-      if (result.sessionId && (tabStore.size() > 0 || tabsStore)) {
+      if (result.sessionId && tabStore.size() > 0) {
         if (!targetTabId) return;
-        const isActive = tabStore.isActiveTab(targetTabId) || (tabsStore?.isActiveTab?.(targetTabId) ?? false);
+        const isActive = tabStore.isActiveTab(targetTabId);
         if (!isActive) {
           const updated = tabStore.updateTab(targetTabId, (tab) => ({
             ...tab,
@@ -197,24 +196,7 @@ export function registerWindowCallbacks(
               key,
               result,
             ),
-          })) || (tabsStore?.updateTab
-            ? tabsStore.updateTab(targetTabId, (tab) => {
-                tab.subagentHistories = mergeSubagentHistory(
-                  tab.subagentHistories || {},
-                  key,
-                  result,
-                );
-              })
-            : tabsStore?.updateBackgroundTab?.(
-                (tab) => tab.id === targetTabId,
-                (tab) => {
-                  tab.subagentHistories = mergeSubagentHistory(
-                    tab.subagentHistories || {},
-                    key,
-                    result,
-                  );
-                },
-              ));
+          }));
           if (updated) return;
           // A known session whose tab is gone must not leak into the active tab.
           return;
@@ -252,25 +234,14 @@ export function registerWindowCallbacks(
    */
   const applyTaskEvent = (taskEvent: TaskEvent, targetSessionId: string | null) => {
     const tabStore = getTabStore();
-    const isBackground = targetSessionId && (
-      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
-    );
+    const isBackground = Boolean(targetSessionId) && tabStore.size() > 0
+      && !tabStore.isActiveSession(targetSessionId);
     if (isBackground && targetSessionId) {
-      const updated = tabStore.updateBackgroundTab(targetSessionId, (t) => ({
+      tabStore.updateBackgroundTab(targetSessionId, (t) => ({
         ...t,
         taskEvents: { ...(t.taskEvents || {}), [taskEvent.toolUseId]: taskEvent },
       }));
-      if (updated) return;
-      if (window.__sessionTabsStore) {
-        window.__sessionTabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          (t) => {
-            t.taskEvents = { ...(t.taskEvents || {}), [taskEvent.toolUseId]: taskEvent };
-          }
-        );
-        return;
-      }
+      return;
     }
 
     if (!options.setTaskEvents) return;
@@ -371,14 +342,11 @@ export function registerWindowCallbacks(
 
       // Check active state:
       // 1. Explicit tabId match against activeTabId
-      // 2. window.__sessionTabsStore.isActiveSession check (legacy compatibility)
-      // 3. tabStore.isActiveSession check
-      // 4. options.currentSessionIdRef fallback
+      // 2. tabStore.isActiveSession check
+      // 3. options.currentSessionIdRef fallback
       let isCurrentActive = false;
       if (resolvedTabId && activeTabId) {
         isCurrentActive = resolvedTabId === activeTabId;
-      } else if (window.__sessionTabsStore?.isActiveSession && effectiveSessionId) {
-        isCurrentActive = window.__sessionTabsStore.isActiveSession(effectiveSessionId);
       } else if (tabStore.isActiveSession(effectiveSessionId)) {
         isCurrentActive = true;
       } else if (options.currentSessionIdRef?.current && effectiveSessionId) { // legacy-allow: fallback when no tab strip exists
@@ -396,15 +364,10 @@ export function registerWindowCallbacks(
         }
       } else {
         cardDebugLog('[onTodoUpdated] updating background tab:', resolvedTabId || effectiveSessionId, 'with', normalizedTodos.length, 'todos');
-        const updated = (resolvedTabId ? tabStore.updateTab(resolvedTabId, (t) => ({ ...t, sseTodos: normalizedTodos })) : false)
-          || (effectiveSessionId ? tabStore.updateBackgroundTab(effectiveSessionId, (t) => ({ ...t, sseTodos: normalizedTodos })) : false);
-        if (!updated && window.__sessionTabsStore?.updateBackgroundTab && effectiveSessionId) {
-          window.__sessionTabsStore.updateBackgroundTab(
-            (t) => t.sessionId === effectiveSessionId || (resolvedTabId !== null && t.id === resolvedTabId),
-            (t) => {
-              t.sseTodos = normalizedTodos;
-            }
-          );
+        if (resolvedTabId) {
+          tabStore.updateTab(resolvedTabId, (t) => ({ ...t, sseTodos: normalizedTodos }));
+        } else if (effectiveSessionId) {
+          tabStore.updateBackgroundTab(effectiveSessionId, (t) => ({ ...t, sseTodos: normalizedTodos }));
         }
       }
     } catch (e) {

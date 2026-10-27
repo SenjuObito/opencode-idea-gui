@@ -12,6 +12,7 @@ import { beginTransition, endTransition, isTabTransitioning } from '../tabTransi
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import { sessionEvent, snapshotEvent } from '../../../utils/testEvents';
+import { bindTabStoreSession, seedTabStore } from '../../../test/seedTabStore';
 
 const createOptions = (overrides?: Partial<UseWindowCallbacksOptions>): UseWindowCallbacksOptions => ({
   addToast: vi.fn(),
@@ -144,11 +145,8 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
     });
 
     // The transition guard belongs to a tab, so the webview needs one.
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => 'tab-active',
-      getTabIdForSession: () => 'tab-active',
-      isActiveSession: () => true,
-    } as any;
+    seedTabStore([{ id: 'tab-active', sessionId: 'session-active' }], 'tab-active');
+    bindTabStoreSession(() => currentSessionIdRef.current);
 
     renderHook(() => useWindowCallbacks(opts));
 

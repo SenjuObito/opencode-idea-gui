@@ -6,6 +6,7 @@ import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
 import { sendHostCommand, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
+import { getTabStore } from '../store/tabStore';
 
 interface UseDialogManagementOptions {
   t: TFunction;
@@ -471,7 +472,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     sessionId?: string,
     tabId?: string,
   ) => {
-    const ownerTabId = tabId ?? window.__sessionTabsStore?.getTabIdForSession?.(sessionId) ?? '';
+    const ownerTabId = tabId ?? getTabStore().findIdBySession(sessionId) ?? '';
     if (!ownerTabId && !sessionId) {
       cardDebugLog(`[Prompt][webview] dropping a ${type} without a tab or a session`);
       return;
@@ -491,7 +492,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     const active = currentPermissionRequestRef.current;
     const sessionId = options.sessionId ?? active?.sessionId;
     const ownerTabId = options.tabId ?? active?.tabId
-      ?? window.__sessionTabsStore?.getTabIdForSession?.(sessionId) ?? '';
+      ?? getTabStore().findIdBySession(sessionId) ?? '';
     if (!ownerTabId && !sessionId) {
       cardDebugLog('[PCard][webview] dropping a permission reply without a tab or a session');
       return;

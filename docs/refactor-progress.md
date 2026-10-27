@@ -592,7 +592,7 @@
 ### C9 拆解巨石 Hook（useSessionTabs.ts）
 - 将原本 1641 行的 `useSessionTabs.ts` 彻底拆解为 `sessionTabs/` 下的独立专职子模块：
   1. `types.ts`：集中定义 Hook 参数与生命周期配置。
-  2. `useTabBarState.ts`：负责 Tab 列表派生、激活、重命名、拖拽排序、`window.__sessionTabsStore` 维护。
+  2. `useTabBarState.ts`：负责 Tab 列表派生、激活、重命名、拖拽排序，并把视图回调绑定进 `TabStore`。
   3. `useTabLifecycle.ts`：负责 `createTab`、`closeTab`、`closeTabBySessionId`、`forkTab`、IDE 顶栏动作暴露。
   4. `useTabSessionBinder.ts`：负责快照保存、视图切换（`selectTab`）、历史会话加载（`openSessionInTab`）与 `onTabResync` 重载同步。
 - `useSessionTabs.ts` 收敛为精简顶层入口，对外接口 100% 保持向前兼容。
@@ -872,3 +872,27 @@ IDE 动作、`$` 命令、子代理分块），不在语义目录，也不参与
 - 未做（需与进行中的 tab 工作合流后再做）：`window.__sessionTabsStore`
   facade 退场（175 处引用，`TabStore` 还需补 drafts / close / rename 等 8 个
   能力）。
+
+## 第七轮：`__sessionTabsStore` 退场
+
+- `TabStore` 成为唯一入口：
+  - 新增 `updateAllTabs` / `updateTabSessionId` / `updateTabTitle` /
+    `getActiveTabAutoOpenFileEnabled` / `clearStreamingRuntimeFor` /
+    `closeTabBySessionId` / `getDrafts`；`updateTab` /`updateBackgroundTab`
+    接受「返回新对象」或「就地修改副本」两种 updater。
+  - 视图侧副作用（`setCurrentSessionId`、`setCustomSessionTitle`、
+    `deleteTabRuntime`、`closeTab`、drafts、当前会话 ref、自动打开文件默认值）
+    通过 `bindView()` 注入，`useTabBarState` 负责绑定，store 不引用任何 hook。
+  - `isActiveSession` / `getActiveSessionId` 在视图已绑定当前会话时优先取它：
+    切换会话的瞬间，视图已是新会话而 tab 记录稍后才重绑。
+- 全仓 `window.__sessionTabsStore` 归零（原 175 处引用、13 个测试文件）：
+  - 后台路由统一为 `tabStore.size() > 0 && !isActiveSession(...)`：
+    没有 tab 条时事件属于当前视图，不能被当成「后台」丢弃。
+  - 删除只被这个 facade 使用的重复实现（`useTabBarState` 内 10 个 helper）。
+  - `global.d.ts` 的 `__sessionTabsStore` 声明删除；测试改用 `seedTabStore`
+    直接写真实 store，断言 tab 状态而不是 spy 调用。
+- `messageCallbacks` 的 `session.loaded` 释放后台 tab 过渡守卫：
+  原先调用 facade 上从未存在的 `getTabTransitionTarget` / `endTabTransition`，
+  改为真实的 `transitionTargetFor` + `endTransition`。
+- 验证：gradle 896 用例 0 失败、`checkLegacyPatterns -PstrictLegacy=true`
+  0 forbidden / 0 debt、tsc 0 错误、vitest 179 文件 / 1583 测试、vite build 成功。

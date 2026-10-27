@@ -1111,55 +1111,6 @@ interface Window {
   ) => void;
 
   /**
-   * Multi-session tab store for routing background session events
-   */
-  __sessionTabsStore?: {
-    getActiveTabId: () => string;
-    getActiveSessionId: () => string | null;
-    getActiveTabAutoOpenFileEnabled?: () => boolean;
-    getTabs: () => any[];
-    getDrafts?: () => Array<{ text: string; attachments: any[]; fileTags: any[]; quotes?: Record<string, { text: string }> }>;
-    isActiveSession: (sessionId: string | null | undefined) => boolean;
-    isActiveTab?: (tabId: string | null | undefined) => boolean;
-    getTabIdForSession?: (sessionId: string | null | undefined) => string | null;
-    /**
-     * Update exactly one tab by its stable id.
-     * @returns true when the tab exists.
-     */
-    updateTab?: (tabId: string, updater: (tab: any) => void) => boolean;
-    updateAllTabs?: (updater: (tab: any) => void) => void;
-    /**
-     * @returns true when a tab matched `predicate`. Callers must check this: a
-     *     false return means the write had nowhere to go.
-     */
-    updateBackgroundTab: (
-      predicate: (tab: any) => boolean,
-      updater: (tab: any) => void
-    ) => boolean;
-    updateTabSessionId: (tabId: string, sessionId: string) => void;
-    /** @param tabId the owning tab, when the host names it */
-    updateTabTitle: (sessionId: string, newTitle: string, tabId?: string | null) => void;
-    closeTabBySessionId?: (sessionId: string) => void;
-    /** Drop the runtime belonging to this session (called on stream end). */
-    clearStreamingRuntimeFor?: (sessionId: string) => void;
-    /** Is the tab switching sessions right now? */
-    isTabTransitioning?: (tabId: string | null | undefined) => boolean;
-    /** The session the tab is switching to, or null. */
-    getTabTransitionTarget?: (tabId: string | null | undefined) => string | null;
-    /** The token of the tab's current transition, or null. */
-    getTabTransitionToken?: (tabId: string | null | undefined) => string | null;
-    /** Start a transition for a tab. */
-    beginTabTransition?: (tabId: string, targetSessionId: string | null, token: string | null) => void;
-    /**
-     * End a tab's transition.
-     * @param token when given, only a transition with that token is ended
-     */
-    endTabTransition?: (tabId: string | null | undefined, token?: string | null) => boolean;
-    /** True while any tab is transitioning (diagnostics only). */
-    isAnyTabTransitioning?: () => boolean;
-  };
-
-  /**
    * Dialog store for switching and preserving pending permissions/questions across session tabs
    */
   __dialogStore?: {

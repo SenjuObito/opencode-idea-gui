@@ -5,6 +5,7 @@ import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
 import { uploadAttachments } from '../utils/attachmentTransport';
+import { getTabStore } from '../store/tabStore';
 
 /**
  * Command sets for local handling (shared with App.tsx to avoid duplication)
@@ -268,13 +269,13 @@ export function useMessageSender({
     // whatever model the previously active session used.
     const modelPayload = selectedModel ? { model: selectedModel } : {};
 
-    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+    const activeTabId = getTabStore().getActiveTabId() ?? null;
     const targetSessionId = currentSessionIdRef
       ? (currentSessionIdRef.current ?? undefined)
       : (currentSessionId ?? undefined);
     const effectiveAutoOpenFileEnabled = typeof autoOpenFileEnabled === 'boolean'
       ? autoOpenFileEnabled
-      : (window.__sessionTabsStore?.getActiveTabAutoOpenFileEnabled?.() ?? false);
+      : (getTabStore().getActiveTabAutoOpenFileEnabled() ?? false);
 
     if (!activeTabId) {
       // Without a tab identity the host would have to guess which tab owns the

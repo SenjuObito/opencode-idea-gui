@@ -16,6 +16,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { registerPermissionCallbacks } from './permissionCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { hostEventHandler } from '../../../utils/hostEventRegistry';
+import { getTabStore, resetTabStore } from '../../../store/tabStore';
+import { seedTabStore } from '../../../test/seedTabStore';
 
 vi.mock('../../../utils/bridge', () => ({
   cardDebugLog: vi.fn(),
@@ -32,35 +34,7 @@ interface FakeTab {
   pendingQuestions?: any[];
 }
 
-/** Faithful stand-in for the real __sessionTabsStore contract. */
-function createTabsStore(tabs: FakeTab[], activeTabId: string) {
-  return {
-    isActiveSession: (sessionId: string | null | undefined): boolean => {
-      if (!sessionId) return false;
-      const active = tabs.find((t) => t.id === activeTabId);
-      if (!active) return false;
-      return active.sessionId === sessionId || active.id === sessionId;
-    },
-    updateBackgroundTab: (
-      predicate: (tab: FakeTab) => boolean,
-      updater: (tab: FakeTab) => void,
-    ): boolean => {
-      const idx = tabs.findIndex(predicate);
-      if (idx === -1) return false;
-      const clone = { ...tabs[idx] };
-      updater(clone);
-      tabs[idx] = clone;
-      return true;
-    },
-    updateAllTabs: (updater: (tab: FakeTab) => void): void => {
-      for (let i = 0; i < tabs.length; i++) {
-        const clone = { ...tabs[i] };
-        updater(clone);
-        tabs[i] = clone;
-      }
-    },
-  };
-}
+const storedTab = (id: string) => getTabStore().findById(id)!;
 
 function createHarness(tabs: FakeTab[], activeTabId: string) {
   const openPermissionDialog = vi.fn();
@@ -112,11 +86,11 @@ const questionJson = (requestId: string, sessionId: string | null) =>
 
 describe('showPermissionDialog — session routing', () => {
   beforeEach(() => {
-    delete window.__sessionTabsStore;
+    resetTabStore();
   });
 
   afterEach(() => {
-    delete window.__sessionTabsStore;
+    resetTabStore();
     vi.restoreAllMocks();
   });
 
@@ -126,46 +100,46 @@ describe('showPermissionDialog — session routing', () => {
       { id: 'tab-b', sessionId: 'ses_b', pendingPermissions: [] },
     ];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_b1', 'ses_b')));
 
     expect(h.openPermissionDialog).not.toHaveBeenCalled();
-    expect(tabs[1].pendingPermissions).toHaveLength(1);
-    expect(tabs[1].pendingPermissions![0].channelId).toBe('per_b1');
+    expect(storedTab('tab-b').pendingPermissions).toHaveLength(1);
+    expect(storedTab('tab-b').pendingPermissions![0].channelId).toBe('per_b1');
     // 前台 tab 一个都不许收到
-    expect(tabs[0].pendingPermissions).toHaveLength(0);
+    expect(storedTab('tab-a').pendingPermissions).toHaveLength(0);
   });
 
   it('de-duplicates a repeated channelId on the same background tab', () => {
     const tabs: FakeTab[] = [{ id: 'tab-b', sessionId: 'ses_b', pendingPermissions: [] }];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_b1', 'ses_b')));
     hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_b1', 'ses_b')));
 
     expect(h.openPermissionDialog).not.toHaveBeenCalled();
-    expect(tabs[0].pendingPermissions).toHaveLength(1);
+    expect(storedTab('tab-b').pendingPermissions).toHaveLength(1);
   });
 
   it('opens the dialog immediately when the prompt belongs to the active session', () => {
     const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingPermissions: [] }];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_a1', 'ses_a')));
 
     expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
     expect(h.openPermissionDialog.mock.calls[0][0].channelId).toBe('per_a1');
-    expect(tabs[0].pendingPermissions).toHaveLength(0);
+    expect(storedTab('tab-a').pendingPermissions).toHaveLength(0);
   });
 
   it('shows the prompt in the active window when NO tab claims the session (never drops it)', () => {
     // 回归：「已取消」卡片却没有对话框 —— 旧代码在这里 return，服务端随后按拒绝结算。
     const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingPermissions: [] }];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_x', 'ses_unbound')));
 
@@ -176,7 +150,7 @@ describe('showPermissionDialog — session routing', () => {
   it('still opens the dialog when the prompt carries no session identity', () => {
     const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingPermissions: [] }];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     expect(() => hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_anon', null)))).not.toThrow();
     expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
@@ -193,25 +167,25 @@ describe('showPermissionDialog — session routing', () => {
   it('forceClosePermissionDialog removes the request from the background tab', () => {
     const tabs: FakeTab[] = [{ id: 'tab-b', sessionId: 'ses_b', pendingPermissions: [] }];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_b1', 'ses_b')));
-    expect(tabs[0].pendingPermissions).toHaveLength(1);
+    expect(storedTab('tab-b').pendingPermissions).toHaveLength(1);
 
     hostEventHandler('prompt.closed')!({ requestId: 'per_b1' });
 
     expect(h.forceClosePermissionDialog).toHaveBeenCalledWith('per_b1');
-    expect(tabs[0].pendingPermissions).toHaveLength(0);
+    expect(storedTab('tab-b').pendingPermissions).toHaveLength(0);
   });
 });
 
 describe('showAskUserQuestionDialog — session routing', () => {
   beforeEach(() => {
-    delete window.__sessionTabsStore;
+    resetTabStore();
   });
 
   afterEach(() => {
-    delete window.__sessionTabsStore;
+    resetTabStore();
     vi.restoreAllMocks();
   });
 
@@ -221,20 +195,20 @@ describe('showAskUserQuestionDialog — session routing', () => {
       { id: 'tab-b', sessionId: 'ses_b', pendingQuestions: [] },
     ];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('question.requested')!(JSON.parse(questionJson('q_b1', 'ses_b')));
 
     expect(h.openAskUserQuestionDialog).not.toHaveBeenCalled();
-    expect(tabs[1].pendingQuestions).toHaveLength(1);
-    expect(tabs[1].pendingQuestions![0].requestId).toBe('q_b1');
-    expect(tabs[0].pendingQuestions).toHaveLength(0);
+    expect(storedTab('tab-b').pendingQuestions).toHaveLength(1);
+    expect(storedTab('tab-b').pendingQuestions![0].requestId).toBe('q_b1');
+    expect(storedTab('tab-a').pendingQuestions).toHaveLength(0);
   });
 
   it('shows the question in the active window when NO tab claims the session', () => {
     const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingQuestions: [] }];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('question.requested')!(JSON.parse(questionJson('q_x', 'ses_unbound')));
 
@@ -245,25 +219,25 @@ describe('showAskUserQuestionDialog — session routing', () => {
   it('opens the question immediately for the active session', () => {
     const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingQuestions: [] }];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('question.requested')!(JSON.parse(questionJson('q_a1', 'ses_a')));
 
     expect(h.openAskUserQuestionDialog).toHaveBeenCalledTimes(1);
-    expect(tabs[0].pendingQuestions).toHaveLength(0);
+    expect(storedTab('tab-a').pendingQuestions).toHaveLength(0);
   });
 
   it('forceCloseAskUserQuestionDialog removes the question from the background tab', () => {
     const tabs: FakeTab[] = [{ id: 'tab-b', sessionId: 'ses_b', pendingQuestions: [] }];
     const h = createHarness(tabs, 'tab-a');
-    window.__sessionTabsStore = createTabsStore(tabs, 'tab-a') as unknown as typeof window.__sessionTabsStore;
+    seedTabStore(tabs, 'tab-a');
 
     hostEventHandler('question.requested')!(JSON.parse(questionJson('q_b1', 'ses_b')));
-    expect(tabs[0].pendingQuestions).toHaveLength(1);
+    expect(storedTab('tab-b').pendingQuestions).toHaveLength(1);
 
     hostEventHandler('prompt.question.closed')!({ requestId: 'q_b1' });
 
     expect(h.forceCloseAskUserQuestionDialog).toHaveBeenCalledWith('q_b1');
-    expect(tabs[0].pendingQuestions).toHaveLength(0);
+    expect(storedTab('tab-b').pendingQuestions).toHaveLength(0);
   });
 });

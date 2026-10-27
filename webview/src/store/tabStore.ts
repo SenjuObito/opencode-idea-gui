@@ -1,7 +1,33 @@
 import type { SessionTabData } from '../components/ChatHeader/types';
 import type { ClaudeMessage } from '../types';
+import type { TabDraft } from './tabDraftStore';
 
 type Updater<T> = T | ((previous: T) => T);
+
+/**
+ * Callbacks the view owns. The store calls them; it never implements them.
+ *
+ * <p>A tab record is view state, but a few consequences of changing it belong
+ * to React (mirroring the bound session into `currentSessionId`, closing a tab
+ * through the strip, dropping a streaming runtime). Injecting them keeps the
+ * store free of hooks without falling back to a window-level object.</p>
+ */
+export interface TabStoreViewBindings {
+  /** Mirror the bound session into the view's `currentSessionId` state. */
+  setCurrentSessionId?: (sessionId: string | null) => void;
+  /** Mirror an active-tab rename into the view's title state. */
+  setCustomSessionTitle?: (title: string | null) => void;
+  /** Drop the streaming runtime of a tab that is going away. */
+  deleteTabRuntime?: (tabId: string) => void;
+  /** Close a tab through the strip (it owns the transition and persistence). */
+  closeTab?: (tabId: string) => void;
+  /** Drafts are keyed by tab id and owned by the strip. */
+  getDrafts?: () => TabDraft[];
+  /** The session the view shows while a switch is still in flight. */
+  getCurrentSessionId?: () => string | null;
+  /** Fallback for a tab that never set the auto-open flag. */
+  defaultAutoOpenFileEnabled?: boolean;
+}
 
 /** Stable, collision-free webview tab id. Never derive it from a timestamp alone. */
 export function createTabId(): string {
@@ -79,11 +105,23 @@ export class TabStore {
   private readonly listeners = new Set<() => void>();
   private updatingTabs = false;
   private activeChangedDuringUpdate = false;
+  private view: TabStoreViewBindings = {};
 
   constructor(initialTabs: SessionTabData[], activeTabId: string) {
     this.tabs = initialTabs;
     this.activeTabId = activeTabId;
   }
+
+  /**
+   * Attach the view callbacks that follow a tab-state change.
+   *
+   * <p>Called by the tab strip on every render where one of them changes; the
+   * store keeps the latest and calls it lazily, so it never captures a stale
+   * render closure.</p>
+   */
+  readonly bindView = (bindings: TabStoreViewBindings): void => {
+    this.view = { ...this.view, ...bindings };
+  };
 
   readonly getTabs = (): SessionTabData[] => this.tabs;
 
@@ -215,23 +253,34 @@ export class TabStore {
   }
 
   getActiveSessionId(): string | null {
+    // While a switch is in flight the view already shows the incoming session,
+    // and the tab record is rebound a moment later; the view wins so routing
+    // never attributes an event to the session that just left the screen.
+    const bound = this.view.getCurrentSessionId?.();
+    if (bound) return bound;
     const active = this.getActiveTab();
     return active?.sessionId ?? (active?.id || null);
   }
 
+  /**
+   * Update one tab.
+   *
+   * <p>The updater may return the next tab or mutate the copy it receives; both
+   * forms are accepted. The store always hands out a copy, so a mutation can
+   * never change state without notifying the view.</p>
+   */
   updateTab(
     tabId: string | null | undefined,
-    updater: (tab: SessionTabData) => SessionTabData,
+    updater: (tab: SessionTabData) => SessionTabData | void,
   ): boolean {
     if (!tabId) return false;
     let found = false;
     this.setTabs((prev) =>
       prev.map((tab) => {
-        if (tab.id === tabId) {
-          found = true;
-          return updater(tab);
-        }
-        return tab;
+        if (tab.id !== tabId) return tab;
+        found = true;
+        const draft = { ...tab };
+        return updater(draft) ?? draft;
       }),
     );
     return found;
@@ -239,11 +288,65 @@ export class TabStore {
 
   updateBackgroundTab(
     sessionId: string | null | undefined,
-    updater: (tab: SessionTabData) => SessionTabData,
+    updater: (tab: SessionTabData) => SessionTabData | void,
   ): boolean {
     const tabId = this.findIdBySession(sessionId);
     if (!tabId) return false;
     return this.updateTab(tabId, updater);
+  }
+
+  /** Apply one updater to every tab (dialog bookkeeping, bulk cleanup). */
+  updateAllTabs(updater: (tab: SessionTabData) => SessionTabData | void): void {
+    this.setTabs((prev) => prev.map((tab) => {
+      const draft = { ...tab };
+      return updater(draft) ?? draft;
+    }));
+  }
+
+  /** Bind the tab that shows {@code tabId} to a session. */
+  updateTabSessionId(tabId: string, sessionId: string): void {
+    if (!tabId) return;
+    this.setTabs((prev) => prev.map((tab) => (
+      tab.id === tabId || tab.sessionId === tabId ? { ...tab, sessionId } : tab
+    )));
+    if (this.activeTabId === tabId) {
+      this.view.setCurrentSessionId?.(sessionId);
+    }
+  }
+
+  /** Rename the tab that owns {@code sessionId} (or the one named by {@code tabId}). */
+  updateTabTitle(sessionId: string, newTitle: string, tabId?: string | null): void {
+    const trimmed = newTitle?.trim();
+    if (!trimmed || !sessionId) return;
+    const target = tabId ? this.findById(tabId) : this.findTabBySessionId(sessionId);
+    if (!target) return;
+    this.updateTab(target.id, (tab) => ({ ...tab, title: trimmed }));
+    if (target.id === this.activeTabId) {
+      this.view.setCustomSessionTitle?.(trimmed);
+    }
+  }
+
+  /** Whether the tab on screen opens files touched by the assistant. */
+  getActiveTabAutoOpenFileEnabled(): boolean {
+    return this.getActiveTab().autoOpenFileEnabled ?? this.view.defaultAutoOpenFileEnabled ?? false;
+  }
+
+  /** Drop the streaming runtime of the tab that owns a session. */
+  clearStreamingRuntimeFor(sessionId: string | null | undefined): void {
+    const owner = this.findIdBySession(sessionId);
+    if (owner) this.view.deleteTabRuntime?.(owner);
+  }
+
+  /** Close the tab bound to a session (the strip owns what closing means). */
+  closeTabBySessionId(sessionId: string | null | undefined): void {
+    if (!sessionId) return;
+    const target = this.tabs.find((tab) => tab.sessionId === sessionId);
+    if (target) this.view.closeTab?.(target.id);
+  }
+
+  /** The drafts of every tab, for quote-id preservation across a switch. */
+  getDrafts(): TabDraft[] {
+    return this.view.getDrafts?.() ?? [];
   }
 
   isActiveTab(tabId: string | null | undefined): boolean {
@@ -253,8 +356,14 @@ export class TabStore {
 
   isActiveSession(sessionId: string | null | undefined): boolean {
     if (!sessionId) return false;
+    // The view's bound session may already be the incoming one while the tab
+    // record still carries the outgoing session; a tab id always identifies
+    // the active tab outright.
+    const bound = this.view.getCurrentSessionId?.();
+    if (bound) {
+      return bound === sessionId || this.activeTabId === sessionId;
+    }
     const active = this.getActiveTab();
-    if (!active) return false;
     return active.id === sessionId || active.sessionId === sessionId;
   }
 

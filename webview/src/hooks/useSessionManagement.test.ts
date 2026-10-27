@@ -66,7 +66,6 @@ describe('useSessionManagement', () => {
 
   afterEach(() => {
     delete window.__openNewSessionTab;
-    delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
   });
 
   it('opens a local tab for a direct new session', () => {

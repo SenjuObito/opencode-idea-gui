@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
 import { sendHostCommand, sendSessionCommand, sendWindowCommand } from './utils/bridge';
-import { createTabId } from './store/tabStore';
+import { createTabId, getTabStore } from './store/tabStore';
 import { copyViaHost } from './utils/copyUtils';
 import { registerHostEvents, unregisterHostEvents } from './utils/hostEventRegistry';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
@@ -534,9 +534,9 @@ const App = () => {
     if (idx >= 0) {
       const remainingMessages = messages.slice(0, idx);
       setMessages(remainingMessages);
-      const activeTabId = window.__sessionTabsStore?.getActiveTabId?.();
-      if (activeTabId && window.__sessionTabsStore?.updateTab) {
-        window.__sessionTabsStore.updateTab(activeTabId, (tab) => {
+      const activeTabId = getTabStore().getActiveTabId();
+      if (activeTabId) {
+        getTabStore().updateTab(activeTabId, (tab) => {
           tab.messages = remainingMessages;
           tab.revertBoundaryId = null;
         });
@@ -611,8 +611,8 @@ const App = () => {
     const sid = currentSessionIdRef.current;
     // The fork source is named explicitly: the host refuses to fork "the
     // session on screen" when the caller did not say which one it meant.
-    const sourceTabId = window.__sessionTabsStore?.getTabIdForSession?.(sid)
-      ?? window.__sessionTabsStore?.getActiveTabId?.()
+    const sourceTabId = getTabStore().findIdBySession(sid)
+      ?? getTabStore().getActiveTabId()
       ?? '';
     const targetTabId = createTabId();
     if (!id) {
@@ -631,8 +631,8 @@ const App = () => {
     }
     consumeRevertBoundary();
     const sid = currentSessionIdRef.current;
-    const sourceTabId = window.__sessionTabsStore?.getTabIdForSession?.(sid)
-      ?? window.__sessionTabsStore?.getActiveTabId?.()
+    const sourceTabId = getTabStore().findIdBySession(sid)
+      ?? getTabStore().getActiveTabId()
       ?? '';
     const targetTabId = createTabId();
     sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId });
@@ -657,7 +657,7 @@ const App = () => {
    */
   const setTabCompacting = useCallback((tabId: string | null | undefined, compacting: boolean, startedAt: number | null) => {
     if (!tabId) return;
-    window.__sessionTabsStore?.updateTab?.(tabId, (tab) => {
+    getTabStore().updateTab(tabId, (tab) => {
       tab.isCompacting = compacting;
       tab.compactingStartTime = startedAt;
     });
@@ -679,7 +679,7 @@ const App = () => {
         : notice
     );
     if (tabId) {
-      window.__sessionTabsStore?.updateTab?.(tabId, (tab) => {
+      getTabStore().updateTab(tabId, (tab) => {
         tab.isCompacting = false;
         tab.compactingStartTime = null;
         tab.compactNotice = merge(tab.compactNotice);
@@ -702,7 +702,7 @@ const App = () => {
   const onForkBound = (targetTabId: string, sessionId: string, sourceTabId?: string, sourceSessionId?: string) => {
     try {
       if (!targetTabId || !sessionId) return;
-      const activeId = window.__sessionTabsStore?.getActiveTabId?.() ?? activeTabId;
+      const activeId = getTabStore().getActiveTabId() ?? activeTabId;
       const currentTabs = appTabsRef.current || [];
       const sourceTab =
         (sourceTabId && currentTabs.find((t) => t.id === sourceTabId)) ||
@@ -823,27 +823,24 @@ const App = () => {
         if (!update) return;
         const { hasRevert: next, messageId: nextId, sessionId: wireSessionId } = update;
         console.debug('[App] onRevertStateUpdate', { wireSessionId, hasRevert: next, messageId: nextId });
-        const tabsStore = window.__sessionTabsStore;
+        const tabStore = getTabStore();
 
         // A revert pointer belongs to one session. Applying it to whichever tab
         // is on screen used to reset the scroll flags and jump the reader to the
         // bottom whenever a background session reverted a message.
-        if (wireSessionId && tabsStore && !tabsStore.isActiveSession(wireSessionId)) {
-          tabsStore.updateBackgroundTab(
-            (t) => t.sessionId === wireSessionId,
-            (t) => {
-              t.revertBoundaryId = next ? nextId : null;
-            }
-          );
+        if (wireSessionId && tabStore.size() > 0 && !tabStore.isActiveSession(wireSessionId)) {
+          tabStore.updateBackgroundTab(wireSessionId, (t) => {
+            t.revertBoundaryId = next ? nextId : null;
+          });
           return;
         }
 
         const prevHasRevert = hasRevertStateRef.current;
         const prevId = revertBoundaryIdRef.current;
         const changed = next !== prevHasRevert || nextId !== prevId;
-        const currentActiveId = tabsStore?.getActiveTabId?.();
-        if (currentActiveId && tabsStore?.updateTab) {
-          tabsStore.updateTab(currentActiveId, (tab) => {
+        const currentActiveId = tabStore.getActiveTabId();
+        if (currentActiveId) {
+          tabStore.updateTab(currentActiveId, (tab) => {
             tab.revertBoundaryId = next ? nextId : null;
           });
         }
@@ -878,16 +875,11 @@ const App = () => {
         if (ids.length === 0) return;
         console.debug('[App] onMessagesRemoved', targetSessionId, ids);
 
-        if (targetSessionId && window.__sessionTabsStore) {
-          if (!window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-            window.__sessionTabsStore.updateBackgroundTab(
-              (t) => t.sessionId === targetSessionId,
-              (t) => {
-                t.messages = applyMessagesRemoved(t.messages ?? [], ids);
-              }
-            );
-            return;
-          }
+        if (targetSessionId && getTabStore().size() > 0 && !getTabStore().isActiveSession(targetSessionId)) {
+          getTabStore().updateBackgroundTab(targetSessionId, (t) => {
+            t.messages = applyMessagesRemoved(t.messages ?? [], ids);
+          });
+          return;
         }
 
         setMessages((prev) => applyMessagesRemoved(prev, ids));
@@ -897,12 +889,12 @@ const App = () => {
     };
     const onCompactSuccess = (targetSessionId?: string, envelope?: HostEventEnvelope) => {
       const ownerTabId = envelope?.tabId
-        ?? (targetSessionId ? window.__sessionTabsStore?.getTabIdForSession?.(targetSessionId) : null)
-        ?? window.__sessionTabsStore?.getActiveTabId?.()
+        ?? (targetSessionId ? getTabStore().findIdBySession(targetSessionId) : null)
+        ?? getTabStore().getActiveTabId()
         ?? null;
       const isForeground = !targetSessionId
-        || !window.__sessionTabsStore
-        || window.__sessionTabsStore.isActiveSession(targetSessionId);
+        || getTabStore().size() === 0
+        || getTabStore().isActiveSession(targetSessionId);
       // Record the result before the foreground check: a compact that finishes
       // in a background tab must still show its success pill when the user
       // switches back.
@@ -924,11 +916,11 @@ const App = () => {
     };
     const onCompactError = (targetSessionId?: string, detail?: string) => {
       const ownerTabId = targetSessionId
-        ? window.__sessionTabsStore?.getTabIdForSession?.(targetSessionId) ?? null
-        : window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+        ? getTabStore().findIdBySession(targetSessionId) ?? null
+        : getTabStore().getActiveTabId() ?? null;
       const isForeground = !targetSessionId
-        || !window.__sessionTabsStore
-        || window.__sessionTabsStore.isActiveSession(targetSessionId);
+        || getTabStore().size() === 0
+        || getTabStore().isActiveSession(targetSessionId);
       applyCompactNotice(ownerTabId, { status: 'failure', detail, at: Date.now() });
       if (!isForeground) {
         return;
@@ -1074,7 +1066,7 @@ const App = () => {
     setIsCompacting(true);
     setCompactingStartTime(startedAt);
     setTabCompacting(
-      compactSessionId ? window.__sessionTabsStore?.getTabIdForSession?.(compactSessionId) : null,
+      compactSessionId ? getTabStore().findIdBySession(compactSessionId) : null,
       true,
       startedAt,
     );

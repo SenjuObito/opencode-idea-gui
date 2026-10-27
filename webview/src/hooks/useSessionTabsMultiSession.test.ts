@@ -5,7 +5,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { useSessionTabs } from './useSessionTabs';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeMessage } from '../types';
-import { resetTabStore } from '../store/tabStore';
+import { getTabStore, resetTabStore } from '../store/tabStore';
 
 const bridgeMocks = vi.hoisted(() => ({
   sendBridgeEvent: vi.fn(),
@@ -52,9 +52,8 @@ vi.mock('../utils/bridge', async (importOriginal) => {
       sessionId: string | null | undefined,
       payload: Record<string, unknown> = {},
     ) => {
-      const tabId = sessionId
-        ? window.__sessionTabsStore?.getTabIdForSession?.(sessionId)
-        : window.__sessionTabsStore?.getActiveTabId?.();
+      const tabStore = getTabStore();
+      const tabId = sessionId ? tabStore.findIdBySession(sessionId) : tabStore.getActiveTabId();
       return emitCommand({ type, tabId, sessionId, payload });
     },
   };
@@ -69,7 +68,7 @@ vi.mock('../utils/bridge', async (importOriginal) => {
  * 的时刻出错。
  *
  * 注意：`isActiveSession` / `updateBackgroundTab` / `updateTabSessionId` 不通过
- * hook 返回值暴露，而是挂在 `window.__sessionTabsStore` 上给 bridge 回调用，
+ * hook 返回值暴露，而是由 `getTabStore()` 持有给 bridge 回调用，
  * 所以这里按生产同样的入口访问。
  */
 describe('useSessionTabs - multi-session attribution', () => {
@@ -96,18 +95,16 @@ describe('useSessionTabs - multi-session attribution', () => {
       } as any),
     );
 
-  const store = () => window.__sessionTabsStore!;
+  const store = () => getTabStore();
 
   beforeEach(() => {
     // Every test starts with an empty tab strip.
     resetTabStore();
     vi.clearAllMocks();
-    delete window.__sessionTabsStore;
     delete window.__dialogStore;
   });
 
   afterEach(() => {
-    delete window.__sessionTabsStore;
     delete window.__dialogStore;
   });
 
@@ -156,7 +153,7 @@ describe('useSessionTabs - multi-session attribution', () => {
     let stored: boolean | undefined;
     act(() => {
       stored = store().updateBackgroundTab(
-        (t) => t.sessionId === 'ses_a',
+        'ses_a',
         (t) => {
           t.pendingPermissions = [{ channelId: 'per_a1' } as any];
         },
@@ -179,7 +176,7 @@ describe('useSessionTabs - multi-session attribution', () => {
     let stored: boolean | undefined;
     act(() => {
       stored = store().updateBackgroundTab(
-        (t) => t.sessionId === 'ses_unknown',
+        'ses_unknown',
         (t) => {
           t.pendingPermissions = [{ channelId: 'nope' } as any];
         },
@@ -204,7 +201,7 @@ describe('useSessionTabs - multi-session attribution', () => {
     let stored: boolean | undefined;
     act(() => {
       stored = store().updateBackgroundTab(
-        (t) => t.id === 'tab-1',
+        'tab-1',
         (t) => {
           t.loading = true;
         },
@@ -226,7 +223,7 @@ describe('useSessionTabs - multi-session attribution', () => {
     const newTabId = result.current.tabs[result.current.tabs.length - 1].id;
 
     act(() => {
-      store().closeTabBySessionId!('ses_a');
+      store().closeTabBySessionId('ses_a');
     });
 
     // 关掉的是 ses_a 那个 tab，另一个 tab 原样留下
@@ -336,18 +333,16 @@ describe('useSessionTabs - history session loading', () => {
     return { ...view, loadHistorySession, setMessages };
   };
 
-  const store = () => window.__sessionTabsStore!;
+  const store = () => getTabStore();
 
   beforeEach(() => {
     // Every test starts with an empty tab strip.
     resetTabStore();
     vi.clearAllMocks();
-    delete window.__sessionTabsStore;
     delete window.__dialogStore;
   });
 
   afterEach(() => {
-    delete window.__sessionTabsStore;
     delete window.__dialogStore;
   });
 
@@ -421,7 +416,7 @@ describe('useSessionTabs - history session loading', () => {
     // 两个后台/前台快照各自写各自的 tab
     act(() => {
       store().updateBackgroundTab(
-        (t) => t.sessionId === 'ses_h1',
+        'ses_h1',
         (t) => {
           t.messages = [{ type: 'user', content: 'H1 question' }] as ClaudeMessage[];
         },
@@ -429,7 +424,7 @@ describe('useSessionTabs - history session loading', () => {
     });
     act(() => {
       store().updateBackgroundTab(
-        (t) => t.sessionId === 'ses_h2',
+        'ses_h2',
         (t) => {
           t.messages = [{ type: 'user', content: 'H2 question' }] as ClaudeMessage[];
         },
@@ -735,7 +730,7 @@ describe('useSessionTabs - history session loading', () => {
 
     // A title for a session this tab is not bound to must be ignored.
     act(() => {
-      window.__sessionTabsStore!.updateTabTitle('ses_new_123', 'AI生成的标题');
+      getTabStore().updateTabTitle('ses_new_123', 'AI生成的标题');
     });
 
     expect(result.current.tabs[0].title).toBe('新会话');
@@ -743,10 +738,10 @@ describe('useSessionTabs - history session loading', () => {
 
     // Once the tab is bound, titles for that session apply normally.
     act(() => {
-      window.__sessionTabsStore!.updateTabSessionId('tab-1', 'ses_new_123');
+      getTabStore().updateTabSessionId('tab-1', 'ses_new_123');
     });
     act(() => {
-      window.__sessionTabsStore!.updateTabTitle('ses_new_123', '更新后的标题');
+      getTabStore().updateTabTitle('ses_new_123', '更新后的标题');
     });
     expect(result.current.tabs[0].title).toBe('更新后的标题');
   });

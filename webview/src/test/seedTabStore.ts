@@ -26,3 +26,14 @@ export function seedTabStore(tabs: SeedTab[], activeTabId: string): void {
 export function clearTabStore(): void {
   resetTabStore();
 }
+
+/**
+ * Let the store answer "which session is on screen" the way the tab strip does.
+ *
+ * <p>Production binds the same ref through {@code useTabBarState}; a test that
+ * simulates a session switch without mounting the strip needs the binding to
+ * keep {@code isActiveSession} truthful.</p>
+ */
+export function bindTabStoreSession(getCurrentSessionId: () => string | null): void {
+  getTabStore().bindView({ getCurrentSessionId });
+}

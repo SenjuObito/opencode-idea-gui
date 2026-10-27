@@ -3,7 +3,7 @@ import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
 import { sendHostCommand, sendSessionCommand, sendInterrupt, sendWindowCommand, cardDebugLog } from '../utils/bridge';
 import { getTabStore } from '../store/tabStore';
-import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
+import { beginTransition, endTransition, isTabTransitioning } from './windowCallbacks/tabTransition';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
 type ViewMode = 'chat' | 'history' | 'settings';
@@ -301,7 +301,7 @@ export function useSessionManagement({
         return;
       }
       cardDebugLog('[SessionManagement] same session soft reload, sending load_session');
-      cardDebugLog('[SessionManagement] BEFORE: tab transition=', window.__sessionTabsStore?.isTabTransitioning?.(getTabStore().getActiveTabId()), 'softReload=', window.__softSessionReloadInFlight);
+      cardDebugLog('[SessionManagement] BEFORE: tab transition=', isTabTransitioning(getTabStore().getActiveTabId()), 'softReload=', window.__softSessionReloadInFlight);
       // Set transition guard so backend's clearMessages (from restoreMessages)
       // won't reset sessionLoading to false before messages arrive — prevents
       // the empty-state flash that occurs when the tab is not transitioning.
@@ -342,7 +342,7 @@ export function useSessionManagement({
     // corrupting the visible transcript.
     const activeTabId = getTabStore().getActiveTabId();
     if (activeTabId) {
-      window.__sessionTabsStore?.updateTabSessionId?.(activeTabId, sessionId);
+      getTabStore().updateTabSessionId(activeTabId, sessionId);
     }
     beginSessionTransition(sessionId, session?.title ?? null);
     // The command names the session; the tab is the tab that shows it.
@@ -376,9 +376,7 @@ export function useSessionManagement({
       });
 
       // Close open tab associated with deleted session
-      if (window.__sessionTabsStore) {
-        window.__sessionTabsStore.closeTabBySessionId?.(sessionId);
-      }
+      getTabStore().closeTabBySessionId(sessionId);
 
       // If deleted session is current session, clear messages and reset state
       if (sessionId === currentSessionId) {
@@ -386,7 +384,7 @@ export function useSessionManagement({
         if (loading) {
           sendInterrupt();
         }
-        if (!window.__sessionTabsStore) {
+        if (getTabStore().size() === 0) {
           beginSessionTransition(null, null);
           startedSessionTransition = true;
           // Set flag to suppress next updateStatus toast
@@ -432,17 +430,15 @@ export function useSessionManagement({
       });
 
       // Close open tab(s) associated with deleted session(s)
-      if (window.__sessionTabsStore) {
-        for (const sid of uniqueSessionIds) {
-          window.__sessionTabsStore.closeTabBySessionId?.(sid);
-        }
+      for (const sid of uniqueSessionIds) {
+        getTabStore().closeTabBySessionId(sid);
       }
 
       if (currentSessionId && deletedSessionIds.has(currentSessionId)) {
         if (loading) {
           sendInterrupt();
         }
-        if (!window.__sessionTabsStore) {
+        if (getTabStore().size() === 0) {
           beginSessionTransition(null, null);
           startedSessionTransition = true;
           suppressNextStatusToastRef.current = true;

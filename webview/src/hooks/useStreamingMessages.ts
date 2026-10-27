@@ -1,5 +1,6 @@
 import { useRef, type MutableRefObject } from 'react';
 import type { ClaudeMessage } from '../types';
+import { getTabStore } from '../store/tabStore';
 
 /** A single block inside `raw.message.content`. */
 interface ContentBlock {
@@ -75,7 +76,7 @@ interface StreamingRuntime {
 const FALLBACK_TAB_KEY = '__default__';
 
 function activeTabKey(): string {
-  return window.__sessionTabsStore?.getActiveTabId?.() || FALLBACK_TAB_KEY;
+  return getTabStore().getActiveTabId() || FALLBACK_TAB_KEY;
 }
 
 function createRuntime(): StreamingRuntime {

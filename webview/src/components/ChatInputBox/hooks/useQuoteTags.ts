@@ -13,6 +13,7 @@ import {
   getVirtualCursorPosition,
   setVirtualCursorPosition,
 } from '../utils/virtualCursorUtils.js';
+import { getTabStore } from '../../../store/tabStore';
 
 interface UseQuoteTagsOptions {
   editableRef: React.RefObject<HTMLDivElement | null>;
@@ -99,7 +100,7 @@ export function useQuoteTags({ editableRef }: UseQuoteTagsOptions): UseQuoteTags
     // Collect preserved IDs from background tab drafts so tab switching doesn't prune them
     const preservedIds = new Set<string>();
     try {
-      const drafts = window.__sessionTabsStore?.getDrafts?.() ?? [];
+      const drafts = getTabStore().getDrafts() ?? [];
       for (const draft of drafts) {
         if (draft.quotes) {
           for (const qId of Object.keys(draft.quotes)) {

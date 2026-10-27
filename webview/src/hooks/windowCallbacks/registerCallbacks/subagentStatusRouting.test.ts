@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerWindowCallbacks } from '../registerCallbacks';
 import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
+import { getTabStore } from '../../../store/tabStore';
+import { seedTabStore } from '../../../test/seedTabStore';
 
 type Ref<T> = { current: T };
 const ref = <T,>(value: T): Ref<T> => ({ current: value });
@@ -20,17 +22,13 @@ const payload = (toolUseId: string, status: string, extra: Record<string, unknow
 
 describe('subagent run status routing', () => {
   let setTaskEvents: ReturnType<typeof vi.fn>;
-  let updateBackgroundTab: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    delete (window as any).__sessionTabsStore;
     setTaskEvents = vi.fn();
-    updateBackgroundTab = vi.fn();
-
-    (window as any).__sessionTabsStore = {
-      isActiveSession: (sessionId: string) => sessionId === 'ses_active',
-      updateBackgroundTab,
-    };
+    seedTabStore([
+      { id: 'tab-active', sessionId: 'ses_active' },
+      { id: 'tab-bg', sessionId: 'ses_bg' },
+    ], 'tab-active');
 
     const options = {
       currentSessionIdRef: ref<string | null>('ses_active'),
@@ -51,7 +49,6 @@ describe('subagent run status routing', () => {
     // depends on transcript timing.
     hostEventHandler('subagent.status')?.(payload('call_inline', 'completed'));
 
-    expect(updateBackgroundTab).not.toHaveBeenCalled();
     expect(setTaskEvents).toHaveBeenCalledTimes(1);
     const updater = setTaskEvents.mock.calls[0][0] as (prev: Record<string, any>) => Record<string, any>;
     const next = updater({});
@@ -76,23 +73,12 @@ describe('subagent run status routing', () => {
     );
 
     expect(setTaskEvents).not.toHaveBeenCalled();
-    expect(updateBackgroundTab).toHaveBeenCalledTimes(1);
-
-    const [predicate, updater] = updateBackgroundTab.mock.calls[0] as [
-      (tab: { sessionId?: string }) => boolean,
-      (tab: Record<string, any>) => void,
-    ];
-    expect(predicate({ sessionId: 'ses_bg' })).toBe(true);
-    expect(predicate({ sessionId: 'ses_active' })).toBe(false);
-
-    const tab: Record<string, any> = { sessionId: 'ses_bg', taskEvents: {} };
-    updater(tab);
-    expect(tab.taskEvents.call_bg).toMatchObject({ toolUseId: 'call_bg', status: 'completed' });
+    const background = getTabStore().findById('tab-bg') as Record<string, any>;
+    expect(background.taskEvents.call_bg).toMatchObject({ toolUseId: 'call_bg', status: 'completed' });
   });
 
   it('ignores a malformed status payload', () => {
     expect(() => hostEventHandler('subagent.status')?.({ subagent: '{not json' })).not.toThrow();
     expect(setTaskEvents).not.toHaveBeenCalled();
-    expect(updateBackgroundTab).not.toHaveBeenCalled();
   });
 });

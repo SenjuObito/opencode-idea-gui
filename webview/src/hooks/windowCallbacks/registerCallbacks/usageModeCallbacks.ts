@@ -90,18 +90,11 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         if (targetTabId) {
           if (!tabStore.isActiveTab(targetTabId)) {
             tabStore.updateTab(targetTabId, applyUsage);
-            window.__sessionTabsStore?.updateTab?.(targetTabId, applyUsage);
             return;
           }
         } else if (targetSessionId) {
-          const isBackground = (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-            (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
-          if (isBackground) {
+          if (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) {
             tabStore.updateBackgroundTab(targetSessionId, applyUsage);
-            window.__sessionTabsStore?.updateBackgroundTab?.(
-              (t) => t.sessionId === targetSessionId,
-              applyUsage
-            );
             return;
           }
         }
@@ -115,12 +108,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
 
         if (targetSessionId) {
           tabStore.updateBackgroundTab(targetSessionId, applyUsage);
-        }
-        if (window.__sessionTabsStore) {
-          window.__sessionTabsStore.updateBackgroundTab(
-            (t) => t.sessionId === targetSessionId,
-            applyUsage
-          );
         }
       }
     } catch (error) {

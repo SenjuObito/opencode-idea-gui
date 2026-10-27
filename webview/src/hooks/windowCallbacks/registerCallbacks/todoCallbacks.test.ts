@@ -4,6 +4,8 @@ import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { TodoItem } from '../../../types';
 import { sessionEvent } from '../../../utils/testEvents';
+import { getTabStore } from '../../../store/tabStore';
+import { seedTabStore } from '../../../test/seedTabStore';
 
 type Ref<T> = { current: T };
 const ref = <T,>(value: T): Ref<T> => ({ current: value });
@@ -11,21 +13,14 @@ const ref = <T,>(value: T): Ref<T> => ({ current: value });
 describe('todos.updated', () => {
   let setSseTodos: ReturnType<typeof vi.fn>;
   let currentSessionIdRef: Ref<string | null>;
-  let updateBackgroundTab: ReturnType<typeof vi.fn>;
-  let isActiveSession: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    delete (window as any).__sessionTabsStore;
-
     setSseTodos = vi.fn();
     currentSessionIdRef = ref<string | null>('ses_active');
-    updateBackgroundTab = vi.fn();
-    isActiveSession = vi.fn((sid: string | null | undefined) => sid === 'ses_active');
-
-    (window as any).__sessionTabsStore = {
-      isActiveSession,
-      updateBackgroundTab,
-    };
+    seedTabStore([
+      { id: 'tab-active', sessionId: 'ses_active' },
+      { id: 'tab-bg', sessionId: 'ses_bg' },
+    ], 'tab-active');
 
     const options = {
       currentSessionIdRef,
@@ -102,15 +97,9 @@ describe('todos.updated', () => {
     hostEventHandler('todos.updated')!(...sessionEvent('ses_bg', { todos: payload }));
 
     expect(setSseTodos).not.toHaveBeenCalled();
-    expect(updateBackgroundTab).toHaveBeenCalledTimes(1);
-
-    // Verify predicate and updater
-    const tabObj: any = { sessionId: 'ses_bg', sseTodos: null };
-    const [predicate, updater] = updateBackgroundTab.mock.calls[0];
-    expect(predicate(tabObj)).toBe(true);
-    updater(tabObj);
-    expect(tabObj.sseTodos).toHaveLength(1);
-    expect(tabObj.sseTodos[0].content).toBe('Bg Task');
+    const background = getTabStore().findById('tab-bg');
+    expect(background?.sseTodos).toHaveLength(1);
+    expect(background?.sseTodos?.[0].content).toBe('Bg Task');
   });
 
   it('silently ignores non-array todos without throwing', () => {

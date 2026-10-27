@@ -19,6 +19,8 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import { hostEventHandler } from '../../../utils/hostEventRegistry';
 import { sessionEvent } from '../../../utils/testEvents';
+import { getTabStore } from '../../../store/tabStore';
+import { seedTabStore } from '../../../test/seedTabStore';
 
 type Ref<T> = { current: T };
 const ref = <T,>(value: T): Ref<T> => ({ current: value });
@@ -70,7 +72,7 @@ function createHarness() {
 
 describe('onTurnEnd — session-scoped, idempotent terminal', () => {
   beforeEach(() => {
-    delete window.__sessionTabsStore;
+    seedTabStore([{ id: 'tab-a', sessionId: 'ses_a' }], 'tab-a');
     window.__deniedToolIds = undefined;
   });
 
@@ -113,6 +115,9 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
   });
 
   it('does not confuse two sessions that use the same turnId', () => {
+    // No tab strip: both sessions are foreground, so the only thing that can
+    // suppress the second terminal is a key missing the session id.
+    seedTabStore([], '');
     const h = createHarness();
 
     hostEventHandler('turn.settled')!(...sessionEvent('ses_a', { terminal: JSON.stringify({ turnId: 7 }) }));
@@ -123,15 +128,15 @@ describe('onTurnEnd — session-scoped, idempotent terminal', () => {
 
   it('routes to a background tab when that session is not the active one', () => {
     const h = createHarness();
-    const updateBackgroundTab = vi.fn(() => true);
-    window.__sessionTabsStore = {
-      isActiveSession: (id: string | null | undefined) => id !== 'ses_bg',
-      updateBackgroundTab,
-    } as unknown as typeof window.__sessionTabsStore;
+    seedTabStore([
+      { id: 'tab-a', sessionId: 'ses_a' },
+      { id: 'tab-bg', sessionId: 'ses_bg' },
+    ], 'tab-a');
 
     hostEventHandler('turn.settled')!(...sessionEvent('ses_bg', { terminal: JSON.stringify({ turnId: 3 }) }));
 
-    expect(updateBackgroundTab).toHaveBeenCalledTimes(1);
+    expect(getTabStore().findById('tab-bg')?.streamingActive).toBe(false);
+    expect(getTabStore().findById('tab-bg')?.loading).toBe(false);
     // And the active session's own state must be left alone.
     expect(h.setLoading).not.toHaveBeenCalled();
   });

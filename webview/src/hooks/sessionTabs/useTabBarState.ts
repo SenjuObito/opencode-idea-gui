@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { SessionTabData } from '../../components/ChatHeader/types';
 import type { TabType } from '../../components/StatusPanel/types';
 import { getTabStore } from '../../store/tabStore';
 import { TabMessageStore } from '../../store/tabMessageStore';
@@ -200,169 +199,25 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     compactingStartTime,
   ]);
 
-  const isActiveSession = useCallback((sessionId: string | null | undefined): boolean => {
-    if (!sessionId) return false;
-    const currentActive = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
-    const viewSessionId = currentSessionIdRef?.current;
-    if (viewSessionId) {
-      if (viewSessionId === sessionId) return true;
-      return !!currentActive && currentActive.id === sessionId;
-    }
-    if (!currentActive) return false;
-    if (currentActive.id === sessionId) return true;
-    return currentActive.sessionId === sessionId;
-  }, [currentSessionIdRef]);
-
-  const updateBackgroundTab = useCallback((
-    predicate: (tab: SessionTabData) => boolean,
-    updater: (tab: SessionTabData) => void
-  ): boolean => {
-    const snapshot = tabsRef.current;
-    let matchedId: string | null = null;
-    for (let i = 0; i < snapshot.length; i++) {
-      if (predicate(snapshot[i])) {
-        matchedId = snapshot[i].id;
-        break;
-      }
-    }
-    if (matchedId === null) {
-      return false;
-    }
-    const targetId = matchedId;
-    setTabs((prev) => {
-      const idx = prev.findIndex((t) => t.id === targetId);
-      if (idx === -1) return prev;
-      const next = prev.slice();
-      const clone = { ...next[idx] };
-      updater(clone);
-      next[idx] = clone;
-      return next;
-    });
-    return true;
-  }, [setTabs]);
-
-  const updateTab = useCallback((tabId: string, updater: (tab: SessionTabData) => void): boolean => {
-    if (!tabId) return false;
-    const matched = tabsRef.current.some((tab) => tab.id === tabId);
-    if (!matched) return false;
-    setTabs((prev) => {
-      const idx = prev.findIndex((tab) => tab.id === tabId);
-      if (idx === -1) return prev;
-      const next = prev.slice();
-      const clone = { ...next[idx] };
-      updater(clone);
-      next[idx] = clone;
-      return next;
-    });
-    return true;
-  }, [setTabs]);
-
-  const updateAllTabs = useCallback((updater: (tab: SessionTabData) => void) => {
-    setTabs((prev) => prev.map((tab) => {
-      const clone = { ...tab };
-      updater(clone);
-      return clone;
-    }));
-  }, [setTabs]);
-
-  const getTabIdForSession = useCallback((sessionId: string | null | undefined): string | null => {
-    if (!sessionId) return null;
-    const match = tabsRef.current.find(
-      (tab) => tab.sessionId === sessionId || tab.id === sessionId,
-    );
-    return match?.id ?? null;
-  }, []);
-
-  const isActiveTab = useCallback((tabId: string | null | undefined): boolean => {
-    return !!tabId && tabId === activeTabIdRef.current;
-  }, []);
-
-  const updateTabSessionId = useCallback((tabId: string, sessionId: string) => {
-    setTabs((prev) =>
-      prev.map((tab) => {
-        if (tab.id === tabId || tab.sessionId === tabId) {
-          return { ...tab, sessionId };
-        }
-        return tab;
-      })
-    );
-    if (activeTabIdRef.current === tabId) {
-      setCurrentSessionId?.(sessionId);
-    }
-  }, [setTabs, setCurrentSessionId]);
-
-  const updateTabTitle = useCallback(
-    (sessionId: string, newTitle: string, tabId?: string | null) => {
-      const trimmed = newTitle?.trim();
-      if (!trimmed || !sessionId) return;
-      const target = tabId
-        ? tabsRef.current.find((t) => t.id === tabId)
-        : tabsRef.current.find((t) => t.sessionId === sessionId);
-      if (!target) return;
-      setTabs((prev) =>
-        prev.map((tab) => (tab.id === target.id ? { ...tab, title: trimmed } : tab))
-      );
-      target.title = trimmed;
-      if (target.id === activeTabIdRef.current) {
-        setCustomSessionTitle(trimmed);
-      }
-    },
-    [setTabs, setCustomSessionTitle]
-  );
-
-  const clearStreamingRuntimeFor = useCallback((sessionId: string) => {
-    const owner = getTabIdForSession(sessionId);
-    if (owner) deleteTabRuntime?.(owner);
-  }, [getTabIdForSession, deleteTabRuntime]);
-
   const closeTabRef = useRef<(tabId: string) => void>(() => {});
-  const closeTabBySessionId = useCallback((sessionId: string) => {
-    if (!sessionId) return;
-    const target = tabsRef.current.find((t) => t.sessionId === sessionId);
-    if (target) {
-      closeTabRef.current(target.id);
-    }
-  }, []);
-
   useEffect(() => {
-    window.__sessionTabsStore = {
-      getActiveTabId: () => activeTabIdRef.current,
-      getActiveSessionId: () => {
-        if (currentSessionIdRef?.current) return currentSessionIdRef.current;
-        const cur = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
-        return cur?.sessionId ?? null;
-      },
-      getActiveTabAutoOpenFileEnabled: () => {
-        const cur = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
-        return cur?.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
-      },
-      getTabs: () => tabsRef.current,
+    // The store calls back into the view for the effects of a tab change; there
+    // is no window-level mirror. bindView keeps the latest closures, so an
+    // update always sees the current state setters.
+    tabStore.bindView({
+      setCurrentSessionId,
+      setCustomSessionTitle,
+      deleteTabRuntime,
+      closeTab: (tabId: string) => closeTabRef.current(tabId),
       getDrafts: () => draftStore.getAll(),
-      isActiveSession,
-      isActiveTab,
-      getTabIdForSession,
-      updateTab,
-      updateAllTabs,
-      updateBackgroundTab,
-      updateTabSessionId,
-      updateTabTitle,
-      closeTabBySessionId,
-      clearStreamingRuntimeFor,
-    };
-    return () => {
-      delete window.__sessionTabsStore;
-    };
+      getCurrentSessionId: () => currentSessionIdRef?.current ?? null,
+      defaultAutoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
+    });
   }, [
-    isActiveSession,
-    isActiveTab,
-    getTabIdForSession,
-    updateTab,
-    updateAllTabs,
-    updateBackgroundTab,
-    updateTabSessionId,
-    updateTabTitle,
-    closeTabBySessionId,
-    clearStreamingRuntimeFor,
+    tabStore,
+    setCurrentSessionId,
+    setCustomSessionTitle,
+    deleteTabRuntime,
     draftStore,
     currentSessionIdRef,
     defaultAutoOpenFileEnabled,
@@ -443,16 +298,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     setTabs,
     setActiveTabId,
     closeTabRef,
-    isActiveSession,
-    isActiveTab,
-    getTabIdForSession,
-    updateTab,
-    updateAllTabs,
-    updateBackgroundTab,
-    updateTabSessionId,
-    updateTabTitle,
-    closeTabBySessionId,
-    clearStreamingRuntimeFor,
     renameTab,
     reorderTabs,
     activeTabAutoOpenFileEnabled,

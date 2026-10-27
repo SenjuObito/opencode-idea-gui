@@ -6,6 +6,8 @@ import type { UseWindowCallbacksOptions } from './useWindowCallbacks.js';
 import type { ClaudeMessage } from '../types/index.js';
 import { boundEvent, deltaEvent, sessionEvent, snapshotEvent, tailEvent } from '../utils/testEvents';
 import { hostEventHandler } from '../utils/hostEventRegistry';
+import { getTabStore, resetTabStore } from '../store/tabStore';
+import { seedTabStore } from '../test/seedTabStore';
 
 /**
  * Integration tests for useWindowCallbacks — verifies the real window callback
@@ -111,6 +113,10 @@ describe('useWindowCallbacks integration', () => {
     (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.filter(([payload]) => isHistoryCommit(payload));
 
   beforeEach(() => {
+    // Every test starts with an empty tab strip: routing reads the store, so a
+    // tab left behind by an earlier test would make a foreground session look
+    // like a background one.
+    resetTabStore();
     endTransition('tab-active');
     endTransition('tab-new');
     window.__minAcceptedUpdateSequence = 0;
@@ -128,7 +134,6 @@ describe('useWindowCallbacks integration', () => {
     delete (window as unknown as Record<string, unknown>).__pendingDependencyStatus;
     delete window.__CCGUI_RECOVERY_STATE_APPLIED__;
     delete window.__lastAcceptedMessageCount;
-    delete window.__sessionTabsStore;
     delete window.__pendingHistoryRefreshMessageCount;
     delete window.__historySurfaceRefreshEpoch;
     window.__dependencyStatusState = 'pending';
@@ -172,20 +177,10 @@ describe('useWindowCallbacks integration', () => {
   });
 
   it('routes a background session usage update to its own tab only', () => {
-    const updateBackgroundTab = vi.fn((pred: (tab: any) => boolean, updater: (tab: any) => void) => {
-      const tab = { id: 'tab-bg', sessionId: 'session-bg' };
-      if (pred(tab)) { updater(tab); return true; }
-      return false;
-    });
-    window.__sessionTabsStore = {
-      getActiveTabId: () => 'tab-active',
-      getActiveSessionId: () => 'session-active',
-      getTabs: () => [],
-      isActiveSession: (sid) => sid === 'session-active',
-      updateBackgroundTab,
-      updateTabSessionId: vi.fn(),
-      updateTabTitle: vi.fn(),
-    };
+    seedTabStore([
+      { id: 'tab-active', sessionId: 'session-active' },
+      { id: 'tab-bg', sessionId: 'session-bg' },
+    ], 'tab-active');
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
@@ -197,12 +192,14 @@ describe('useWindowCallbacks integration', () => {
       }) }));
     });
 
-    expect(updateBackgroundTab).toHaveBeenCalledTimes(1);
+    const background = getTabStore().findById('tab-bg');
+    expect(background?.usagePercentage).toBe(1);
+    expect(background?.usageUsedTokens).toBe(2000);
+    expect(background?.usageMaxTokens).toBe(200000);
     expect(opts.setUsagePercentage).not.toHaveBeenCalled();
     expect(opts.setUsageUsedTokens).not.toHaveBeenCalled();
     expect(opts.setUsageMaxTokens).not.toHaveBeenCalled();
 
-    delete window.__sessionTabsStore;
   });
 
   it('drops usage updates that carry no session id', () => {
@@ -229,7 +226,6 @@ describe('useWindowCallbacks integration', () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     delete window.__codexHistoryPageInfo;
-    delete window.__sessionTabsStore;
   });
 
   /**
@@ -250,15 +246,7 @@ describe('useWindowCallbacks integration', () => {
 
   // A tab id is needed to place a transition: the guard belongs to a tab.
   const withActiveTab = (tabId = 'tab-active') => {
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => tabId,
-      getActiveSessionId: () => 'session-active',
-      getTabs: () => [{ id: tabId, sessionId: 'session-active' }],
-      isActiveSession: (sid: string | null | undefined) => sid === 'session-active',
-      updateTabSessionId: vi.fn(),
-      updateTabTitle: vi.fn(),
-      updateBackgroundTab: vi.fn(),
-    } as any;
+    seedTabStore([{ id: tabId, sessionId: 'session-active' }], tabId);
   };
 
   // ===== historyLoadComplete releases transition guard ========
@@ -361,11 +349,7 @@ describe('useWindowCallbacks integration', () => {
   // ===== setSessionId releases transition guard =====
 
   it('setSessionId releases the tab transition guard', () => {
-    window.__sessionTabsStore = {
-      getActiveTabId: () => 'tab-new',
-      getTabs: () => [{ id: 'tab-new', sessionId: null }],
-      updateTabSessionId: vi.fn(),
-    } as any;
+    seedTabStore([{ id: 'tab-new', sessionId: null }], 'tab-new');
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
@@ -378,20 +362,16 @@ describe('useWindowCallbacks integration', () => {
 
     expect(isTabTransitioning('tab-new')).toBe(false);
     expect(transitionTokenFor('tab-new')).toBeNull();
+    expect(getTabStore().findById('tab-new')?.sessionId).toBe('new-session-123');
     expect(opts.setCurrentSessionId).toHaveBeenCalledWith('new-session-123');
   });
 
   it('setSessionId for a background tab rebinds that tab without hijacking the active view', () => {
-    const updateTabSessionId = vi.fn();
     const activeRef = { current: 'sess-active' };
-    window.__sessionTabsStore = {
-      getActiveTabId: () => 'tab-active',
-      getTabs: () => [
-        { id: 'tab-active', sessionId: 'sess-active' },
-        { id: 'tab-bg', sessionId: null },
-      ],
-      updateTabSessionId,
-    } as any;
+    seedTabStore([
+      { id: 'tab-active', sessionId: 'sess-active' },
+      { id: 'tab-bg', sessionId: null },
+    ], 'tab-active');
     const opts = createOptions({ currentSessionIdRef: activeRef });
     renderHook(() => useWindowCallbacks(opts));
 
@@ -399,22 +379,17 @@ describe('useWindowCallbacks integration', () => {
       hostEventHandler('session.bound')!(...boundEvent('sess-bg', undefined, 'tab-bg'));
     });
 
-    expect(updateTabSessionId).toHaveBeenCalledWith('tab-bg', 'sess-bg');
+    expect(getTabStore().findById('tab-bg')?.sessionId).toBe('sess-bg');
     expect(activeRef.current).toBe('sess-active');
     expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
   });
 
   it('setSessionId binds the explicit owning tab id before any legacy fallback', () => {
-    const updateTabSessionId = vi.fn();
     const activeRef = { current: null as string | null };
-    window.__sessionTabsStore = {
-      getActiveTabId: () => 'tab-active',
-      getTabs: () => [
-        { id: 'tab-active', sessionId: null },
-        { id: 'tab-bg', sessionId: null },
-      ],
-      updateTabSessionId,
-    } as any;
+    seedTabStore([
+      { id: 'tab-active', sessionId: null },
+      { id: 'tab-bg', sessionId: null },
+    ], 'tab-active');
     const opts = createOptions({ currentSessionIdRef: activeRef });
     renderHook(() => useWindowCallbacks(opts));
 
@@ -422,19 +397,14 @@ describe('useWindowCallbacks integration', () => {
       hostEventHandler('session.bound')!(...boundEvent('sess-bg', undefined, 'tab-bg'));
     });
 
-    expect(updateTabSessionId).toHaveBeenCalledWith('tab-bg', 'sess-bg');
+    expect(getTabStore().findById('tab-bg')?.sessionId).toBe('sess-bg');
     expect(activeRef.current).toBeNull();
     expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
   });
 
   it('setSessionId does not adopt the active draft when the explicit tab id is unknown', () => {
-    const updateTabSessionId = vi.fn();
     const activeRef = { current: null as string | null };
-    window.__sessionTabsStore = {
-      getActiveTabId: () => 'tab-active',
-      getTabs: () => [{ id: 'tab-active', sessionId: null }],
-      updateTabSessionId,
-    } as any;
+    seedTabStore([{ id: 'tab-active', sessionId: null }], 'tab-active');
     const opts = createOptions({ currentSessionIdRef: activeRef });
     renderHook(() => useWindowCallbacks(opts));
 
@@ -442,19 +412,14 @@ describe('useWindowCallbacks integration', () => {
       hostEventHandler('session.bound')!(...boundEvent('sess-unknown', undefined, 'tab-missing'));
     });
 
-    expect(updateTabSessionId).not.toHaveBeenCalled();
+    expect(getTabStore().findById('tab-active')?.sessionId).toBeNull();
     expect(activeRef.current).toBeNull();
     expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
   });
 
   it('setSessionId drops an identity no tab claims instead of switching the active session', () => {
-    const updateTabSessionId = vi.fn();
     const activeRef = { current: 'sess-active' };
-    window.__sessionTabsStore = {
-      getActiveTabId: () => 'tab-active',
-      getTabs: () => [{ id: 'tab-active', sessionId: 'sess-active' }],
-      updateTabSessionId,
-    } as any;
+    seedTabStore([{ id: 'tab-active', sessionId: 'sess-active' }], 'tab-active');
     const opts = createOptions({ currentSessionIdRef: activeRef });
     renderHook(() => useWindowCallbacks(opts));
 
@@ -463,7 +428,7 @@ describe('useWindowCallbacks integration', () => {
       hostEventHandler('session.bound')!(...boundEvent('sess-unknown', 'sess-other'));
     });
 
-    expect(updateTabSessionId).not.toHaveBeenCalled();
+    expect(getTabStore().findById('tab-active')?.sessionId).toBe('sess-active');
     expect(activeRef.current).toBe('sess-active');
     expect(opts.setCurrentSessionId).not.toHaveBeenCalled();
     // An unattributable identity notification must not release the guard.
@@ -540,11 +505,7 @@ describe('useWindowCallbacks integration', () => {
 
   it('setSessionId with title > 50 chars uses applyHistoryTitleLocal to avoid backend 50-char limit', () => {
     const longTitle = 'A very long AI-generated session title that exceeds fifty characters easily';
-    window.__sessionTabsStore = {
-      getActiveTabId: () => 'tab-new',
-      getTabs: () => [{ id: 'tab-new', sessionId: null }],
-      updateTabSessionId: vi.fn(),
-    } as any;
+    seedTabStore([{ id: 'tab-new', sessionId: null }], 'tab-new');
     const opts = createOptions({
       customSessionTitleRef: { current: longTitle },
       currentSessionIdRef: { current: 'sess-old' },
@@ -561,11 +522,7 @@ describe('useWindowCallbacks integration', () => {
 
   it('setSessionId with title <= 50 chars uses updateHistoryTitle for backend persistence', () => {
     const shortTitle = 'Short user-set title';
-    window.__sessionTabsStore = {
-      getActiveTabId: () => 'tab-new',
-      getTabs: () => [{ id: 'tab-new', sessionId: null }],
-      updateTabSessionId: vi.fn(),
-    } as any;
+    seedTabStore([{ id: 'tab-new', sessionId: null }], 'tab-new');
     const opts = createOptions({
       customSessionTitleRef: { current: shortTitle },
       currentSessionIdRef: { current: 'sess-old' },
@@ -2593,24 +2550,10 @@ describe('useWindowCallbacks integration', () => {
       renderHook(() => useWindowCallbacks(opts));
 
       // Simulate a background session 'session-bg' having a tail update with baseIndex 30
-      window.__sessionTabsStore = {
-        getActiveTabId: () => 'tab-active',
-        getActiveSessionId: () => 'session-active',
-        getActiveTabAutoOpenFileEnabled: () => false,
-        getTabs: () => [
-          { id: 'tab-active', sessionId: 'session-active', title: 'Active', messages: [], messageBaseIndex: 0, isShared: false, loading: false, streamingActive: false, pendingPermissions: [], pendingQuestions: [], autoOpenFileEnabled: false, selectedModel: '', permissionMode: 'default', reasoningEffort: 'medium', filteredFileChanges: [], contextInfo: null },
-          { id: 'tab-bg', sessionId: 'session-bg', title: 'BG', messages: [], messageBaseIndex: 0, isShared: false, loading: false, streamingActive: false, pendingPermissions: [], pendingQuestions: [], autoOpenFileEnabled: false, selectedModel: '', permissionMode: 'default', reasoningEffort: 'medium', filteredFileChanges: [], contextInfo: null },
-        ],
-        isActiveSession: (sid) => sid === 'session-active',
-        updateBackgroundTab: (pred, updater) => {
-          const tab = window.__sessionTabsStore?.getTabs().find(pred);
-          if (tab) { updater(tab); return true; }
-          return false;
-        },
-        updateTabSessionId: vi.fn(),
-        updateTabTitle: vi.fn(),
-        closeTabBySessionId: vi.fn(),
-      };
+      seedTabStore([
+        { id: 'tab-active', sessionId: 'session-active' },
+        { id: 'tab-bg', sessionId: 'session-bg' },
+      ], 'tab-active');
 
       // Background session receives tail update
       act(() => {
@@ -2637,8 +2580,7 @@ describe('useWindowCallbacks integration', () => {
       expect(buffer.current[40].content).toBe('active-tail-40');
       expect(buffer.current[41].content).toBe('active-tail-41');
 
-      delete window.__sessionTabsStore;
-    });
+      });
 
     it('shrink protection prevents active streaming messages from being wiped by empty snapshot', () => {
       const { opts, buffer } = createOptsWithMessages([

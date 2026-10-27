@@ -56,60 +56,26 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       cardDebugLog(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId} tabId=${request.tabId}`);
       const targetSessionId = request.sessionId;
       const tabStore = getTabStore();
-      const tabsStore = window.__sessionTabsStore;
       // The host stamps the owning tab: routing by tab id is exact, routing by
       // session id only finds the tab when it happens to be bound already.
       const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
 
-      let isCurrentActive = false;
-      if (targetTabId) {
-        if (tabStore.size() > 0) {
-          isCurrentActive = tabStore.isActiveTab(targetTabId);
-        } else if (tabsStore?.isActiveTab) {
-          isCurrentActive = tabsStore.isActiveTab(targetTabId);
-        }
-      } else if (targetSessionId) {
-        if (tabStore.size() > 0) {
-          isCurrentActive = tabStore.isActiveSession(targetSessionId);
-        } else if (tabsStore?.isActiveSession) {
-          isCurrentActive = tabsStore.isActiveSession(targetSessionId);
-        }
-      } else {
-        isCurrentActive = true;
-      }
+      const isCurrentActive = targetTabId
+        ? tabStore.isActiveTab(targetTabId)
+        : targetSessionId
+          ? tabStore.isActiveSession(targetSessionId)
+          : true;
 
       if (!isCurrentActive && (targetTabId || targetSessionId)) {
-        let stored = false;
-        if (targetTabId) {
-          stored = (tabStore.size() > 0 && tabStore.updateTab(targetTabId, (t: any) => {
-            const list = t.pendingPermissions || [];
-            if (!list.some((r: any) => r.channelId === request.channelId)) {
-              return { ...t, pendingPermissions: [...list, request] };
-            }
-            return t;
-          })) || (tabsStore?.updateTab?.(targetTabId, (t: any) => {
-            const list = t.pendingPermissions || [];
-            if (!list.some((r: any) => r.channelId === request.channelId)) {
-              t.pendingPermissions = [...list, request];
-            }
-          }) ?? false);
-        } else if (targetSessionId) {
-          stored = (tabStore.size() > 0 && tabStore.updateBackgroundTab(targetSessionId, (t: any) => {
-            const list = t.pendingPermissions || [];
-            if (!list.some((r: any) => r.channelId === request.channelId)) {
-              return { ...t, pendingPermissions: [...list, request] };
-            }
-            return t;
-          })) || (tabsStore?.updateBackgroundTab?.(
-            (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
-            (t) => {
-              const list = t.pendingPermissions || [];
-              if (!list.some((r: any) => r.channelId === request.channelId)) {
-                t.pendingPermissions = [...list, request];
-              }
-            }
-          ) ?? false);
-        }
+        const enqueue = (t: any) => {
+          const list = t.pendingPermissions || [];
+          if (!list.some((r: any) => r.channelId === request.channelId)) {
+            t.pendingPermissions = [...list, request];
+          }
+        };
+        const stored = targetTabId
+          ? tabStore.updateTab(targetTabId, enqueue)
+          : tabStore.updateBackgroundTab(targetSessionId, enqueue);
         if (stored) {
           return;
         }
@@ -133,8 +99,8 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   const handleForceClosePermissionDialog = (payload: HostEventPayload) => {
     const channelId = String(payload?.requestId ?? '');
     forceClosePermissionDialog(channelId || null);
-    if (channelId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.updateAllTabs?.((t) => {
+    if (channelId) {
+      getTabStore().updateAllTabs((t) => {
         if (t.pendingPermissions) {
           t.pendingPermissions = t.pendingPermissions.filter((r: any) => r.channelId !== channelId);
         }
@@ -145,8 +111,8 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   const handleForceCloseAskUserQuestionDialog = (payload: HostEventPayload) => {
     const requestId = String(payload?.requestId ?? '');
     forceCloseAskUserQuestionDialog(requestId || null);
-    if (requestId && window.__sessionTabsStore) {
-      window.__sessionTabsStore.updateAllTabs?.((t) => {
+    if (requestId) {
+      getTabStore().updateAllTabs((t) => {
         if (t.pendingQuestions) {
           t.pendingQuestions = t.pendingQuestions.filter((r: any) => r.requestId !== requestId);
         }
@@ -169,58 +135,24 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
       cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} sessionId=${request.sessionId} tabId=${request.tabId}`);
       const targetSessionId = request.sessionId;
       const tabStore = getTabStore();
-      const tabsStore = window.__sessionTabsStore;
       const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
 
-      let isCurrentActive = false;
-      if (targetTabId) {
-        if (tabStore.size() > 0) {
-          isCurrentActive = tabStore.isActiveTab(targetTabId);
-        } else if (tabsStore?.isActiveTab) {
-          isCurrentActive = tabsStore.isActiveTab(targetTabId);
-        }
-      } else if (targetSessionId) {
-        if (tabStore.size() > 0) {
-          isCurrentActive = tabStore.isActiveSession(targetSessionId);
-        } else if (tabsStore?.isActiveSession) {
-          isCurrentActive = tabsStore.isActiveSession(targetSessionId);
-        }
-      } else {
-        isCurrentActive = true;
-      }
+      const isCurrentActive = targetTabId
+        ? tabStore.isActiveTab(targetTabId)
+        : targetSessionId
+          ? tabStore.isActiveSession(targetSessionId)
+          : true;
 
       if (!isCurrentActive && (targetTabId || targetSessionId)) {
-        let stored = false;
-        if (targetTabId) {
-          stored = (tabStore.size() > 0 && tabStore.updateTab(targetTabId, (t: any) => {
-            const list = t.pendingQuestions || [];
-            if (!list.some((r: any) => r.requestId === request.requestId)) {
-              return { ...t, pendingQuestions: [...list, request] };
-            }
-            return t;
-          })) || (tabsStore?.updateTab?.(targetTabId, (t: any) => {
-            const list = t.pendingQuestions || [];
-            if (!list.some((r: any) => r.requestId === request.requestId)) {
-              t.pendingQuestions = [...list, request];
-            }
-          }) ?? false);
-        } else if (targetSessionId) {
-          stored = (tabStore.size() > 0 && tabStore.updateBackgroundTab(targetSessionId, (t: any) => {
-            const list = t.pendingQuestions || [];
-            if (!list.some((r: any) => r.requestId === request.requestId)) {
-              return { ...t, pendingQuestions: [...list, request] };
-            }
-            return t;
-          })) || (tabsStore?.updateBackgroundTab?.(
-            (t) => t.sessionId === targetSessionId || t.id === targetSessionId,
-            (t) => {
-              const list = t.pendingQuestions || [];
-              if (!list.some((r: any) => r.requestId === request.requestId)) {
-                t.pendingQuestions = [...list, request];
-              }
-            }
-          ) ?? false);
-        }
+        const enqueue = (t: any) => {
+          const list = t.pendingQuestions || [];
+          if (!list.some((r: any) => r.requestId === request.requestId)) {
+            t.pendingQuestions = [...list, request];
+          }
+        };
+        const stored = targetTabId
+          ? tabStore.updateTab(targetTabId, enqueue)
+          : tabStore.updateBackgroundTab(targetSessionId, enqueue);
         if (stored) {
           return;
         }
@@ -255,11 +187,11 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
         return;
       }
       const targetTabId = typeof request.tabId === 'string' ? request.tabId : null;
-      const tabsStore = window.__sessionTabsStore;
-      if (targetTabId && tabsStore?.isActiveTab && !tabsStore.isActiveTab(targetTabId)) {
+      const tabStore = getTabStore();
+      if (targetTabId && !tabStore.isActiveTab(targetTabId)) {
         // A background tab's plan approval waits in that tab's queue instead of
         // stealing the foreground.
-        const stored = tabsStore.updateTab?.(targetTabId, (t: any) => {
+        const stored = tabStore.updateTab(targetTabId, (t: any) => {
           const list = t.pendingPlans || [];
           if (!list.some((r: any) => r.requestId === request.requestId)) {
             t.pendingPlans = [...list, request];

@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { useMessageSender } from './useMessageSender';
 import type { UseMessageSenderOptions } from './useMessageSender';
+import { clearTabStore, seedTabStore } from '../test/seedTabStore';
 
 describe('useMessageSender - /context command', () => {
   const t = ((key: string, opts?: any) => opts?.defaultValue ?? key) as any;
@@ -57,14 +58,11 @@ describe('useMessageSender - /context command', () => {
 
   beforeEach(() => {
     window.sendToJava = vi.fn();
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => 'tab-1',
-      getActiveTabAutoOpenFileEnabled: () => false,
-    };
+    seedTabStore([{ id: 'tab-1' }], 'tab-1');
   });
 
   afterEach(() => {
-    delete (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore;
+    clearTabStore();
   });
 
   it('sends get_context_usage with base model when longContext is disabled', () => {
@@ -294,9 +292,7 @@ describe('useMessageSender - /context command', () => {
   // host: the tab has no session yet, and a stale `currentSessionId` prop must
   // not make the payload target the previous conversation.
   it('sends a new tab\'s model with tabId and no stale sessionId', () => {
-    (window as unknown as { __sessionTabsStore?: unknown }).__sessionTabsStore = {
-      getActiveTabId: () => 'tab-new',
-    };
+    seedTabStore([{ id: 'tab-new' }], 'tab-new');
     const opts = createOptions({
       selectedModel: 'opencode/new-model',
       permissionMode: 'plan',

@@ -8,6 +8,7 @@
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { endTransition } from '../tabTransition';
 import { isTabTransitioning, transitionTargetFor } from '../tabTransition';
+import { getTabStore } from '../../../store/tabStore';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
@@ -34,11 +35,11 @@ export function registerSessionCallbacks(
     const previousSessionId = payload?.previousSessionId as string | undefined;
     const tabId = env?.tabId ?? (payload?.tabId as string | undefined);
     const oldId = currentSessionIdRef.current; // legacy-allow: the view's own session, not an event attribution
-    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', isTabTransitioning(window.__sessionTabsStore?.getActiveTabId?.()));
+    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'previousSessionId:', previousSessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', isTabTransitioning(getTabStore().getActiveTabId()));
 
-    const tabsStore = window.__sessionTabsStore;
-    const tabs = tabsStore?.getTabs?.() || [];
-    const activeTabId = tabsStore?.getActiveTabId?.();
+    const tabStore = getTabStore();
+    const tabs = tabStore.getTabs();
+    const activeTabId = tabStore.getActiveTabId();
     const activeTab = tabs.find((t) => t.id === activeTabId);
 
     // The host now sends the owning tab id explicitly. When it is present the
@@ -87,7 +88,7 @@ export function registerSessionCallbacks(
     }
 
     const resolvedTabId = targetTab.id;
-    tabsStore?.updateTabSessionId?.(resolvedTabId, sessionId);
+    tabStore.updateTabSessionId(resolvedTabId, sessionId);
 
     if (resolvedTabId !== activeTabId) {
       // Background session: rebind its tab only. Changing currentSessionIdRef
@@ -104,7 +105,7 @@ export function registerSessionCallbacks(
     // this release so the first deltas are accepted.
     const ownerTabId = targetTab
       ? targetTab.id
-      : (window.__sessionTabsStore?.getTabIdForSession?.(sessionId) ?? null);
+      : (getTabStore().findIdBySession(sessionId) ?? null);
     if (!transitionTargetFor(ownerTabId)) {
       // Release this tab's own transition. `activeTabId` in this scope is the
       // parameter, not the module helper, so resolve by the owner tab id.
@@ -161,7 +162,7 @@ export function registerSessionCallbacks(
     if (currentSessionIdRef.current === sessionId) { // legacy-allow: foreground check for the header title, not routing
       setCustomSessionTitle(cleanTitle);
     }
-    window.__sessionTabsStore?.updateTabTitle?.(sessionId, cleanTitle, tabId);
+    getTabStore().updateTabTitle(sessionId, cleanTitle, tabId);
     applyHistoryTitleLocal(sessionId, cleanTitle);
   };
 

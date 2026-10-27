@@ -26,7 +26,7 @@ import {
   preserveStreamingAssistantContent,
   stripDuplicateTrailingToolMessages,
 } from '../messageSync';
-import { activeTabId, endTransition } from '../tabTransition';
+import { activeTabId, endTransition, transitionTargetFor } from '../tabTransition';
 import {
   parseSequence,
   getMinAcceptedSequence,
@@ -129,7 +129,7 @@ export function registerMessageCallbacks(
       return sessionBaseIndexMap.get(sessionId)!;
     }
     const tabStore = getTabStore();
-    const tab = sessionId ? (tabStore.findTabBySessionId(sessionId) ?? window.__sessionTabsStore?.getTabs?.().find((t) => t.sessionId === sessionId)) : null;
+    const tab = sessionId ? (tabStore.findTabBySessionId(sessionId) ?? getTabStore().getTabs().find((t) => t.sessionId === sessionId)) : null;
     if (tab && typeof tab.messageBaseIndex === 'number') {
       return tab.messageBaseIndex;
     }
@@ -141,11 +141,11 @@ export function registerMessageCallbacks(
       sessionBaseIndexMap.set(sessionId, baseIndex);
     }
     const tabStore = getTabStore();
-    const tab = sessionId ? (tabStore.findTabBySessionId(sessionId) ?? window.__sessionTabsStore?.getTabs?.().find((t) => t.sessionId === sessionId)) : null;
+    const tab = sessionId ? (tabStore.findTabBySessionId(sessionId) ?? getTabStore().getTabs().find((t) => t.sessionId === sessionId)) : null;
     if (tab) {
       tab.messageBaseIndex = baseIndex;
     }
-    const activeSessionId = tabStore.getActiveSessionId() || window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    const activeSessionId = tabStore.getActiveSessionId() || getTabStore().getActiveSessionId() || options.currentSessionIdRef?.current;
     if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
       window.__messageBaseIndex = baseIndex;
     }
@@ -211,10 +211,8 @@ export function registerMessageCallbacks(
     // session is no longer the one on screen, applying it here would write one
     // conversation into another tab's transcript (and retrigger auto-scroll).
     const tabStore = getTabStore();
-    const isBackground = targetSessionId && (
-      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
-    );
+    const isBackground = Boolean(targetSessionId) && tabStore.size() > 0
+      && !tabStore.isActiveSession(targetSessionId);
     if (isBackground) {
       cardDebugLog('[processUpdateMessages] DROPPED: target is not the active session', targetSessionId);
       return;
@@ -481,10 +479,8 @@ export function registerMessageCallbacks(
     // Same deferred-frame guard as processUpdateMessages: a tail pushed for a
     // background session must never be applied after the user switched away.
     const tabStore = getTabStore();
-    const isBackground = targetSessionId && (
-      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
-    );
+    const isBackground = Boolean(targetSessionId) && tabStore.size() > 0
+      && !tabStore.isActiveSession(targetSessionId);
     if (isBackground) {
       cardDebugLog('[processMessageTail] DROPPED: target is not the active session', targetSessionId);
       return;
@@ -574,12 +570,11 @@ export function registerMessageCallbacks(
     const targetTabId: string | null = env?.tabId ?? null;
 
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const hasTabs = tabStore.size() > 0;
     const isForegroundSession = !hasTabs
       || !targetSessionId
       || (targetSessionId === options.currentSessionIdRef?.current)
-      || (tabStore.size() > 0 ? tabStore.isActiveSession(targetSessionId) : false)
-      || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
+      || tabStore.isActiveSession(targetSessionId);
 
     if (!isForegroundSession && targetSessionId && hasTabs) {
       const applyToBackgroundTab = (t: any) => {
@@ -602,29 +597,14 @@ export function registerMessageCallbacks(
       if (targetTabId) {
         // The tab id is known: write to exactly that tab. No lookup, no
         // guessing, and a closed tab simply has nowhere to write.
-        let written = false;
-        if (tabStore.size() > 0) {
-          written = tabStore.updateTab(targetTabId, applyToBackgroundTab as any);
-        }
-        if (!written && window.__sessionTabsStore?.updateTab) {
-          written = Boolean(window.__sessionTabsStore.updateTab(targetTabId, applyToBackgroundTab));
-        }
+        const written = tabStore.updateTab(targetTabId, applyToBackgroundTab);
         if (!written) {
           cardDebugLog('[updateMessages] dropped: no tab', targetTabId, 'owns this snapshot');
         }
         return;
       }
 
-      let written = false;
-      if (tabStore.size() > 0) {
-        written = tabStore.updateBackgroundTab(targetSessionId, applyToBackgroundTab as any);
-      }
-      if (!written && window.__sessionTabsStore?.updateBackgroundTab) {
-        window.__sessionTabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          applyToBackgroundTab
-        );
-      }
+      tabStore.updateBackgroundTab(targetSessionId, applyToBackgroundTab);
       // No tab claims this session: the user closed it (or the host pushed an
       // id the webview never bound). Drop the snapshot — falling through to the
       // active path would render another conversation's messages in the tab the
@@ -741,11 +721,8 @@ export function registerMessageCallbacks(
     const sequenceArg = payload?.sequence as string | number | undefined;
 
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
-    const isBackground = hasTabs && targetSessionId && (
-      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
-    );
+    const hasTabs = tabStore.size() > 0;
+    const isBackground = hasTabs && Boolean(targetSessionId) && !tabStore.isActiveSession(targetSessionId);
     if (isBackground && targetSessionId) {
       const applyTail = (t: any) => {
         try {
@@ -770,16 +747,7 @@ export function registerMessageCallbacks(
         return t;
       };
 
-      let written = false;
-      if (tabStore.size() > 0) {
-        written = tabStore.updateBackgroundTab(targetSessionId, applyTail as any);
-      }
-      if (!written && window.__sessionTabsStore) {
-        window.__sessionTabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          applyTail
-        );
-      }
+      tabStore.updateBackgroundTab(targetSessionId, applyTail);
       return;
     }
 
@@ -848,26 +816,16 @@ export function registerMessageCallbacks(
     const targetTabId = env?.tabId ?? null;
 
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const hasTabs = tabStore.size() > 0;
     if (targetTabId && hasTabs) {
       if (!tabStore.isActiveTab(targetTabId)) {
         tabStore.updateTab(targetTabId, (t) => ({ ...t, status: text }));
-        window.__sessionTabsStore?.updateTab?.(targetTabId, (t: any) => {
-          t.status = text;
-        });
         return;
       }
     } else if (targetSessionId && hasTabs) {
-      const isBackground = (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-        (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+      const isBackground = tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId);
       if (isBackground) {
         tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, status: text }));
-        window.__sessionTabsStore?.updateBackgroundTab?.(
-          (t) => t.sessionId === targetSessionId,
-          (t) => {
-            t.status = text;
-          }
-        );
         return;
       }
     }
@@ -904,26 +862,16 @@ export function registerMessageCallbacks(
     const targetTabId = env?.tabId ?? null;
 
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const hasTabs = tabStore.size() > 0;
     if (targetTabId && hasTabs) {
       if (!tabStore.isActiveTab(targetTabId)) {
         tabStore.updateTab(targetTabId, (t) => ({ ...t, loading: isLoading }));
-        window.__sessionTabsStore?.updateTab?.(targetTabId, (t: any) => {
-          t.loading = isLoading;
-        });
         return;
       }
     } else if (targetSessionId && hasTabs) {
-      const isBackground = (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-        (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId));
+      const isBackground = tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId);
       if (isBackground) {
         tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, loading: isLoading }));
-        window.__sessionTabsStore?.updateBackgroundTab?.(
-          (t) => t.sessionId === targetSessionId,
-          (t) => {
-            t.loading = isLoading;
-          }
-        );
         return;
       }
     }
@@ -975,19 +923,10 @@ export function registerMessageCallbacks(
     const targetSessionId: string | null = env?.sessionId ?? null;
     const isThinkingVal = isTruthy(payload?.thinking);
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
-    const isBackground = hasTabs && targetSessionId && (
-      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
-    );
+    const hasTabs = tabStore.size() > 0;
+    const isBackground = hasTabs && Boolean(targetSessionId) && !tabStore.isActiveSession(targetSessionId);
     if (isBackground && targetSessionId) {
       tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, isThinking: isThinkingVal }));
-      window.__sessionTabsStore?.updateBackgroundTab?.(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.isThinking = isThinkingVal;
-        }
-      );
       return;
     }
     setIsThinking(isThinkingVal);
@@ -998,19 +937,10 @@ export function registerMessageCallbacks(
     const summary = String(payload?.summary ?? '');
     if (!summary || !summary.trim()) return;
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
-    const isBackground = hasTabs && targetSessionId && (
-      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
-    );
+    const hasTabs = tabStore.size() > 0;
+    const isBackground = hasTabs && Boolean(targetSessionId) && !tabStore.isActiveSession(targetSessionId);
     if (isBackground && targetSessionId) {
       tabStore.updateBackgroundTab(targetSessionId, (t) => ({ ...t, status: summary }));
-      window.__sessionTabsStore?.updateBackgroundTab?.(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.status = summary;
-        }
-      );
       return;
     }
     setStatus(summary);
@@ -1072,27 +1002,15 @@ export function registerMessageCallbacks(
     if (!targetSessionId || !content || !uuid) return;
 
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
-    const isBackground = hasTabs && targetSessionId && (
-      (tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) ||
-      (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId))
-    );
+    const hasTabs = tabStore.size() > 0;
+    const isBackground = hasTabs && Boolean(targetSessionId) && !tabStore.isActiveSession(targetSessionId);
     if (isBackground && targetSessionId) {
       const applyPatch = (t: any) => {
         const nextMsgs = patchUuidInList(t.messages ?? [], content, uuid);
         t.messages = nextMsgs;
         return { ...t, messages: nextMsgs };
       };
-      let written = false;
-      if (tabStore.size() > 0) {
-        written = tabStore.updateBackgroundTab(targetSessionId, applyPatch as any);
-      }
-      if (!written && window.__sessionTabsStore) {
-        window.__sessionTabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          applyPatch
-        );
-      }
+      tabStore.updateBackgroundTab(targetSessionId, applyPatch);
       return;
     }
 
@@ -1104,15 +1022,13 @@ export function registerMessageCallbacks(
     const targetSessionId: string | null = env?.sessionId ?? null;
     const barrierSequenceArg = payload?.sequence as string | number | undefined;
 
-    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
-      window.__sessionTabsStore.updateBackgroundTab(
-        (t) => t.sessionId === targetSessionId,
-        (t) => {
-          t.messages = [];
-          t.loading = false;
-          t.streamingActive = false;
-        }
-      );
+    const tabStore = getTabStore();
+    if (targetSessionId && tabStore.size() > 0 && !tabStore.isActiveSession(targetSessionId)) {
+      tabStore.updateBackgroundTab(targetSessionId, (t) => {
+        t.messages = [];
+        t.loading = false;
+        t.streamingActive = false;
+      });
       return;
     }
 
@@ -1224,36 +1140,23 @@ export function registerMessageCallbacks(
     const expectedMessageCountArg = payload?.messageCount as string | number | undefined;
 
     const tabStore = getTabStore();
-    const hasTabs = tabStore.size() > 0 || Boolean(window.__sessionTabsStore);
+    const hasTabs = tabStore.size() > 0;
     const isForeground = !hasTabs
       || !targetSessionId
       || (targetSessionId === options.currentSessionIdRef?.current)
-      || (tabStore.size() > 0 ? tabStore.isActiveSession(targetSessionId) : false)
-      || (Boolean(window.__sessionTabsStore?.isActiveSession(targetSessionId)));
+      || tabStore.isActiveSession(targetSessionId);
 
     if (!isForeground && targetSessionId && hasTabs) {
-      let updated = false;
-      if (tabStore.size() > 0) {
-        updated = tabStore.updateBackgroundTab(targetSessionId, (t) => ({
-          ...t,
-          loading: false,
-          streamingActive: false,
-        }));
-      }
-      if (!updated && window.__sessionTabsStore) {
-        window.__sessionTabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          (t) => {
-            t.loading = false;
-            t.streamingActive = false;
-          }
-        );
-      }
+      tabStore.updateBackgroundTab(targetSessionId, (t) => ({
+        ...t,
+        loading: false,
+        streamingActive: false,
+      }));
       // If the tab that owns this session is transitioning toward it, the
       // guard is released now that the history has arrived.
-      const ownerTabId = tabStore.findIdBySession(targetSessionId) ?? window.__sessionTabsStore?.getTabIdForSession?.(targetSessionId) ?? null;
-      if (window.__sessionTabsStore?.getTabTransitionTarget?.(ownerTabId) === targetSessionId) {
-        window.__sessionTabsStore?.endTabTransition?.(ownerTabId);
+      const ownerTabId = tabStore.findIdBySession(targetSessionId);
+      if (ownerTabId && transitionTargetFor(ownerTabId) === targetSessionId) {
+        endTransition(ownerTabId);
       }
       // If the foreground active tab is not currently loading, ensure front-end loading bar is not stranded
       options.setSessionLoading(false);
@@ -1366,9 +1269,7 @@ export function registerMessageCallbacks(
       const tabStore = getTabStore();
       const stillCurrent = tabStore.size() > 0
         ? tabStore.isActiveSession(sessionId)
-        : (window.__sessionTabsStore
-          ? window.__sessionTabsStore.isActiveSession(sessionId)
-          : currentSessionIdRef.current === sessionId); // legacy-allow: fallback when no tab strip exists
+        : currentSessionIdRef.current === sessionId; // legacy-allow: fallback when no tab strip exists
       if (!stillCurrent) return;
 
       // Contiguity check: for prepend mode, the new page's toTurn must match
@@ -1458,7 +1359,7 @@ export function registerMessageCallbacks(
       cardDebugLog('[onSessionHydrated] received for session:', targetSessionId, 'count:', authoritativeMessages.length);
 
       const tabStore = getTabStore();
-      const activeSessionId = tabStore.getActiveSessionId() || window.__sessionTabsStore?.getActiveSessionId?.() || currentSessionIdRef?.current;
+      const activeSessionId = tabStore.getActiveSessionId() || getTabStore().getActiveSessionId() || currentSessionIdRef?.current;
       const isForeground = !activeSessionId || targetSessionId === activeSessionId;
 
       if (isForeground) {
@@ -1507,15 +1408,7 @@ export function registerMessageCallbacks(
         if (typeof revertBoundaryId !== 'undefined') t.revertBoundaryId = revertBoundaryId;
         return { ...t };
       };
-      if (tabStore.size() > 0) {
-        tabStore.updateBackgroundTab(targetSessionId, applyHydrated as any);
-      }
-      if (window.__sessionTabsStore) {
-        window.__sessionTabsStore.updateBackgroundTab(
-          (t) => t.sessionId === targetSessionId,
-          applyHydrated
-        );
-      }
+      tabStore.updateBackgroundTab(targetSessionId, applyHydrated);
     } catch (e) {
       console.error('[MultiSession] Failed to parse onSessionHydrated', e);
     }

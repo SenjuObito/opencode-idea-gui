@@ -318,6 +318,54 @@ public class OpenCodeMessageConverterTest {
         assertEquals("error", raw.get("finish").getAsString());
     }
 
+    @Test
+    public void reconstructsUserShellCommandFromChildAssistantBashTool() {
+        JsonObject userInfo = new JsonObject();
+        userInfo.addProperty("role", "user");
+        userInfo.addProperty("id", "msg_user_shell");
+        JsonObject userTime = new JsonObject();
+        userTime.addProperty("created", 1725900000000L);
+        userInfo.add("time", userTime);
+        JsonObject userEntry = new JsonObject();
+        userEntry.add("info", userInfo);
+        userEntry.add("parts", JsonParser.parseString("["
+                + "{\"type\":\"text\",\"text\":\"The following tool was executed by the user\",\"synthetic\":true}"
+                + "]").getAsJsonArray());
+
+        JsonObject asstInfo = new JsonObject();
+        asstInfo.addProperty("role", "assistant");
+        asstInfo.addProperty("id", "msg_asst_shell");
+        asstInfo.addProperty("parentID", "msg_user_shell");
+        JsonObject asstTime = new JsonObject();
+        asstTime.addProperty("created", 1725900001000L);
+        asstInfo.add("time", asstTime);
+        JsonObject asstEntry = new JsonObject();
+        asstEntry.add("info", asstInfo);
+        asstEntry.add("parts", JsonParser.parseString("["
+                + "{\"type\":\"tool\",\"tool\":\"bash\",\"callID\":\"call_123\",\"state\":{\"input\":{\"command\":\"pwd\"},\"output\":\"/home/user\"}}"
+                + "]").getAsJsonArray());
+
+        JsonArray sessionEntries = new JsonArray();
+        sessionEntries.add(userEntry);
+        sessionEntries.add(asstEntry);
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(sessionEntries);
+
+        // out should contain:
+        // 1. reconstructed user message "!bash pwd"
+        // 2. assistant tool_use message
+        // 3. user [tool_result] message
+        assertTrue(out.size() >= 2);
+        JsonObject userMsg = out.get(0);
+        assertEquals("user", userMsg.get("type").getAsString());
+        assertEquals("!bash pwd", userMsg.get("content").getAsString());
+        JsonArray blocks = userMsg.getAsJsonObject("raw")
+                .getAsJsonObject("message")
+                .getAsJsonArray("content");
+        assertEquals(1, blocks.size());
+        assertEquals("!bash pwd", blocks.get(0).getAsJsonObject().get("text").getAsString());
+    }
+
     private static JsonElement wrap(JsonObject entry) {
         JsonArray arr = new JsonArray();
         arr.add(entry);

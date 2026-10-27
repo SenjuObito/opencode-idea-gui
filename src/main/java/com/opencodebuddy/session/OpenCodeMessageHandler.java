@@ -105,8 +105,8 @@ public class OpenCodeMessageHandler implements MessageCallback {
         state.setBusy(false);
         state.setLoading(false);
 
-        Message errorMessage = new Message(Message.Type.ERROR, error);
-        state.addMessage(errorMessage);
+        LOG.info("[OpenCode] message handler onError: " + error);
+        state.replaceLastErrorMessage(error);
 
         // Always signal stream-end on error to guarantee streamCoalescer and frontend
         // isStreamingRef are cleared, allowing showLoading(false) to take effect immediately.

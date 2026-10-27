@@ -204,7 +204,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
 
     window.__dialogStore?.clearActive?.();
 
-    sendHostCommand(newId, 'tab.title.sync', { title: newTab.title });
     syncHostActiveTabTo(newId);
   }, [
     saveCurrentTabSnapshot,

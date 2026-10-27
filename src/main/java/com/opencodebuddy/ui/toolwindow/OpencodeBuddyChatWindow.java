@@ -296,9 +296,7 @@ public class OpencodeBuddyChatWindow {
             TabRecord record = tabRegistry.get(command.tabId());
             if (record != null) {
                 String title = record.getTitle();
-                if (title != null && !title.isBlank()) {
-                    updateTabTitle(title);
-                }
+                updateTabTitle(title != null && !title.isBlank() ? title : originalTabName);
             }
         });
         tabCommandRouter.register("tab.close", command -> closeSession(command.tabId().value()));
@@ -315,26 +313,10 @@ public class OpencodeBuddyChatWindow {
                 updateTabTitle(title);
             }
         });
-        // Display-only sync for tab creation/activation. It must never become a
-        // user title: otherwise every switch re-marks the placeholder as the
-        // user's name and TabRecord.setTitle then ignores the engine title.
-        tabCommandRouter.register("tab.title.sync", command -> {
-            TabRecord record = tabRegistry.get(command.tabId());
-            String title = command.string("title");
-            if (record == null || record.isClosed() || title == null || title.isBlank()) {
-                return;
-            }
-            // A placeholder must not become the tab's name; it only means the
-            // engine has not named the session yet.
-            if (com.opencodebuddy.session.SessionTitles.isEnginePlaceholder(title)) {
-                return;
-            }
-            record.setTitle(title);
-            String currentActiveId = activeTabId;
-            if (currentActiveId == null || command.tabId().value().equals(currentActiveId)) {
-                updateTabTitle(record.getTitle());
-            }
-        });
+        // Deprecated: webview no longer sends tab.title.sync. Titles follow the
+        // engine/server events or user renames (tab.title.set). Kept as a no-op
+        // for backwards compatibility.
+        tabCommandRouter.register("tab.title.sync", command -> { });
         String projectPath = project != null ? project.getBasePath() : null;
         this.daemonBridge = new DaemonBridge(
                 com.opencodebuddy.bridge.NodeDetector.getInstance(),
@@ -395,7 +377,9 @@ public class OpencodeBuddyChatWindow {
                     // Grok's live ACP stream can omit file-tool blocks that are present
                     // in chat_history.jsonl. Reuse the proven same-session reload path
                     // once the turn is idle so derived edit statistics use final data.
-                    OpencodeBuddyChatWindow.this.deferredReload.defer(current.getSessionId());
+                    if (current.getState().getError() == null) {
+                        OpencodeBuddyChatWindow.this.deferredReload.defer(current.getSessionId());
+                    }
                 }
                 OpencodeBuddyChatWindow.this.drainDeferredReload();
             }
@@ -483,7 +467,20 @@ public class OpencodeBuddyChatWindow {
                     StreamMessageCoalescer coalescer
             ) {
                 OpencodeBuddyChatWindow.this.bindHistorySession(
-                        tabId, sessionId, session, adapter, coalescer);
+                        tabId, sessionId, session, adapter, coalescer, null);
+            }
+
+            @Override
+            public void bindHistorySession(
+                    String tabId,
+                    String sessionId,
+                    OpencodeSession session,
+                    SessionCallbackAdapter adapter,
+                    StreamMessageCoalescer coalescer,
+                    String title
+            ) {
+                OpencodeBuddyChatWindow.this.bindHistorySession(
+                        tabId, sessionId, session, adapter, coalescer, title);
             }
 
             @Override
@@ -1991,6 +1988,8 @@ public class OpencodeBuddyChatWindow {
             if (handlerContext != null) {
                 handlerContext.setSession(record.getSession());
             }
+            String title = record.getTitle();
+            updateTabTitle(title != null && !title.isBlank() ? title : originalTabName);
         }
     }
 
@@ -2111,7 +2110,9 @@ public class OpencodeBuddyChatWindow {
                 OpencodeSession current = OpencodeBuddyChatWindow.this.getSession(targetSessionId);
                 if (current != null && shouldReconcileTranscriptAtStreamEnd(
                         current.getProvider(), current.getSessionId())) {
-                    OpencodeBuddyChatWindow.this.deferredReload.defer(current.getSessionId());
+                    if (current.getState().getError() == null) {
+                        OpencodeBuddyChatWindow.this.deferredReload.defer(current.getSessionId());
+                    }
                 }
                 OpencodeBuddyChatWindow.this.drainDeferredReload();
             }
@@ -2248,6 +2249,17 @@ public class OpencodeBuddyChatWindow {
             SessionCallbackAdapter adapter,
             StreamMessageCoalescer coalescer
     ) {
+        bindHistorySession(tabId, canonicalSessionId, session, adapter, coalescer, null);
+    }
+
+    public void bindHistorySession(
+            String tabId,
+            String canonicalSessionId,
+            OpencodeSession session,
+            SessionCallbackAdapter adapter,
+            StreamMessageCoalescer coalescer,
+            String title
+    ) {
         if (tabId == null || tabId.isBlank()) {
             registerSession(canonicalSessionId, session, adapter, coalescer);
             TabRecord bySession = tabRegistry.findBySession(canonicalSessionId);
@@ -2286,6 +2298,12 @@ public class OpencodeBuddyChatWindow {
                 : (project != null ? project.getBasePath() : null);
         tabSessionFactory.attach(stableTabId, canonicalSessionId, session,
                 effectiveAdapter, effectiveCoalescer, cwd);
+        if (title != null && !title.isBlank() && !com.opencodebuddy.session.SessionTitles.isEnginePlaceholder(title)) {
+            TabRecord rec = tabRegistry.get(stableTabId);
+            if (rec != null) {
+                rec.setTitle(title);
+            }
+        }
         if (effectiveCoalescer != null) {
             // The history tab now owns this coalescer: stamp its tab id so the
             // snapshots it pushes are routed by tab, not by session lookup.

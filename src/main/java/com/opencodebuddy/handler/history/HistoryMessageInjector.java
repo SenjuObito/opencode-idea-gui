@@ -32,6 +32,7 @@ public class HistoryMessageInjector {
         String resolvedSessionId = sessionId;
         String model = null;
         String tabId = null;
+        String title = null;
 
         try {
             JsonObject payload = new com.google.gson.Gson().fromJson(sessionId, JsonObject.class);
@@ -54,6 +55,12 @@ public class HistoryMessageInjector {
                         tabId = t.trim();
                     }
                 }
+                if (payload.has("title") && !payload.get("title").isJsonNull()) {
+                    String s = payload.get("title").getAsString();
+                    if (s != null && !s.trim().isEmpty()) {
+                        title = s.trim();
+                    }
+                }
             }
         } catch (Exception ignored) {
             // Backward compatible: legacy payload is the raw sessionId string.
@@ -72,7 +79,7 @@ public class HistoryMessageInjector {
                 + (model != null ? ", model: " + model : ""));
 
         if (sessionLoadCallback != null) {
-            sessionLoadCallback.onLoadSession(resolvedSessionId, projectPath, provider, model, tabId);
+            sessionLoadCallback.onLoadSession(resolvedSessionId, projectPath, provider, model, tabId, title);
         } else {
             LOG.warn("[HistoryHandler] WARNING: No session load callback set");
             notifyHistoryLoadComplete(resolvedSessionId, tabId);

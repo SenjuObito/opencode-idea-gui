@@ -103,7 +103,9 @@ public final class OpenCodeMessageConverter {
         if (element == null || !element.isJsonArray()) {
             return out;
         }
-        for (JsonElement entryElement : element.getAsJsonArray()) {
+        JsonArray array = element.getAsJsonArray();
+        for (int i = 0; i < array.size(); i++) {
+            JsonElement entryElement = array.get(i);
             if (!entryElement.isJsonObject()) {
                 continue;
             }
@@ -120,7 +122,8 @@ public final class OpenCodeMessageConverter {
                         ? entry.getAsJsonArray("parts") : new JsonArray();
                 String role = string(info, "role");
                 if ("user".equals(role)) {
-                    out.add(buildUserMessage(parts, info));
+                    String shellCommand = findShellCommandForUserMessage(array, i, string(info, "id"));
+                    out.add(buildUserMessage(parts, info, shellCommand));
                 } else if ("assistant".equals(role)) {
                     out.addAll(buildAssistantMessages(parts, info));
                 } else if ("compaction".equals(role) || isTrue(info, "isCompactSummary")) {
@@ -135,7 +138,65 @@ public final class OpenCodeMessageConverter {
         return out;
     }
 
+    private static String findShellCommandForUserMessage(JsonArray array, int userIndex, String userMsgId) {
+        for (int j = userIndex + 1; j < array.size(); j++) {
+            JsonElement el = array.get(j);
+            if (!el.isJsonObject()) continue;
+            JsonObject nextEntry = el.getAsJsonObject();
+            JsonObject nextInfo = nextEntry.has("info") && nextEntry.get("info").isJsonObject()
+                    ? nextEntry.getAsJsonObject("info") : null;
+            if (nextInfo == null) continue;
+            String nextRole = string(nextInfo, "role");
+            if ("user".equals(nextRole)) {
+                break;
+            }
+            if ("assistant".equals(nextRole)) {
+                String parentId = string(nextInfo, "parentID");
+                if (!userMsgId.isEmpty() && !parentId.isEmpty() && !userMsgId.equals(parentId)) {
+                    continue;
+                }
+                JsonArray nextParts = nextEntry.has("parts") && nextEntry.get("parts").isJsonArray()
+                        ? nextEntry.getAsJsonArray("parts") : null;
+                if (nextParts != null) {
+                    for (JsonElement pEl : nextParts) {
+                        if (!pEl.isJsonObject()) continue;
+                        JsonObject p = pEl.getAsJsonObject();
+                        String toolName = string(p, "tool");
+                        if ("bash".equalsIgnoreCase(toolName) || "shell".equalsIgnoreCase(toolName)) {
+                            String cmd = extractShellCommand(p);
+                            if (cmd != null && !cmd.isBlank()) {
+                                return cmd;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String extractShellCommand(JsonObject part) {
+        JsonObject input = null;
+        if (part.has("state") && part.get("state").isJsonObject()) {
+            JsonObject state = part.getAsJsonObject("state");
+            if (state.has("input") && state.get("input").isJsonObject()) {
+                input = state.getAsJsonObject("input");
+            }
+        }
+        if (input == null && part.has("input") && part.get("input").isJsonObject()) {
+            input = part.getAsJsonObject("input");
+        }
+        if (input != null && input.has("command") && !input.get("command").isJsonNull()) {
+            return input.get("command").getAsString();
+        }
+        return null;
+    }
+
     private static JsonObject buildUserMessage(JsonArray parts, JsonObject info) {
+        return buildUserMessage(parts, info, null);
+    }
+
+    private static JsonObject buildUserMessage(JsonArray parts, JsonObject info, String shellCommand) {
         JsonArray blocks = new JsonArray();
         List<JsonObject> attachmentBlocks = new ArrayList<>();
         List<JsonObject> imageBlocks = new ArrayList<>();
@@ -186,6 +247,10 @@ public final class OpenCodeMessageConverter {
         // Drop the context sections the plugin appended on send (## IDE Context,
         // ## Referenced Files, ## Attached Files, inlined attachments, agent instructions, …) — model-only payload.
         String displayText = UserTextSanitizer.sanitize(text.toString());
+
+        if (displayText.isEmpty() && shellCommand != null && !shellCommand.isBlank()) {
+            displayText = "!bash " + shellCommand.trim();
+        }
 
         for (JsonObject block : attachmentBlocks) {
             blocks.add(block);

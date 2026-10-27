@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.vfs.VirtualFileManager;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.handler.history.HistoryLoadService;
 import com.opencodebuddy.session.OpencodeSession;
@@ -293,6 +294,7 @@ public final class TabSessionCommandHandler {
                                 return;
                             }
                             pushRevertStateFromResponse(context, target, joinLines(chunks), resolvedId);
+                            refreshVirtualFileSystem();
                         }
                     });
                 },
@@ -323,8 +325,17 @@ public final class TabSessionCommandHandler {
                             return;
                         }
                         pushRevertStateFromResponse(context, target, joinLines(chunks), null);
+                        refreshVirtualFileSystem();
                     }
                 });
+    }
+
+    private static void refreshVirtualFileSystem() {
+        try {
+            VirtualFileManager.getInstance().asyncRefresh(null);
+        } catch (Throwable t) {
+            LOG.warn("[revert] Failed to trigger VFS async refresh: " + t.getMessage());
+        }
     }
 
     private void pushRevertStateFromResponse(

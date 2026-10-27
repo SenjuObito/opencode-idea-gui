@@ -296,19 +296,35 @@ export const getRetryStatus = (): RetryStatusPayload | null => latestRetryStatus
  * Bridge entry point. The host always passes (sessionId?, json); the single
  * argument form is accepted so a payload-only call still works.
  */
-export const onRetryStatusFromHost = (arg0?: string, arg1?: string): void => {
-  const raw = typeof arg1 !== 'undefined' ? arg1 : arg0;
-  if (typeof raw !== 'string' || raw.trim().length === 0) {
+export const onRetryStatusFromHost = (arg0?: unknown, arg1?: unknown): void => {
+  let raw = typeof arg1 !== 'undefined' ? arg1 : arg0;
+  if (!raw) {
     setRetryStatus(null);
     return;
   }
-  try {
-    const parsed = JSON.parse(raw) as RetryStatusPayload;
-    setRetryStatus(parsed && typeof parsed === 'object' ? parsed : null);
-  } catch {
-    // Malformed payload: hide the bar rather than render raw JSON in the UI.
-    setRetryStatus(null);
+  // When sent via named TabEvent, envelope payload is { retry: { ... } }
+  if (typeof raw === 'object' && raw !== null && 'retry' in (raw as Record<string, unknown>)) {
+    raw = (raw as Record<string, unknown>).retry;
   }
+  if (typeof raw === 'string') {
+    if (raw.trim().length === 0) {
+      setRetryStatus(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as RetryStatusPayload;
+      setRetryStatus(parsed && typeof parsed === 'object' ? parsed : null);
+    } catch {
+      // Malformed payload: hide the bar rather than render raw JSON in the UI.
+      setRetryStatus(null);
+    }
+    return;
+  }
+  if (typeof raw === 'object' && raw !== null) {
+    setRetryStatus(raw as RetryStatusPayload);
+    return;
+  }
+  setRetryStatus(null);
 };
 
 /** Test-only: reset the module-level caches between cases. */

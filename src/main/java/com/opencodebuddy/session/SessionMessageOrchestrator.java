@@ -163,13 +163,30 @@ public class SessionMessageOrchestrator {
 
                 LOG.debug("Received " + serverMessages.size() + " messages from server");
 
-                state.setError(null);
+                // OpenCode/Claude server databases never persist UI/transport error cards.
+                // If the local session already has an error condition or a trailing error bubble
+                // on this turn, preserve it so reloading the server transcript does not wipe the error.
+                String existingError = state.getError();
+                OpencodeSession.Message trailingError = null;
+                List<OpencodeSession.Message> localMsgs = state.getMessages();
+                if (!localMsgs.isEmpty() && localMsgs.get(localMsgs.size() - 1).type == OpencodeSession.Message.Type.ERROR) {
+                    trailingError = localMsgs.get(localMsgs.size() - 1);
+                }
+
                 state.clearMessages();
                 for (JsonObject msg : serverMessages) {
                     OpencodeSession.Message message = messageParser.parseServerMessage(msg);
                     if (message != null) {
                         state.addMessage(message);
                     }
+                }
+                if (trailingError != null) {
+                    state.addMessage(trailingError);
+                }
+                if (existingError != null && !existingError.isBlank()) {
+                    state.setError(existingError);
+                } else {
+                    state.setError(null);
                 }
 
                 // 用量必须从「已解析的会话消息」里取，而不是转换器的外层 JSON：
@@ -267,7 +284,19 @@ public class SessionMessageOrchestrator {
 
                 LOG.info("Reconcile updating session " + currentSessionId + ": local=" + localMessages.size()
                         + " msgs, server=" + parsedMessages.size() + " msgs");
-                state.setError(null);
+                String existingError = state.getError();
+                OpencodeSession.Message trailingError = null;
+                if (!localMessages.isEmpty() && localMessages.get(localMessages.size() - 1).type == OpencodeSession.Message.Type.ERROR) {
+                    trailingError = localMessages.get(localMessages.size() - 1);
+                }
+                if (trailingError != null) {
+                    parsedMessages.add(trailingError);
+                }
+                if (existingError != null && !existingError.isBlank()) {
+                    state.setError(existingError);
+                } else {
+                    state.setError(null);
+                }
                 state.replaceMessages(parsedMessages);
                 restoreTokenUsage();
                 callbackFacade.notifyMessageUpdate(state.getMessages());

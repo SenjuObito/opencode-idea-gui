@@ -428,17 +428,19 @@ public class ChatWindowDelegate {
         messageDispatcher.registerHandler(permissionHandler);
 
         HistoryHandler historyHandler = new HistoryHandler(handlerContext);
-        historyHandler.setSessionLoadCallback((sessionId, projectPath, provider, model, tabId) -> {
-            if (tabId != null && !tabId.isBlank()) {
-                // The command names its tab, so bind/hydrate that tab. Never
-                // infer the target from the active session: after a fork the
-                // active session is already the new one, which made the load
-                // look like a "same-session soft reload", skip the tab binding
-                // and leave the forked tab stuck in LOADING_HISTORY.
-                host.getSessionLifecycleManager().loadHistorySession(
-                        sessionId, projectPath, provider, model, tabId);
-                return;
+        historyHandler.setSessionLoadCallback(new HistoryHandler.SessionLoadCallback() {
+            @Override
+            public void onLoadSession(String sessionId, String projectPath, String provider, String model, String tabId) {
+                onLoadSession(sessionId, projectPath, provider, model, tabId, null);
             }
+
+            @Override
+            public void onLoadSession(String sessionId, String projectPath, String provider, String model, String tabId, String title) {
+                if (tabId != null && !tabId.isBlank()) {
+                    host.getSessionLifecycleManager().loadHistorySession(
+                            sessionId, projectPath, provider, model, tabId, title);
+                    return;
+                }
             // Legacy window-level callers (no tab in the envelope) keep the
             // old heuristic. Every webview command carries a tab id now.
             OpencodeSession current = host.getSession();
@@ -459,6 +461,7 @@ public class ChatWindowDelegate {
                 host.getSessionLifecycleManager().loadHistorySession(
                         sessionId, projectPath, provider, model, null);
             }
+        }
         });
         host.setHistoryHandler(historyHandler);
         messageDispatcher.registerHandler(historyHandler);

@@ -42,6 +42,17 @@ public class HistoryHandler extends BaseMessageHandler {
          * @param tabId stable webview tab that requested the load; null for legacy callers
          */
         void onLoadSession(String sessionId, String projectPath, String provider, String model, String tabId);
+
+        default void onLoadSession(
+                String sessionId,
+                String projectPath,
+                String provider,
+                String model,
+                String tabId,
+                String title
+        ) {
+            onLoadSession(sessionId, projectPath, provider, model, tabId);
+        }
     }
 
     private SessionLoadCallback sessionLoadCallback;

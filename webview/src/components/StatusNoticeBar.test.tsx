@@ -149,6 +149,20 @@ describe('onRetryStatusFromHost', () => {
 
     expect(getRetryStatus()).toBeNull();
   });
+
+  it('accepts named event envelope with { retry: ... } object payload', () => {
+    const payload = retryPayload({ message: 'Rate limit exceeded' });
+    onRetryStatusFromHost({ retry: payload });
+
+    expect(getRetryStatus()?.message).toBe('Rate limit exceeded');
+  });
+
+  it('accepts raw object payload directly', () => {
+    const payload = retryPayload({ message: 'Direct object' });
+    onRetryStatusFromHost(payload);
+
+    expect(getRetryStatus()?.message).toBe('Direct object');
+  });
 });
 
 describe('StatusNoticeBar — terminal quota notice', () => {

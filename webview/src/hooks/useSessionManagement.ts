@@ -280,7 +280,7 @@ export function useSessionManagement({
       // host hydrate that tab. The transition guard is scoped to the tab.
       beginSessionTransition(sessionId, session?.title ?? null, targetTabId);
       window.__softSessionReloadInFlight = null;
-      sendHostCommand(targetTabId, 'session.load', { sessionId }, sessionId);
+      sendHostCommand(targetTabId, 'session.load', { sessionId, title: session?.title }, sessionId);
       setCurrentView('chat');
       return;
     }
@@ -323,7 +323,7 @@ export function useSessionManagement({
           cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
         }
       }, 5_000);
-      sendHostCommand(getTabStore().getActiveTabId() ?? '', 'session.load', { sessionId }, sessionId);
+      sendHostCommand(getTabStore().getActiveTabId() ?? '', 'session.load', { sessionId, title: session?.title }, sessionId);
       setCurrentView('chat');
       return;
     }
@@ -346,7 +346,7 @@ export function useSessionManagement({
     }
     beginSessionTransition(sessionId, session?.title ?? null);
     // The command names the session; the tab is the tab that shows it.
-    sendHostCommand(activeTabId ?? '', 'session.load', { sessionId }, sessionId);
+    sendHostCommand(activeTabId ?? '', 'session.load', { sessionId, title: session?.title }, sessionId);
     setCurrentView('chat');
   }, [beginSessionTransition, setCurrentView, currentSessionId, currentSessionIdRef]);
 

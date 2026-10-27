@@ -66,6 +66,17 @@ public class SessionLifecycleManager {
             registerSession(sessionId, session, adapter, coalescer);
         }
 
+        default void bindHistorySession(
+                String tabId,
+                String sessionId,
+                OpencodeSession session,
+                SessionCallbackAdapter adapter,
+                StreamMessageCoalescer coalescer,
+                String title
+        ) {
+            bindHistorySession(tabId, sessionId, session, adapter, coalescer);
+        }
+
         default void closeSession(String sessionId) {}
 
         /** Mark the tab owning this session as fully loaded/idle. */
@@ -147,8 +158,13 @@ public class SessionLifecycleManager {
      * transcript even when another tab is visible.</p>
      */
     public void loadHistorySession(String sessionId, String projectPath, String provider, String model, String tabId) {
+        loadHistorySession(sessionId, projectPath, provider, model, tabId, null);
+    }
+
+    public void loadHistorySession(String sessionId, String projectPath, String provider, String model, String tabId, String title) {
         LOG.info("Loading history session: " + sessionId + " from project: " + projectPath
-                + (tabId != null ? ", tab: " + tabId : ""));
+                + (tabId != null ? ", tab: " + tabId : "")
+                + (title != null ? ", title: " + title : ""));
 
         OpencodeSession existingSession = host.getSession(sessionId);
         if (existingSession != null && sessionId.equals(existingSession.getSessionId())) {
@@ -156,7 +172,7 @@ public class SessionLifecycleManager {
             if (model != null && !model.trim().isEmpty()) {
                 existingSession.setModel(model.trim());
             }
-            host.bindHistorySession(tabId, sessionId, existingSession, null, null);
+            host.bindHistorySession(tabId, sessionId, existingSession, null, null, title);
 
             StreamMessageCoalescer coalescer = host.getStreamCoalescer(sessionId);
             if (coalescer == null) {
@@ -244,7 +260,7 @@ public class SessionLifecycleManager {
                                 : (NodeDetector.isWslPath(nodePath) ? NodeDetector.convertToWslPath(effectiveDir) : effectiveDir);
         newSession.setSessionInfo(sessionId, workingDir);
 
-        host.bindHistorySession(tabId, sessionId, newSession, newAdapter, newCoalescer);
+        host.bindHistorySession(tabId, sessionId, newSession, newAdapter, newCoalescer, title);
         if (host.getHandlerContext() != null) {
             host.getHandlerContext().registerSession(sessionId, newSession);
         }

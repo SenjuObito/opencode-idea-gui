@@ -73,6 +73,30 @@ public class SessionStateTest {
         Assert.assertEquals("opencode-default", state.getModel());
     }
 
+    // ── Permission mode / opencode primary agent ids ──
+
+    @Test
+    public void setPermissionModeAcceptsCustomPrimaryAgentId() {
+        SessionState state = new SessionState();
+        state.setPermissionMode("build");
+        Assert.assertEquals("build", state.getPermissionMode());
+
+        // opencode primary agents are arbitrary ids (`winui-dev` in this
+        // workspace); the legacy whitelist must not drop them.
+        state.setPermissionMode("winui-dev");
+        Assert.assertEquals("winui-dev", state.getPermissionMode());
+    }
+
+    @Test
+    public void setPermissionModeTrimsAndIgnoresBlank() {
+        SessionState state = new SessionState();
+        state.setPermissionMode(" winui-dev ");
+        Assert.assertEquals("winui-dev", state.getPermissionMode());
+
+        state.setPermissionMode("   ");
+        Assert.assertEquals("winui-dev", state.getPermissionMode());
+    }
+
     // ── Revert cleanup sync (message.removed mirroring) ──
 
     @Test

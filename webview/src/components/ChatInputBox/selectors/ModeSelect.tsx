@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getPrimaryAgentsSync, subscribeAgents } from '../providers/agentProvider';
+import { requestAgents, selectPrimaryAgents, useAgents } from '../../../store/agentStore';
+import { FALLBACK_PRIMARY_AGENTS } from '../providers/agentProvider';
 import type { PermissionMode } from '../types';
 import { useDropdownPosition } from '../../../hooks/useDropdownPosition';
 
@@ -69,11 +70,16 @@ export const ModeSelect = ({ value, onChange, provider: _provider }: ModeSelectP
     preferredAlignment: 'right',
   });
 
-  // Keep local snapshot in sync with the agent cache without prop drilling.
-  const [primaryAgents, setPrimaryAgents] = useState(() => getPrimaryAgentsSync());
+  // The host owns the catalogue; this component only reflects the last push.
+  // Until the first push arrives, render the built-in pair as a placeholder.
+  const { agents, loaded } = useAgents();
+  const primaryAgents = useMemo(() => {
+    const primaries = selectPrimaryAgents(agents);
+    return primaries.length > 0 ? primaries : FALLBACK_PRIMARY_AGENTS;
+  }, [agents]);
   useEffect(() => {
-    return subscribeAgents(() => setPrimaryAgents(getPrimaryAgentsSync()));
-  }, []);
+    if (!loaded) requestAgents();
+  }, [loaded]);
 
   const modeOptions = useMemo(() => {
     return primaryAgents.map(agent => {

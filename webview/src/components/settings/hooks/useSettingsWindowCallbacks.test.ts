@@ -29,12 +29,9 @@ describe('useSettingsWindowCallbacks', () => {
     setCustomSoundPath: vi.fn(),
     setSystemNotificationOnlyWhenUnfocused: vi.fn(),
     setAskUserQuestionSoundNotificationEnabled: vi.fn(),
-    loadAgents: vi.fn(),
-    updateAgents: vi.fn(),
     handleAgentOperationResult: vi.fn(),
     handleAgentImportPreviewResult: vi.fn(),
     handleAgentImportResult: vi.fn(),
-    cleanupAgentsTimeout: vi.fn(),
     showAlert: vi.fn(),
     addToast: vi.fn(),
   });
@@ -71,7 +68,7 @@ describe('useSettingsWindowCallbacks', () => {
     renderHook(() => useSettingsWindowCallbacks(deps));
 
     // Heavy list fetches are deferred until their settings tabs open.
-    expect(deps.loadAgents).not.toHaveBeenCalled();
+    expect(sentTypes()).not.toContain('agents.list');
     expect(sentTypes()).not.toContain('get_current_claude_config');
 
     // First batch only (batchSize = 5), priority fields for first paint.

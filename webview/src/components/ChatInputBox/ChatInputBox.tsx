@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { CSSProperties } from 'react';
 import type {
   ChatInputBoxHandle,
   ChatInputBoxProps,
@@ -40,6 +41,8 @@ import {
   useResizableChatInputBox,
 } from './hooks/index.js';
 import { debounce } from './utils/debounce.js';
+import { getModeAccentColor } from './utils/modeColors';
+import { useAgents } from '../../store/agentStore';
 import { perfTimer } from '../../utils/debug.js';
 import { registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 import { DEBOUNCE_TIMING } from '../../constants/performance.js';
@@ -494,7 +497,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       completionSelectedRef,
       submittedOnEnterRef,
       handleSubmit,
-      // Shift+Tab toggles Build/Plan mode (cc-gui parity)
+      // Shift+Tab cycles the live primary agents (build/plan/custom)
       onModeSelect,
       permissionMode,
     });
@@ -599,13 +602,24 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       editableWrapperRef,
     });
 
+    // Non-default modes tint the container border through one custom property.
+    // The colour comes from the agent's own config when it declares one; the
+    // built-in plan/winui-dev accents are only a fallback.
+    const { agents: agentCatalogue } = useAgents();
+    const activeAgentId = permissionMode === 'default' ? 'build' : permissionMode;
+    const activeAgentColor = agentCatalogue.find(agent => agent.id === activeAgentId)?.color;
+    const modeAccent = getModeAccentColor(permissionMode, activeAgentColor);
+    const containerWithModeAccent: CSSProperties = modeAccent
+      ? ({ ...containerStyle, '--mode-accent': modeAccent } as CSSProperties)
+      : containerStyle;
+
     return (
       <div
         className={`chat-input-box ${isResizingInputBox ? 'is-resizing' : ''}`}
         data-mode={permissionMode}
         onClick={focusInput}
         ref={containerRef}
-        style={containerStyle}
+        style={containerWithModeAccent}
         onMouseOver={handleMouseOver}
         onMouseLeave={handleMouseLeave}
       >

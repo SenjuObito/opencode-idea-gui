@@ -579,6 +579,10 @@ public class ChatWindowDelegate {
             pushCurrentTabStateToFrontend();
         }
         host.getSessionLifecycleManager().sendCurrentPermissionMode();
+        // The agent catalogue is host-owned state (like the daemon status):
+        // push it on every frontend_ready so a reload never depends on the
+        // webview racing the engine at startup.
+        com.opencodebuddy.handler.AgentHandler.pushAgents(host.getHandlerContext());
         replayCurrentSessionStateToFrontend();
         if (runtimeRecovery) {
             refreshFrontendDerivedState();

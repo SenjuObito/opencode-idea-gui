@@ -5,7 +5,9 @@
   display: flex;
   flex-direction: column;
   background: var(--input-bg);
-  border: 1px solid var(--input-border);
+  /* Non-default modes set --mode-accent inline (plan orange, custom agents
+     their own colour); build leaves it unset and keeps the theme border. */
+  border: 1px solid var(--mode-accent, var(--input-border));
   border-radius: 8px;
   overflow: visible;
   position: relative;
@@ -15,26 +17,15 @@
 
 /* Hover/focus: recolor border only (uniform 1px weight in all modes) */
 .chat-input-box:hover {
-  border-color: var(--input-focus-border);
+  border-color: var(--mode-accent, var(--input-focus-border));
 }
 
 .chat-input-box:focus-within {
-  border-color: var(--input-focus-border);
+  border-color: var(--mode-accent, var(--input-focus-border));
 }
 
 .chat-input-box.is-resizing {
-  border-color: var(--input-focus-border);
-}
-
-/* Plan mode: orange border on the container only (no shared variables,
-   so child components like context bar / attachments stay theme-colored) */
-.chat-input-box[data-mode="plan"] {
-  border-color: #e07c24;
-}
-.chat-input-box[data-mode="plan"]:hover,
-.chat-input-box[data-mode="plan"]:focus-within,
-.chat-input-box[data-mode="plan"].is-resizing {
-  border-color: #e07c24;
+  border-color: var(--mode-accent, var(--input-focus-border));
 }
 
 /* ============================================================

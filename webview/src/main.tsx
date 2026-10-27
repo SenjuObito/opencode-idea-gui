@@ -20,7 +20,6 @@ import './i18n/config';
 import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
-import { ensureAgentsLoaded, setupAgentsCallback } from './components/ChatInputBox/providers/agentProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
 import { sendHostCommand, sendWindowCommand, cardDebugLog } from './utils/bridge';
 import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
@@ -487,10 +486,9 @@ if (typeof window !== 'undefined') {
 installUiPreferencesBridge();
 installPinnedModelsBridge();
 
-// Agent metadata is host-owned, like slash commands. Register its reply handler
-// before the first request can be sent; the bridge-ready block below starts the
-// preload. The @ dropdown reads the cache this lifecycle fills.
-setupAgentsCallback();
+// Agent metadata is host-owned: the host pushes `agents.updated` after the
+// engine is ready and after a webview reload, so there is no preload lifecycle
+// to start here. The store registers its own handler when it is imported.
 
 // Render the React application
 ReactDOM.createRoot(document.getElementById('app') as HTMLElement).render(
@@ -514,7 +512,6 @@ waitForBridge(() => {
   debugLog('[Main] Bridge ready, setting up slash commands');
   setupSlashCommandsCallback();
   setupDollarCommandsCallback();
-  ensureAgentsLoaded();
   startBridgeHeartbeat();
 
   debugLog('[Main] Sending frontend_ready signal');

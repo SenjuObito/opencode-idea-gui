@@ -1,7 +1,6 @@
 // hooks/useSettingsWindowCallbacks.ts
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AgentConfig } from '../../../types/agent';
 
 import type { UiFontConfig, CodeFontConfig } from './useSettingsBasicActions';
 import type { AlertType } from '../../AlertDialog';
@@ -67,12 +66,9 @@ export interface SettingsWindowCallbacksDeps {
   setCustomSoundPath?: (path: string) => void;
 
   // Hook functions
-  loadAgents: () => void;
-  updateAgents: (agents: AgentConfig[]) => void;
   handleAgentOperationResult: (result: any) => void;
   handleAgentImportPreviewResult: (previewData: any) => void;
   handleAgentImportResult: (result: any) => void;
-  cleanupAgentsTimeout: () => void;
 
   // Callbacks
   showAlert: (type: AlertType, title: string, message: string) => void;
@@ -285,17 +281,9 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
     };
 
-    // Agent callbacks
-    const previousUpdateAgents = hostEventHandler('agents.updated');
-    const updateAgents = (jsonStr: string) => {
-      try {
-        const agentsList: AgentConfig[] = JSON.parse(jsonStr);
-        d().updateAgents(agentsList);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse agents:', error);
-      }
-      previousUpdateAgents?.(jsonStr);
-    };
+    // Agent callbacks. `agents.updated` belongs to the single agent store
+    // (store/agentStore.ts); the settings view reads that store instead of
+    // re-registering the event and replacing the store's handler.
 
     // 自定义声音"浏览"：宿主 showOpenDialog 选完回填输入框（不自动保存，
     // 保留用户确认语义）。仅设置页挂载期间有效——浏览按钮只在此处出现。
@@ -353,7 +341,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       'settings.system.notification': updateSystemNotificationOnlyWhenUnfocused,
       'settings.question.sound': updateAskUserQuestionSoundNotificationEnabled,
       'settings.sound': updateSoundNotificationConfig,
-      'agents.updated': updateAgents,
       'agents.operation': agentOperationResult,
       'agents.import.preview': agentImportPreviewResult,
       'agents.import.result': agentImportResult,
@@ -373,7 +360,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     return () => {
       bootstrapRequests.cancel();
-      d().cleanupAgentsTimeout();
 
       unregisterHostEvents([
         'toast.operation.error', 'toast.switch.success',
@@ -383,7 +369,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         'font.system.list', 'theme.received', 'settings.send.shortcut',
         'settings.task.completion', 'settings.question.notification',
         'settings.system.notification', 'settings.question.sound',
-        'settings.sound', 'agents.updated', 'agents.operation',
+        'settings.sound', 'agents.operation',
         'agents.import.preview', 'agents.import.result',
       ]);
 
@@ -392,9 +378,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
       if (previousUpdateSendShortcut) {
         registerHostEvents({ 'settings.send.shortcut': previousUpdateSendShortcut });
-      }
-      if (previousUpdateAgents) {
-        registerHostEvents({ 'agents.updated': previousUpdateAgents });
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

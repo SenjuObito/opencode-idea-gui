@@ -8,6 +8,7 @@ import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.model.ConflictStrategy;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -93,65 +94,76 @@ public class AgentHandler extends BaseMessageHandler {
      * Get all agents.
      */
     private void handleGetAgents() {
-        OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
-        if (bridge != null && bridge.isDaemonAlive()) {
-            String cwd = context.resolveEffectiveWorkingDirectory();
-            bridge.listAgents(cwd).thenAccept(json -> {
-                try {
-                    JsonArray resultAgents = new JsonArray();
-                    if (json != null && json.isJsonObject()) {
-                        JsonObject obj = json.getAsJsonObject();
-                        if (obj.has("agents") && obj.get("agents").isJsonArray()) {
-                            resultAgents = obj.getAsJsonArray("agents");
-                        }
-                    }
-                    if (resultAgents.size() > 0) {
-                        for (int i = 0; i < resultAgents.size(); i++) {
-                            if (resultAgents.get(i).isJsonObject()) {
-                                JsonObject a = resultAgents.get(i).getAsJsonObject();
-                                if (!a.has("id") && a.has("name")) {
-                                    a.addProperty("id", a.get("name").getAsString());
-                                }
-                            }
-                        }
-                        String agentsJson = gson.toJson(resultAgents);
-                        ApplicationManager.getApplication().invokeLater(() -> {
-                            // This is the reply to *this* window's agents.list request.
-                            // broadcastEvent() deliberately excludes the originating
-                            // context, so using it here would send the list to every
-                            // window except the one waiting for it.
-                            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
-                        });
-                        return;
-                    }
-                } catch (Exception e) {
-                    LOG.warn("[AgentHandler] Failed to parse opencode agents: " + e.getMessage());
-                }
-                fallbackGetAgents();
-            }).exceptionally(ex -> {
-                LOG.warn("[AgentHandler] Bridge listAgents failed: " + ex.getMessage());
-                fallbackGetAgents();
-                return null;
-            });
-            return;
-        }
-        fallbackGetAgents();
+        pushAgents(context);
     }
 
-    private void fallbackGetAgents() {
-        try {
-            List<JsonObject> agents = settingsService.getAgents();
-            String agentsJson = gson.toJson(agents);
-
-            ApplicationManager.getApplication().invokeLater(() -> {
-                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
-            });
-        } catch (Exception e) {
-            LOG.error("[AgentHandler] Failed to get agents: " + e.getMessage(), e);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", "[]").build());
-            });
+    /**
+     * Ask the engine for the agent catalogue and publish it.
+     *
+     * <p>The host owns this list: the webview only mirrors the last push. A
+     * failed or empty engine answer is never replaced with a fabricated list
+     * (the legacy `agent.json` store belongs to the Claude era and has no
+     * meaning for opencode). The next push happens when the engine becomes
+     * ready or the webview reconnects, so there is no retry timer here.</p>
+     */
+    public static void pushAgents(HandlerContext context) {
+        if (context == null || context.isDisposed()) {
+            return;
         }
+        OpenCodeSDKBridge bridge = context.getOpenCodeSDKBridge();
+        if (bridge == null || !bridge.isDaemonAlive()) {
+            LOG.info("[AgentHandler] Agent list skipped: daemon is not running");
+            return;
+        }
+        String cwd = context.resolveEffectiveWorkingDirectory();
+        bridge.listAgents(cwd).thenAccept(json -> {
+            JsonArray agents = parseAgents(json);
+            if (agents.size() == 0) {
+                LOG.info("[AgentHandler] Engine returned no agents (cwd=" + cwd + ")");
+                return;
+            }
+            LOG.info("[AgentHandler] Engine returned " + agents.size() + " agent(s) (cwd=" + cwd + ")");
+            publishAgents(context, agents);
+        }).exceptionally(ex -> {
+            LOG.warn("[AgentHandler] Bridge listAgents failed: " + ex.getMessage());
+            return null;
+        });
+    }
+
+    private static JsonArray parseAgents(JsonElement json) {
+        JsonArray resultAgents = new JsonArray();
+        try {
+            if (json != null && json.isJsonObject()) {
+                JsonObject obj = json.getAsJsonObject();
+                if (obj.has("agents") && obj.get("agents").isJsonArray()) {
+                    resultAgents = obj.getAsJsonArray("agents");
+                }
+            }
+            for (int i = 0; i < resultAgents.size(); i++) {
+                if (resultAgents.get(i).isJsonObject()) {
+                    JsonObject a = resultAgents.get(i).getAsJsonObject();
+                    if (!a.has("id") && a.has("name")) {
+                        a.addProperty("id", a.get("name").getAsString());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("[AgentHandler] Failed to parse opencode agents: " + e.getMessage());
+        }
+        return resultAgents;
+    }
+
+    private static void publishAgents(HandlerContext context, JsonArray agents) {
+        String agentsJson = new Gson().toJson(agents);
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (context.isDisposed()) {
+                return;
+            }
+            // This is the reply to this window's request. broadcastEvent()
+            // deliberately excludes the originating context, so using it here
+            // would send the list to every window except the one waiting for it.
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("agents.updated").field("data", agentsJson).build());
+        });
     }
 
     /**

@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AgentConfig } from '../../../types/agent';
 import type { ImportPreviewResult, ConflictStrategy } from '../../../types/import';
 import { sendWindowCommand } from '../../../utils/bridge';
+import { requestAgents, useAgents } from '../../../store/agentStore';
 
 export interface AgentDialogState {
   isOpen: boolean;
@@ -32,12 +33,11 @@ export function useAgentManagement(options: UseAgentManagementOptions = {}) {
   const { t } = useTranslation();
   const { onSuccess } = options;
 
-  // Timeout timer reference (using useRef to avoid global variable pollution)
-  const agentsLoadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Agent list state
-  const [agents, setAgents] = useState<AgentConfig[]>([]);
-  const [agentsLoading, setAgentsLoading] = useState(false);
+  // Agent list state: the host-pushed catalogue is the single source. There is
+  // no local copy, no retry timer, and no setter for the list.
+  const { agents: storeAgents, loaded: agentsLoaded } = useAgents();
+  const agents = storeAgents as unknown as AgentConfig[];
+  const agentsLoading = !agentsLoaded;
 
   // Agent dialog state
   const [agentDialog, setAgentDialog] = useState<AgentDialogState>({
@@ -62,48 +62,9 @@ export function useAgentManagement(options: UseAgentManagementOptions = {}) {
     isOpen: false,
   });
 
-  // Load agent list (with retry mechanism)
-  const loadAgents = useCallback((retryCount = 0) => {
-    const MAX_RETRIES = 2;
-    const TIMEOUT = 3000; // 3-second timeout
-
-    setAgentsLoading(true);
-    sendWindowCommand('agents.list');
-
-    // Set up timeout timer
-    const timeoutId = setTimeout(() => {
-      if (retryCount < MAX_RETRIES) {
-        // Retry
-        loadAgents(retryCount + 1);
-      } else {
-        // Reached max retries, stop loading
-        setAgentsLoading(false);
-        setAgents([]); // Show empty list, allow user to continue
-      }
-    }, TIMEOUT);
-
-    // Store timeout ID in ref
-    agentsLoadingTimeoutRef.current = timeoutId;
-  }, []);
-
-  // Update agent list (used by window callback)
-  const updateAgents = useCallback((agentsList: AgentConfig[]) => {
-    // Clear timeout timer
-    if (agentsLoadingTimeoutRef.current) {
-      clearTimeout(agentsLoadingTimeoutRef.current);
-      agentsLoadingTimeoutRef.current = null;
-    }
-
-    setAgents(agentsList);
-    setAgentsLoading(false);
-  }, []);
-
-  // Clean up timeout timer
-  const cleanupAgentsTimeout = useCallback(() => {
-    if (agentsLoadingTimeoutRef.current) {
-      clearTimeout(agentsLoadingTimeoutRef.current);
-      agentsLoadingTimeoutRef.current = null;
-    }
+  // Ask the host for the catalogue. The host is the only writer of the store.
+  const loadAgents = useCallback(() => {
+    requestAgents();
   }, []);
 
   // Open add agent dialog
@@ -281,8 +242,6 @@ export function useAgentManagement(options: UseAgentManagementOptions = {}) {
 
     // Methods
     loadAgents,
-    updateAgents,
-    cleanupAgentsTimeout,
     handleAddAgent,
     handleEditAgent,
     handleCloseAgentDialog,
@@ -299,9 +258,6 @@ export function useAgentManagement(options: UseAgentManagementOptions = {}) {
     handleCloseImportPreview,
     handleSaveImportedAgents,
     handleAgentImportResult,
-
-    // Setter
-    setAgentsLoading,
   };
 }
 

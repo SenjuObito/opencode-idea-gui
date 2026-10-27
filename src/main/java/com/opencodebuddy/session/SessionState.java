@@ -282,11 +282,18 @@ public class SessionState {
     }
 
     public void setPermissionMode(String permissionMode) {
-        if (permissionMode != null && !VALID_PERMISSION_MODES.contains(permissionMode.trim())) {
-            // Reject unrecognized modes silently to prevent injection of arbitrary strings
+        // OpenCode accepts any non-empty primary agent id as the mode, so the
+        // legacy whitelist must not be the gate here: a custom agent such as
+        // `winui-dev` would be dropped silently and the session would fall back
+        // to the previous mode on restore.
+        if (permissionMode == null) {
+            this.permissionMode = null;
             return;
         }
-        this.permissionMode = permissionMode;
+        if (!isValidPermissionMode(permissionMode)) {
+            return;
+        }
+        this.permissionMode = permissionMode.trim();
     }
 
     public void setModel(String model) {

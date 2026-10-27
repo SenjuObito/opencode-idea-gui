@@ -193,6 +193,9 @@ public class DaemonStatusHandler extends BaseMessageHandler {
                     // Serve is up — warm the model catalog in the background so
                     // the first model dropdown open is instant.
                     CliModelsHandler.warmupModelCache(context);
+                    // Agents are host-owned: push them now instead of making the
+                    // webview guess whether the engine was ready for its request.
+                    com.opencodebuddy.handler.AgentHandler.pushAgents(context);
                 } else {
                     // The webview has no "alive but serve broken" state: anything
                     // other than serveReady:true must leave the loading state and

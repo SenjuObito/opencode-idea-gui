@@ -226,8 +226,10 @@ export const ChatScreen = ({
     setSearchOpen(false);
   }, [setSearchOpen]);
 
+  const isEmptyState = !sessionLoading && mergedMessages.length === 0;
+
   return (
-    <div className="chat-screen-shell">
+    <div className={`chat-screen-shell ${isEmptyState ? 'is-empty-state' : ''}`}>
       <div className="messages-shell">
         <MessageAnchorRail
           messages={mergedMessages}

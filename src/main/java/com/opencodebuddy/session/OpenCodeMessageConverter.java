@@ -143,11 +143,15 @@ public final class OpenCodeMessageConverter {
     private static String findShellCommandForUserMessage(JsonArray array, int userIndex, String userMsgId) {
         for (int j = userIndex + 1; j < array.size(); j++) {
             JsonElement el = array.get(j);
-            if (!el.isJsonObject()) continue;
+            if (!el.isJsonObject()) {
+                continue;
+            }
             JsonObject nextEntry = el.getAsJsonObject();
             JsonObject nextInfo = nextEntry.has("info") && nextEntry.get("info").isJsonObject()
                     ? nextEntry.getAsJsonObject("info") : null;
-            if (nextInfo == null) continue;
+            if (nextInfo == null) {
+                continue;
+            }
             String nextRole = string(nextInfo, "role");
             if ("user".equals(nextRole)) {
                 break;
@@ -161,7 +165,9 @@ public final class OpenCodeMessageConverter {
                         ? nextEntry.getAsJsonArray("parts") : null;
                 if (nextParts != null) {
                     for (JsonElement pEl : nextParts) {
-                        if (!pEl.isJsonObject()) continue;
+                        if (!pEl.isJsonObject()) {
+                            continue;
+                        }
                         JsonObject p = pEl.getAsJsonObject();
                         String toolName = string(p, "tool");
                         if ("bash".equalsIgnoreCase(toolName) || "shell".equalsIgnoreCase(toolName)) {

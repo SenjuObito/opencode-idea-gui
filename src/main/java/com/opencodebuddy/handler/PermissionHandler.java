@@ -528,7 +528,9 @@ public class PermissionHandler extends BaseMessageHandler {
 
         for (String channelId : new java.util.ArrayList<>(prompts.permissionSessions.keySet())) {
             String owner = prompts.permissionSessions.get(channelId);
-            if (!all && !filter.equals(owner)) continue;
+            if (!all && !filter.equals(owner)) {
+                continue;
+            }
             CompletableFuture<Integer> future = prompts.permissions.remove(channelId);
             prompts.permissionSessions.remove(channelId);
             if (future != null) {
@@ -552,7 +554,9 @@ public class PermissionHandler extends BaseMessageHandler {
 
         for (String requestId : new java.util.ArrayList<>(prompts.askSessions.keySet())) {
             String owner = prompts.askSessions.get(requestId);
-            if (!all && !filter.equals(owner)) continue;
+            if (!all && !filter.equals(owner)) {
+                continue;
+            }
             CompletableFuture<JsonObject> future = prompts.askFutures.remove(requestId);
             PromptBroker.PendingQuestion pending = prompts.questions.remove(requestId);
             prompts.askSessions.remove(requestId);
@@ -575,7 +579,9 @@ public class PermissionHandler extends BaseMessageHandler {
 
         for (String requestId : new java.util.ArrayList<>(prompts.planSessions.keySet())) {
             String owner = prompts.planSessions.get(requestId);
-            if (!all && !filter.equals(owner)) continue;
+            if (!all && !filter.equals(owner)) {
+                continue;
+            }
             CompletableFuture<JsonObject> future = prompts.planFutures.remove(requestId);
             prompts.planSessions.remove(requestId);
             if (future != null) {
@@ -717,8 +723,12 @@ public class PermissionHandler extends BaseMessageHandler {
                 }
             } else if ("plan".equals(kind)) {
                 String requestId = stringOrNull(payload, "requestId");
-                if (requestId == null) requestId = stringOrNull(payload, "requestID");
-                if (requestId == null) requestId = stringOrNull(payload, "id");
+                if (requestId == null) {
+                    requestId = stringOrNull(payload, "requestID");
+                }
+                if (requestId == null) {
+                    requestId = stringOrNull(payload, "id");
+                }
                 if (requestId != null && !requestId.isBlank()) {
                     prompts.planSessions.remove(requestId);
                     CompletableFuture<JsonObject> future = prompts.planFutures.remove(requestId);

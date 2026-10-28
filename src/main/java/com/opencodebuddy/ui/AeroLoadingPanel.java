@@ -1,6 +1,5 @@
 package com.opencodebuddy.ui;
 
-import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.util.ThemeConfigService;
 
 import javax.swing.JPanel;

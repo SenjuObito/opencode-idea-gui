@@ -111,7 +111,9 @@ final class SubagentHistoryService {
      * else is a broken route, which must not be mistaken for a finished child.
      */
     private static JsonObject unwrapHistory(JsonElement payload) {
-        if (payload == null || !payload.isJsonObject()) return null;
+        if (payload == null || !payload.isJsonObject()) {
+            return null;
+        }
         JsonElement history = payload.getAsJsonObject().get("history");
         return history != null && history.isJsonObject() ? history.getAsJsonObject() : null;
     }
@@ -138,7 +140,9 @@ final class SubagentHistoryService {
     }
 
     private static JsonObject parsePayload(String content) {
-        if (content == null || content.isBlank()) return new JsonObject();
+        if (content == null || content.isBlank()) {
+            return new JsonObject();
+        }
         try {
             JsonElement parsed = JsonParser.parseString(content);
             return parsed.isJsonObject() ? parsed.getAsJsonObject() : new JsonObject();
@@ -148,7 +152,9 @@ final class SubagentHistoryService {
     }
 
     private static String string(JsonObject object, String field) {
-        if (object == null || !object.has(field) || object.get(field).isJsonNull()) return "";
+        if (object == null || !object.has(field) || object.get(field).isJsonNull()) {
+            return "";
+        }
         JsonElement value = object.get(field);
         return value.isJsonPrimitive() ? value.getAsString() : "";
     }

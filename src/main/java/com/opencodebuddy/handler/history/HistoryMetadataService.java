@@ -2,7 +2,6 @@ package com.opencodebuddy.handler.history;
 
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
-import com.opencodebuddy.util.JsUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

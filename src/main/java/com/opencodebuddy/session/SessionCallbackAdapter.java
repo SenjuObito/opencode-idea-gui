@@ -4,7 +4,6 @@ import com.opencodebuddy.handler.PermissionHandler;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.opencodebuddy.tab.TabEvent;
 import com.opencodebuddy.tab.TabEventSink;
-import com.opencodebuddy.util.JsUtils;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;

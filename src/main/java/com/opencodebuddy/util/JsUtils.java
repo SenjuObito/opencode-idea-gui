@@ -52,12 +52,24 @@ public class JsUtils {
             }
             char next = str.charAt(++i);
             switch (next) {
-                case 'n': out.append('\n'); break;
-                case 'r': out.append('\r'); break;
-                case 't': out.append('\t'); break;
-                case 'b': out.append('\b'); break;
-                case 'f': out.append('\f'); break;
-                case '0': out.append('\0'); break;
+                case 'n':
+                    out.append('\n');
+                    break;
+                case 'r':
+                    out.append('\r');
+                    break;
+                case 't':
+                    out.append('\t');
+                    break;
+                case 'b':
+                    out.append('\b');
+                    break;
+                case 'f':
+                    out.append('\f');
+                    break;
+                case '0':
+                    out.append('\0');
+                    break;
                 case 'u':
                     if (i + 4 < str.length()) {
                         try {

@@ -7,36 +7,42 @@
     <resource-bundle>messages.OpenCodeBuddyBundle</resource-bundle>
 
     <description><![CDATA[
-        <h2>GUI for OpenCode inside your IDE - MIT 100% Open Source</h2>
-        <h2>IDE 内的 OpenCode 可视化 GUI · MIT 100% 开源</h2>
-        <p>OpenCode Buddy 为 <strong>opencode</strong>（开源 AI 编程代理）提供原生 JetBrains IDE 体验：
-        通过本地 <code>opencode serve</code> 服务与 <code>@opencode-ai/sdk</code> 通信，
-        无需额外云端中转，配置与凭证完全由本机 opencode CLI 本地管理。</p>
-        <p>OpenCode Buddy provides a native JetBrains IDE experience for <strong>opencode</strong> (open-source AI coding agent):
-        communicates via local <code>opencode serve</code> service and <code>@opencode-ai/sdk</code>,
-        no cloud relay needed — all config and credentials are managed locally by the opencode CLI.</p>
+        <h2>OpenCode Buddy for JetBrains IDEs</h2>
+        <p><strong>GUI for OpenCode inside your IDE · 100% Open Source (MIT)</strong><br/>
+        <strong>IDE 内的 OpenCode 原生可视化 GUI 与工作流助手 · MIT 100% 开源</strong></p>
 
-        <h2>核心功能 / Features</h2>
+        <p>OpenCode Buddy 将 <strong>OpenCode</strong> 开源 AI 编程智能体无缝搬进 JetBrains 原生工具窗口。通过内置常驻守护进程 <code>opencode-buddy-core</code> 连接本地 <code>opencode serve</code> 服务，无需云端中转，提供极致流畅的原生 JCEF 交互与全流程开发体验。</p>
+
+        <p>OpenCode Buddy brings the open-source <strong>OpenCode</strong> AI coding agent directly into native JetBrains tool windows. Powered by the resident <code>opencode-buddy-core</code> daemon bridging to local <code>opencode serve</code>, it offers zero-cloud-relay security, native JCEF fluency, and an end-to-end coding workflow.</p>
+
+        <h2>🚀 核心功能亮点 / Key Features</h2>
         <ul>
-            <li><strong>多标签多会话 / Multi-Tab Sessions</strong>：支持多个会话标签页并发独立运行，支持标签重命名、独立浮动窗口与实时回答状态指示 / Supports multiple concurrent independent session tabs with renaming, floating windows, and real-time status indicators</li>
-            <li><strong>持久化守护进程 / Persistent Daemon</strong>：自动启动或复用本地 <code>opencode serve</code> 常驻服务，支持心跳保活与崩溃自愈 / Auto-starts or reuses local <code>opencode serve</code> service with heartbeat keep-alive and crash recovery</li>
-            <li><strong>完整交互界面 / Full Interactive UI</strong>：流式响应输出、深度思考折叠增量展示、工具调用卡片与内-inline 代码 Diff 对比 / Streaming responses, collapsible thinking display, tool call cards, and inline code diff comparison</li>
-            <li><strong>原生输入感知 / Native Input Awareness</strong>：<code>@</code> 文件智能补全引用、图片及多模态附件拖拽/粘贴、<code>/</code> 原生斜杠命令、<code>!</code> / <code>$</code> 终端命令执行 / <code>@</code> file autocomplete, image/multimodal paste, <code>/</code> slash commands, <code>!</code> / <code>$</code> terminal commands</li>
-            <li><strong>Agent / 模型 / 推理配置 / Agent / Model / Reasoning Config</strong>：Build / Plan 模式切换、支持 opencode 配置的全部 Provider + Model、自定义模型添加、推理力度（Reasoning Effort）与 Always Thinking 切换 / Build / Plan mode switch, all Provider + Model support, custom model add, Reasoning Effort and Always Thinking toggle</li>
-            <li><strong>会话管理与导出 / Session Management & Export</strong>：会话全文搜索、消息撤销重试、历史回退（Revert）、会话分支（Fork）、上下文压缩（Compact）、一键导出 Markdown 会话文档、OpenCode Share 链接分享 / Full-text search, undo/retry, revert, fork, compact, export Markdown, OpenCode Share link</li>
-            <li><strong>交互审批流程 / Interactive Approval</strong>：文件编辑与命令执行权限审批（Once / Always / Reject）、Ask User Question 表单交互提问、Plan 计划审批 / File edit and command execution approval (Once / Always / Reject), Ask User Question form, Plan approval</li>
-            <li><strong>MCP 市场与技能 / MCP Marketplace & Skills</strong>：MCP 服务器状态监控、MCP 市场一键搜索/安装/卸载/配置、Skill 技能扩展管理 / MCP server monitoring, one-click search/install/uninstall/configure, Skill extension management</li>
-            <li><strong>Token 用量与看板 / Token Usage & Dashboard</strong>：实时 Token 消耗指示器、模型上下文窗口占用百分比、上下文分解详情与内置 TokenTracker 统计看板 / Real-time token usage indicator, context window percentage, context breakdown and built-in TokenTracker dashboard</li>
-            <li><strong>深度 IDE 融合 / Deep IDE Integration</strong>：明暗主题自适应跟随 IDE、IDE 编辑器与界面字体同步、状态栏小组件、中英双语界面切换 / Light/dark theme sync, editor & UI font sync, status bar widget, bilingual interface toggle</li>
+            <li><strong>🔌 OpenCode v1 & v2 双世代深度兼容 / Dual-Generation Compatibility</strong>：启动智能探测（<code>v1 | v2 | pending | unknown</code>），深度兼容 REST/SSE 与 RPC 协议、v1 逆向还原与文件快照回滚、v2 表单提问交互、压缩总结智能折叠及子代理规范历史对账。</li>
+            <li><strong>🗂️ Tab Actor 多会话物理隔离 / Tab Actor Model</strong>：每个标签页独立持有 <code>TabRecord</code>、流式路由器、消息 Store 及独立 Turn 状态机，彻底根除跨会话串流与竞态条件，支持会话独立浮动窗口。</li>
+            <li><strong>🔗 全双工强类型语义契约 / Typed Semantic Contracts</strong>：统一 <code>host_command</code> 强类型信封，基于 138 个注册动作的权威语义目录分发事件，彻底清零全局 window 位置参数回调。</li>
+            <li><strong>💬 流式交互与思考链可视化 / Streaming & Reasoning</strong>：SSE 极速响应、可折叠的思考增量（Thinking Delta）、结构化工具调用卡片与 300 条 LRU HTML 渲染缓存。</li>
+            <li><strong>📎 32KB 分块附件与富上下文感知 / Chunked Attachments & Rich Context</strong>：大附件切片分块上传（严格控制在 32KB 帧预算内杜绝 IPC 阻塞）、<code>@</code> 键工程文件模糊补全、图片剪贴板粘贴/拖拽多模态输入、<code>/</code> 原生斜杠指令及 <code>!shell</code> / <code>$</code> 终端快捷执行。</li>
+            <li><strong>🛡️ 交互式审批与决策流 / Interactive Approvals</strong>：文件改动与终端命令执行权限审批（Once / Always / Reject）、Agent 提问表单交互、Plan 计划审批，支持 per-tab 队列与 <code>tabId + sessionId + requestId</code> 三重校验。</li>
+            <li><strong>📊 TokenTracker 实时看板与监控 / Token Dashboard & Telemetry</strong>：实时轮次 Token 消耗百分比与费用估算，内置运行指标监控（桥接队列深度、丢弃数、回合耗时）。</li>
+            <li><strong>🧩 MCP 市场与 Skills 生态 / MCP & Skills Ecosystem</strong>：MCP 服务器一键搜索/安装/更新/卸载/配置，无缝扫描并管理工作区与全局 Skills。</li>
+            <li><strong>🎨 零白屏秒开与 IDE 深度融合 / Zero-Flicker Launch & Deep Integration</strong>：Java2D <code>AeroLoadingPanel</code> 原生秒开与内联深色防闪烁、全息毛玻璃胶囊状态面板，自动跟随 IDE 明暗主题与编辑器字体。</li>
         </ul>
 
-        <h2>使用方法 / Getting Started</h2>
+        <h2>⚡ 环境要求 / Requirements</h2>
         <ul>
-            <li>从右侧边栏打开 <strong>OpenCode</strong> 工具窗口（需已安装 <code>opencode</code> CLI） / Open the <strong>OpenCode</strong> tool window from the right sidebar (requires <code>opencode</code> CLI installed)</li>
-            <li>插件会自动启动或复用本地 <code>opencode serve</code> 服务（默认端口 4096，可用 <code>OPENCODE_PORT</code> 覆盖） / Plugin auto-starts or reuses local <code>opencode serve</code> service (default port 4096, override with <code>OPENCODE_PORT</code>)</li>
+            <li><strong>JetBrains IDE</strong>: 2023.3+（需支持 JCEF，如 IntelliJ IDEA, PyCharm, WebStorm, GoLand, Rider 等）</li>
+            <li><strong>OpenCode CLI</strong>: 本地已安装并在 PATH 中（v1 或 v2 均受支持）</li>
+            <li><strong>Node.js</strong>: >= 18.0.0（用于运行内置 <code>opencode-buddy-core</code> 守护进程）</li>
         </ul>
 
-        <p><em>关键词 / Keywords: OpenCode, opencode-buddy, AI 编程 / AI Coding, 代码生成 / Code Generation, Agent/智能体, 多标签 / Multi-Tab, MCP, TokenTracker/Token统计</em></p>
+        <h2>💡 快速开始 / Getting Started</h2>
+        <ol>
+            <li>安装完成后，从右侧边栏展开 <strong>OpenCode</strong> 工具窗口，或通过菜单 <code>View → Tool Windows → OpenCode</code> 打开。</li>
+            <li>插件会自动检测、启动或复用本地 <code>opencode serve</code> 服务（默认端口 4096，支持 <code>OPENCODE_PORT</code> 自定义覆盖）。</li>
+            <li>在输入框输入 <code>@</code> 引用工程上下文，或直接提出编程问题开始使用！</li>
+        </ol>
+
+        <p><em>关键词 / Keywords: OpenCode, opencode-buddy, AI Coding, Code Generation, Agent, Tab Actor, MCP, Skills, TokenTracker, Dual Protocol (v1/v2)</em></p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

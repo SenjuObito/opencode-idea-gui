@@ -78,6 +78,35 @@ public class HtmlLoader {
         return generateFallbackHtml();
     }
 
+    /**
+     * Load the Aero splash loading screen HTML.
+     * @return the splash HTML content, or fallback HTML if loading fails
+     */
+    public String loadSplashHtml() {
+        try {
+            InputStream is = resourceClass.getResourceAsStream("/html/splash.html");
+            if (is != null) {
+                String html = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                is.close();
+
+                boolean isDark = true;
+                try {
+                    isDark = ThemeConfigService.getIdeThemeConfig().get("isDark").getAsBoolean();
+                } catch (Exception ignored) {
+                }
+
+                String theme = isDark ? "dark" : "light";
+                String statusText = com.opencodebuddy.i18n.OpenCodeBuddyBundle.message("toolwindow.preparingBridge");
+                html = html.replace("{{THEME}}", theme)
+                           .replace("{{STATUS_TEXT}}", statusText);
+                return html;
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to load splash.html: " + e.getMessage());
+        }
+        return generateFallbackHtml();
+    }
+
     /** Drop the shared themed page (theme change invalidates it anyway). */
     public static void invalidateCache() {
         cachedThemedHtml = null;

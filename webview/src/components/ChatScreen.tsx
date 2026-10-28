@@ -227,7 +227,7 @@ export const ChatScreen = ({
   }, [setSearchOpen]);
 
   return (
-    <>
+    <div className="chat-screen-shell">
       <div className="messages-shell">
         <MessageAnchorRail
           messages={mergedMessages}
@@ -360,6 +360,6 @@ export const ChatScreen = ({
           onCompactClick={handleCompact}
         />
       </div>
-    </>
+    </div>
   );
 };

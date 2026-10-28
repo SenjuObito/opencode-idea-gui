@@ -1,18 +1,58 @@
-/* Welcome Screen Styles */
+/* Unified Chat Screen Shell - Seamless Viewport Canvas */
+.chat-screen-shell {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    background-color: var(--bg-chat, #0d0f17);
+    background-image: 
+        radial-gradient(circle at 50% 40%, rgba(14, 165, 233, 0.1) 0%, rgba(99, 102, 241, 0.05) 35%, transparent 65%),
+        radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px;
+}
 
+[data-theme="light"] .chat-screen-shell {
+    background-image: 
+        radial-gradient(circle at 50% 40%, rgba(186, 230, 253, 0.45) 0%, rgba(224, 231, 255, 0.25) 35%, transparent 65%),
+        radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px;
+}
+
+/* Welcome Screen Styles (Aero Deep Space & Subtle Aurora) */
 .welcome-screen {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: var(--text-tertiary);
-    gap: 16px;
+    width: 100%;
+    min-height: 260px;
+    padding: 24px;
+    user-select: none;
+    gap: 20px;
+    background: transparent;
+}
+
+[data-theme="light"] .welcome-screen {
+    background: transparent;
 }
 
 .welcome-logo-container {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.welcome-text-container {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--text-secondary, #cbd5e1);
+    text-align: center;
 }
 
 /* Version tag - positioned next to the logo */

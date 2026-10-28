@@ -1,10 +1,27 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Plugin icon (dark theme).
-       Intentionally identical to pluginIcon.svg: the opencode mark carries its own dark
-       tile, so it reads well on both light and dark IDE backgrounds and needs no
-       theme-specific recoloring (same approach the previous CC GUI icon used). -->
-  <rect width="512" height="512" fill="#131010"/>
-  <rect x="128" y="96" width="256" height="320" fill="#FFFFFF"/>
-  <rect x="192" y="160" width="128" height="192" fill="#131010"/>
-  <rect x="192" y="224" width="128" height="128" fill="#5A5858"/>
+  <defs>
+    <radialGradient id="pi-bg-dark" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#151822" />
+      <stop offset="100%" stop-color="#08090e" />
+    </radialGradient>
+    <linearGradient id="pi-core-dark" x1="192" y1="224" x2="320" y2="352" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+    <linearGradient id="pi-frame-edge-dark" x1="128" y1="96" x2="384" y2="416" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0.4" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#pi-bg-dark)" />
+  <rect x="2" y="2" width="508" height="508" rx="110" stroke="#1f2536" stroke-width="3" />
+  
+  <!-- Outer Titanium Frame with Luminescent Edge -->
+  <rect x="128" y="96" width="256" height="320" rx="30" fill="#f8fafc" />
+  <rect x="129" y="97" width="254" height="318" rx="29" stroke="url(#pi-frame-edge-dark)" stroke-width="2" />
+  <!-- Inner Cutout -->
+  <rect x="192" y="160" width="128" height="192" rx="14" fill="#08090e" />
+  <!-- Multi-Spectrum Holographic Core -->
+  <rect x="192" y="224" width="128" height="128" rx="14" fill="url(#pi-core-dark)" />
 </svg>

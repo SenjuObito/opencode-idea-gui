@@ -193,35 +193,39 @@ public class ErrorPanelBuilder {
      */
     public static JPanel buildLoadingPanel(String icon, String title, String description) {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(30, 30, 30));
+        Color bgColor = com.opencodebuddy.util.ThemeConfigService.getBackgroundColor();
+        panel.setBackground(bgColor);
 
         JPanel centerPanel = new JPanel();
         centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
-        centerPanel.setBackground(new Color(30, 30, 30));
+        centerPanel.setBackground(bgColor);
         centerPanel.setBorder(BorderFactory.createEmptyBorder(100, 50, 100, 50));
 
-        JLabel iconLabel = new JLabel(icon);
-        iconLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 48));
-        iconLabel.setForeground(Color.WHITE);
-        iconLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        if (icon != null && !icon.trim().isEmpty()) {
+            JLabel iconLabel = new JLabel(icon);
+            iconLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 48));
+            iconLabel.setForeground(Color.WHITE);
+            iconLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            centerPanel.add(iconLabel);
+            centerPanel.add(Box.createVerticalStrut(20));
+        }
 
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 16));
+        titleLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 15));
         titleLabel.setForeground(Color.WHITE);
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         titleLabel.setHorizontalAlignment(SwingConstants.CENTER);
-
-        JLabel descLabel = new JLabel("<html><center>" + description.replace("\n", "<br>") + "</center></html>");
-        descLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
-        descLabel.setForeground(new Color(180, 180, 180));
-        descLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        descLabel.setHorizontalAlignment(SwingConstants.CENTER);
-
-        centerPanel.add(iconLabel);
-        centerPanel.add(Box.createVerticalStrut(20));
         centerPanel.add(titleLabel);
-        centerPanel.add(Box.createVerticalStrut(10));
-        centerPanel.add(descLabel);
+
+        if (description != null && !description.trim().isEmpty()) {
+            centerPanel.add(Box.createVerticalStrut(10));
+            JLabel descLabel = new JLabel("<html><center>" + description.replace("\n", "<br>") + "</center></html>");
+            descLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+            descLabel.setForeground(new Color(180, 180, 180));
+            descLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            descLabel.setHorizontalAlignment(SwingConstants.CENTER);
+            centerPanel.add(descLabel);
+        }
 
         panel.add(centerPanel, BorderLayout.CENTER);
         return panel;

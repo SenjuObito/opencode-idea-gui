@@ -400,11 +400,6 @@ public class WebviewInitializer {
         JPanel mainPanel = host.getMainPanel();
         JBCefBrowser browser = null;
 
-        // The async detection path shows a loading panel while probing; clear it so
-        // it cannot linger next to the browser component added below (BorderLayout
-        // keeps only CENTER in its map, it does not remove stale children).
-        mainPanel.removeAll();
-
         // Environment check, Node version gate and page build already ran on the
         // background thread (prepareInitializationOffEdt). Only browser creation
         // and Swing mounting belong here.
@@ -520,6 +515,25 @@ public class WebviewInitializer {
             host.setFrontendReady(false);
             String htmlContent = takePreparedHtml();
 
+            JComponent browserComponent = createdBrowser.getComponent();
+            browserComponent.setBackground(ThemeConfigService.getBackgroundColor());
+
+            AtomicBoolean browserMounted = new AtomicBoolean(false);
+            Runnable mountBrowser = () -> {
+                if (browserMounted.compareAndSet(false, true)) {
+                    invokeLaterForToolWindow(() -> {
+                        if (!host.isDisposed()) {
+                            mainPanel.removeAll();
+                            mainPanel.setLayout(new BorderLayout());
+                            mainPanel.add(browserComponent, BorderLayout.CENTER);
+                            mainPanel.revalidate();
+                            mainPanel.repaint();
+                            LOG.debug("Browser mounted cleanly to mainPanel without white flash");
+                        }
+                    });
+                }
+            };
+
             // LoadHandler must be registered before loadHTML, otherwise the
             // first frame's onLoadEnd is missed and the JS bridge injection
             // never runs, leaving the frontend without a sendToJava channel.
@@ -535,6 +549,9 @@ public class WebviewInitializer {
                     if (!frame.isMain() || host.isDisposed()) {
                         return;
                     }
+
+                    // Reveal browser once HTML has loaded and parsed to eliminate white canvas flash
+                    mountBrowser.run();
 
                     String injection;
                     String shiftEscInjection;
@@ -620,11 +637,6 @@ public class WebviewInitializer {
             createdBrowser.loadHTML(htmlContent);
             scheduleBridgeInjectionRetries(createdBrowser, currentBridges, initialPageGeneration);
 
-            JComponent browserComponent = createdBrowser.getComponent();
-
-            // Set webview container background color to prevent white flash before HTML loads.
-            browserComponent.setBackground(ThemeConfigService.getBackgroundColor());
-
             // Add drag-and-drop support - get full file paths
             new DropTarget(browserComponent, new DropTargetAdapter() {
                 @Override
@@ -662,9 +674,14 @@ public class WebviewInitializer {
                 }
             });
 
-            mainPanel.add(browserComponent, BorderLayout.CENTER);
-            mainPanel.revalidate();
-            mainPanel.repaint();
+            // Defer mounting until onLoadEnd (or after brief timeout) to eliminate CEF initial white canvas flash
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                try {
+                    Thread.sleep(600);
+                } catch (InterruptedException ignored) {
+                }
+                mountBrowser.run();
+            });
             host.getWebviewWatchdog().resetTimestamps();
             host.getWebviewWatchdog().start();
 
@@ -1092,10 +1109,10 @@ public class WebviewInitializer {
      * All show*Panel helpers must go through this to avoid stale loading/error panels
      * lingering when called from async callbacks (invokeLater).
      */
-    private void replaceMainContent(JPanel newPanel) {
+    private void replaceMainContent(JComponent newComponent) {
         JPanel mainPanel = host.getMainPanel();
         mainPanel.removeAll();
-        mainPanel.add(newPanel, BorderLayout.CENTER);
+        mainPanel.add(newComponent, BorderLayout.CENTER);
         mainPanel.revalidate();
         mainPanel.repaint();
     }
@@ -1247,13 +1264,9 @@ public class WebviewInitializer {
     }
 
     private void showLoadingPanel() {
-        JPanel panel = ErrorPanelBuilder.buildLoadingPanel(
-            "⏳",
-            OpenCodeBuddyBundle.message("toolwindow.extractingTitle"),
-            OpenCodeBuddyBundle.message("toolwindow.extractingDesc")
-        );
+        JPanel panel = new AeroLoadingPanel();
         replaceMainContent(panel);
-        LOG.info("[OpencodeBuddyToolWindow] Showing loading panel while bridge extracts...");
+        LOG.info("[OpencodeBuddyToolWindow] Showing Aero Swing loading panel...");
     }
 
     private void invokeLaterForToolWindow(@NotNull Runnable runnable) {

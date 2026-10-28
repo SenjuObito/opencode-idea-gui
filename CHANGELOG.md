@@ -8,6 +8,70 @@ Release body. Consumers of this file:
 - `tools/extract-release-notes.mjs` → GitHub Release body (emits the English half
   under an `### English` heading, which the changelog dialog splits on)
 
+## 0.3.0 (2026-10-28)
+
+中文：
+
+OpenCode Buddy 迎来重大架构重构版本：落地全双工语义契约、Tab Actor 多会话物理隔离、OpenCode v1 与 v2 双世代深度兼容，并大幅提升渲染性能与界面质感。
+
+- **架构全面重构（全双工语义事件与强类型信封）**：
+  - 彻底淘汰旧式的 `window[fn](...args)` 位置参数调用机制，宿主与前端通信全面转向语义事件系统（Semantic Event Catalog），权威派发覆盖 138 个语义键，非私有全局 `window` 回调清零。
+  - 前端发往宿主的指令统一收归为单一 `host_command` 强类型信封（携带 `requestId`、`tabId`、语义动作及泛型 payload），彻底杜绝参数多重转义与状态栏误报。
+  - 建立双端协议交叉校验测试与静态护栏，保证全链路类型安全。
+
+- **多对话彻底物理隔离（Tab Actor 架构）**：
+  - 重构多标签会话模型为 Tab Actor 架构，每个 Tab 独立持有专属的 `TabRecord`、`TabStreamRouter`、`TabMessageStore`、Turn 状态及独立事件通道。
+  - 彻底删除全局会话切换锁、跨 Tab 状态浅拷贝及 ref 交换，根治以往多会话流式输出串流、会话标题被新会话覆盖、Token 消耗统计混淆及首轮响应卡死等问题。
+  - 消息视图直接绑定 tab store 并通过消息 ID 严格对账；会话 `/fork` 独立落入新 Tab 且不影响源会话；`/revert` 严格遵从 OpenCode 快照工作流。
+  - 权限回复、交互式提问（Questions）与计划审批（Plans）严格归属对应 Tab，具备 `tabId + sessionId + requestId` 三重校验与独立队列。
+
+- **OpenCode v1 与 v2 双世代深度自适应与兼容**：
+  - 升级服务端探测逻辑（`GET /api/info` 探测响应，状态透明展示为 `pending | v1 | v2 | unknown`），无缝适配两代协议差异。
+  - 兼容 OpenCode v1 消息撤销（revert）写操作还原与文件快照回滚能力。
+  - 完善会话压缩总结（Session Compaction Fold）体验，支持智能折叠与历史上下文保留。
+  - 子代理（Subagent）规范化历史转发，将子代理规范 transcript 与 todo 状态作为真实权威源；打通 OpenCode MCP 服务器读取与技能回复通道。
+
+- **性能调优、内存治理与渲染优化**：
+  - 附件传输重构为分块上传（Chunked Upload），消息发送仅携带引用 ID，单帧参数预算限制在 32KB，消除大附件导致的 IPC 阻塞。
+  - 对话渲染优化：支持按回合分页加载与稳定引用更新，引入 300 条 LRU HTML 缓存（`MarkdownBlock`），大幅削减长对话滚动重绘耗时。
+  - 内存治理：按 Tab 分区治理消息缓存与合并缓存（`messageMergeCache`），关闭标签即时清理；接入桥接队列深度、丢弃数与回合耗时指标上报。
+
+- **视觉与交互质感全方位升级**：
+  - 升级全新 OpenCode 正统全息多维棱晶图腾（覆盖 16px-512px 全套矢量与光栅资源）。
+  - 启动加载重构为 Java2D 原生 `AeroLoadingPanel` 秒开，配合 HTML 首字节内联深色背景，彻底根除启动白屏与闪烁。
+  - 状态面板升级为微通透悬浮毛玻璃胶囊（Glassmorphism），作用域穿透至整体窗口，消除展开后的横向色差断层；支持自定义模式配色与宿主推送。
+
+English：
+
+OpenCode Buddy major release featuring full architectural refactoring, full-duplex semantic contracts, Tab Actor multi-session isolation, deep compatibility with OpenCode v1 & v2, plus major rendering performance and UI polish.
+
+- **Full Architectural Refactoring (Typed Envelopes & Semantic Events)**:
+  - Retired the legacy `window[fn](...args)` positional parameter dispatching. Communication between the host and webview now strictly uses a Semantic Event Catalog (138 registered semantic actions) via authoritative routing, completely eliminating non-private window-level callbacks.
+  - Consolidated frontend-to-host commands into a unified `host_command` typed envelope (carrying `requestId`, `tabId`, semantic action, and typed payload), preventing argument double-escaping and status misreports.
+  - Established cross-boundary catalog integration tests and static architectural guardrails to ensure end-to-end type safety.
+
+- **Strict Multi-Session Isolation (Tab Actor Model)**:
+  - Transitioned the multi-tab session architecture into a Tab Actor model: each tab independently owns its own `TabRecord`, `TabStreamRouter`, `TabMessageStore`, turn lifecycle state, and dedicated event sink.
+  - Completely eliminated global session transition locks, cross-tab snapshot copying, and ref swapping, resolving cross-session streaming leaks, title overrides, token metric cross-talk, and first-turn pending freezes.
+  - Chat views bind directly to the tab store with per-message ID reconciliation. Session `/fork` cleanly creates a new tab without affecting the parent, and `/revert` strictly adheres to OpenCode snapshots.
+  - Interactive permissions, question forms, and plan approvals are strictly scoped per tab with triple-check validation (`tabId + sessionId + requestId`) and per-tab queues.
+
+- **Deep OpenCode v1 & v2 Compatibility**:
+  - Enhanced engine probing (`GET /api/info` probe with explicit states: `pending | v1 | v2 | unknown`) with seamless fallback across protocol differences.
+  - Added support for OpenCode v1 message undo/revert write-operation restoration and snapshot rollbacks.
+  - Polished session compaction fold behaviors, retaining tab fold states and compaction notices across restarts.
+  - Forwarded canonical subagent history from core, treating child transcripts and canonical todo states as single sources of truth; unified OpenCode MCP server discovery and skills responses.
+
+- **Performance, Memory Governance & Rendering Optimizations**:
+  - Re-architected attachments into chunked uploads with reference-only prompt submissions and a strict 32KB per-frame parameter budget, preventing IPC bottlenecks.
+  - Optimized conversation rendering: introduced turn-based pagination and reference-stable message lists, backed by a 300-entry LRU HTML cache (`MarkdownBlock`) to eliminate re-rendering freezes during long sessions.
+  - Memory governance: partitioned message caches and merge caches (`messageMergeCache`) by tabId with automatic cleanup on tab closure; added live telemetry for bridge queue depth, dropped events, and turn durations.
+
+- **Visual & UI Experience Overhaul**:
+  - Introduced the new OpenCode holographic multidimensional prism emblem across all vector and raster assets (16px to 512px).
+  - Rebuilt the startup screen with native Java2D `AeroLoadingPanel` instant opening paired with inline dark styles in index.html to permanently eliminate white startup flicker.
+  - Redesigned the status panel into a floating translucent glassmorphism capsule spanning the entire chat screen shell, eliminating horizontal seam contrast, and added support for host-pushed modes and custom color schemes.
+
 ## 0.0.1 (2026-09-15)
 
 中文：

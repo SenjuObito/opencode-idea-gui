@@ -65,9 +65,13 @@
 
 ## 🌟 关于本项目
 
-<div align="center">
-  <img src="media/home.png" alt="OpenCode Buddy JetBrains 主界面" width="700">
-</div>
+<p align="center">
+  <img src="media/home_1.png" alt="OpenCode Buddy 深色模式对话" width="49%">
+  <img src="media/home_2.png" alt="OpenCode Buddy 浅色模式对话" width="49%">
+</p>
+<p align="center">
+  <em>🌙 深色沉浸模式 &nbsp; | &nbsp; ☀️ 浅色原生模式</em>
+</p>
 
 许多 Java / Kotlin / Go / Python 开发者都在 JetBrains IDE 体系下工作。过去想使用 OpenCode，就必须离开
 IDE 切到独立终端 —— 割裂感强，而且缺乏针对多文件修改的可视化 Diff 确认。
@@ -82,17 +86,20 @@ IDE 切到独立终端 —— 割裂感强，而且缺乏针对多文件修改�
 
 ## 🚀 核心特性
 
-* ⚡ **高性能守护进程桥接** —— 集成 `opencode-buddy-core` 运行时，彻底规避按消息频繁起停 CLI 的卡顿，支持连接复用与多会话隔离。
-* 🗂️ **多标签与多会话** —— 在工具窗口内打开多个独立会话标签页；支持重命名、实时状态指示，并可随时脱离为独立浮动窗口。
-* 💬 **流式会话与思考链可视化** —— 基于 SSE 的极速流式输出、可折叠的思考增量（Thinking Delta）、结构化工具调用卡片与实时语法高亮。
-* 📎 **富工程上下文与快捷输入**：
+* ⚡ **高性能守护进程桥接** —— 集成 `opencode-buddy-core` 运行时，彻底规避按消息频繁起停 CLI 的卡顿，支持连接复用、自动心跳与生命周期自愈。
+* 🗂️ **Tab Actor 多会话物理隔离** —— 采用彻底解耦的 Tab Actor 架构，每个标签页独立持有 `TabRecord`、`TabStreamRouter`、`TabMessageStore` 及 Turn 状态机，彻底根治多会话流式串流与状态污染。
+* 🔗 **全双工强类型语义契约** —— 前端指令全量收口为单一 `host_command` 类型化信封，宿主事件通过 138 个注册动作的权威语义目录分发，彻底清零脆弱的全局 `window` 位置参数回调。
+* 🔌 **OpenCode v1 与 v2 双世代深度兼容** —— 启动智能探测（`v1 | v2 | pending | unknown`），无缝兼容消息流、权限审批、v1 撤销写操作还原与文件快照回滚、压缩总结智能折叠及子代理规范历史对账。
+* 💬 **流式会话与思考链可视化** —— 基于 SSE 的极速流式输出、可折叠的思考增量（Thinking Delta）、结构化工具调用卡片与 300 条 LRU HTML 渲染缓存（`MarkdownBlock`）。
+* 📎 **分块附件上传与富工程上下文**：
+  * 大附件自动切片分块上传，提问仅携带引用 ID，单帧严格控制在 32KB 预算内杜绝 IPC 阻塞；
   * `@` 键智能模糊检索当前工程文件并自动附加；
   * 图片拖拽或剪贴板直接粘贴进入多模态输入；
-  * 原生支持 `/init`、`/review` 等斜杠指令及 `!shell` 快捷控制台调用。
-* 🛡️ **交互式审批与决策流** —— 工具执行与文件改动的权限审批卡片（一次允许 / 始终允许 / 拒绝）、Agent 提问表单及计划确认。
-* 📊 **TokenTracker 实时用量看板** —— 实时显示当前轮次 Token 消耗百分比及费用估算，内置多维度使用统计与消耗图表。
+  * 原生支持 `/init`、`/review`、`/fork`、`/revert` 等斜杠指令及 `!shell` 快捷控制台调用。
+* 🛡️ **交互式审批与决策流** —— 工具执行与文件改动的权限审批卡片（一次允许 / 始终允许 / 拒绝）、Agent 提问表单及计划确认，支持 per-tab 队列隔离与 `tabId + sessionId + requestId` 三重校验。
+* 📊 **TokenTracker 实时用量看板** —— 实时显示当前轮次 Token 消耗百分比及费用估算，内置多维度使用统计与桥接队列深度、丢弃数、回合耗时等运行指标。
 * 🧩 **MCP 市场与 Skills 生态** —— 一键安装、更新与卸载 MCP 服务器，无缝扫描并管理工作区与全局 Skills。
-* 🎨 **深度 IDE 外观融合** —— 自动跟随 JetBrains 浅色/深色主题，支持 IDE 编辑器字体同步与自定义字号调整。
+* 🎨 **原生秒开、零白屏闪烁与全息质感** —— 原生 Java2D `AeroLoadingPanel` 纯净秒开与内联深色样式根除白屏闪烁，全新 OpenCode 全息图腾棱晶图标，悬浮微通透毛玻璃胶囊状态面板，自动跟随 IDE 主题与编辑字体。
 
 ---
 
@@ -108,14 +115,18 @@ OpenCode Buddy **同时支持 OpenCode v1 与 OpenCode v2**，并针对两代协
 | **消息结构** | `role` 字段 | `type` 字段，按时间升序排序 |
 | **提问与附件** | `parts` 数组 | `files: [{ uri, name }]` |
 | **问题交互** | `question.asked` 事件 | Form 表单体系（`fields` / `field.key`） |
-| **权限审批** | `permission.updated` | `permission.asked`，回包使用 `decision` |
+| **权限审批与计划** | `permission.updated` | `permission.asked`，回包使用 `decision` |
+| **会话撤销 / 还原** | 写操作自动逆向还原与文件快照回滚 | 快照（Snapshots）回滚工作流 |
+| **会话压缩总结** | 压缩总结折叠并保留会话折叠状态 | 压缩折叠状态保留与上下文通告 |
+| **子代理权威源** | 子代理 transcript 完整转发 | 规范化 transcript 与 Todo 状态对账 |
 | **工具生命周期** | 单一工具事件 | `tool.input.started` → `tool.called` → `tool.success` |
 
 插件如何处理两代差异：
 
 - 启动时守护进程会通过 `GET /api/info` 探测服务端。返回 HTTP 200 即锁定为 **v2** 模式；返回 404 或无响应则回退为 **v1**。
-- 请求发送、事件归一化、历史加载、权限/表单回包以及工具生命周期处理，全部经过一层版本感知逻辑，因此同一套 UI 可运行在任意一代服务端上。
+- 请求发送、事件归一化、历史加载、权限/表单回包、快照回退以及工具生命周期处理，全部经过一层版本感知逻辑，因此同一套 UI 可无缝运行在任意一代服务端上。
 - 版本状态会以 `pending | v1 | v2 | unknown` 呈现，未确定的服务端绝不会被静默当作 v1 处理。
+- 所有决策、提问与计划确认均使用 per-tab 独立队列并带有 `tabId + sessionId + requestId` 三重校验，避免跨会话路由混淆。
 
 > **提示：** 运行 `opencode --version` 可查看本机安装的 CLI 世代，两代均受支持。
 
@@ -157,9 +168,13 @@ OpenCode Buddy **同时支持 OpenCode v1 与 OpenCode v2**，并针对两代协
 
 点击右上角 ⚙️ 齿轮图标进入设置：
 
-<div align="center">
-  <img src="media/settings.png" alt="JetBrains 设置页" width="550">
-</div>
+<p align="center">
+  <img src="media/home.png" alt="OpenCode Buddy 极速纯净新会话" width="49%">
+  <img src="media/settings.png" alt="JetBrains 设置页" width="49%">
+</p>
+<p align="center">
+  <em>🚀 极速纯净新会话 &nbsp; | &nbsp; ⚙️ 全功能偏好与设置中心</em>
+</p>
 
 - **外观与行为** —— 自定义字体、主题色彩、发送快捷键（`Enter` 或 `⌘+Enter`）及通知弹窗规则；
 - **运行环境** —— 自定义 Node.js 及 `opencode` 可执行文件的探测路径；
@@ -172,28 +187,33 @@ OpenCode Buddy **同时支持 OpenCode v1 与 OpenCode v2**，并针对两代协
 ## 🏗️ 架构设计
 
 ```
-webview/ (React SPA, JCEF)  ⇄  Java 插件宿主 (JBCefJSQuery + MessageDispatcher)
-                            ⇄  opencode-buddy-core 守护进程 (NDJSON over stdio, 常驻 Node 进程)
-                            ⇄  opencode serve (HTTP + SSE, v1 / v2)
+webview/ (React 19 SPA, JCEF)  ⇄  Java 插件宿主 (JBCefJSQuery + Tab Actor 注册表)
+                              ⇄  opencode-buddy-core 守护进程 (NDJSON over stdio, 常驻 Node 进程)
+                              ⇄  opencode serve (HTTP + SSE, v1 / v2)
 ```
 
-- webview 通过 `sendToJava("type:content")` 与宿主通信；宿主在 JCEF 内回调 `window[fn](...args)` 回复。
-  所有聊天面板共享同一条消息分发链路。
-- `opencode-buddy-core` 通过 stdio 传输 NDJSON：`{id, method, params}` 请求、`{id, line}` 流式输出、
-  `{type:'daemon', event}` 生命周期事件。请求非阻塞，并发请求用 `AsyncLocalStorage` 隔离上下文。
-- 会话、消息历史与设置缓存存放在 `~/.opencodebuddy`；消息内容以 `opencode serve` 为准，插件侧维护本地会话索引。
+- **全双工强类型契约**：
+  - webview 向宿主发出的所有指令统一走单一 `host_command` 强类型信封（`{requestId, tabId, cmd, payload}`），彻底摒弃位置参数与字符串多重转义的隐患。
+  - 宿主向前端推送强类型语义事件信封（`{v, type, tabId, sessionId, turnId, seq, epoch, payload}`），由前端 138 个动作的权威 `hostEventRegistry` 进行查表派发，脆弱的 `window[fn](...args)` 全局回调已完全清零。
+- **Tab Actor 物理隔离架构**：
+  - 每个会话标签页作为自治的 Tab Actor 运行，独立持有 `TabRecord`、`TabStreamRouter`、`TabMessageStore`（按消息 ID 对账）、专属事件通道及独立 Turn 状态机。
+  - 彻底移除全局会话切换锁和跨 Tab 快照浅拷贝。React 视图直接绑定 Tab Store，多标签并行流式输出互不干扰。
+- **流式、缓冲与分块传输**：
+  - `opencode-buddy-core` 通过 stdio 传输 NDJSON，基于 `AsyncLocalStorage` 实现并发请求上下文隔离。
+  - 文件附件采用分块切片上传并在提问中仅传递引用 ID，单帧严格限制在 32KB 预算内杜绝 IPC 阻塞。
+  - 会话与配置缓存存放在 `~/.opencodebuddy`；会话消息以 `opencode serve` 为服务端权威源，插件侧维护本地会话索引。
 
 Java 模块布局（`src/main/java/com/opencodebuddy/`）：
 
 ```
 action/        编辑器、项目视图、控制台、VCS（提交信息）与聊天相关动作
-bridge/        Node/opencode 检测、守护进程生命周期、NDJSON 客户端
-handler/       每个 webview 消息类型一个 handler（设置、provider、权限、历史…）
-permission/    权限 / question 审批服务与工具拦截
-session/       会话与消息转换、revert / fork / 压缩
+bridge/        Node/opencode 检测、守护进程生命周期、NDJSON 客户端、BridgeScheduler
+handler/       强类型宿主命令处理器（设置、provider、会话、权限、历史…）
+prompt/        PromptBroker：负责 tab 作用域的权限审批、提问表单与计划确认
+session/       会话与消息转换、revert / fork / 压缩、TabRecord 与 TabStreamRouter
 provider/      opencode provider 接线与模型目录
 mcp/ skill/    MCP 服务器、技能
-ui/            工具窗口、标签页、脱离窗口、JCEF 初始化
+ui/            工具窗口、标签页、脱离窗口、AeroLoadingPanel、JCEF 初始化
 notifications/ 状态栏小组件与气泡通知
 settings/      插件设置持久化（~/.opencodebuddy）
 util/ utils/   字体、i18n、token 用量、平台辅助

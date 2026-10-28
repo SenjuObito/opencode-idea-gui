@@ -65,9 +65,13 @@
 
 ## 🌟 About The Project
 
-<div align="center">
-  <img src="media/home.png" alt="OpenCode Buddy JetBrains Main View" width="700">
-</div>
+<p align="center">
+  <img src="media/home_1.png" alt="OpenCode Buddy Dark Mode Chat" width="49%">
+  <img src="media/home_2.png" alt="OpenCode Buddy Light Mode Chat" width="49%">
+</p>
+<p align="center">
+  <em>🌙 Dark Mode Chat &nbsp; | &nbsp; ☀️ Light Mode Chat</em>
+</p>
 
 Many Java / Kotlin / Go / Python developers live inside JetBrains IDEs. Until now, using OpenCode meant
 leaving the IDE for a standalone terminal — a disruptive context switch with no visual diff confirmation
@@ -85,17 +89,20 @@ for multi-file edits.
 
 ## 🚀 Key Features
 
-* ⚡ **High-performance daemon bridge** — integrates the `opencode-buddy-core` runtime to avoid the latency of spawning the CLI per message, with connection reuse and multi-session isolation.
-* 🗂️ **Multi-tab & multi-session** — open multiple independent session tabs inside the tool window; rename them, show live status, or detach them into standalone floating windows.
-* 💬 **Streaming chat & visible reasoning** — SSE-powered streaming output, collapsible Thinking deltas, structured tool-call cards, and real-time syntax highlighting.
-* 📎 **Rich project context & fast input**:
+* ⚡ **High-performance daemon bridge** — integrates the `opencode-buddy-core` runtime to avoid the latency of spawning the CLI per message, with connection reuse and full lifecycle self-healing.
+* 🗂️ **Tab Actor multi-session isolation** — fully isolated Tab Actor model where each tab independently owns its `TabRecord`, `TabStreamRouter`, `TabMessageStore`, and turn lifecycle, eliminating cross-session streaming leaks and race conditions.
+* 🔗 **Full-duplex semantic contracts** — unified `host_command` typed envelope for frontend commands and an authoritative 138-key Semantic Event Catalog for host events, completely eliminating brittle window-level positional callbacks.
+* 🔌 **Deep OpenCode v1 & v2 compatibility** — runtime auto-detection (`v1 | v2 | pending | unknown`) with seamless adaptation for messages, permissions, forms, v1 revert write-restoration, session compaction folds, and subagent canonical transcripts.
+* 💬 **Streaming chat & visible reasoning** — SSE-powered streaming output, collapsible Thinking deltas, structured tool-call cards, and real-time syntax highlighting backed by a 300-entry LRU HTML cache (`MarkdownBlock`).
+* 📎 **Chunked attachments & rich project context**:
+  * Chunked uploads for large attachments with reference-only submissions under a strict 32KB per-frame budget;
   * `@` triggers fuzzy search over project files and attaches them automatically;
-  * drag-and-drop images or paste directly from the clipboard for multimodal input;
-  * native slash commands such as `/init` and `/review`, plus `!shell` quick console execution.
-* 🛡️ **Interactive approvals & decision flows** — permission cards for tool execution and file edits (Once / Always / Reject), agent question forms, and plan confirmation.
-* 📊 **TokenTracker usage dashboard** — live per-turn token percentage and cost estimate, with multi-dimensional usage statistics and charts.
+  * Drag-and-drop images or paste directly from clipboard for multimodal input;
+  * Native slash commands such as `/init`, `/review`, `/fork`, `/revert`, plus `!shell` quick console execution.
+* 🛡️ **Interactive approvals & decision flows** — permission cards for tool execution and file edits (Once / Always / Reject), agent question forms, and plan confirmation with per-tab queue isolation and triple-check validation (`tabId + sessionId + requestId`).
+* 📊 **TokenTracker usage dashboard** — live per-turn token percentage and cost estimate, with multi-dimensional usage statistics and telemetry metrics (queue depth, drop rates, turn duration).
 * 🧩 **MCP marketplace & Skills ecosystem** — one-click install / update / uninstall of MCP servers, plus scanning and management of workspace and global Skills.
-* 🎨 **Deep IDE integration** — automatically follows the JetBrains light/dark theme with IDE editor font sync and adjustable font size.
+* 🎨 **Zero-flicker launch & deep IDE integration** — native Java2D `AeroLoadingPanel` instant startup with inline dark styles to eliminate white flicker, floating translucent glassmorphism status capsule, and full JetBrains theme/editor font synchronization.
 
 ---
 
@@ -112,17 +119,22 @@ protocol change between the two generations.
 | **Messages** | `role` field | `type` field, ascending time sort |
 | **Prompts & attachments** | `parts` array | `files: [{ uri, name }]` |
 | **Questions** | `question.asked` events | Form schema (`fields` / `field.key`) |
-| **Permissions** | `permission.updated` | `permission.asked` with `decision` reply |
+| **Permissions & plans** | `permission.updated` | `permission.asked` with `decision` reply |
+| **Session revert / undo** | Write-op restoration & file rollbacks | Snapshot rollback workflow |
+| **Session compaction** | Compaction folding with state preservation | Compaction notice & summary folding |
+| **Subagent authority** | Child transcripts forwarding | Canonical transcript & todo reconciliation |
 | **Tool lifecycle** | single tool event | `tool.input.started` → `tool.called` → `tool.success` |
 
 How the plugin handles the difference:
 
 - On startup the daemon probes the server with `GET /api/info`. An HTTP 200 response locks the runtime
   into **v2** mode; a 404 or no response falls back to **v1**.
-- Requests, event normalization, history loading, permission/form replies, and tool-lifecycle handling
-  are all routed through a version-aware layer, so the same UI works on either server generation.
+- Requests, event normalization, history loading, permission/form replies, snapshot reverts, and tool-lifecycle handling
+  are all routed through a version-aware layer, so the same UI works seamlessly on either server generation.
 - Version state is reported as `pending | v1 | v2 | unknown`, so an undetermined server is never silently
   treated as v1.
+- All decisions, questions, and plan confirmations use a strict per-tab queue with triple-check validation
+  (`tabId + sessionId + requestId`) to prevent cross-session misrouting.
 
 > **Tip:** run `opencode --version` to check which CLI generation you have installed. Both are supported.
 
@@ -165,9 +177,13 @@ otherwise the plugin starts the resident service automatically.
 
 Click the ⚙️ gear icon in the top-right corner to open settings:
 
-<div align="center">
-  <img src="media/settings.png" alt="JetBrains Settings Page" width="550">
-</div>
+<p align="center">
+  <img src="media/home.png" alt="OpenCode Buddy New Session View" width="49%">
+  <img src="media/settings.png" alt="JetBrains Settings Page" width="49%">
+</p>
+<p align="center">
+  <em>🚀 Clean New Session &nbsp; | &nbsp; ⚙️ Full Preferences &amp; Settings Center</em>
+</p>
 
 - **Appearance & behavior** — custom fonts, theme colors, send key (`Enter` or `⌘+Enter`), and notification rules;
 - **Runtime** — custom paths for Node.js and the `opencode` executable;
@@ -180,30 +196,33 @@ Settings are persisted under `~/.opencodebuddy`.
 ## 🏗️ Architecture
 
 ```
-webview/ (React SPA, JCEF)  ⇄  Java plugin host (JBCefJSQuery + MessageDispatcher)
-                            ⇄  opencode-buddy-core daemon (NDJSON over stdio, resident Node process)
-                            ⇄  opencode serve (HTTP + SSE, v1 / v2)
+webview/ (React 19 SPA, JCEF)  ⇄  Java plugin host (JBCefJSQuery + Tab Actor Registry)
+                              ⇄  opencode-buddy-core daemon (NDJSON over stdio, resident Node process)
+                              ⇄  opencode serve (HTTP + SSE, v1 / v2)
 ```
 
-- The webview talks to the host via `sendToJava("type:content")`; the host replies by calling back
-  `window[fn](...args)` inside JCEF. All chat panels share the same message pipeline.
-- `opencode-buddy-core` transports NDJSON over stdio: `{id, method, params}` requests, `{id, line}`
-  streaming output, and `{type:'daemon', event}` lifecycle events. Requests are non-blocking and
-  concurrent requests are isolated with `AsyncLocalStorage`.
-- Session, message-history, and settings caches live under `~/.opencodebuddy`; message content is
-  sourced from `opencode serve` while the plugin maintains a local session index.
+- **Full-Duplex Typed Contract**:
+  - The webview sends all commands to the host via a unified `host_command` typed envelope (`{requestId, tabId, cmd, payload}`), avoiding positional arguments or string encoding pitfalls.
+  - The host publishes strongly-typed semantic events (`{v, type, tabId, sessionId, turnId, seq, epoch, payload}`) dispatched through an authoritative 138-key `hostEventRegistry`. Brittle `window[fn](...args)` global callbacks have been completely retired.
+- **Tab Actor Isolation Architecture**:
+  - Every session tab operates as an autonomous Tab Actor owning its own `TabRecord`, `TabStreamRouter`, `TabMessageStore` (reconciled by message ID), turn lifecycle state, and dedicated event sink.
+  - Global session transition locks and cross-tab snapshot copies are removed. The React view binds directly to the tab store, allowing parallel streaming without cross-tab interference.
+- **Stream, Buffer & Attachments**:
+  - `opencode-buddy-core` transports NDJSON over stdio with `AsyncLocalStorage` concurrency isolation.
+  - File attachments use chunked uploads and reference-only prompt submissions under a 32KB per-frame budget.
+  - Session and settings caches reside in `~/.opencodebuddy`; conversational state is sourced authoritatively from `opencode serve` with plugin-side local indexes.
 
 Java module layout (`src/main/java/com/opencodebuddy/`):
 
 ```
 action/         editor, project view, console, VCS (commit message) and chat actions
-bridge/         Node/opencode detection, daemon lifecycle, NDJSON client
-handler/        one handler per webview message type (settings, provider, permission, history…)
-permission/     permission / question approval services and tool interception
-session/        session and message conversion, revert / fork / compact
+bridge/         Node/opencode detection, daemon lifecycle, NDJSON client, BridgeScheduler
+handler/        typed host command handlers (settings, provider, session, permission, history…)
+prompt/         PromptBroker for tab-scoped permissions, question forms, and plan approvals
+session/        session and message conversion, revert / fork / compact, TabRecord & TabStreamRouter
 provider/       opencode provider wiring and model catalog
 mcp/ skill/     MCP servers and Skills
-ui/             tool window, tabs, detached windows, JCEF initialization
+ui/             tool window, tabs, detached windows, AeroLoadingPanel, JCEF initialization
 notifications/  status-bar widget and bubble notifications
 settings/       plugin settings persistence (~/.opencodebuddy)
 util/ utils/    fonts, i18n, token usage, platform helpers

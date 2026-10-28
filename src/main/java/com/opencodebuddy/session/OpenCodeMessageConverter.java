@@ -121,13 +121,15 @@ public final class OpenCodeMessageConverter {
                 JsonArray parts = entry.has("parts") && entry.get("parts").isJsonArray()
                         ? entry.getAsJsonArray("parts") : new JsonArray();
                 String role = string(info, "role");
-                if ("user".equals(role)) {
-                    String shellCommand = findShellCommandForUserMessage(array, i, string(info, "id"));
-                    out.add(buildUserMessage(parts, info, shellCommand));
+                if (isCompactionEntry(info)) {
+                    out.add(buildCompactionMessage(parts, info));
+                } else if ("user".equals(role)) {
+                    if (!isCompactionTriggerUser(parts)) {
+                        String shellCommand = findShellCommandForUserMessage(array, i, string(info, "id"));
+                        out.add(buildUserMessage(parts, info, shellCommand));
+                    }
                 } else if ("assistant".equals(role)) {
                     out.addAll(buildAssistantMessages(parts, info));
-                } else if ("compaction".equals(role) || isTrue(info, "isCompactSummary")) {
-                    out.add(buildCompactionMessage(parts, info));
                 }
                 // system / other roles skipped
             } catch (RuntimeException e) {
@@ -266,6 +268,39 @@ public final class OpenCodeMessageConverter {
         }
 
         return createMessage("user", displayText, info, blocks);
+    }
+
+    private static boolean isCompactionEntry(JsonObject info) {
+        if (info == null) {
+            return false;
+        }
+        String role = string(info, "role");
+        if ("compaction".equals(role) || isTrue(info, "isCompactSummary")) {
+            return true;
+        }
+        // OpenCode v1 compaction: an assistant message with mode='compaction', agent='compaction', or summary=true
+        if ("compaction".equals(string(info, "mode")) || "compaction".equals(string(info, "agent"))) {
+            return true;
+        }
+        return isTrue(info, "summary") && ("assistant".equals(role) || role.isEmpty());
+    }
+
+    private static boolean isCompactionTriggerUser(JsonArray parts) {
+        if (parts == null || parts.size() == 0) {
+            return false;
+        }
+        boolean hasCompactionPart = false;
+        for (JsonElement p : parts) {
+            if (p.isJsonObject()) {
+                String type = string(p.getAsJsonObject(), "type");
+                if ("compaction".equals(type)) {
+                    hasCompactionPart = true;
+                } else if (!type.isEmpty()) {
+                    return false;
+                }
+            }
+        }
+        return hasCompactionPart;
     }
 
     private static JsonObject buildCompactionMessage(JsonArray parts, JsonObject info) {

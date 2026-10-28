@@ -282,6 +282,46 @@ public class OpenCodeMessageConverterTest {
     }
 
     @Test
+    public void convertsOpenCodeV1CompactionAssistantToCompactSummary() {
+        // In OpenCode v1, compaction summary is an assistant message with mode='compaction', agent='compaction', summary=true
+        JsonObject entryObj = entry("assistant", "[{\"type\":\"text\",\"text\":\"## Objective\\nV1 compaction summary.\"}]");
+        JsonObject info = entryObj.getAsJsonObject("info");
+        info.addProperty("mode", "compaction");
+        info.addProperty("agent", "compaction");
+        info.addProperty("summary", true);
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
+        assertEquals(1, out.size());
+        JsonObject user = out.get(0);
+        assertEquals("user", user.get("type").getAsString());
+        assertEquals("## Objective\nV1 compaction summary.", user.get("content").getAsString());
+        JsonObject raw = user.getAsJsonObject("raw");
+        assertNotNull(raw);
+        assertTrue(raw.get("isCompactSummary").getAsBoolean());
+        assertNotNull(raw.getAsJsonObject("compactMetadata"));
+        assertEquals("manual", raw.getAsJsonObject("compactMetadata").get("trigger").getAsString());
+    }
+
+    @Test
+    public void skipsOpenCodeV1CompactionTriggerUserMessage() {
+        // In OpenCode v1, compaction trigger is a user message with parts=[{type:'compaction', auto:false}]
+        JsonObject triggerUser = entry("user", "[{\"type\":\"compaction\",\"auto\":false}]");
+        JsonObject summaryAssistant = entry("assistant", "[{\"type\":\"text\",\"text\":\"## Summary\"}]");
+        JsonObject info = summaryAssistant.getAsJsonObject("info");
+        info.addProperty("mode", "compaction");
+        info.addProperty("summary", true);
+
+        com.google.gson.JsonArray array = new com.google.gson.JsonArray();
+        array.add(triggerUser);
+        array.add(summaryAssistant);
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(array);
+        assertEquals("Trigger user message should be skipped, only compact summary message kept", 1, out.size());
+        assertTrue(out.get(0).getAsJsonObject("raw").get("isCompactSummary").getAsBoolean());
+        assertEquals("## Summary", out.get(0).get("content").getAsString());
+    }
+
+    @Test
     public void convertsErrorEntryToErrorMessage() {
         String parts = "[{\"type\":\"text\",\"text\":\"[Error: Rate limit exceeded. Please try again later.]\"}]";
         JsonObject entryObj = entry("assistant", parts);

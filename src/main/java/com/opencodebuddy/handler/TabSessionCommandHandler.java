@@ -4,6 +4,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.handler.history.HistoryLoadService;
@@ -294,7 +296,7 @@ public final class TabSessionCommandHandler {
                                 return;
                             }
                             pushRevertStateFromResponse(context, target, joinLines(chunks), resolvedId);
-                            refreshVirtualFileSystem();
+                            refreshVirtualFileSystem(context);
                         }
                     });
                 },
@@ -325,14 +327,23 @@ public final class TabSessionCommandHandler {
                             return;
                         }
                         pushRevertStateFromResponse(context, target, joinLines(chunks), null);
-                        refreshVirtualFileSystem();
+                        refreshVirtualFileSystem(context);
                     }
                 });
     }
 
-    private static void refreshVirtualFileSystem() {
+    private static void refreshVirtualFileSystem(HandlerContext context) {
         try {
             VirtualFileManager.getInstance().asyncRefresh(null);
+            if (context != null) {
+                String cwd = context.resolveEffectiveWorkingDirectory();
+                if (!isBlank(cwd)) {
+                    VirtualFile vFile = LocalFileSystem.getInstance().findFileByPath(cwd);
+                    if (vFile != null) {
+                        vFile.refresh(true, true);
+                    }
+                }
+            }
         } catch (Throwable t) {
             LOG.warn("[revert] Failed to trigger VFS async refresh: " + t.getMessage());
         }

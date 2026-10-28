@@ -171,6 +171,15 @@ public class EnvironmentConfigurator {
         //    and the one-shot channel-manager.js), so the injection cannot drift
         //    between them.
         applyCliSpecEnvironment(env, nodeExecutable);
+
+        // 7. Ensure git commands invoked downstream (e.g. OpenCode v1 Snapshot.revert)
+        //    output unquoted UTF-8 paths for non-ASCII/CJK filenames, preventing octal escape mismatches.
+        String existingGitConfig = env.get("GIT_CONFIG_PARAMETERS");
+        if (existingGitConfig == null || !existingGitConfig.contains("core.quotepath")) {
+            env.put("GIT_CONFIG_PARAMETERS", existingGitConfig != null && !existingGitConfig.trim().isEmpty()
+                    ? existingGitConfig + " 'core.quotepath=false'"
+                    : "'core.quotepath=false'");
+        }
     }
 
     /**
@@ -282,7 +291,8 @@ public class EnvironmentConfigurator {
             // an environment scan.
             CliSpecResolver.ENV_CLI_PATH,
             CliSpecResolver.ENV_NODE_BIN,
-            CliSpecResolver.ENV_CONFIG_DIR
+            CliSpecResolver.ENV_CONFIG_DIR,
+            "GIT_CONFIG_PARAMETERS"
     };
 
     /** Appends permission-bridge keys to WSLENV so they reach the daemon inside WSL. */

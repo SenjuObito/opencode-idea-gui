@@ -161,6 +161,20 @@ public class EnvironmentConfiguratorPermissionTimeoutTest {
         assertTrue("HOME must be a native Windows path", !env.get("HOME").startsWith("/mnt/"));
     }
 
+    @Test
+    public void updateProcessEnvironment_injectsGitConfigParametersQuotepathFalse() {
+        EnvironmentConfigurator configurator = new EnvironmentConfigurator(new FakeSettingsService(60));
+        ProcessBuilder pb = new ProcessBuilder("node");
+        Map<String, String> env = pb.environment();
+        env.remove("GIT_CONFIG_PARAMETERS");
+
+        configurator.updateProcessEnvironment(pb, "/usr/bin/node");
+
+        assertNotNull(env.get("GIT_CONFIG_PARAMETERS"));
+        assertTrue("GIT_CONFIG_PARAMETERS must contain core.quotepath=false",
+                env.get("GIT_CONFIG_PARAMETERS").contains("core.quotepath=false"));
+    }
+
     private static class FakeSettingsService extends OpenCodeBuddySettingsService {
         private final int timeoutSeconds;
 

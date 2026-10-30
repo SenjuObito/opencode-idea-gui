@@ -1527,6 +1527,7 @@ const App = () => {
         onConfirmInterrupt={handleConfirmInterrupt}
         onCancelInterrupt={handleCancelInterrupt}
         permissionDialogTimeoutSeconds={permissionDialogTimeoutSeconds}
+        promptsVisible={currentView === 'chat'}
       />
 
       <ConfirmDialog

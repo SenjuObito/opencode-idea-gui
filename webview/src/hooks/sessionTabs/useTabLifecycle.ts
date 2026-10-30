@@ -5,7 +5,6 @@ import { TabMessageStore } from '../../store/tabMessageStore';
 import type { TabDraftStore } from '../../store/tabDraftStore';
 import type { TabStatusStore } from '../../store/tabStatusStore';
 import { statusSnapshotOf } from '../../store/tabStatusStore';
-import type { TabPromptStore } from '../../store/tabPromptStore';
 import { getFirstPreferredModelId, resolveSessionModel } from '../../components/ChatInputBox/modelSelectUtils';
 import { getRecommendedReasoningEffort } from '../../components/ChatInputBox/types';
 import { sendHostCommand, sendInterrupt, sendTabCommand } from '../../utils/bridge';
@@ -56,7 +55,6 @@ export interface UseTabLifecycleOptions extends Pick<
   tabBar: ReturnType<typeof useTabBarState>;
   draftStore: TabDraftStore;
   statusStore: TabStatusStore;
-  promptStore: TabPromptStore;
   saveCurrentTabSnapshot: () => void;
   selectTab: (tabId: string) => void;
   syncHostActiveTabTo: (tabId: string | null | undefined) => void;
@@ -101,7 +99,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     tabBar,
     draftStore,
     statusStore,
-    promptStore,
     saveCurrentTabSnapshot,
     selectTab,
     syncHostActiveTabTo,
@@ -202,8 +199,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setSessionLoading?.(false);
     setCurrentView?.('chat');
 
-    window.__dialogStore?.clearActive?.();
-
     syncHostActiveTabTo(newId);
   }, [
     saveCurrentTabSnapshot,
@@ -268,7 +263,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     clearTabMergeCache(tabId);
     draftStore.delete(tabId);
     statusStore.delete(tabId);
-    promptStore.delete(tabId);
   }, [
     tabsRef,
     sendInterrupt,
@@ -278,7 +272,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     clearTabMergeCache,
     draftStore,
     statusStore,
-    promptStore,
   ]);
 
   const activateTab = useCallback((nextActive: SessionTabData) => {
@@ -293,11 +286,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setMessages(nextActive.messages || []);
     restoreScrollState?.(nextActive.scrollState ?? null);
     statusStore.set(nextActive.id, statusSnapshotOf(nextActive));
-    promptStore.set(nextActive.id, {
-      permissions: nextActive.pendingPermissions ?? [],
-      questions: nextActive.pendingQuestions ?? [],
-      plans: nextActive.pendingPlans ?? [],
-    });
     const nextStatus = statusStore.get(nextActive.id);
     if (nextStatus?.streamingActive ?? nextActive.streamingActive) {
       setTabRuntimeStreaming?.(nextActive.id, true);
@@ -344,14 +332,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
 
     setSessionLoading?.(false);
 
-    if (window.__dialogStore) {
-      const nextPrompts = promptStore.get(nextActive.id);
-      window.__dialogStore.restore(
-        nextPrompts?.permissions ?? nextActive.pendingPermissions ?? [],
-        nextPrompts?.questions ?? nextActive.pendingQuestions ?? [],
-        nextPrompts?.plans ?? nextActive.pendingPlans ?? [],
-      );
-    }
   }, [
     activeTabIdRef,
     setActiveTabId,
@@ -362,7 +342,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setMessages,
     restoreScrollState,
     statusStore,
-    promptStore,
     setTabRuntimeStreaming,
     setLoading,
     setStreamingActive,

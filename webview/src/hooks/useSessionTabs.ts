@@ -11,7 +11,6 @@
 import { useState } from 'react';
 import { TabDraftStore } from '../store/tabDraftStore';
 import { TabStatusStore } from '../store/tabStatusStore';
-import { TabPromptStore } from '../store/tabPromptStore';
 import type { UseSessionTabsOptions } from './sessionTabs/types';
 import { useTabBarState } from './sessionTabs/useTabBarState';
 import { useTabSessionBinder } from './sessionTabs/useTabSessionBinder';
@@ -22,7 +21,6 @@ export type { UseSessionTabsOptions } from './sessionTabs/types';
 export function useSessionTabs(options: UseSessionTabsOptions) {
   const [draftStore] = useState(() => new TabDraftStore());
   const [statusStore] = useState(() => new TabStatusStore());
-  const [promptStore] = useState(() => new TabPromptStore());
 
   const tabBar = useTabBarState({
     ...options,
@@ -34,7 +32,6 @@ export function useSessionTabs(options: UseSessionTabsOptions) {
     tabBar,
     draftStore,
     statusStore,
-    promptStore,
   });
 
   const lifecycle = useTabLifecycle({
@@ -42,7 +39,6 @@ export function useSessionTabs(options: UseSessionTabsOptions) {
     tabBar,
     draftStore,
     statusStore,
-    promptStore,
     saveCurrentTabSnapshot: binder.saveCurrentTabSnapshot,
     selectTab: binder.selectTab,
     syncHostActiveTabTo: binder.syncHostActiveTabTo,

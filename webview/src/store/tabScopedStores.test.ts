@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TabStatusStore } from './tabStatusStore';
-import { TabPromptStore } from './tabPromptStore';
 
-describe('per-tab status and prompt stores', () => {
+describe('per-tab status store', () => {
   it('keeps one status snapshot per tab and forgets a closed tab', () => {
     const store = new TabStatusStore();
     const statusA = {
@@ -29,19 +28,6 @@ describe('per-tab status and prompt stores', () => {
 
     store.delete('tab-a');
     expect(store.get('tab-a')).toBeUndefined();
-    expect(store.size()).toBe(1);
-  });
-
-  it('keeps pending prompts keyed by tab and drops them with the tab', () => {
-    const store = new TabPromptStore();
-    store.set('tab-a', { permissions: [{ requestId: 'p1' }], questions: [] });
-    store.set('tab-b', { permissions: [], questions: [{ requestId: 'q1' }] });
-
-    expect(store.get('tab-a')?.permissions).toHaveLength(1);
-    expect(store.get('tab-b')?.questions).toHaveLength(1);
-
-    store.delete('tab-b');
-    expect(store.get('tab-b')).toBeUndefined();
     expect(store.size()).toBe(1);
   });
 });

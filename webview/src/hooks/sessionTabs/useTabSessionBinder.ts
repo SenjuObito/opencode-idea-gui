@@ -5,7 +5,6 @@ import { TabMessageStore } from '../../store/tabMessageStore';
 import type { TabDraftStore } from '../../store/tabDraftStore';
 import type { TabStatusStore } from '../../store/tabStatusStore';
 import { statusSnapshotOf } from '../../store/tabStatusStore';
-import type { TabPromptStore } from '../../store/tabPromptStore';
 import type { PermissionMode, ReasoningEffort } from '../../components/ChatInputBox/types';
 import { resolveSessionModel } from '../../components/ChatInputBox/modelSelectUtils';
 import { sendSessionCommand, sendHostCommand, sendTabCommand, cardDebugLog } from '../../utils/bridge';
@@ -78,7 +77,6 @@ export interface UseTabSessionBinderOptions extends Pick<
   tabBar: ReturnType<typeof useTabBarState>;
   draftStore: TabDraftStore;
   statusStore: TabStatusStore;
-  promptStore: TabPromptStore;
 }
 
 export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
@@ -134,7 +132,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     tabBar,
     draftStore,
     statusStore,
-    promptStore,
   } = options;
 
   const {
@@ -291,7 +288,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         deleteTabRuntime?.(previousId);
         draftStore.delete(previousId);
         statusStore.delete(previousId);
-        promptStore.delete(previousId);
       }
 
       const targetId = typeof payload.activeTabId === 'string'
@@ -321,7 +317,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     deleteTabRuntime,
     draftStore,
     statusStore,
-    promptStore,
     tabsRef,
     setTabs,
     activeTabIdRef,
@@ -370,24 +365,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         quotes: chatInputRef?.current?.getQuotes?.() ?? {},
       });
 
-      for (const tab of tabsRef.current) {
-        if (tab.id === currentActive.id) continue;
-        promptStore.set(tab.id, {
-          permissions: tab.pendingPermissions ?? [],
-          questions: tab.pendingQuestions ?? [],
-          plans: tab.pendingPlans ?? [],
-        });
-      }
-      if (window.__dialogStore) {
-        const dialogSnap = window.__dialogStore.getSnapshot();
-        promptStore.set(currentActive.id, {
-          permissions: dialogSnap.permissions,
-          questions: dialogSnap.questions,
-          plans: currentActive.pendingPlans ?? [],
-        });
-        currentActive.pendingPermissions = dialogSnap.permissions;
-        currentActive.pendingQuestions = dialogSnap.questions;
-      }
     }
   }, [
     tabsRef,
@@ -397,7 +374,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     statusStore,
     chatInputRef,
     draftStore,
-    promptStore,
   ]);
 
   const selectTab = useCallback(
@@ -488,15 +464,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
 
       setSessionLoading?.(false);
 
-      if (window.__dialogStore) {
-        const targetPrompts = promptStore.get(targetTab.id);
-        window.__dialogStore.restore(
-          targetPrompts?.permissions ?? targetTab.pendingPermissions ?? [],
-          targetPrompts?.questions ?? targetTab.pendingQuestions ?? [],
-          targetPrompts?.plans ?? targetTab.pendingPlans ?? [],
-        );
-      }
-
       if (contentChanged) {
         window.__requestSurfaceRepublish?.();
       }
@@ -531,8 +498,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       chatInputRef,
       draftStore,
       setSessionLoading,
-      promptStore,
-    ]
+      ]
   );
 
   const openSessionInTab = useCallback(
@@ -671,8 +637,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       historyLoadingTimeoutRef.current = setTimeout(() => {
         setSessionLoading?.(false);
       }, 8000);
-
-      window.__dialogStore?.clearActive?.();
 
       if (loadHistorySession) {
         // The tab prepared above owns this bind. Passing it is what keeps the

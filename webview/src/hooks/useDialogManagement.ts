@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { TFunction } from 'i18next';
 import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
+import type { SessionTabData } from '../components/ChatHeader/types';
 import { sendHostCommand, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
 import { getTabStore } from '../store/tabStore';
+import { owningTabIdForSession } from './windowCallbacks/tabTransition';
 
 interface UseDialogManagementOptions {
   t: TFunction;
@@ -55,492 +57,303 @@ interface UseDialogManagementReturn {
   invalidatePermissionCard: (channelId: string) => void;
 }
 
+type PromptField = 'pendingPermissions' | 'pendingQuestions' | 'pendingPlans';
+type PromptIdKey = 'channelId' | 'requestId';
+
+const EMPTY_REQUESTS: never[] = [];
+
+const promptList = (tab: SessionTabData, field: PromptField): any[] => (
+  (tab[field] as any[] | undefined) ?? EMPTY_REQUESTS
+);
+
 /**
- * Hook for managing dialog states (permission, ask user question).
+ * Dialog orchestration for permission / ask-user-question / plan approvals.
  *
- * Permission / question requests render as top-level modal overlays (one at a
- * time) instead of inline chat-flow cards. State is a queue: `current*Request`
- * is the active dialog; `pending*Requests` are waiting requests. On resolve the
- * current dialog closes and the next pending request is promoted. No inline
- * record is kept after a decision (matches opencode TUI / cc-gui behavior).
+ * <p>The tab is the owner. Each tab record already carries
+ * `pendingPermissions` / `pendingQuestions` / `pendingPlans`; the dialog layer
+ * is a projection of the **active tab's** lists, not a second copy:</p>
+ *
+ *  - a request for a background tab is written to that tab and only shows when
+ *    the tab is selected;
+ *  - switching tabs (or leaving the chat page) needs no capture/restore step —
+ *    the projection simply reads another tab's (or no) list;
+ *  - answering a prompt removes it from the owning tab.
  */
 export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialogManagementReturn {
-  // Permission dialog state
-  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
-  const [currentPermissionRequest, setCurrentPermissionRequest] = useState<PermissionRequest | null>(null);
-  const [pendingPermissionRequests, setPendingPermissionRequests] = useState<PermissionRequest[]>([]);
-  const permissionDialogOpenRef = useRef(false);
-  const currentPermissionRequestRef = useRef<PermissionRequest | null>(null);
-  const pendingPermissionRequestsRef = useRef<PermissionRequest[]>([]);
+  const store = getTabStore();
+  const activeTab = useSyncExternalStore(store.subscribe, store.getActiveTab, store.getActiveTab);
 
-  // AskUserQuestion dialog state
-  const [askUserQuestionDialogOpen, setAskUserQuestionDialogOpen] = useState(false);
-  const [currentAskUserQuestionRequest, setCurrentAskUserQuestionRequest] = useState<AskUserQuestionRequest | null>(null);
-  const [pendingAskUserQuestionRequests, setPendingAskUserQuestionRequests] = useState<AskUserQuestionRequest[]>([]);
-  const askUserQuestionDialogOpenRef = useRef(false);
-  const currentAskUserQuestionRequestRef = useRef<AskUserQuestionRequest | null>(null);
-  const pendingAskUserQuestionRequestsRef = useRef<AskUserQuestionRequest[]>([]);
+  const permissionQueue = promptList(activeTab, 'pendingPermissions') as PermissionRequest[];
+  const questionQueue = promptList(activeTab, 'pendingQuestions') as AskUserQuestionRequest[];
+  const planQueue = promptList(activeTab, 'pendingPlans') as PlanApprovalRequest[];
 
-  // Mount window.__dialogStore for tab-level permission/question persistence
-  useEffect(() => {
-    window.__dialogStore = {
-      getSnapshot: () => ({
-        permissions: currentPermissionRequestRef.current
-          ? [currentPermissionRequestRef.current, ...pendingPermissionRequestsRef.current]
-          : [...pendingPermissionRequestsRef.current],
-        questions: currentAskUserQuestionRequestRef.current
-          ? [currentAskUserQuestionRequestRef.current, ...pendingAskUserQuestionRequestsRef.current]
-          : [...pendingAskUserQuestionRequestsRef.current],
-      }),
-      restore: (
-        permissions: PermissionRequest[],
-        questions: AskUserQuestionRequest[],
-        plans: PlanApprovalRequest[] = [],
-      ) => {
-        if (permissions && permissions.length > 0) {
-          currentPermissionRequestRef.current = permissions[0];
-          setCurrentPermissionRequest(permissions[0]);
-          pendingPermissionRequestsRef.current = permissions.slice(1);
-          setPendingPermissionRequests(permissions.slice(1));
-          permissionDialogOpenRef.current = true;
-          setPermissionDialogOpen(true);
-        } else {
-          currentPermissionRequestRef.current = null;
-          setCurrentPermissionRequest(null);
-          pendingPermissionRequestsRef.current = [];
-          setPendingPermissionRequests([]);
-          permissionDialogOpenRef.current = false;
-          setPermissionDialogOpen(false);
-        }
+  const currentPermissionRequest = permissionQueue[0] ?? null;
+  const currentAskUserQuestionRequest = questionQueue[0] ?? null;
+  const currentPlanApprovalRequest = planQueue[0] ?? null;
 
-        if (plans && plans.length > 0) {
-          currentPlanApprovalRequestRef.current = plans[0];
-          setCurrentPlanApprovalRequest(plans[0]);
-          planApprovalDialogOpenRef.current = true;
-          setPlanApprovalDialogOpen(true);
-        } else {
-          currentPlanApprovalRequestRef.current = null;
-          setCurrentPlanApprovalRequest(null);
-          planApprovalDialogOpenRef.current = false;
-          setPlanApprovalDialogOpen(false);
-        }
+  const pendingPermissionRequests = useMemo(
+    () => permissionQueue.slice(1) as PermissionRequest[],
+    [permissionQueue],
+  );
+  const pendingAskUserQuestionRequests = useMemo(
+    () => questionQueue.slice(1) as AskUserQuestionRequest[],
+    [questionQueue],
+  );
 
-        if (questions && questions.length > 0) {
-          currentAskUserQuestionRequestRef.current = questions[0];
-          setCurrentAskUserQuestionRequest(questions[0]);
-          pendingAskUserQuestionRequestsRef.current = questions.slice(1);
-          setPendingAskUserQuestionRequests(questions.slice(1));
-          askUserQuestionDialogOpenRef.current = true;
-          setAskUserQuestionDialogOpen(true);
-        } else {
-          currentAskUserQuestionRequestRef.current = null;
-          setCurrentAskUserQuestionRequest(null);
-          pendingAskUserQuestionRequestsRef.current = [];
-          setPendingAskUserQuestionRequests([]);
-          askUserQuestionDialogOpenRef.current = false;
-          setAskUserQuestionDialogOpen(false);
-        }
-      },
-      clearActive: () => {
-        currentPermissionRequestRef.current = null;
-        setCurrentPermissionRequest(null);
-        pendingPermissionRequestsRef.current = [];
-        setPendingPermissionRequests([]);
-        permissionDialogOpenRef.current = false;
-        setPermissionDialogOpen(false);
+  const permissionDialogOpen = currentPermissionRequest !== null;
+  const askUserQuestionDialogOpen = currentAskUserQuestionRequest !== null;
+  const planApprovalDialogOpen = currentPlanApprovalRequest !== null;
 
-        currentAskUserQuestionRequestRef.current = null;
-        setCurrentAskUserQuestionRequest(null);
-        pendingAskUserQuestionRequestsRef.current = [];
-        setPendingAskUserQuestionRequests([]);
-        askUserQuestionDialogOpenRef.current = false;
-        setAskUserQuestionDialogOpen(false);
-      },
-    };
-    return () => {
-      delete window.__dialogStore;
-    };
-  }, []);
-
-  // PlanApproval dialog state
-  const [planApprovalDialogOpen, setPlanApprovalDialogOpen] = useState(false);
-  const [currentPlanApprovalRequest, setCurrentPlanApprovalRequest] = useState<PlanApprovalRequest | null>(null);
-  const planApprovalDialogOpenRef = useRef(false);
-  const currentPlanApprovalRequestRef = useRef<PlanApprovalRequest | null>(null);
-  const pendingPlanApprovalRequestsRef = useRef<PlanApprovalRequest[]>([]);
-
-  // Context usage dialog state
+  // Context usage dialog state (a transient panel, not a tab-owned prompt).
   const [contextUsageDialogOpen, setContextUsageDialogOpen] = useState(false);
   const [contextUsageIsLoading, setContextUsageIsLoading] = useState(false);
   const [contextUsageData, setContextUsageData] = useState<ContextUsageData | null>(null);
   const contextUsageRequestIdRef = useRef<string | null>(null);
 
-  // Sync refs with state
-  useEffect(() => {
-    planApprovalDialogOpenRef.current = planApprovalDialogOpen;
-    currentPlanApprovalRequestRef.current = currentPlanApprovalRequest;
-  }, [planApprovalDialogOpen, currentPlanApprovalRequest]);
+  /** Every tab, including the detached one a window owns before its first tab. */
+  const everyTab = useCallback((): SessionTabData[] => {
+    const tabs = store.getTabs();
+    const active = store.getActiveTab();
+    return tabs.some((tab) => tab === active) ? tabs : [...tabs, active];
+  }, [store]);
 
-  // Sync permission/question refs with state
-  useEffect(() => {
-    permissionDialogOpenRef.current = permissionDialogOpen;
-    currentPermissionRequestRef.current = currentPermissionRequest;
-    pendingPermissionRequestsRef.current = pendingPermissionRequests;
-    askUserQuestionDialogOpenRef.current = askUserQuestionDialogOpen;
-    currentAskUserQuestionRequestRef.current = currentAskUserQuestionRequest;
-    pendingAskUserQuestionRequestsRef.current = pendingAskUserQuestionRequests;
-  }, [permissionDialogOpen, currentPermissionRequest, pendingPermissionRequests, askUserQuestionDialogOpen, currentAskUserQuestionRequest, pendingAskUserQuestionRequests]);
-
-  const closePermissionCurrent = useCallback(() => {
-    currentPermissionRequestRef.current = null;
-    setCurrentPermissionRequest(null);
-    setPermissionDialogOpen(false);
-  }, []);
-
-  const closeQuestionCurrent = useCallback(() => {
-    currentAskUserQuestionRequestRef.current = null;
-    setCurrentAskUserQuestionRequest(null);
-    setAskUserQuestionDialogOpen(false);
-  }, []);
-
-  // Open (or enqueue) a permission request. The first request becomes the
-  // active dialog; later requests queue. Duplicates (same channelId, either
-  // active or queued) are ignored.
-  const openPermissionDialog = useCallback((request: PermissionRequest) => {
-    cardDebugLog(`[PCard][webview] openPermissionDialog channelId=${request.channelId}`);
-    if (currentPermissionRequestRef.current?.channelId === request.channelId) return;
-    if (pendingPermissionRequestsRef.current.some((r) => r.channelId === request.channelId)) return;
-    if (!currentPermissionRequestRef.current) {
-      currentPermissionRequestRef.current = request;
-      setCurrentPermissionRequest(request);
-      setPermissionDialogOpen(true);
-    } else {
-      pendingPermissionRequestsRef.current.push(request);
-      setPendingPermissionRequests([...pendingPermissionRequestsRef.current]);
+  const findPrompt = useCallback(<T,>(field: PromptField, idKey: PromptIdKey, id: string): T | null => {
+    if (!id) return null;
+    for (const tab of everyTab()) {
+      const hit = promptList(tab, field).find((item) => item?.[idKey] === id);
+      if (hit) return hit as T;
     }
-  }, []);
+    return null;
+  }, [everyTab]);
 
-  // Open (or enqueue) an ask-user-question request. Mirrors openPermissionDialog.
-  const openAskUserQuestionDialog = useCallback((request: AskUserQuestionRequest) => {
-    cardDebugLog(`[QCard][webview] openAskUserQuestionDialog requestId=${request.requestId} toolName="${request.toolName}"`);
-    if (currentAskUserQuestionRequestRef.current?.requestId === request.requestId) return;
-    if (pendingAskUserQuestionRequestsRef.current.some((r) => r.requestId === request.requestId)) return;
-    if (!currentAskUserQuestionRequestRef.current) {
-      currentAskUserQuestionRequestRef.current = request;
-      setCurrentAskUserQuestionRequest(request);
-      setAskUserQuestionDialogOpen(true);
-    } else {
-      pendingAskUserQuestionRequestsRef.current.push(request);
-      setPendingAskUserQuestionRequests([...pendingAskUserQuestionRequestsRef.current]);
+  /** Append to the owning tab (deduped by prompt id). */
+  const enqueue = useCallback((field: PromptField, idKey: PromptIdKey, request: any, ownerTabId: string | null) => {
+    const id = request?.[idKey];
+    if (!id || findPrompt(field, idKey, String(id))) return;
+    const append = (tab: SessionTabData): SessionTabData => ({
+      ...tab,
+      [field]: [...promptList(tab, field), request],
+    });
+    if (ownerTabId && store.updateTab(ownerTabId, append)) return;
+    // The owning tab is not in this window (closed, or the payload had no tab):
+    // the prompt must still reach the user, so it lands on the active tab.
+    store.updateActiveTab(append);
+  }, [findPrompt, store]);
+
+  const removePrompt = useCallback((field: PromptField, idKey: PromptIdKey, id: string) => {
+    if (!id) return;
+    const owner = everyTab().find((tab) => (
+      promptList(tab, field).some((item) => item?.[idKey] === id)
+    ));
+    if (!owner) return;
+    const drop = (tab: SessionTabData): SessionTabData => ({
+      ...tab,
+      [field]: promptList(tab, field).filter((item) => item?.[idKey] !== id),
+    });
+    if (owner.id && store.findById(owner.id)) {
+      store.updateTab(owner.id, drop);
+      return;
     }
-  }, []);
+    store.updateActiveTab(drop);
+  }, [everyTab, store]);
 
-  // Open plan approval dialog (queue of pending requests)
-  const openPlanApprovalDialog = useCallback((request: PlanApprovalRequest) => {
-    if (planApprovalDialogOpenRef.current || currentPlanApprovalRequestRef.current) {
-      const currentId = currentPlanApprovalRequestRef.current?.requestId;
-      const alreadyQueued = pendingPlanApprovalRequestsRef.current.some(
-        (item) => item.requestId === request.requestId,
-      );
-      if (request.requestId !== currentId && !alreadyQueued) {
-        pendingPlanApprovalRequestsRef.current.push(request);
+  const clearPrompts = useCallback((field: PromptField) => {
+    if (!everyTab().some((tab) => promptList(tab, field).length > 0)) return;
+    store.updateAllTabs((tab) => {
+      if (promptList(tab, field).length > 0) {
+        (tab as any)[field] = [];
       }
-      return;
-    }
-
-    currentPlanApprovalRequestRef.current = request;
-    planApprovalDialogOpenRef.current = true;
-    setCurrentPlanApprovalRequest(request);
-    setPlanApprovalDialogOpen(true);
-  }, []);
-
-  // Process pending plan approval requests queue
-  useEffect(() => {
-    if (planApprovalDialogOpen) return;
-    if (currentPlanApprovalRequest) return;
-    const next = pendingPlanApprovalRequestsRef.current.shift();
-    if (next) {
-      openPlanApprovalDialog(next);
-    }
-  }, [planApprovalDialogOpen, currentPlanApprovalRequest, openPlanApprovalDialog]);
-
-  // Force-close helpers — invoked by the backend safety-net handlers when the
-  // host has already resolved the pending request and we must tear the WebView
-  // dialog down. We deliberately do NOT send any response back to the backend.
-  const forceCloseAskUserQuestionDialog = useCallback((requestId?: string | null) => {
-    const targetId = requestId && requestId.length > 0 ? requestId : null;
-    cardDebugLog(`[QCard][webview] forceCloseAskUserQuestionDialog targetId=${targetId}`);
-    if (targetId === null) {
-      pendingAskUserQuestionRequestsRef.current = [];
-      setPendingAskUserQuestionRequests([]);
-      currentAskUserQuestionRequestRef.current = null;
-      closeQuestionCurrent();
-      return;
-    }
-    pendingAskUserQuestionRequestsRef.current = pendingAskUserQuestionRequestsRef.current.filter(
-      (r) => r.requestId !== targetId,
-    );
-    setPendingAskUserQuestionRequests([...pendingAskUserQuestionRequestsRef.current]);
-    if (currentAskUserQuestionRequestRef.current?.requestId === targetId) {
-      currentAskUserQuestionRequestRef.current = null;
-      setAskUserQuestionDialogOpen(false);
-      setCurrentAskUserQuestionRequest(null);
-    }
-  }, [closeQuestionCurrent]);
-
-  const forceClosePermissionDialog = useCallback((requestId?: string | null) => {
-    const targetId = requestId && requestId.length > 0 ? requestId : null;
-    cardDebugLog(`[PCard][webview] forceClosePermissionDialog targetId=${targetId}`);
-    if (targetId === null) {
-      pendingPermissionRequestsRef.current = [];
-      setPendingPermissionRequests([]);
-      currentPermissionRequestRef.current = null;
-      closePermissionCurrent();
-      return;
-    }
-    pendingPermissionRequestsRef.current = pendingPermissionRequestsRef.current.filter(
-      (r) => r.channelId !== targetId,
-    );
-    setPendingPermissionRequests([...pendingPermissionRequestsRef.current]);
-    if (currentPermissionRequestRef.current?.channelId === targetId) {
-      currentPermissionRequestRef.current = null;
-      setPermissionDialogOpen(false);
-      setCurrentPermissionRequest(null);
-    }
-  }, [closePermissionCurrent]);
-
-  // Permission handlers — send the decision (protocol unchanged) and close the dialog.
-  // When the id is not the active dialog it is dropped from the pending queue instead.
-  const handlePermissionApprove = useCallback((channelId: string) => {
-    if (currentPermissionRequestRef.current?.channelId !== channelId) {
-      forceClosePermissionDialog(channelId);
-      return;
-    }
-    sendPermissionReply({
-      channelId,
-      allow: true,
-      remember: false,
-      rejectMessage: null,
     });
-    closePermissionCurrent();
-  }, [closePermissionCurrent, forceClosePermissionDialog]);
-
-  const handlePermissionApproveAlways = useCallback((channelId: string) => {
-    if (currentPermissionRequestRef.current?.channelId !== channelId) {
-      forceClosePermissionDialog(channelId);
-      return;
+    // The window's detached slot (no tab yet) is not part of `tabs`, so the
+    // sweep above cannot reach it.
+    if (!store.getActiveTabId()) {
+      store.updateActiveTab((tab) => (
+        promptList(tab, field).length > 0 ? { ...tab, [field]: [] } : tab
+      ));
     }
-    sendPermissionReply({
-      channelId,
-      allow: true,
-      remember: true,
-      rejectMessage: null,
-    });
-    closePermissionCurrent();
-  }, [closePermissionCurrent, forceClosePermissionDialog]);
+  }, [everyTab, store]);
 
-  const handlePermissionSkip = useCallback((channelId: string) => {
-    if (currentPermissionRequestRef.current?.channelId !== channelId) {
-      forceClosePermissionDialog(channelId);
-      return;
-    }
-    sendPermissionReply({
-      channelId,
-      allow: false,
-      remember: false,
-      rejectMessage: t('permission.userDenied'),
-    });
-    closePermissionCurrent();
-  }, [closePermissionCurrent, t, forceClosePermissionDialog]);
+  const resolveOwnerTab = useCallback((
+    request: { tabId?: string | null; sessionId?: string | null },
+  ): string => (
+    (typeof request.tabId === 'string' && request.tabId)
+    || (request.sessionId ? owningTabIdForSession(request.sessionId) : null)
+    || store.getActiveTabId()
+    || ''
+  ), [store]);
 
-  const handlePermissionTimeout = useCallback((channelId: string) => {
-    cardDebugLog(`[PCard][webview] timeout channelId=${channelId}`);
-    const activeReq = currentPermissionRequestRef.current;
-    if (activeReq?.channelId !== channelId) {
-      forceClosePermissionDialog(channelId);
-      return;
-    }
-    const sessionId = activeReq.sessionId;
-    sendPermissionReply({
-      channelId,
-      sessionId,
-      tabId: activeReq.tabId,
-      allow: false,
-      remember: false,
-      rejectMessage: t('permission.timedOut', { defaultValue: '请求超时，已停止会话' }),
-    });
-    sendInterrupt({ sessionId });
-    closePermissionCurrent();
-  }, [closePermissionCurrent, t, forceClosePermissionDialog]);
-
-  // AskUserQuestion handlers — send the response (protocol unchanged) and close the dialog.
-  // When the id is not the active dialog it is dropped from the pending queue instead.
-  const handleAskUserQuestionSubmit = useCallback((requestId: string, answers: Record<string, string | string[]>) => {
-    cardDebugLog(`[QCard][webview] submit requestId=${requestId}`, answers);
-    if (currentAskUserQuestionRequestRef.current?.requestId !== requestId) {
-      forceCloseAskUserQuestionDialog(requestId);
-      return;
-    }
-    sendPromptReply('question.reply', requestId, { answers },
-      currentAskUserQuestionRequestRef.current?.sessionId,
-      currentAskUserQuestionRequestRef.current?.tabId);
-    closeQuestionCurrent();
-  }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
-
-  const handleAskUserQuestionSkip = useCallback((requestId: string) => {
-    cardDebugLog(`[QCard][webview] skip requestId=${requestId}`);
-    if (currentAskUserQuestionRequestRef.current?.requestId !== requestId) {
-      forceCloseAskUserQuestionDialog(requestId);
-      return;
-    }
-    sendPromptReply('question.reply', requestId, { rejected: true },
-      currentAskUserQuestionRequestRef.current?.sessionId,
-      currentAskUserQuestionRequestRef.current?.tabId);
-    closeQuestionCurrent();
-  }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
-
-  const handleAskUserQuestionTimeout = useCallback((requestId: string) => {
-    cardDebugLog(`[QCard][webview] timeout requestId=${requestId}`);
-    const activeReq = currentAskUserQuestionRequestRef.current;
-    if (activeReq?.requestId !== requestId) {
-      forceCloseAskUserQuestionDialog(requestId);
-      return;
-    }
-    const sessionId = activeReq.sessionId;
-    sendPromptReply('question.reply', requestId, { rejected: true },
-      currentAskUserQuestionRequestRef.current?.sessionId,
-      currentAskUserQuestionRequestRef.current?.tabId);
-    sendInterrupt({ sessionId });
-    closeQuestionCurrent();
-  }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
-
-  // (force-close helpers are defined above the handlers)
-
-  // Host-side reply failure (e.g. "Permission request not found" / "Question request
-  // not found"): the request was already resolved server-side, so tear the dialog
-  // down the same way forceClose does.
-  const invalidateQuestionCard = useCallback((requestId: string) => {
-    cardDebugLog(`[QCard][webview] invalidateQuestionCard requestId=${requestId}`);
-    if (requestId) {
-      removeQuestionAnswerByRequestId(requestId);
-    }
-    forceCloseAskUserQuestionDialog(requestId ?? '');
-  }, [forceCloseAskUserQuestionDialog]);
-
-  const invalidatePermissionCard = useCallback((channelId: string) => {
-    cardDebugLog(`[PCard][webview] invalidatePermissionCard channelId=${channelId}`);
-    forceClosePermissionDialog(channelId ?? '');
-  }, [forceClosePermissionDialog]);
-
-  // Auto-promote the next pending permission request when the dialog is idle.
-  useEffect(() => {
-    if (permissionDialogOpen) return;
-    if (currentPermissionRequest) return;
-    const next = pendingPermissionRequestsRef.current.shift();
-    if (next) {
-      setPendingPermissionRequests([...pendingPermissionRequestsRef.current]);
-      currentPermissionRequestRef.current = next;
-      setCurrentPermissionRequest(next);
-      setPermissionDialogOpen(true);
-    }
-  }, [permissionDialogOpen, currentPermissionRequest, pendingPermissionRequests]);
-
-  // Auto-promote the next pending ask-user-question request when the dialog is idle.
-  useEffect(() => {
-    if (askUserQuestionDialogOpen) return;
-    if (currentAskUserQuestionRequest) return;
-    const next = pendingAskUserQuestionRequestsRef.current.shift();
-    if (next) {
-      setPendingAskUserQuestionRequests([...pendingAskUserQuestionRequestsRef.current]);
-      currentAskUserQuestionRequestRef.current = next;
-      setCurrentAskUserQuestionRequest(next);
-      setAskUserQuestionDialogOpen(true);
-    }
-  }, [askUserQuestionDialogOpen, currentAskUserQuestionRequest, pendingAskUserQuestionRequests]);
-
-  /**
-   * Answer a prompt.
-   *
-   * <p>The reply is a v2 command: it names the tab and the session it
-   * answers, and the host checks them against the pending prompt before it
-   * applies it. A reply that does not match is refused.</p>
-   */
-  const sendPromptReply = (
+  const sendPromptReply = useCallback((
     type: 'question.reply' | 'plan.reply',
-    requestId: string,
+    request: { requestId: string; sessionId?: string | null; tabId?: string | null },
     payload: Record<string, unknown>,
-    sessionId?: string,
-    tabId?: string,
   ) => {
-    const ownerTabId = tabId ?? getTabStore().findIdBySession(sessionId) ?? '';
+    const sessionId = request.sessionId ?? null;
+    const ownerTabId = resolveOwnerTab(request);
     if (!ownerTabId && !sessionId) {
       cardDebugLog(`[Prompt][webview] dropping a ${type} without a tab or a session`);
       return;
     }
-    sendHostCommand(ownerTabId, type, { requestId, ...payload }, sessionId);
-  };
+    sendHostCommand(ownerTabId, type, { requestId: request.requestId, ...payload }, sessionId);
+  }, [resolveOwnerTab]);
 
-  /** Answer a permission prompt. */
-  const sendPermissionReply = (options: {
-    channelId: string;
-    sessionId?: string;
-    tabId?: string;
-    allow: boolean;
-    remember: boolean;
-    rejectMessage?: string | null;
-  }) => {
-    const active = currentPermissionRequestRef.current;
-    const sessionId = options.sessionId ?? active?.sessionId;
-    const ownerTabId = options.tabId ?? active?.tabId
-      ?? getTabStore().findIdBySession(sessionId) ?? '';
+  const sendPermissionReply = useCallback((
+    request: PermissionRequest,
+    options: { allow: boolean; remember: boolean; rejectMessage?: string | null },
+  ) => {
+    const sessionId = request.sessionId ?? null;
+    const ownerTabId = resolveOwnerTab(request);
     if (!ownerTabId && !sessionId) {
       cardDebugLog('[PCard][webview] dropping a permission reply without a tab or a session');
       return;
     }
     sendHostCommand(ownerTabId, 'permission.reply', {
-      channelId: options.channelId,
+      channelId: request.channelId,
       allow: options.allow,
       remember: options.remember,
       rejectMessage: options.rejectMessage ?? null,
     }, sessionId);
-  };
+  }, [resolveOwnerTab]);
 
-  // PlanApproval handlers
-  const handlePlanApprovalApprove = useCallback((requestId: string, targetMode: string) => {
-    sendPromptReply('plan.reply', requestId, { approved: true, targetMode },
-      currentPlanApprovalRequestRef.current?.sessionId,
-      currentPlanApprovalRequestRef.current?.tabId);
-    planApprovalDialogOpenRef.current = false;
-    currentPlanApprovalRequestRef.current = null;
-    setPlanApprovalDialogOpen(false);
-    setCurrentPlanApprovalRequest(null);
-  }, []);
+  // ── Permission queue ─────────────────────────────────────────────────────
 
-  const handlePlanApprovalReject = useCallback((requestId: string) => {
-    sendPromptReply('plan.reply', requestId, { approved: false, targetMode: 'default' },
-      currentPlanApprovalRequestRef.current?.sessionId,
-      currentPlanApprovalRequestRef.current?.tabId);
-    planApprovalDialogOpenRef.current = false;
-    currentPlanApprovalRequestRef.current = null;
-    setPlanApprovalDialogOpen(false);
-    setCurrentPlanApprovalRequest(null);
-  }, []);
+  const openPermissionDialog = useCallback((request: PermissionRequest) => {
+    cardDebugLog(`[PCard][webview] openPermissionDialog channelId=${request.channelId} tabId=${request.tabId ?? ''}`);
+    const ownerTabId = request.tabId
+      ?? (request.sessionId ? owningTabIdForSession(request.sessionId) : null);
+    enqueue('pendingPermissions', 'channelId', request, ownerTabId ?? null);
+  }, [enqueue, store]);
 
-  const forceClosePlanApprovalDialog = useCallback((requestId?: string | null) => {
-    const targetId = requestId && requestId.length > 0 ? requestId : null;
-    pendingPlanApprovalRequestsRef.current = targetId === null
-      ? []
-      : pendingPlanApprovalRequestsRef.current.filter((item) => item.requestId !== targetId);
-    if (targetId !== null && currentPlanApprovalRequestRef.current?.requestId !== targetId) {
+  const forceClosePermissionDialog = useCallback((requestId?: string | null) => {
+    cardDebugLog(`[PCard][webview] forceClosePermissionDialog targetId=${requestId ?? ''}`);
+    if (!requestId) {
+      clearPrompts('pendingPermissions');
       return;
     }
-    planApprovalDialogOpenRef.current = false;
-    currentPlanApprovalRequestRef.current = null;
-    setPlanApprovalDialogOpen(false);
-    setCurrentPlanApprovalRequest(null);
-  }, []);
+    removePrompt('pendingPermissions', 'channelId', requestId);
+  }, [clearPrompts, removePrompt]);
 
-  // Context usage dialog handlers
+  const answerPermission = useCallback((channelId: string, options: {
+    allow: boolean;
+    remember: boolean;
+    rejectMessage?: string | null;
+    interrupt?: boolean;
+  }) => {
+    const request = findPrompt<PermissionRequest>('pendingPermissions', 'channelId', channelId);
+    if (!request) return;
+    sendPermissionReply(request, options);
+    removePrompt('pendingPermissions', 'channelId', channelId);
+    if (options.interrupt) {
+      sendInterrupt({ tabId: request.tabId ?? null, sessionId: request.sessionId ?? null });
+    }
+  }, [findPrompt, removePrompt, sendPermissionReply]);
+
+  const handlePermissionApprove = useCallback((channelId: string) => {
+    answerPermission(channelId, { allow: true, remember: false, rejectMessage: null });
+  }, [answerPermission]);
+
+  const handlePermissionApproveAlways = useCallback((channelId: string) => {
+    answerPermission(channelId, { allow: true, remember: true, rejectMessage: null });
+  }, [answerPermission]);
+
+  const handlePermissionSkip = useCallback((channelId: string) => {
+    answerPermission(channelId, {
+      allow: false,
+      remember: false,
+      rejectMessage: t('permission.userDenied'),
+    });
+  }, [answerPermission, t]);
+
+  /**
+   * 倒计时归零（权限）。
+   *
+   * 与 Skip 的差别：rejectMessage 用「超时」，并定向中断发起请求的会话——
+   * 人已经离开，会话不该带着被拒的结果继续跑。
+   */
+  const handlePermissionTimeout = useCallback((channelId: string) => {
+    cardDebugLog(`[PCard][webview] timeout channelId=${channelId}`);
+    answerPermission(channelId, {
+      allow: false,
+      remember: false,
+      rejectMessage: t('permission.timedOut', { defaultValue: '请求超时，已停止会话' }),
+      interrupt: true,
+    });
+  }, [answerPermission, t]);
+
+  // ── AskUserQuestion queue ────────────────────────────────────────────────
+
+  const openAskUserQuestionDialog = useCallback((request: AskUserQuestionRequest) => {
+    cardDebugLog(`[QCard][webview] openAskUserQuestionDialog requestId=${request.requestId} tabId=${request.tabId ?? ''}`);
+    const ownerTabId = request.tabId
+      ?? (request.sessionId ? owningTabIdForSession(request.sessionId) : null);
+    enqueue('pendingQuestions', 'requestId', request, ownerTabId ?? null);
+  }, [enqueue, store]);
+
+  const forceCloseAskUserQuestionDialog = useCallback((requestId?: string | null) => {
+    cardDebugLog(`[QCard][webview] forceCloseAskUserQuestionDialog targetId=${requestId ?? ''}`);
+    if (!requestId) {
+      clearPrompts('pendingQuestions');
+      return;
+    }
+    removePrompt('pendingQuestions', 'requestId', requestId);
+  }, [clearPrompts, removePrompt]);
+
+  const handleAskUserQuestionSubmit = useCallback((requestId: string, answers: Record<string, string | string[]>) => {
+    cardDebugLog(`[QCard][webview] submit requestId=${requestId}`, answers);
+    const request = findPrompt<AskUserQuestionRequest>('pendingQuestions', 'requestId', requestId);
+    if (!request) return;
+    sendPromptReply('question.reply', request, { answers });
+    removePrompt('pendingQuestions', 'requestId', requestId);
+  }, [findPrompt, removePrompt, sendPromptReply]);
+
+  const handleAskUserQuestionSkip = useCallback((requestId: string) => {
+    cardDebugLog(`[QCard][webview] skip requestId=${requestId}`);
+    const request = findPrompt<AskUserQuestionRequest>('pendingQuestions', 'requestId', requestId);
+    if (!request) return;
+    sendPromptReply('question.reply', request, { rejected: true });
+    removePrompt('pendingQuestions', 'requestId', requestId);
+  }, [findPrompt, removePrompt, sendPromptReply]);
+
+  const handleAskUserQuestionTimeout = useCallback((requestId: string) => {
+    cardDebugLog(`[QCard][webview] timeout requestId=${requestId}`);
+    const request = findPrompt<AskUserQuestionRequest>('pendingQuestions', 'requestId', requestId);
+    if (!request) return;
+    sendPromptReply('question.reply', request, { rejected: true });
+    sendInterrupt({ tabId: request.tabId ?? null, sessionId: request.sessionId ?? null });
+    removePrompt('pendingQuestions', 'requestId', requestId);
+  }, [findPrompt, removePrompt, sendPromptReply]);
+
+  // ── Plan approval queue ──────────────────────────────────────────────────
+
+  const openPlanApprovalDialog = useCallback((request: PlanApprovalRequest) => {
+    const ownerTabId = request.tabId
+      ?? (request.sessionId ? owningTabIdForSession(request.sessionId) : null);
+    enqueue('pendingPlans', 'requestId', request, ownerTabId ?? null);
+  }, [enqueue, store]);
+
+  const forceClosePlanApprovalDialog = useCallback((requestId?: string | null) => {
+    if (!requestId) {
+      clearPrompts('pendingPlans');
+      return;
+    }
+    removePrompt('pendingPlans', 'requestId', requestId);
+  }, [clearPrompts, removePrompt]);
+
+  const handlePlanApprovalApprove = useCallback((requestId: string, targetMode: string) => {
+    const request = findPrompt<PlanApprovalRequest>('pendingPlans', 'requestId', requestId);
+    if (!request) return;
+    sendPromptReply('plan.reply', request, { approved: true, targetMode });
+    removePrompt('pendingPlans', 'requestId', requestId);
+  }, [findPrompt, removePrompt, sendPromptReply]);
+
+  const handlePlanApprovalReject = useCallback((requestId: string) => {
+    const request = findPrompt<PlanApprovalRequest>('pendingPlans', 'requestId', requestId);
+    if (!request) return;
+    sendPromptReply('plan.reply', request, { approved: false, targetMode: 'default' });
+    removePrompt('pendingPlans', 'requestId', requestId);
+  }, [findPrompt, removePrompt, sendPromptReply]);
+
+  // ── Context usage dialog ─────────────────────────────────────────────────
+
   const isCurrentContextUsageRequest = useCallback((requestId?: string | null) => {
     if (requestId == null || requestId === '') {
       return true;
@@ -574,6 +387,22 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     setContextUsageData(null);
     return true;
   }, [isCurrentContextUsageRequest]);
+
+  // Host-side reply failure (e.g. "Permission request not found" / "Question
+  // request not found"): the request was already resolved server-side, so tear
+  // the prompt down the same way forceClose does.
+  const invalidateQuestionCard = useCallback((requestId: string) => {
+    cardDebugLog(`[QCard][webview] invalidateQuestionCard requestId=${requestId}`);
+    if (requestId) {
+      removeQuestionAnswerByRequestId(requestId);
+    }
+    forceCloseAskUserQuestionDialog(requestId ?? '');
+  }, [forceCloseAskUserQuestionDialog]);
+
+  const invalidatePermissionCard = useCallback((channelId: string) => {
+    cardDebugLog(`[PCard][webview] invalidatePermissionCard channelId=${channelId}`);
+    forceClosePermissionDialog(channelId ?? '');
+  }, [forceClosePermissionDialog]);
 
   return {
     // Permission modal

@@ -1,42 +1,31 @@
 /**
  * permissionPromptRouting.test.ts
  *
- * 问题弹窗 / 权限弹窗的会话路由。
+ * 问题弹窗 / 权限弹窗的事件投递。
  *
  * 两个真实故障由这组用例看守：
  *
- * 1. 「弹窗不弹，只看到一张已取消卡片」——后台会话的 prompt 找不到对应 tab，
- *    旧代码在这里直接丢掉，服务端随后按拒绝结算。现在：找不到 tab 也要在前台
- *    弹出（回复按 permission/question id 走注册表，仍能回到正确的会话）。
- * 2. 「弹窗弹到别的会话」——后台会话的 prompt 被塞进当前 tab 的待决列表。
- *    现在：只写真正持有该 sessionId 的那个 tab。
+ * 1. 「弹窗不弹，只看到一张已取消卡片」——带 id 的请求必须进入对话框层，
+ *    由它按 `tabId` 落到所属 tab；找不到归属 tab 时落到当前 tab，绝不丢弃。
+ * 2. 「弹窗弹到别的会话」——归属由对话框层统一决定（tab 记录是唯一队列），
+ *    注册回调不再各自维护一套入队逻辑。
+ *
+ * 队列归属（后台 tab 挂起、切过去再弹、关闭后从所有 tab 摘掉）由
+ * `useDialogManagement.forceClose.test.ts` 覆盖。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { registerPermissionCallbacks } from './permissionCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { hostEventHandler } from '../../../utils/hostEventRegistry';
-import { getTabStore, resetTabStore } from '../../../store/tabStore';
-import { seedTabStore } from '../../../test/seedTabStore';
+import { resetTabStore } from '../../../store/tabStore';
 
 vi.mock('../../../utils/bridge', () => ({
   cardDebugLog: vi.fn(),
   sendBridgeEvent: vi.fn(),
 }));
 
-interface FakeTab {
-  id: string;
-  sessionId: string | null;
-  messages?: unknown[];
-  loading?: boolean;
-  streamingActive?: boolean;
-  pendingPermissions?: any[];
-  pendingQuestions?: any[];
-}
-
-const storedTab = (id: string) => getTabStore().findById(id)!;
-
-function createHarness(tabs: FakeTab[], activeTabId: string) {
+function createHarness() {
   const openPermissionDialog = vi.fn();
   const openAskUserQuestionDialog = vi.fn();
   const openPlanApprovalDialog = vi.fn();
@@ -84,160 +73,81 @@ const questionJson = (requestId: string, sessionId: string | null) =>
     questions: [{ question: 'pick one', options: ['a', 'b'] }],
   });
 
-describe('showPermissionDialog — session routing', () => {
-  beforeEach(() => {
-    resetTabStore();
-  });
+beforeEach(() => {
+  resetTabStore();
+});
 
-  afterEach(() => {
-    resetTabStore();
-    vi.restoreAllMocks();
-  });
+afterEach(() => {
+  resetTabStore();
+  vi.restoreAllMocks();
+});
 
-  it('stores a background session prompt on THAT tab, not the active one', () => {
-    const tabs: FakeTab[] = [
-      { id: 'tab-a', sessionId: 'ses_a', pendingPermissions: [] },
-      { id: 'tab-b', sessionId: 'ses_b', pendingPermissions: [] },
-    ];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
+describe('permission.requested — 投递到对话框层', () => {
+  it('带 id 的请求原样投递（归属 tab 由对话框层决定）', () => {
+    const h = createHarness();
 
     hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_b1', 'ses_b')));
 
-    expect(h.openPermissionDialog).not.toHaveBeenCalled();
-    expect(storedTab('tab-b').pendingPermissions).toHaveLength(1);
-    expect(storedTab('tab-b').pendingPermissions![0].channelId).toBe('per_b1');
-    // 前台 tab 一个都不许收到
-    expect(storedTab('tab-a').pendingPermissions).toHaveLength(0);
-  });
-
-  it('de-duplicates a repeated channelId on the same background tab', () => {
-    const tabs: FakeTab[] = [{ id: 'tab-b', sessionId: 'ses_b', pendingPermissions: [] }];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
-
-    hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_b1', 'ses_b')));
-    hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_b1', 'ses_b')));
-
-    expect(h.openPermissionDialog).not.toHaveBeenCalled();
-    expect(storedTab('tab-b').pendingPermissions).toHaveLength(1);
-  });
-
-  it('opens the dialog immediately when the prompt belongs to the active session', () => {
-    const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingPermissions: [] }];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
-
-    hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_a1', 'ses_a')));
-
     expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
-    expect(h.openPermissionDialog.mock.calls[0][0].channelId).toBe('per_a1');
-    expect(storedTab('tab-a').pendingPermissions).toHaveLength(0);
+    expect(h.openPermissionDialog.mock.calls[0][0]).toMatchObject({
+      channelId: 'per_b1',
+      sessionId: 'ses_b',
+    });
   });
 
-  it('shows the prompt in the active window when NO tab claims the session (never drops it)', () => {
-    // 回归：「已取消」卡片却没有对话框 —— 旧代码在这里 return，服务端随后按拒绝结算。
-    const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingPermissions: [] }];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
+  it('没有身份的请求直接丢弃（无从答复，弹出来只会挂死）', () => {
+    const h = createHarness();
 
-    hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_x', 'ses_unbound')));
-
-    expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
-    expect(h.openPermissionDialog.mock.calls[0][0].sessionId).toBe('ses_unbound');
-  });
-
-  it('still opens the dialog when the prompt carries no session identity', () => {
-    const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingPermissions: [] }];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
-
-    expect(() => hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_anon', null)))).not.toThrow();
-    expect(h.openPermissionDialog).toHaveBeenCalledTimes(1);
-  });
-
-  it('survives a malformed payload without throwing', () => {
-    const h = createHarness([], 'tab-a');
-    // A payload without an identity is dropped: it cannot be answered, and
-    // guessing would put it in the wrong tab.
     expect(() => hostEventHandler('permission.requested')!(undefined)).not.toThrow();
     expect(h.openPermissionDialog).not.toHaveBeenCalled();
   });
 
-  it('forceClosePermissionDialog removes the request from the background tab', () => {
-    const tabs: FakeTab[] = [{ id: 'tab-b', sessionId: 'ses_b', pendingPermissions: [] }];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
-
-    hostEventHandler('permission.requested')!(JSON.parse(permissionJson('per_b1', 'ses_b')));
-    expect(storedTab('tab-b').pendingPermissions).toHaveLength(1);
+  it('prompt.closed 交给 forceClose（由对话框层从所有 tab 摘掉）', () => {
+    const h = createHarness();
 
     hostEventHandler('prompt.closed')!({ requestId: 'per_b1' });
 
     expect(h.forceClosePermissionDialog).toHaveBeenCalledWith('per_b1');
-    expect(storedTab('tab-b').pendingPermissions).toHaveLength(0);
   });
 });
 
-describe('showAskUserQuestionDialog — session routing', () => {
-  beforeEach(() => {
-    resetTabStore();
-  });
-
-  afterEach(() => {
-    resetTabStore();
-    vi.restoreAllMocks();
-  });
-
-  it('stores a background session question on THAT tab, not the active one', () => {
-    const tabs: FakeTab[] = [
-      { id: 'tab-a', sessionId: 'ses_a', pendingQuestions: [] },
-      { id: 'tab-b', sessionId: 'ses_b', pendingQuestions: [] },
-    ];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
+describe('question.requested — 投递到对话框层', () => {
+  it('带 id 的提问原样投递', () => {
+    const h = createHarness();
 
     hostEventHandler('question.requested')!(JSON.parse(questionJson('q_b1', 'ses_b')));
 
-    expect(h.openAskUserQuestionDialog).not.toHaveBeenCalled();
-    expect(storedTab('tab-b').pendingQuestions).toHaveLength(1);
-    expect(storedTab('tab-b').pendingQuestions![0].requestId).toBe('q_b1');
-    expect(storedTab('tab-a').pendingQuestions).toHaveLength(0);
-  });
-
-  it('shows the question in the active window when NO tab claims the session', () => {
-    const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingQuestions: [] }];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
-
-    hostEventHandler('question.requested')!(JSON.parse(questionJson('q_x', 'ses_unbound')));
-
     expect(h.openAskUserQuestionDialog).toHaveBeenCalledTimes(1);
-    expect(h.openAskUserQuestionDialog.mock.calls[0][0].sessionId).toBe('ses_unbound');
+    expect(h.openAskUserQuestionDialog.mock.calls[0][0]).toMatchObject({
+      requestId: 'q_b1',
+      sessionId: 'ses_b',
+    });
   });
 
-  it('opens the question immediately for the active session', () => {
-    const tabs: FakeTab[] = [{ id: 'tab-a', sessionId: 'ses_a', pendingQuestions: [] }];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
-
-    hostEventHandler('question.requested')!(JSON.parse(questionJson('q_a1', 'ses_a')));
-
-    expect(h.openAskUserQuestionDialog).toHaveBeenCalledTimes(1);
-    expect(storedTab('tab-a').pendingQuestions).toHaveLength(0);
-  });
-
-  it('forceCloseAskUserQuestionDialog removes the question from the background tab', () => {
-    const tabs: FakeTab[] = [{ id: 'tab-b', sessionId: 'ses_b', pendingQuestions: [] }];
-    const h = createHarness(tabs, 'tab-a');
-    seedTabStore(tabs, 'tab-a');
-
-    hostEventHandler('question.requested')!(JSON.parse(questionJson('q_b1', 'ses_b')));
-    expect(storedTab('tab-b').pendingQuestions).toHaveLength(1);
+  it('prompt.question.closed 交给 forceClose', () => {
+    const h = createHarness();
 
     hostEventHandler('prompt.question.closed')!({ requestId: 'q_b1' });
 
     expect(h.forceCloseAskUserQuestionDialog).toHaveBeenCalledWith('q_b1');
-    expect(storedTab('tab-b').pendingQuestions).toHaveLength(0);
+  });
+});
+
+describe('plan.requested — 投递到对话框层', () => {
+  it('带 id 的计划审批原样投递', () => {
+    const h = createHarness();
+
+    hostEventHandler('plan.requested')!({
+      requestId: 'plan_1',
+      toolName: 'ExitPlanMode',
+      tabId: 'tab-b',
+      sessionId: 'ses_b',
+    });
+
+    expect(h.openPlanApprovalDialog).toHaveBeenCalledTimes(1);
+    expect(h.openPlanApprovalDialog.mock.calls[0][0]).toMatchObject({
+      requestId: 'plan_1',
+      tabId: 'tab-b',
+    });
   });
 });

@@ -54,6 +54,12 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
   onReorderTabs,
   t,
 }) => {
+  // The prompt modal is rendered by AppDialogs for the active tab; a tab that is
+  // already showing its prompt does not also need the "waiting" badge.
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const activeShowsPrompt =
+    (activeTab?.pendingPermissions?.length ?? 0) > 0
+    || (activeTab?.pendingQuestions?.length ?? 0) > 0;
   const containerRef = useRef<HTMLDivElement>(null);
   const overflowBtnRef = useRef<HTMLButtonElement>(null);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
@@ -546,7 +552,8 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
           const isBusy = isTabTurnActive(tab);
           const isDragging = tab.id === draggingTabId;
           const hasPendingAction =
-            (tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0;
+            !(isActive && activeShowsPrompt)
+            && ((tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0);
 
           const showDropBefore =
             dropTargetArea === 'visible' && draggingTabId !== null && dropIndicatorIndex === idx;
@@ -695,7 +702,8 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
                   const isBusy = isTabTurnActive(tab);
                   const isDragging = tab.id === draggingTabId;
                   const hasPendingAction =
-                    (tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0;
+                    !(isActive && activeShowsPrompt)
+                    && ((tab.pendingPermissions?.length ?? 0) > 0 || (tab.pendingQuestions?.length ?? 0) > 0);
 
                   const showDropBefore =
                     dropTargetArea === 'overflow' &&

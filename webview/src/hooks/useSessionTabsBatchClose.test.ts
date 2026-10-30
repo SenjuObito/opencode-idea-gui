@@ -32,11 +32,6 @@ describe('useSessionTabs batch close operations', () => {
     resetTabStore();
     bridgeMocks.sendBridgeEvent.mockClear();
     bridgeMocks.sendTabCommand.mockClear();
-    delete window.__dialogStore;
-  });
-
-  afterEach(() => {
-    delete window.__dialogStore;
   });
 
   const setupThreeTabs = () => {

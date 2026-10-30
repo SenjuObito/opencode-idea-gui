@@ -1109,19 +1109,6 @@ interface Window {
           defaultModel?: string;
         }
   ) => void;
-
-  /**
-   * Dialog store for switching and preserving pending permissions/questions across session tabs
-   */
-  __dialogStore?: {
-    getSnapshot: () => { permissions: any[]; questions: any[] };
-    restore: (
-      permissions: any[],
-      questions: any[],
-      plans?: any[],
-    ) => void;
-    clearActive: () => void;
-  };
 }
 
 declare module 'mermaid' {

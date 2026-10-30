@@ -1411,8 +1411,9 @@ const App = () => {
           const tabMessages = tab.id === activeTabId ? messages : (tab.messages || []);
           const title = tab.title || t('common.newSession', { defaultValue: '新会话' });
           const md = convertMessagesToMarkdown(tabMessages, title);
+          // The host opens the save dialog and writes the file, then shows the
+          // success toast. Announcing success here fires before the dialog.
           downloadMarkdown(md, `${title}.md`);
-          addToast(t('history.exportSuccess', { defaultValue: '会话已导出' }), 'success');
         }}
       />
 

@@ -373,11 +373,13 @@ function normalizeBlocks(raw: ClaudeRawMessage | unknown): (ClaudeContentBlock |
  * Trigger file download (via backend save)
  */
 export function downloadJSON(content: string, filename: string): void {
-  // Save file via backend, showing file chooser dialog
-  const payload = JSON.stringify({
-    content: content,
-    filename: filename.endsWith('.json') ? filename : `${filename}.json`
-  });
+  // Save file via backend, showing file chooser dialog. The v2 envelope
+  // expects an object payload; a JSON string is passed through as-is by the
+  // host and then parsed again, so keep the shape explicit.
+  const payload = {
+    content,
+    filename: filename.endsWith('.json') ? filename : `${filename}.json`,
+  };
 
   if (window.sendToJava) {
     sendWindowCommand('save_json', payload);
@@ -423,13 +425,12 @@ export function convertMessagesToMarkdown(messages: ClaudeMessage[], sessionTitl
 
 export function downloadMarkdown(content: string, filename: string): void {
   const safeFilename = (filename.endsWith('.md') ? filename : `${filename}.md`).replace(/[/\\?%*:|"<>]/g, '_');
-  const payload = JSON.stringify({
-    content,
-    filename: safeFilename,
-  });
+  // `save_markdown` keeps the `.md` extension: `save_json` forces a `.json`
+  // filter/suffix in the Java host, which turned `title.md` into `title.md.json`.
+  const payload = { content, filename: safeFilename };
 
   if (window.sendToJava) {
-    sendWindowCommand('save_json', payload);
+    sendWindowCommand('save_markdown', payload);
   } else {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);

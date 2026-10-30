@@ -125,6 +125,13 @@ export function registerSessionCallbacks(
     addToast(message, type as 'info' | 'success' | 'warning' | 'error' | undefined);
   };
 
+  // Legacy host callbacks (`callJavaScript('window.addToast', ...)`) still
+  // target the global; without it the host's post-save/error notifications are
+  // silently dropped. Both paths share the same handler.
+  window.addToast = (message, type) => {
+    handleAddToast(message, type);
+  };
+
   /**
    * A command was refused by the host (docs/full-refactor-architecture-plan.md
    * §7.1). The rejection is routed back to the tab that sent the command, so a

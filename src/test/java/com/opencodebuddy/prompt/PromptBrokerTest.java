@@ -99,4 +99,34 @@ public class PromptBrokerTest {
             fail("rejecting a null tab must not throw: " + e.getMessage());
         }
     }
+
+    @Test
+    public void forgetCleansUpAllPromptAndTabMappings() {
+        PromptBroker broker = new PromptBroker();
+        broker.askFutures.put("q-1", new CompletableFuture<>());
+        broker.askSessions.put("q-1", "ses-1");
+        broker.rememberQuestionTab("q-1", "tab-1");
+        broker.questions.put("q-1", new PromptBroker.PendingQuestion("ses-1", new JsonArray(), "call-1", "/dir"));
+
+        assertEquals(1, broker.pendingForTab("tab-1").size());
+
+        broker.forget("q-1");
+
+        assertTrue("forget must clear pendingForTab", broker.pendingForTab("tab-1").isEmpty());
+        assertFalse(broker.askTabs.containsKey("q-1"));
+        assertFalse(broker.askSessions.containsKey("q-1"));
+        assertFalse(broker.questions.containsKey("q-1"));
+        assertFalse(broker.askFutures.containsKey("q-1"));
+    }
+
+    @Test
+    public void pendingForTabDoesNotReturnOrphanedTabMappings() {
+        PromptBroker broker = new PromptBroker();
+        // Suppose askTabs retained "q-stale", but questions and askFutures were removed
+        broker.askTabs.put("q-stale", "tab-1");
+        broker.askSessions.put("q-stale", "ses-1");
+
+        // Defensively, pendingForTab must ignore orphaned tab mappings without active questions/futures
+        assertTrue(broker.pendingForTab("tab-1").isEmpty());
+    }
 }

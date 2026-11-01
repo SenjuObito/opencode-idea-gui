@@ -27,6 +27,7 @@
     "optional": "Optional"
   },
   "chat": {
+    "renameSession": "Renommer",
     "sendMessage": "Envoyer un message à {{provider}}",
     "createNewSession": "Créer une nouvelle session",
     "confirmInterrupt": "Une conversation est en cours, créer une nouvelle session l'interrompra, continuer ?",
@@ -114,8 +115,9 @@
     "attachmentsUploaded": "[Pièces jointes téléchargées]",
     "streamingConnected": "En train de comprendre votre question…",
     "showEarlierMessages": "Afficher {{count}} messages précédents",
-    "showEarlierTurns": "Afficher les {{count}} tours précédents ({{remaining}} tours chargés restants)",
-    "loadEarlierTurns": "Charger {{count}} tours précédents depuis le disque ({{remaining}} sur {{total}} restants)",
+    "showEarlierTurns": "Afficher {{count}} tours précédents ({{remaining}} restants)",
+
+    "showEarlierConversation": "Afficher la conversation précédente",
     "loadEarlierMessages": "Charger {{count}} messages précédents ({{remaining}} sur {{total}} restants)",
     "loadingEarlierTurns": "Chargement des tours précédents",
     "totalDuration": "Cette réponse a pris",
@@ -168,7 +170,8 @@
     "shareLinkCreated": "Lien de partage créé",
     "retryCopy": "Copier à nouveau",
     "subagentsSection": "Sous-agents",
-    "filesSection": "Fichiers"
+    "filesSection": "Fichiers",
+    "filesEmpty": "Aucun fichier correspondant"
   },
   "settings": {
     "title": "Paramètres",

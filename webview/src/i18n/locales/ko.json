@@ -27,6 +27,7 @@
     "optional": "선택사항"
   },
   "chat": {
+    "renameSession": "이름 바꾸기",
     "sendMessage": "{{provider}}에게 메시지 보내기",
     "createNewSession": "새 세션 만들기",
     "confirmInterrupt": "대화가 진행 중입니다. 새 세션을 만들면 중단됩니다. 계속하시겠습니까?",
@@ -114,8 +115,9 @@
     "attachmentsUploaded": "[첨부파일 업로드됨]",
     "streamingConnected": "질문을 이해하는 중…",
     "showEarlierMessages": "이전 메시지 {{count}}개 보기",
-    "showEarlierTurns": "이전 {{count}}개 대화 턴 표시 (로드된 턴 {{remaining}}개 남음)",
-    "loadEarlierTurns": "디스크에서 이전 {{count}}개 턴 불러오기 (전체 {{total}}개 중 {{remaining}}개 남음)",
+    "showEarlierTurns": "이전 {{count}}개 턴 표시 ({{remaining}}개 남음)",
+
+    "showEarlierConversation": "이전 대화 표시",
     "loadEarlierMessages": "이전 {{count}}개 메시지 불러오기 (전체 {{total}}개 중 {{remaining}}개 남음)",
     "loadingEarlierTurns": "이전 대화를 불러오는 중",
     "totalDuration": "이번 응답 소요 시간",
@@ -168,7 +170,8 @@
     "shareLinkCreated": "공유 링크가 생성되었습니다",
     "retryCopy": "다시 복사",
     "subagentsSection": "하위 에이전트",
-    "filesSection": "파일"
+    "filesSection": "파일",
+    "filesEmpty": "일치하는 파일이 없습니다"
   },
   "settings": {
     "title": "설정",

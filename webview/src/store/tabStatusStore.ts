@@ -14,8 +14,6 @@ export interface TabStatusSnapshot {
   isThinking: boolean;
   status: string;
   revertBoundaryId: string | null;
-  isCompacting: boolean;
-  compactingStartTime: number | null;
   taskEvents: Record<string, any>;
   sseTodos: any[] | null;
   subagentHistories: Record<string, any>;
@@ -34,8 +32,6 @@ export function statusSnapshotOf(tab: SessionTabData): TabStatusSnapshot {
     isThinking: tab.isThinking ?? false,
     status: tab.status ?? '',
     revertBoundaryId: tab.revertBoundaryId ?? null,
-    isCompacting: tab.isCompacting ?? false,
-    compactingStartTime: tab.compactingStartTime ?? null,
     taskEvents: tab.taskEvents ?? {},
     sseTodos: tab.sseTodos ?? null,
     subagentHistories: tab.subagentHistories ?? {},

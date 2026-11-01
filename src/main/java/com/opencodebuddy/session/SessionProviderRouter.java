@@ -82,14 +82,58 @@ public class SessionProviderRouter {
      * @throws SessionMessageLoadException 查询超时或 daemon 返回失败时
      */
     public List<JsonObject> getSessionMessages(String provider, String sessionId, String cwd) {
+        return getSessionMessagePage(provider, sessionId, cwd, FIRST_PAGE_SIZE, null, null, null).messages();
+    }
+
+    /**
+     * Page size requested when opening a session.
+     *
+     * <p>opencode 2.x answers with 50 messages unless told otherwise, and
+     * refuses {@code limit > 200}. Opening a long session without asking for a
+     * full page made it look as if only the newest 50 records existed.</p>
+     */
+    public static final int FIRST_PAGE_SIZE = 200;
+
+    /** One page of a transcript, converted for the session layer. */
+    public record MessagePage(List<JsonObject> messages, String nextCursor, boolean hasEarlier) {
+    }
+
+    /**
+     * Read one page of the transcript.
+     *
+     * <p>{@code cursor} is {@code nextCursor} of the previous page; {@code type}
+     * filters by message type ({@code user}) and {@code order} must not be
+     * combined with a cursor (the server rejects that). A filtered page can
+     * report a cursor at the real end, so callers stop on an empty page.</p>
+     *
+     * @throws SessionMessageLoadException on timeout or daemon failure
+     */
+    public MessagePage getSessionMessagePage(
+            String provider,
+            String sessionId,
+            String cwd,
+            int limit,
+            String cursor,
+            String type,
+            String order) {
         if (openCodeSDKBridge == null || sessionId == null || sessionId.isBlank()) {
-            return List.of();
+            return new MessagePage(List.of(), null, false);
         }
         try {
-            JsonElement element = openCodeSDKBridge
-                    .listMessages(sessionId, cwd)
+            OpenCodeSDKBridge.MessagePage page = openCodeSDKBridge
+                    .listMessagePage(sessionId, cwd, limit, cursor, type, order)
                     .get(60, TimeUnit.SECONDS);
-            return OpenCodeMessageConverter.convert(element);
+            JsonElement element = page.messages();
+            // opencode persists a slash command as its expanded template. Put
+            // the text the user typed back where the server lost it, so a
+            // reloaded transcript still shows `/review` instead of the prompt.
+            SessionCommandTextStore commandStore = SessionCommandTextStore.getInstanceOrNull();
+            java.util.Map<String, String> commandTexts = commandStore != null
+                    ? OpenCodeMessageConverter.matchCommandTexts(
+                            element, commandStore.entriesFor(sessionId))
+                    : java.util.Map.of();
+            List<JsonObject> messages = OpenCodeMessageConverter.convert(element, commandTexts);
+            return new MessagePage(messages, page.nextCursor(), page.hasEarlier());
         } catch (Exception e) {
             throw new SessionMessageLoadException(
                     "Failed to load messages for session " + sessionId + ": " + describe(e), e);

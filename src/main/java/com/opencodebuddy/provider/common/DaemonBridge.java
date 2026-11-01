@@ -851,10 +851,16 @@ public class DaemonBridge {
                     return;
                 }
                 boolean success = obj.has("success") && obj.get("success").getAsBoolean();
-                if (!success && obj.has("error")) {
+                // A user-initiated stop is a completed request, not a failure.
+                // The daemon marks it with `aborted: true` and deliberately
+                // omits `error`; honouring the flag keeps an old error string
+                // (or a future one) from painting an error bubble after Stop.
+                boolean aborted = obj.has("aborted") && !obj.get("aborted").isJsonNull()
+                        && obj.get("aborted").getAsBoolean();
+                if (!success && !aborted && obj.has("error") && !obj.get("error").isJsonNull()) {
                     handler.onError(obj.get("error").getAsString());
                 }
-                handler.onComplete(success);
+                handler.onComplete(success || aborted);
                 context.removeRequest(id);
                 PendingSend pending = pendingSends.remove(id);
                 if (pending != null) {

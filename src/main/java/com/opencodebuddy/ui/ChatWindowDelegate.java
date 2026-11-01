@@ -128,6 +128,9 @@ public class ChatWindowDelegate {
         /** Drop the attachments a tab staged. */
         void releaseTabAttachments(String tabId);
 
+        /** Drop exactly one attachment the send just delivered. */
+        void releaseAttachment(String tabId, String attachmentId);
+
         /** Open an upload in the tab's directory; returns the path or null. */
         String prepareAttachment(
                 String tabId,
@@ -157,6 +160,22 @@ public class ChatWindowDelegate {
 
         /** Settle every streaming tab after the daemon died. */
         void settleStreamingTabsOnDaemonRestart();
+
+        /**
+         * The daemon is back: the queued items kept through the outage may be
+         * sent now. Without this nudge a quiet background tab that only waits
+         * on the daemon has no event left to wake its pump.
+         */
+        default void onDaemonReadyDrainQueues() {
+        }
+
+        /**
+         * Restore every tab's queue projection after a view rebuild. Queues are
+         * host state, so the tab strip's badges must come back too, not only
+         * the visible tab's list.
+         */
+        default void publishAllQueues() {
+        }
 
         /**
          * Soft-reload the currently active session's transcript without interrupting
@@ -283,6 +302,10 @@ public class ChatWindowDelegate {
                 host.releaseTabAttachments(tabId);
             }
             @Override
+            public void releaseAttachment(String tabId, String attachmentId) {
+                host.releaseAttachment(tabId, attachmentId);
+            }
+            @Override
             public String prepareAttachment(
                     String tabId,
                     String attachmentId,
@@ -365,6 +388,9 @@ public class ChatWindowDelegate {
             @Override
             public void onDaemonReady() {
                 daemonStatusHandler.onDaemonReady();
+                // Items kept through the outage may be sendable again; nothing
+                // else is guaranteed to wake a quiet background tab's pump.
+                host.onDaemonReadyDrainQueues();
             }
 
             @Override
@@ -611,6 +637,8 @@ public class ChatWindowDelegate {
             return;
         }
         host.callJavaScript("onTabResync", JsUtils.escapeJs(payload));
+        // The webview learned the tab list; now restore each tab's outbox.
+        host.publishAllQueues();
     }
 
     /**

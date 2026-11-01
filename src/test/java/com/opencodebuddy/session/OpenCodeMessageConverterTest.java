@@ -210,33 +210,111 @@ public class OpenCodeMessageConverterTest {
     }
 
     @Test
-    public void standaloneAbortedTurnConvertsToNotification() {
+    public void standaloneAbortedTurnProducesNothing() {
+        // Option A: stopping is silent. No assistant bubble, no notice, no error.
         String parts = "[{\"type\":\"text\",\"text\":\"已停止生成\",\"aborted\":true}]";
         List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entry("assistant", parts)));
-        assertEquals(1, out.size());
-        JsonObject notification = out.get(0);
-        assertEquals("notification", notification.get("type").getAsString());
-        assertEquals("已停止生成", notification.get("content").getAsString());
-        JsonObject raw = notification.getAsJsonObject("raw");
-        assertNotNull(raw);
-        assertTrue(raw.has("aborted") && raw.get("aborted").getAsBoolean());
+        assertTrue(out.isEmpty());
     }
 
     @Test
-    public void abortedWithPriorTextSplitsIntoAssistantAndNotification() {
+    public void abortedWithPriorTextKeepsOnlyTheText() {
         String parts = "["
                 + "{\"type\":\"text\",\"text\":\"Here is the partial content\"},"
                 + "{\"type\":\"text\",\"text\":\"已停止生成\",\"aborted\":true}"
                 + "]";
         List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entry("assistant", parts)));
-        assertEquals(2, out.size());
+        assertEquals(1, out.size());
         JsonObject assistant = out.get(0);
         assertEquals("assistant", assistant.get("type").getAsString());
         assertEquals("Here is the partial content", assistant.get("content").getAsString());
+    }
 
-        JsonObject notification = out.get(1);
-        assertEquals("notification", notification.get("type").getAsString());
-        assertEquals("已停止生成", notification.get("content").getAsString());
+    @Test
+    public void recordedCommandTextReplacesTheExpandedTemplate() {
+        String expanded = "You are a code reviewer. Your job is to review code changes...";
+        JsonObject userEntry = entry("user", "[{\"type\":\"text\",\"text\":\"" + expanded + "\"}]");
+        userEntry.getAsJsonObject("info").addProperty("id", "msg_cmd");
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(
+                wrap(userEntry), java.util.Map.of("msg_cmd", "/review src"));
+
+        assertEquals(1, out.size());
+        JsonObject user = out.get(0);
+        assertEquals("user", user.get("type").getAsString());
+        assertEquals("/review src", user.get("content").getAsString());
+        JsonArray blocks = user.getAsJsonObject("raw")
+                .getAsJsonObject("message")
+                .getAsJsonArray("content");
+        assertEquals(1, blocks.size());
+        assertEquals("/review src", blocks.get(0).getAsJsonObject().get("text").getAsString());
+    }
+
+    @Test
+    public void matchCommandTextsPicksNearestUnclaimedMessage() {
+        // Epoch milliseconds, like the server's `time.created`.
+        long base = 1_700_000_000_000L;
+        JsonArray array = new JsonArray();
+        array.add(userEntry("msg_a", base));
+        array.add(userEntry("msg_b", base + 60L));
+        List<SessionCommandTextStore.Entry> entries = List.of(
+                new SessionCommandTextStore.Entry(base + 2L, "/review a"),
+                new SessionCommandTextStore.Entry(base + 58L, "/review b"));
+
+        java.util.Map<String, String> matched = OpenCodeMessageConverter.matchCommandTexts(array, entries);
+
+        assertEquals("/review a", matched.get("msg_a"));
+        assertEquals("/review b", matched.get("msg_b"));
+    }
+
+    @Test
+    public void matchCommandTextsIgnoresMessagesOutsideTheWindow() {
+        JsonArray array = new JsonArray();
+        array.add(userEntry("msg_far", 1_700_000_000_000L));
+        List<SessionCommandTextStore.Entry> entries = List.of(
+                new SessionCommandTextStore.Entry(1_700_000_500_000L, "/review"));
+
+        assertTrue(OpenCodeMessageConverter.matchCommandTexts(array, entries).isEmpty());
+    }
+
+    @Test
+    public void matchCommandTextsNeverClaimsAPromptSentLater() {
+        // A command the server answers without persisting a user message (a
+        // client-side command routed to the endpoint) must not steal the text
+        // of the next prompt the user sends minutes later.
+        long base = 1_700_000_000_000L;
+        JsonArray array = new JsonArray();
+        array.add(userEntry("msg_next_prompt", base + 600_000L));
+        List<SessionCommandTextStore.Entry> entries = List.of(
+                new SessionCommandTextStore.Entry(base, "/undo"));
+
+        assertTrue(OpenCodeMessageConverter.matchCommandTexts(array, entries).isEmpty());
+    }
+
+    @Test
+    public void matchCommandTextsNeverClaimsAnOlderMessage() {
+        // The record is taken when the send starts, so a message from before
+        // that (beyond clock skew) belongs to an earlier turn.
+        long base = 1_700_000_000_000L;
+        JsonArray array = new JsonArray();
+        array.add(userEntry("msg_older", base));
+        List<SessionCommandTextStore.Entry> entries = List.of(
+                new SessionCommandTextStore.Entry(base + 60_000L, "/review"));
+
+        assertTrue(OpenCodeMessageConverter.matchCommandTexts(array, entries).isEmpty());
+    }
+
+    private static JsonObject userEntry(String id, long created) {
+        JsonObject info = new JsonObject();
+        info.addProperty("role", "user");
+        info.addProperty("id", id);
+        JsonObject time = new JsonObject();
+        time.addProperty("created", created);
+        info.add("time", time);
+        JsonObject entry = new JsonObject();
+        entry.add("info", info);
+        entry.add("parts", JsonParser.parseString("[{\"type\":\"text\",\"text\":\"x\"}]").getAsJsonArray());
+        return entry;
     }
 
     @Test

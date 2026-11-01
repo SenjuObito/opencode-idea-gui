@@ -4,6 +4,8 @@ import {
   getQuestionAnswer,
   removeQuestionAnswerByRequestId,
   clearQuestionAnswers,
+  markQuestionCancelled,
+  isQuestionCancelled,
   subscribe,
   getSnapshot,
 } from './questionAnswerStore';
@@ -70,5 +72,21 @@ describe('questionAnswerStore', () => {
 
     clearQuestionAnswers();
     expect(getQuestionAnswer('call-1')).toBeUndefined();
+  });
+
+  it('tracks cancelled questions and notifies subscribers', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribe(listener);
+
+    expect(isQuestionCancelled('req-1')).toBe(false);
+
+    markQuestionCancelled('req-1');
+    expect(isQuestionCancelled('req-1')).toBe(true);
+    expect(listener).toHaveBeenCalled();
+
+    clearQuestionAnswers();
+    expect(isQuestionCancelled('req-1')).toBe(false);
+
+    unsubscribe();
   });
 });

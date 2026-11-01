@@ -24,6 +24,56 @@
         height: 100%;
         background-color: #121317;
       }
+      /*
+       * Boot splash: the first painted frame, shown while the ~9.7 MB single
+       * file bundle parses and React commits. It lives inside #app, so React's
+       * initial mount discards it without any extra JavaScript. Colors are
+       * tuned for the dark first-byte background forced above; the mark only
+       * breathes (no spin/glare) to keep the startup calm.
+       */
+      #boot-splash {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background-color: #121317;
+        color: #c8ccd6;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC',
+          'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif;
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        pointer-events: none;
+        animation: boot-splash-fade-in 260ms ease-out both;
+      }
+      #boot-splash-mark {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+        animation: boot-splash-breathe 1600ms ease-in-out infinite;
+      }
+      @keyframes boot-splash-fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes boot-splash-breathe {
+        0%, 100% { opacity: 0.55; transform: scale(0.94); }
+        50% { opacity: 1; transform: scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash,
+        #boot-splash-mark {
+          animation: none;
+        }
+        #boot-splash-mark {
+          opacity: 0.8;
+        }
+      }
     </style>
     <script>
       (function() {
@@ -51,7 +101,12 @@
     </script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div id="boot-splash" aria-hidden="true">
+        <div id="boot-splash-mark"></div>
+        <div>OpenCode</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

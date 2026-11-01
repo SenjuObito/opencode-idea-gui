@@ -97,7 +97,7 @@ export const SessionTabContextMenu: React.FC<SessionTabContextMenuProps> = ({
         }}
       >
         <span className="codicon codicon-edit" />
-        <span>{t('chat.renameSession', { defaultValue: '编辑 (Rename)' })}</span>
+        <span>{t('chat.renameSession', { defaultValue: 'Rename' })}</span>
       </button>
 
       <button

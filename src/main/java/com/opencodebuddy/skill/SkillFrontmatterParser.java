@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -118,16 +119,24 @@ public final class SkillFrontmatterParser {
     }
 
     /**
-     * Parses a skill directory's SKILL.md frontmatter into validated metadata.
+     * Parses a skill's SKILL.md frontmatter into validated metadata.
      * Combines file location, frontmatter extraction, YAML parsing, and validation.
      *
-     * @param skillDir the skill directory (e.g. ~/.claude/skills/commit/)
+     * @param skillPath the skill directory (e.g. ~/.claude/skills/commit/), or a
+     *                  root-level skill markdown file (v2 `${name}.md`)
      * @return parsed and validated metadata, or null if parsing/validation fails
      */
     @SuppressWarnings("unchecked")
-    public static SkillMetadata parse(Path skillDir) {
-        // Step 1: Locate SKILL.md
-        Path skillMd = locateSkillMd(skillDir);
+    public static SkillMetadata parse(Path skillPath) {
+        // Step 1: Locate SKILL.md (or use the markdown file itself)
+        Path skillMd;
+        if (Files.isDirectory(skillPath)) {
+            skillMd = locateSkillMd(skillPath);
+        } else if (Files.isRegularFile(skillPath)) {
+            skillMd = skillPath;
+        } else {
+            return null;
+        }
         if (skillMd == null) {
             return null;
         }
@@ -162,8 +171,11 @@ public final class SkillFrontmatterParser {
             return null;
         }
 
-        // Step 4: Extract name (optional per docs, falls back to directory name)
-        String dirName = skillDir.getFileName().toString();
+        // Step 4: Extract name (optional per docs, falls back to directory/file name)
+        String dirName = skillPath.getFileName().toString();
+        if (!Files.isDirectory(skillPath) && dirName.toLowerCase(Locale.ROOT).endsWith(".md")) {
+            dirName = dirName.substring(0, dirName.length() - 3);
+        }
         Object nameObj = yamlMap.get("name");
         String name;
         if (nameObj != null) {

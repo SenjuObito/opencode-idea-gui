@@ -12,7 +12,7 @@ import type { ClaudeMessage } from '../../../types';
 import type { ContextUsageData } from '../../../components/ContextUsageDialog';
 import { sendWindowCommand, cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
-import { isSessionTransitioning, transitionTargetOfSession } from '../tabTransition';
+import { isSessionTransitioning } from '../tabTransition';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 import { debugError } from '../../../utils/debug';
 import { resolveSessionId } from '../../../utils/sessionIdentity';
@@ -26,7 +26,7 @@ import {
   preserveStreamingAssistantContent,
   stripDuplicateTrailingToolMessages,
 } from '../messageSync';
-import { activeTabId, endTransition, owningTabIdForSession, transitionTargetFor } from '../tabTransition';
+import { activeTabId, endTransition, owningTabIdForSession, transitionTargetFor, isTabTransitioning } from '../tabTransition';
 import {
   parseSequence,
   getMinAcceptedSequence,
@@ -38,6 +38,7 @@ import { collectUnresolvedToolUseIds } from './streamingCallbacks';
 import i18n from '../../../i18n/config';
 import type { TabMessageStore } from '../../../store/tabMessageStore';
 import { getTabStore } from '../../../store/tabStore';
+import { parseHistoryWindow } from '../../../store/historyWindow';
 
 const isTruthy = (v: unknown) => v === true || v === 'true';
 
@@ -112,6 +113,7 @@ export function registerMessageCallbacks(
   let pendingUpdateRaf: number | null = null;
   let pendingUpdateSequence: number | null = null;
   let pendingUpdateBaseIndex: string | number | null | undefined = null;
+  let pendingUpdateTabId: string | null = null;
   const getPrependedHistoryMessageCount = (messageCount: number): number => {
     const count = window.__prependedHistoryMessageCount;
     return typeof count === 'number'
@@ -163,6 +165,7 @@ export function registerMessageCallbacks(
     pendingUpdateJson = null;
     pendingUpdateSequence = null;
     pendingUpdateBaseIndex = null;
+    pendingUpdateTabId = null;
     window.__pendingUpdateRaf = null;
     window.__pendingUpdateJson = null;
     window.__pendingUpdateSequence = null;
@@ -188,7 +191,9 @@ export function registerMessageCallbacks(
    *
    * <p>Routing is by identity: a tab that is not the active one still keeps its
    * own last snapshot. "Not on screen" only means "do not touch the view", not
-   * "discard the data".</p>
+   * "discard the data" — and not "discard the rows the host has not echoed
+   * yet", so the tab's optimistic user bubble and its streaming assistant are
+   * carried across the snapshot.</p>
    */
   const writeSnapshotToTab = (tabId: string, json: string): boolean => (
     getTabStore().updateTab(tabId, (tab) => {
@@ -196,10 +201,25 @@ export function registerMessageCallbacks(
         const raw = JSON.parse(json) as unknown;
         if (!Array.isArray(raw)) return;
         const store = tab.messageStore as TabMessageStore | undefined;
-        const nextMessages = store
+        const snapshot = store
           ? store.applySnapshot(raw as ClaudeMessage[])
           : (raw as ClaudeMessage[]);
-        tab.messages = nextMessages;
+        const prevMessages = (tab.messages as ClaudeMessage[] | undefined) ?? [];
+        // A background tab is still mid-turn: a snapshot generated before the
+        // send landed would otherwise erase the user's own message (and the
+        // placeholder answering it) from a tab the user can switch back to.
+        const withOwnRows = appendOptimisticMessageIfMissing(prevMessages, snapshot);
+        const withStreaming = ensureStreamingAssistantInList(
+          prevMessages,
+          withOwnRows,
+          false,
+          0,
+        ).list;
+        tab.messages = preserveLatestMessagesOnShrink(
+          prevMessages,
+          withStreaming,
+          options.currentProviderRef.current,
+        );
       } catch (error) {
         console.error('[MultiSession] Failed to parse background updateMessages', error);
       }
@@ -233,13 +253,38 @@ export function registerMessageCallbacks(
     })
   );
 
+  /**
+   * Is this frame held back by a session switch in the tab it addresses?
+   *
+   * <p>The guard is per tab: a background tab's turn must not be dropped
+   * because another tab is switching. A frame with no session id is the
+   * incoming conversation — the tab is waiting for exactly that — so it is
+   * allowed; a bound frame must name the transition target.</p>
+   */
+  const isBlockedByTabTransition = (
+    targetSessionId: string | null,
+    addressTabId: string | null,
+  ): boolean => {
+    if (!addressTabId) return isSessionTransitioning(targetSessionId);
+    if (!isTabTransitioning(addressTabId)) return false;
+    if (!targetSessionId) return false;
+    return targetSessionId !== transitionTargetFor(addressTabId);
+  };
+
   const processUpdateMessages = (
     json: string,
     sequence: number | null = null,
     baseIndexArg?: string | number | null,
     targetSessionId?: string | null,
+    targetTabId?: string | null,
   ) => {
-    cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length, 'transitioning:', isSessionTransitioning(targetSessionId ?? null));
+    const effectiveSessionId = targetSessionId ?? null;
+    // Address by tab first: the host names the tab, and that name exists before
+    // the session id does. The session's owner is only a fallback for events
+    // that predate tab addressing.
+    const tabStore = getTabStore();
+    const addressTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
+    cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length, 'tab:', addressTabId, 'transitioning:', isBlockedByTabTransition(effectiveSessionId, addressTabId));
     // Re-check the session-transition guard inside processUpdateMessages so the
     // rAF-deferred path (window.updateMessages → setTimeout → processUpdateMessages)
     // cannot resurrect cleared messages when a transition starts between the
@@ -247,31 +292,23 @@ export function registerMessageCallbacks(
     // callers that bypass the entry point — addHistoryMessage / addUserMessage
     // already guard, but processUpdateMessages is the canonical setter and
     // should be self-defending.
-    if (isSessionTransitioning(targetSessionId)) {
+    if (isBlockedByTabTransition(effectiveSessionId, addressTabId)) {
       // The tab is switching sessions: only the session it is switching *to*
       // may write. Events of the outgoing session are dropped.
-      const transitionTarget = transitionTargetOfSession(targetSessionId);
-      const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
-      if (!isTargetActiveSession) {
-        cardDebugLog('[processUpdateMessages] BLOCKED: tab is transitioning');
-        return;
-      }
-      cardDebugLog('[processUpdateMessages] ALLOWED during transition for targetSessionId:', targetSessionId);
+      cardDebugLog('[processUpdateMessages] BLOCKED: tab is transitioning');
+      return;
     }
     // A frame deferred 16ms during streaming can outlive a tab switch. Identity
-    // decides the sink: the tab that owns this session keeps its own snapshot;
-    // only a session no tab claims (a closed tab) is dropped.
-    const tabStore = getTabStore();
-    const owningTabId = owningTabIdForSession(targetSessionId);
-    if (owningTabId && !tabStore.isActiveTab(owningTabId)) {
-      writeSnapshotToTab(owningTabId, json);
+    // decides the sink: the addressed tab keeps its own snapshot; a frame no
+    // tab claims (a closed tab) is dropped.
+    if (tabStore.size() > 0 && !addressTabId) {
+      cardDebugLog('[processUpdateMessages] dropped: no tab owns', targetSessionId ?? targetTabId);
       return;
     }
-    if (targetSessionId && tabStore.size() > 0 && !owningTabId) {
-      cardDebugLog('[processUpdateMessages] dropped: no tab owns', targetSessionId);
+    if (addressTabId && !tabStore.isActiveTab(addressTabId)) {
+      writeSnapshotToTab(addressTabId, json);
       return;
     }
-    const effectiveSessionId = targetSessionId ?? null;
     const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) {
       cardDebugLog('[processUpdateMessages] BLOCKED: seq', sequence, '< minAccepted', minAcceptedSequence, 'sessionId:', effectiveSessionId);
@@ -313,8 +350,11 @@ export function registerMessageCallbacks(
           const merged = keepCount > 0
             ? [...prev.slice(0, keepCount), ...backendMessages]
             : backendMessages;
+          // 优化气泡不属于宿主转录：窗口滑动时快照里没有它，直接拼接会把它
+          // 抹掉（新标签页发送第一条消息正是在这里丢的）。finalizeMessageList
+          // 只补流式 assistant，所以 user 气泡必须在这里补回。
           const result = reconstructTurnMetadata(
-            merged,
+            appendOptimisticMessageIfMissing(prev, merged),
             { skipTrailingTurn: isStreamingRef.current },
           );
           return finalizeMessageList(prev, result);
@@ -524,25 +564,22 @@ export function registerMessageCallbacks(
     baseIndexArg: string | number,
     sequenceArg?: string | number,
     targetSessionId?: string | null,
+    targetTabId?: string | null,
   ) => {
-    if (isSessionTransitioning(targetSessionId)) {
-      const transitionTarget = transitionTargetOfSession(targetSessionId);
-      const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
-      if (!isTargetActiveSession) return;
-    }
-    // Same deferred-frame rule as processUpdateMessages: write the owning tab,
-    // never the active view, and drop only when no tab owns the session.
-    const tabStore = getTabStore();
-    const owningTabId = owningTabIdForSession(targetSessionId);
-    if (owningTabId && !tabStore.isActiveTab(owningTabId)) {
-      writeTailToTab(owningTabId, json, baseIndexArg);
-      return;
-    }
-    if (targetSessionId && tabStore.size() > 0 && !owningTabId) {
-      cardDebugLog('[processMessageTail] dropped: no tab owns', targetSessionId);
-      return;
-    }
     const effectiveSessionId = targetSessionId ?? null;
+    const tabStore = getTabStore();
+    const addressTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
+    if (isBlockedByTabTransition(effectiveSessionId, addressTabId)) return;
+    // Same deferred-frame rule as processUpdateMessages: write the owning tab,
+    // never the active view, and drop only when no tab claims the frame.
+    if (tabStore.size() > 0 && !addressTabId) {
+      cardDebugLog('[processMessageTail] dropped: no tab owns', targetSessionId ?? targetTabId);
+      return;
+    }
+    if (addressTabId && !tabStore.isActiveTab(addressTabId)) {
+      writeTailToTab(addressTabId, json, baseIndexArg);
+      return;
+    }
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
     if (sequence != null && sequence < minAcceptedSequence) return;
@@ -628,60 +665,32 @@ export function registerMessageCallbacks(
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
-    // Ownership includes a tab that is switching to this session, so the first
-    // frames of a load are still recognised as the foreground.
-    const ownerTabId = owningTabIdForSession(targetSessionId);
-    const isForegroundSession = !hasTabs
-      || !targetSessionId
-      || (ownerTabId ? tabStore.isActiveTab(ownerTabId) : false);
+    // Address by tab first. The tab id is the durable identity of the
+    // conversation: it exists before the daemon reports the session id, which is
+    // exactly the window in which the first snapshot of a new tab arrives. The
+    // session's owner is the fallback for events that predate tab addressing.
+    const addressTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
 
-    if (!isForegroundSession && targetSessionId && hasTabs) {
-      const applyToBackgroundTab = (t: any) => {
-        try {
-          const raw = JSON.parse(json);
-          if (Array.isArray(raw)) {
-            // The tab owns its transcript: the snapshot is reconciled by
-            // message id, so a message keeps its identity across snapshots.
-            const store = t.messageStore as TabMessageStore | undefined;
-            const nextMessages = store ? store.applySnapshot(raw) : raw;
-            t.messages = nextMessages;
-            return { ...t, messages: nextMessages };
-          }
-        } catch (e) {
-          console.error('[MultiSession] Failed to parse background updateMessages', e);
-        }
-        return t;
-      };
-
-      // The host names the tab when it can; otherwise the binding (including a
-      // pending transition) resolves it. A closed tab has nowhere to write.
-      const writeTabId = targetTabId ?? ownerTabId;
-      if (writeTabId) {
-        const written = tabStore.updateTab(writeTabId, applyToBackgroundTab);
-        if (!written) {
-          cardDebugLog('[updateMessages] dropped: no tab', writeTabId, 'owns this snapshot');
-        }
-      } else {
-        cardDebugLog('[updateMessages] dropped: no tab owns', targetSessionId);
-      }
-      // No tab claims this session: the user closed it (or the host pushed an
-      // id the webview never bound). Drop the snapshot — falling through to the
-      // active path would render another conversation's messages in the tab the
-      // user is currently looking at.
+    if (hasTabs && addressTabId && !tabStore.isActiveTab(addressTabId)) {
+      // The tab is not on screen: write its store, never the view. A closed tab
+      // has nowhere to write and updates nothing.
+      writeSnapshotToTab(addressTabId, json);
+      return;
+    }
+    if (hasTabs && !addressTabId) {
+      // No tab claims this frame: the user closed it (or the host pushed an
+      // identity the webview never bound). Falling through to the active path
+      // would render another conversation's messages in the tab on screen.
+      cardDebugLog('[updateMessages] dropped: no tab owns', targetSessionId ?? targetTabId);
       return;
     }
 
     // During session transition, ignore message updates from stale session
     // callbacks to prevent cleared messages from being restored
-    cardDebugLog('[updateMessages] called, transitioning:', isSessionTransitioning(targetSessionId), 'seq:', sequenceArg, 'jsonLen:', json?.length);
-    if (isSessionTransitioning(targetSessionId)) {
-      const transitionTarget = transitionTargetOfSession(targetSessionId);
-      const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
-      if (!isTargetActiveSession) {
-        cardDebugLog('[updateMessages] BLOCKED: tab is transitioning');
-        return;
-      }
-      cardDebugLog('[updateMessages] ALLOWED during transition for targetSessionId:', targetSessionId);
+    cardDebugLog('[updateMessages] called, transitioning:', isBlockedByTabTransition(targetSessionId, addressTabId), 'seq:', sequenceArg, 'jsonLen:', json?.length);
+    if (isBlockedByTabTransition(targetSessionId, addressTabId)) {
+      cardDebugLog('[updateMessages] BLOCKED: tab is transitioning');
+      return;
     }
     const effectiveSessionId = targetSessionId ?? null;
     const sequence = parseSequence(sequenceArg);
@@ -706,6 +715,7 @@ export function registerMessageCallbacks(
       pendingUpdateJson = json;
       pendingUpdateSequence = sequence;
       pendingUpdateBaseIndex = baseIndexArg ?? null;
+      pendingUpdateTabId = addressTabId;
       window.__pendingUpdateJson = json;
       window.__pendingUpdateSequence = sequence;
       if (pendingUpdateRaf === null) {
@@ -719,9 +729,11 @@ export function registerMessageCallbacks(
           const latestJson = pendingUpdateJson;
           const latestSequence = pendingUpdateSequence;
           const latestBaseIndex = pendingUpdateBaseIndex;
+          const latestTabId = pendingUpdateTabId ?? targetTabId;
           pendingUpdateJson = null;
           pendingUpdateSequence = null;
           pendingUpdateBaseIndex = null;
+          pendingUpdateTabId = null;
           window.__pendingUpdateJson = null;
           window.__pendingUpdateSequence = null;
           // A session transition may have begun while this frame was buffered.
@@ -730,13 +742,11 @@ export function registerMessageCallbacks(
           // stale snapshot deferred during the outgoing session's streaming
           // would run down the non-streaming path (isStreamingRef was cleared
           // by beginSessionTransition) and resurrect the cleared messages.
-          if (isSessionTransitioning(targetSessionId)) {
-            const transitionTarget = transitionTargetOfSession(targetSessionId);
-            const isTargetActiveSession = Boolean(targetSessionId && transitionTarget && targetSessionId === transitionTarget);
-            if (!isTargetActiveSession) return;
+          if (isBlockedByTabTransition(targetSessionId, latestTabId)) {
+            return;
           }
           if (latestJson) {
-            processUpdateMessages(latestJson, latestSequence, latestBaseIndex, targetSessionId);
+            processUpdateMessages(latestJson, latestSequence, latestBaseIndex, targetSessionId, latestTabId);
           }
         }, 16);
         pendingUpdateRaf = timerId as unknown as number;
@@ -745,13 +755,14 @@ export function registerMessageCallbacks(
       return;
     }
 
-    processUpdateMessages(json, sequence, baseIndexArg, targetSessionId);
+    processUpdateMessages(json, sequence, baseIndexArg, targetSessionId, targetTabId);
   };
 
   const flushPendingUpdateMessages = (targetSessionId?: string | null) => {
     const json = pendingUpdateJson ?? window.__pendingUpdateJson ?? null;
     const sequence = pendingUpdateSequence ?? null;
     const baseIndex = pendingUpdateBaseIndex;
+    const tabId = pendingUpdateTabId;
     if (typeof json === 'string' && json.length > 0) {
       // Force the non-buffering path: this is a terminal flush, so the
       // snapshot must be applied now rather than scheduled into another rAF
@@ -764,6 +775,7 @@ export function registerMessageCallbacks(
           sequence,
           baseIndex,
           targetSessionId ?? null,
+          tabId,
         );
       } finally {
         isStreamingRef.current = wasStreaming;
@@ -775,100 +787,65 @@ export function registerMessageCallbacks(
 
   const updateMessageTail = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId: string | null = env?.sessionId ?? null;
+    const targetTabId: string | null = env?.tabId ?? null;
     const json = String(payload?.messages ?? '[]');
     const baseIndexArg = payload?.baseIndex as string | number;
     const sequenceArg = payload?.sequence as string | number | undefined;
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
-    const isBackground = hasTabs && Boolean(targetSessionId) && !tabStore.isActiveSession(targetSessionId);
-    if (isBackground && targetSessionId) {
-      const applyTail = (t: any) => {
-        try {
-          const tail = JSON.parse(json);
-          if (Array.isArray(tail)) {
-            const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
-            const currentMessages = t.messages || [];
-            let nextMessages = tail;
-            if (Number.isSafeInteger(base) && base >= 0 && base <= currentMessages.length) {
-              nextMessages = [...currentMessages.slice(0, base), ...tail];
-            } else if (currentMessages.length > 0) {
-              nextMessages = [...currentMessages, ...tail];
-            }
-            const nextBase = Number.isSafeInteger(base) ? base : 0;
-            t.messages = nextMessages;
-            t.messageBaseIndex = nextBase;
-            return { ...t, messages: nextMessages, messageBaseIndex: nextBase };
-          }
-        } catch (e) {
-          console.error('[MultiSession] Failed to parse background updateMessageTail', e);
-        }
-        return t;
-      };
-
-      const tailTabId = owningTabIdForSession(targetSessionId);
-      if (tailTabId) {
-        tabStore.updateTab(tailTabId, applyTail);
-      }
+    // Tab first: the host names the tab on every tail frame, and that name is
+    // valid before the session id is bound.
+    const addressTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
+    if (hasTabs && addressTabId && !tabStore.isActiveTab(addressTabId)) {
+      writeTailToTab(addressTabId, json, baseIndexArg);
+      return;
+    }
+    if (hasTabs && !addressTabId) {
+      cardDebugLog('[updateMessageTail] dropped: no tab owns', targetSessionId ?? targetTabId);
       return;
     }
 
-    processMessageTail(json, baseIndexArg, sequenceArg, targetSessionId);
+    processMessageTail(json, baseIndexArg, sequenceArg, targetSessionId, targetTabId);
   };
 
-  // ── opencode 恢复分页/回源：前插更早的历史页 ──
-  // 宿主窗口（恢复或活跃会话逐出）之外的历史经 `load_earlier_messages` 回源，
-  // 宿主回推本回调前插。第二个参数是页起点全局序号：webview 用它维护
-  // __opencodeListStart（列表首条的全局序号），后续窗口快照据此拼接。
-  // __prependedHistoryMessageCount 同步累加：基址不变的同代快照走 legacy
-  // 合并路径时，靠它保留已前插的页（Codex 既有机制）。
-  const updateMessagesPrepend = (json: string, pageStartArg?: number | string) => {
-    if (isSessionTransitioning(null)) return;
-    if (isStreamingRef.current) return;
-    let parsed: ClaudeMessage[];
-    try {
-      parsed = JSON.parse(json) as ClaudeMessage[];
-    } catch (error) {
-      console.error('[Frontend] Failed to parse earlier messages page:', error);
-      return;
-    }
-    if (!Array.isArray(parsed) || parsed.length === 0) return;
-    const pageStart = pageStartArg != null && pageStartArg !== ''
-      ? Number(pageStartArg)
-      : null;
-    const container = messagesContainerRef.current;
-    const oldScrollHeight = container?.scrollHeight ?? 0;
-    const oldScrollTop = container?.scrollTop ?? 0;
+  // ── 历史分页：服务端还有更早的页 ─────────────────────────────────────
+  // 两条事件都属于某个 tab：`history.window` 是本 tab 读回了多少历史，
+  // `message.prepended` 是宿主前插的一页。后台 tab 自己吸收，不动当前视图。
+  // 已加载页可能一条 user 都没有，所以入口只看 host 的窗口状态，不看 messages。
+  const resolveEventTabId = (payload: any, env?: HostEventEnvelope): string => {
+    if (env && typeof env.tabId === 'string' && env.tabId) return env.tabId;
+    return typeof payload?.tabId === 'string' ? payload.tabId : '';
+  };
 
-    // ── 分页累积上限：页区域超过 MAX_PAGED_MESSAGES 时丢最老的页 ──
-    // 大型会话用户连点分页会让 webview state 无界增长；被裁掉的区间只影响
-    // 本地窗口，宿主下一次仍按请求里的 pageStart 回源，不产生取不到的空档。
-    const MAX_PAGED_MESSAGES = 800;
-    let drop = 0;
-    let newStart = pageStart != null && Number.isSafeInteger(pageStart) && (pageStart as number) >= 0
-      ? pageStart as number
-      : (window.__opencodeListStart ?? 0);
-    const windowBase = window.__messageBaseIndex ?? 0;
-    if (windowBase > newStart) {
-      const pagedCount = windowBase - newStart;
-      if (pagedCount > MAX_PAGED_MESSAGES) {
-        drop = pagedCount - MAX_PAGED_MESSAGES;
-        newStart += drop;
+  const updateHistoryWindow = (payload: any, env?: HostEventEnvelope) => {
+    const tabId = resolveEventTabId(payload, env);
+    if (!tabId) return;
+    const store = getTabStore();
+    if (!store.findById(tabId)) return;
+    const window = parseHistoryWindow(payload);
+    if (!window) return;
+    store.updateTab(tabId, (t) => {
+      t.historyWindow = window;
+    });
+  };
+
+  const updateMessagesPrepend = (payload: any, env?: HostEventEnvelope) => {
+    const messages = Array.isArray(payload?.messages)
+      ? (payload.messages as ClaudeMessage[])
+      : (Array.isArray(payload) ? (payload as ClaudeMessage[]) : null);
+    if (!messages || messages.length === 0) return;
+    const tabId = resolveEventTabId(payload, env);
+    if (!tabId) return;
+    const store = getTabStore();
+    if (!store.findById(tabId)) return;
+    store.updateTab(tabId, (t: any) => {
+      if (t.messageStore && typeof t.messageStore.applyPrepend === 'function') {
+        t.messages = t.messageStore.applyPrepend(messages);
+      } else {
+        t.messages = [...messages, ...(t.messages ?? [])];
       }
-    }
-
-    setMessages((prev) => (drop > 0 ? [...parsed, ...prev].slice(drop) : [...parsed, ...prev]));
-    window.__opencodeListStart = newStart;
-    const prevPrepended = window.__prependedHistoryMessageCount;
-    window.__prependedHistoryMessageCount =
-      Math.max(0, (typeof prevPrepended === 'number' ? prevPrepended : 0) + parsed.length - drop);
-    if (container) {
-      requestAnimationFrame(() => {
-        const currentContainer = messagesContainerRef.current;
-        if (!currentContainer) return;
-        currentContainer.scrollTop = oldScrollTop + currentContainer.scrollHeight - oldScrollHeight;
-      });
-    }
+    });
   };
 
   const updateStatus = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
@@ -1097,6 +1074,8 @@ export function registerMessageCallbacks(
         t.messages = [];
         t.loading = false;
         t.streamingActive = false;
+        // 转录已清空：更早的页属于上一个会话，按钮不能再指向它。
+        t.historyWindow = null;
       });
       return;
     }
@@ -1126,7 +1105,6 @@ export function registerMessageCallbacks(
       window.__pendingUpdateSequence = null;
     }
     window.__deniedToolIds?.clear();
-    window.__opencodeHistoryWindow = undefined;
     window.__opencodeListStart = 0;
     window.__prependedHistoryMessageCount = 0;
     window.__messageBaseIndex = 0;
@@ -1135,6 +1113,14 @@ export function registerMessageCallbacks(
     window.__historySurfaceRefreshEpoch = (window.__historySurfaceRefreshEpoch ?? 0) + 1;
     resetTransientUiState();
     closeContextUsageDialog();
+    // 清空的是这个 tab 的转录：它的历史窗口随之作废，否则「从磁盘加载更早」
+    // 会继续显示上一个会话的 hasEarlier。
+    const activeTabId = tabStore.getActiveTabId();
+    if (activeTabId) {
+      tabStore.updateTab(activeTabId, (t) => {
+        t.historyWindow = null;
+      });
+    }
     setMessages([]);
   };
 
@@ -1502,6 +1488,7 @@ export function registerMessageCallbacks(
     'message.tail': updateMessageTail,
     'message.snapshot': updateMessages,
     'message.prepended': updateMessagesPrepend,
+    'history.window': updateHistoryWindow,
     'status.updated': updateStatus,
     'message.error': addErrorMessage,
     'context.usage.dialog': showContextUsageDialog,

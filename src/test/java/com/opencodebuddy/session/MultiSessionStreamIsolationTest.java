@@ -33,8 +33,10 @@ import static org.junit.Assert.assertTrue;
  * <ol>
  *   <li>{@link StreamMessageCoalescer} 每帧快照都盖自己的 sessionId，
  *       两个 coalescer 互不越界；</li>
- *   <li>没有身份的 coalescer 直接丢弃快照，但终态信号（flush 回调 →
- *       onStreamEnd/showLoading(false)）仍然送达，否则标签页会一直 loading。</li>
+ *   <li>只有既没有 sessionId 也没有 tabId 的 coalescer 才丢弃快照；只缺 sessionId
+ *       的帧按 tabId 下发（新标签页发送第一条消息就发生在绑定之前），并且终态
+ *       信号（flush 回调 → onStreamEnd/showLoading(false)）始终送达，否则标签页
+ *       会一直 loading。</li>
  * </ol>
  *
  * <p>另外守住历史加载路径：两个会话并发 loadFromServer 时，各自只读自己的
@@ -268,11 +270,42 @@ public class MultiSessionStreamIsolationTest {
     }
 
     @Test
-    public void snapshotWithoutSessionIdentityIsDroppedButTerminalStillFires() throws Exception {
+    public void snapshotArrivingBeforeSessionBindingIsDeliveredToItsTab() throws Exception {
         RecordingTarget target = new RecordingTarget();
         RecordingEventSink sink = new RecordingEventSink();
-        // sessionId 未解析（null）：既不能猜「当前屏幕上的会话」，也不能把
-        // 快照糊到前台去。
+        // 新标签页的第一帧：daemon 还没回报 session id，但 tab 已经确定。
+        // 这一帧正是「用户刚发的第一条消息」所在帧；丢掉它，前端就只剩一个
+        // 空的 assistant 占位，用户气泡随之消失。
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(null, "tab-new", sink, target);
+        try {
+            coalescer.enqueue(List.of(message("first")));
+
+            CountDownLatch flushed = new CountDownLatch(1);
+            coalescer.flush(seq -> flushed.countDown());
+            assertTrue("flush callback never ran", flushed.await(AWAIT_SECONDS, TimeUnit.SECONDS));
+
+            com.opencodebuddy.tab.TabEvent snapshot = null;
+            for (com.opencodebuddy.tab.TabEvent event : sink.events) {
+                if ("message.snapshot".equals(event.getType())) {
+                    snapshot = event;
+                }
+            }
+            assertNotNull("the first snapshot of a new tab was dropped", snapshot);
+            assertEquals("the snapshot must be addressed to its tab", "tab-new", snapshot.getTabId());
+            assertNull("no session id may be invented before it is bound", snapshot.getSessionId());
+            assertTrue("the snapshot lost its own message",
+                    String.valueOf(snapshot.getPayload().get("messages")).contains("first"));
+        } finally {
+            coalescer.dispose();
+        }
+    }
+
+    @Test
+    public void snapshotWithoutAnyIdentityIsDroppedButTerminalStillFires() throws Exception {
+        RecordingTarget target = new RecordingTarget();
+        RecordingEventSink sink = new RecordingEventSink();
+        // 既没有 session 也没有 tab：无处可写，只能丢（既不能猜「当前屏幕上的
+        // 会话」，也不能把快照糊到前台去）。
         StreamMessageCoalescer coalescer = new StreamMessageCoalescer((String) null, sink, target);
         try {
             coalescer.enqueue(List.of(message("ghost")));
@@ -291,10 +324,10 @@ public class MultiSessionStreamIsolationTest {
     }
 
     @Test
-    public void blankSessionIdentityIsAlsoDropped() throws Exception {
+    public void blankSessionIdentityWithoutATabIsAlsoDropped() throws Exception {
         RecordingTarget target = new RecordingTarget();
         RecordingEventSink sink = new RecordingEventSink();
-        // 空串与 null 同义：前端把 '' 读成「当前会话」，所以同样必须丢。
+        // 空串与 null 同义：前端把 '' 读成「当前会话」，所以没有 tab 时同样必须丢。
         StreamMessageCoalescer coalescer = new StreamMessageCoalescer("   ", sink, target);
         try {
             coalescer.enqueue(List.of(message("ghost")));
@@ -549,6 +582,23 @@ public class MultiSessionStreamIsolationTest {
             requestedSessionIds.add(sessionId);
             assertEquals("history was read for the wrong session", expectedSessionId, sessionId);
             return providerHistory;
+        }
+
+        /**
+         * Only transcript pages are recorded: the user-turn count is a separate
+         * bookkeeping read that returns an empty page (one page holds all).
+         */
+        @Override
+        public SessionProviderRouter.MessagePage getProviderSessionMessagePage(
+                String provider, String sessionId, String cwd,
+                int limit, String cursor, String type, String order) {
+            if ("user".equals(type)) {
+                assertEquals("turn count was read for the wrong session", expectedSessionId, sessionId);
+                return new SessionProviderRouter.MessagePage(List.of(), null, false);
+            }
+            requestedSessionIds.add(sessionId);
+            assertEquals("history was read for the wrong session", expectedSessionId, sessionId);
+            return new SessionProviderRouter.MessagePage(providerHistory, null, false);
         }
 
         @Override

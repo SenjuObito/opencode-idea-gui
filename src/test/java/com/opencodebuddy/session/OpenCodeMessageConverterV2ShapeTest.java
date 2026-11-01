@@ -22,9 +22,9 @@ import static org.junit.Assert.assertTrue;
  *       「Failed to load messages for session X: JsonObject」+ 空白标签页。
  *       只有带出错工具的会话会中招，所以症状是「个别会话加载失败」。</li>
  *   <li>中断/错误语义标记（{@code aborted} / {@code isError}）必须转成前端认识的
- *       消息类型：{@code aborted} → {@code notification}（subtype=stopped），
- *       {@code isError} → {@code error} 消息。丢掉标记的话，前端只能把它们当成
- *       普通文本渲染。</li>
+ *       消息类型：{@code isError} → {@code error} 消息；{@code aborted} 是用户按了
+ *       停止，按选项 A 完全静默——没有 notice、没有空 assistant 气泡，只保留已经
+ *       产出的文本/工具块。丢掉标记的话，前端只能把它们当成普通文本渲染。</li>
  *   <li>任何字段类型不符都只该丢掉那一个字段/那一条消息，不该抛出。</li>
  * </ol>
  */
@@ -103,20 +103,16 @@ public class OpenCodeMessageConverterV2ShapeTest {
     // ===== 语义标记透传 =====
 
     @Test
-    public void anAbortedNoticeCarriesItsMarkerToTheFrontend() {
+    public void anAbortedNoticeIsDroppedFromHistory() {
+        // Option A: stopping is silent. The synthetic "已停止生成" part is
+        // model-side bookkeeping and must not become a transcript row on reload.
         JsonObject entry = assistantEntry("已停止生成", 1, 1);
         JsonObject part = entry.getAsJsonArray("parts").get(0).getAsJsonObject();
         part.addProperty("aborted", true);
 
         List<JsonObject> messages = OpenCodeMessageConverter.convert(arrayOf(entry));
 
-        assertEquals(1, messages.size());
-        JsonObject msg = messages.get(0);
-        assertEquals("notification", msg.get("type").getAsString());
-        assertEquals("已停止生成", msg.get("content").getAsString());
-        JsonObject raw = msg.getAsJsonObject("raw");
-        assertTrue(raw.has("aborted") && raw.get("aborted").getAsBoolean());
-        assertEquals("stopped", raw.get("subtype").getAsString());
+        assertTrue("aborted turn with no output produces no message", messages.isEmpty());
     }
 
     @Test

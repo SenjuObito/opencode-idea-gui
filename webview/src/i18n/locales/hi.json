@@ -27,6 +27,7 @@
     "optional": "Optional"
   },
   "chat": {
+    "renameSession": "नाम बदलें",
     "sendMessage": "{{provider}} को संदेश भेजें",
     "createNewSession": "नया सत्र बनाएं",
     "confirmInterrupt": "वर्तमान में बातचीत चल रही है, नया सत्र बनाने से वर्तमान बातचीत बाधित होगी, क्या जारी रखें?",
@@ -114,8 +115,9 @@
     "attachmentsUploaded": "[अटैचमेंट अपलोड हो गए]",
     "streamingConnected": "आपके प्रश्न को समझ रहा है…",
     "showEarlierMessages": "{{count}} पुराने संदेश दिखाएं",
-    "showEarlierTurns": "पहले के {{count}} संवाद दौर दिखाएं ({{remaining}} लोड किए हुए शेष)",
-    "loadEarlierTurns": "डिस्क से पहले के {{count}} दौर लोड करें ({{total}} में से {{remaining}} शेष)",
+    "showEarlierTurns": "पिछले {{count}} टर्न दिखाएँ ({{remaining}} शेष)",
+
+    "showEarlierConversation": "पिछली बातचीत दिखाएँ",
     "loadEarlierMessages": "पहले के {{count}} संदेश लोड करें ({{total}} में से {{remaining}} शेष)",
     "loadingEarlierTurns": "पहले के संवाद लोड हो रहे हैं",
     "totalDuration": "इस जवाब में लगा समय",
@@ -168,7 +170,8 @@
     "shareLinkCreated": "साझा लिंक बनाया गया",
     "retryCopy": "फिर से कॉपी करें",
     "subagentsSection": "सबएजेंट",
-    "filesSection": "फ़ाइलें"
+    "filesSection": "फ़ाइलें",
+    "filesEmpty": "कोई मेल खाती फ़ाइल नहीं मिली"
   },
   "settings": {
     "title": "सेटिंग्स",

@@ -72,9 +72,33 @@ export function removeQuestionAnswerByRequestId(requestId: string): void {
   }
 }
 
+const cancelledQuestionIds = new Set<string>();
+
+export function markQuestionCancelled(id?: string | null): void {
+  if (!id) return;
+  cardDebugLog(`[QuestionAnswerStore] markQuestionCancelled id="${id}"`);
+  if (!cancelledQuestionIds.has(id)) {
+    cancelledQuestionIds.add(id);
+    notify();
+  }
+}
+
+export function isQuestionCancelled(id?: string | null): boolean {
+  if (!id) return false;
+  return cancelledQuestionIds.has(id);
+}
+
 export function clearQuestionAnswers(): void {
+  let changed = false;
   if (store.size > 0) {
     store.clear();
+    changed = true;
+  }
+  if (cancelledQuestionIds.size > 0) {
+    cancelledQuestionIds.clear();
+    changed = true;
+  }
+  if (changed) {
     notify();
   }
 }

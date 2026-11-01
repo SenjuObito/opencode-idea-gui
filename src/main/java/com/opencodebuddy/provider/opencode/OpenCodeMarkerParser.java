@@ -95,6 +95,13 @@ public final class OpenCodeMarkerParser {
             // (host only logged it), which buried the server's actual reason.
             String payload = stripSeparator(line, "[TURN_ERROR]").trim();
             String decoded = decodeJsonStringPayload(payload);
+            // A user-initiated stop is not a failure. v2 reports it as
+            // `{kind:"aborted", message:"Step interrupted"}` on the same
+            // channel, sometimes before [TURN_END] arrives — so check both the
+            // already-seen abort marker and the payload itself.
+            if (context.wasAborted.get() || isAbortError(decoded)) {
+                return;
+            }
             callback.onMessage("turn_error", isJsonObject(decoded) ? decoded : payload);
             return;
         }
@@ -103,6 +110,34 @@ public final class OpenCodeMarkerParser {
             String payload = stripSeparator(line, "[SESSION_COMPACT_RESULT]").trim();
             String decoded = decodeJsonStringPayload(payload);
             callback.onMessage("session_compact_result", isJsonObject(decoded) ? decoded : payload);
+            return;
+        }
+
+        if (line.startsWith("[COMPACTION_STARTED]")) {
+            String payload = stripSeparator(line, "[COMPACTION_STARTED]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            callback.onMessage("compaction_started", isJsonObject(decoded) ? decoded : payload);
+            return;
+        }
+
+        if (line.startsWith("[COMPACTION_DELTA]")) {
+            String payload = stripSeparator(line, "[COMPACTION_DELTA]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            callback.onMessage("compaction_delta", isJsonObject(decoded) ? decoded : payload);
+            return;
+        }
+
+        if (line.startsWith("[COMPACTION_ENDED]")) {
+            String payload = stripSeparator(line, "[COMPACTION_ENDED]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            callback.onMessage("compaction_ended", isJsonObject(decoded) ? decoded : payload);
+            return;
+        }
+
+        if (line.startsWith("[COMPACTION_FAILED]")) {
+            String payload = stripSeparator(line, "[COMPACTION_FAILED]").trim();
+            String decoded = decodeJsonStringPayload(payload);
+            callback.onMessage("compaction_failed", isJsonObject(decoded) ? decoded : payload);
             return;
         }
 
@@ -146,7 +181,14 @@ public final class OpenCodeMarkerParser {
             // Unlike [STREAM_END] it names the session and the turn, so it can
             // clear the right session's running state — and be ignored when it is
             // a duplicate/late signal for a turn that already settled.
-            callback.onMessage("turn_end", stripSeparator(line, "[TURN_END]").trim());
+            String payload = stripSeparator(line, "[TURN_END]").trim();
+            if (isAbortedTurnEnd(payload)) {
+                // Makes the [SEND_ERROR] suppression above live: an abort can
+                // still be followed by a transport-level send error, which must
+                // not surface as a failure.
+                context.wasAborted.set(true);
+            }
+            callback.onMessage("turn_end", payload);
             return;
         }
 
@@ -260,5 +302,63 @@ public final class OpenCodeMarkerParser {
         }
         String trimmed = raw.trim();
         return trimmed.startsWith("{") && trimmed.endsWith("}") && trimmed.length() > 2;
+    }
+
+    /** Whether a {@code [TURN_ERROR]} payload describes a user abort. */
+    private boolean isAbortError(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String trimmed = raw.trim();
+        if (!isJsonObject(trimmed)) {
+            return isAbortText(trimmed);
+        }
+        try {
+            JsonObject payload = gson.fromJson(trimmed, JsonObject.class);
+            String kind = stringOrNull(payload, "kind");
+            if (kind == null) {
+                kind = stringOrNull(payload, "type");
+            }
+            if ("aborted".equalsIgnoreCase(kind)) {
+                return true;
+            }
+            return isAbortText(stringOrNull(payload, "message"));
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Whether a {@code [TURN_END]} payload names the abort terminal. */
+    private boolean isAbortedTurnEnd(String raw) {
+        if (!isJsonObject(raw)) {
+            return false;
+        }
+        try {
+            JsonObject payload = gson.fromJson(raw.trim(), JsonObject.class);
+            return "aborted".equalsIgnoreCase(stringOrNull(payload, "reason"));
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static boolean isAbortText(String message) {
+        if (message == null) {
+            return false;
+        }
+        String lower = message.trim().toLowerCase(java.util.Locale.ROOT);
+        return lower.equals("aborted")
+                || lower.equals("abort")
+                || lower.equals("user interrupted")
+                || lower.equals("step interrupted")
+                || lower.contains("messageabortederror")
+                || lower.contains("user interrupted")
+                || lower.contains("step interrupted");
+    }
+
+    private static String stringOrNull(JsonObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
+            return null;
+        }
+        return obj.get(key).isJsonPrimitive() ? obj.get(key).getAsString() : null;
     }
 }

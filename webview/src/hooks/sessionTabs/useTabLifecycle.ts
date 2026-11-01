@@ -30,8 +30,6 @@ export interface UseTabLifecycleOptions extends Pick<
   | 'setIsThinking'
   | 'setStatus'
   | 'setRevertBoundaryId'
-  | 'setIsCompacting'
-  | 'setCompactingStartTime'
   | 'setTaskEvents'
   | 'setSseTodos'
   | 'subagentHistories'
@@ -76,8 +74,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setIsThinking,
     setStatus,
     setRevertBoundaryId,
-    setIsCompacting,
-    setCompactingStartTime,
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,
@@ -176,8 +172,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setIsThinking?.(false);
     setStatus?.('');
     setRevertBoundaryId?.(null);
-    setIsCompacting?.(false);
-    setCompactingStartTime?.(null);
     setTaskEvents?.({});
     setSseTodos?.(null);
     setSubagentHistories?.({});
@@ -221,8 +215,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setIsThinking,
     setStatus,
     setRevertBoundaryId,
-    setIsCompacting,
-    setCompactingStartTime,
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,
@@ -295,8 +287,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setIsThinking?.(nextStatus?.isThinking ?? nextActive.isThinking ?? false);
     setStatus?.(nextStatus?.status ?? nextActive.status ?? '');
     setRevertBoundaryId?.(nextStatus ? nextStatus.revertBoundaryId : (nextActive.revertBoundaryId ?? null));
-    setIsCompacting?.(nextActive.isCompacting ?? nextStatus?.isCompacting ?? false);
-    setCompactingStartTime?.(nextActive.compactingStartTime ?? nextStatus?.compactingStartTime ?? null);
     setTaskEvents?.(nextStatus?.taskEvents ?? nextActive.taskEvents ?? {});
     setSseTodos?.(nextStatus ? nextStatus.sseTodos : (nextActive.sseTodos ?? null));
     setSubagentHistories?.(nextStatus?.subagentHistories ?? nextActive.subagentHistories ?? {});
@@ -348,8 +338,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setIsThinking,
     setStatus,
     setRevertBoundaryId,
-    setIsCompacting,
-    setCompactingStartTime,
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,
@@ -406,8 +394,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setIsThinking?.(false);
     setStatus?.('');
     setRevertBoundaryId?.(null);
-    setIsCompacting?.(false);
-    setCompactingStartTime?.(null);
     setTaskEvents?.({});
     setSseTodos?.(null);
     setSubagentHistories?.({});
@@ -442,8 +428,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setIsThinking,
     setStatus,
     setRevertBoundaryId,
-    setIsCompacting,
-    setCompactingStartTime,
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,

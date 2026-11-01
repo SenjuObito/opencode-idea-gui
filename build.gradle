@@ -585,7 +585,18 @@ tasks.register('downloadAiBridgeCore') {
 
             boolean needPack = !coreDistZip.exists() || (project.findProperty('repackCore') ?: 'false').toString().toBoolean()
             if (!needPack && coreDistZip.exists()) {
+                // Everything that ends up in ai-bridge.zip must be watched, not
+                // just the entry point: editing services/**/*.js (the abort,
+                // session and marker logic) used to leave the old zip in place,
+                // so the IDE silently ran a stale bridge.
                 def keyFiles = [new File(siblingCoreDir, 'daemon.js'), new File(siblingCoreDir, 'package.json'), packScript]
+                keyFiles.addAll(fileTree(dir: siblingCoreDir, include: [
+                        'services/**/*.js',
+                        'utils/**/*.js',
+                        'channels/**/*.js',
+                        'config/**/*.js',
+                        'request-context.js'
+                ]).files)
                 needPack = keyFiles.any { it.exists() && it.lastModified() > coreDistZip.lastModified() }
             }
 

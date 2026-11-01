@@ -25,6 +25,7 @@ import com.intellij.ui.jcef.JBCefBrowser;
 import com.intellij.ui.jcef.JBCefOSRHandlerFactory;
 import com.intellij.ui.jcef.JBCefBrowserBase;
 import com.intellij.ui.jcef.JBCefJSQuery;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import org.cef.CefClient;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
@@ -43,6 +44,8 @@ import java.awt.dnd.DropTargetDropEvent;
 import java.io.File;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -60,6 +63,15 @@ public class WebviewInitializer {
     private static final int BRIDGE_INJECTION_FAST_RETRY_INTERVAL_MS = 100;
     private static final int BRIDGE_INJECTION_SLOW_RETRY_INTERVAL_MS = 1000;
     private static final int BRIDGE_INJECTION_FAST_RETRY_ATTEMPTS = 50;
+    /**
+     * Longest the tab stays on the Swing loading panel while the page boots.
+     *
+     * <p>Both load-end signals have been observed to go missing on Windows
+     * windowed JCEF ({@code OSR=false}), so the reveal cannot depend on a single
+     * one of them. This is the last resort that guarantees a visible browser
+     * instead of a permanently blank tab.</p>
+     */
+    private static final long BROWSER_REVEAL_TIMEOUT_SECONDS = 12L;
 
     /** Identifies which side owns provider/model boot synchronization for a page load. */
     enum PageLoadKind {
@@ -124,6 +136,19 @@ public class WebviewInitializer {
      * the browser. Volatile because the producer is a pooled thread.
      */
     private volatile String preparedHtml;
+
+    /**
+     * Mounts the freshly created browser into the main panel once it can paint.
+     *
+     * <p>Windowed JCEF exposes a native canvas that paints white until Chromium
+     * produces its first frame. Mounting right after {@code loadHTML} therefore
+     * shows a white rectangle for the entire load of the bundled ~9.7 MB page.
+     * The reveal is armed at creation time, consumed exactly once by the first
+     * paint signal ({@code onLoadEnd} or {@code frontend_ready}), and dropped by
+     * a watchdog recreation so a stale reveal can never attach a disposed
+     * browser.</p>
+     */
+    private final BrowserRevealSlot browserReveal = new BrowserRevealSlot();
 
     /** Outcome of the off-EDT preparation phase. */
     private enum PreparationOutcome {
@@ -516,23 +541,26 @@ public class WebviewInitializer {
             String htmlContent = takePreparedHtml();
 
             JComponent browserComponent = createdBrowser.getComponent();
+            // The Swing host stays hidden behind the loading panel until the page
+            // can paint, but tint it with the IDE background anyway: windowed
+            // JCEF keeps a native surface that otherwise defaults to white.
             browserComponent.setBackground(ThemeConfigService.getBackgroundColor());
 
-            AtomicBoolean browserMounted = new AtomicBoolean(false);
-            Runnable mountBrowser = () -> {
-                if (browserMounted.compareAndSet(false, true)) {
-                    invokeLaterForToolWindow(() -> {
-                        if (!host.isDisposed()) {
-                            mainPanel.removeAll();
-                            mainPanel.setLayout(new BorderLayout());
-                            mainPanel.add(browserComponent, BorderLayout.CENTER);
-                            mainPanel.revalidate();
-                            mainPanel.repaint();
-                            LOG.debug("Browser mounted cleanly to mainPanel without white flash");
-                        }
-                    });
+            armBrowserReveal(() -> {
+                if (host.isDisposed()) {
+                    return;
                 }
-            };
+                if (host.getBrowser() != createdBrowser) {
+                    LOG.debug("Skipping reveal of a superseded browser");
+                    return;
+                }
+                mainPanel.removeAll();
+                mainPanel.setLayout(new BorderLayout());
+                mainPanel.add(browserComponent, BorderLayout.CENTER);
+                mainPanel.revalidate();
+                mainPanel.repaint();
+                LOG.debug("Browser revealed after the page reported it can paint");
+            });
 
             // LoadHandler must be registered before loadHTML, otherwise the
             // first frame's onLoadEnd is missed and the JS bridge injection
@@ -550,8 +578,10 @@ public class WebviewInitializer {
                         return;
                     }
 
-                    // Reveal browser once HTML has loaded and parsed to eliminate white canvas flash
-                    mountBrowser.run();
+                    // The page is parsed, so the browser can replace the loading
+                    // panel without showing a blank canvas (the in-page boot
+                    // splash covers the gap until React commits).
+                    revealBrowser();
 
                     String injection;
                     String shiftEscInjection;
@@ -674,14 +704,9 @@ public class WebviewInitializer {
                 }
             });
 
-            // Defer mounting until onLoadEnd (or after brief timeout) to eliminate CEF initial white canvas flash
-            ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                try {
-                    Thread.sleep(600);
-                } catch (InterruptedException ignored) {
-                }
-                mountBrowser.run();
-            });
+            // Do not mount here: the browser stays behind the Swing loading panel
+            // until revealBrowser() runs on the first paint signal. Mounting now
+            // would expose the native white canvas for the whole page load.
             host.getWebviewWatchdog().resetTimestamps();
             host.getWebviewWatchdog().start();
 
@@ -1081,6 +1106,7 @@ public class WebviewInitializer {
             return;
         }
 
+        clearBrowserReveal();
         BrowserBridges currentBridges;
         synchronized (this.bridgeLock) {
             currentBridges = this.bridges;
@@ -1276,6 +1302,57 @@ public class WebviewInitializer {
             return;
         }
         ApplicationManager.getApplication().invokeLater(runnable);
+    }
+
+    /**
+     * Arms the single reveal for the browser being created.
+     *
+     * <p>The reveal replaces any leftover one (a superseded browser must never
+     * be mounted over the current content) and is backed by
+     * {@link #BROWSER_REVEAL_TIMEOUT_SECONDS} so a missing paint signal cannot
+     * leave the tab stuck on the loading panel.</p>
+     */
+    private void armBrowserReveal(@NotNull Runnable reveal) {
+        ScheduledFuture<?> timeout = AppExecutorUtil.getAppScheduledExecutorService()
+                .schedule(this::revealBrowser, BROWSER_REVEAL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        browserReveal.arm(reveal, timeout);
+    }
+
+    /** Drops a pending reveal, e.g. when its browser is being disposed. */
+    private void clearBrowserReveal() {
+        if (browserReveal.clear()) {
+            LOG.debug("Dropped a pending browser reveal");
+        }
+    }
+
+    /**
+     * Reveals the created browser the first time the page says it can paint.
+     *
+     * <p>Safe to call from any thread and any number of times: only the first
+     * call consumes the reveal, later ones (the other paint signal, the timeout,
+     * a reload) are no-ops.</p>
+     */
+    public void revealBrowser() {
+        Runnable reveal = browserReveal.take();
+        if (reveal == null) {
+            return;
+        }
+        if (SwingUtilities.isEventDispatchThread()) {
+            reveal.run();
+        } else {
+            invokeLaterForToolWindow(reveal);
+        }
+    }
+
+    /**
+     * Reveal hook for {@code frontend_ready}.
+     *
+     * <p>This is the primary signal: the frontend sends it once React is
+     * running, which is exactly when mounting the browser replaces the loading
+     * panel with real content instead of a white canvas.</p>
+     */
+    public void onFrontendReady() {
+        revealBrowser();
     }
 
     /**
@@ -1548,6 +1625,10 @@ public class WebviewInitializer {
             int invalidationGeneration = invalidateCurrentPage();
             host.activatePageGeneration(invalidationGeneration);
             host.setFrontendReady(false);
+            // The reveal belongs to the browser being disposed: drop it before
+            // the new browser arms its own, so a late paint signal or timeout
+            // from the old page cannot mount a dead component.
+            clearBrowserReveal();
             JPanel mainPanel = host.getMainPanel();
             JBCefBrowser browser = host.getBrowser();
             try {
@@ -1776,6 +1857,46 @@ public class WebviewInitializer {
 
         synchronized Timer getTimer() {
             return this.timer;
+        }
+    }
+
+    /**
+     * Holds the pending reveal for the browser currently being created.
+     *
+     * <p>Keeps the exactly-once contract in one place so it can be tested
+     * without Swing, JCEF or an application scheduler: arming replaces and
+     * cancels the previous reveal, taking disarms it, and clearing drops a
+     * reveal whose browser is being torn down.</p>
+     */
+    static final class BrowserRevealSlot {
+        private Runnable pending;
+        private ScheduledFuture<?> timeout;
+
+        synchronized void arm(Runnable reveal, ScheduledFuture<?> revealTimeout) {
+            cancelTimeoutLocked();
+            this.pending = reveal;
+            this.timeout = revealTimeout;
+        }
+
+        synchronized Runnable take() {
+            Runnable reveal = this.pending;
+            this.pending = null;
+            cancelTimeoutLocked();
+            return reveal;
+        }
+
+        synchronized boolean clear() {
+            boolean hadPendingReveal = this.pending != null || this.timeout != null;
+            this.pending = null;
+            cancelTimeoutLocked();
+            return hadPendingReveal;
+        }
+
+        private void cancelTimeoutLocked() {
+            if (this.timeout != null) {
+                this.timeout.cancel(false);
+                this.timeout = null;
+            }
         }
     }
 

@@ -41,6 +41,8 @@ public final class TabRecord {
     private final TabSettings settings = new TabSettings();
     /** The attachments this tab staged; released with the tab. */
     private final TabAttachmentStore attachments;
+    /** The tab's outbox. Only {@link TabQueuePump} consumes it. */
+    private final TabQueue queue = new TabQueue();
     private final TabSessionActor actor;
     private final AtomicLong epoch = new AtomicLong(0);
     private final AtomicLong revision = new AtomicLong();
@@ -147,6 +149,11 @@ public final class TabRecord {
     /** The attachments this tab owns. */
     public TabAttachmentStore getAttachments() {
         return attachments;
+    }
+
+    /** The tab's outbox; {@link TabQueuePump} is its only consumer. */
+    public TabQueue getQueue() {
+        return queue;
     }
 
     /** Keep a path segment free of separators and traversal. */
@@ -342,6 +349,8 @@ public final class TabRecord {
         clearSessionResources();
         settledTurns.clear();
         settledTurnOrder.clear();
+        // The outbox dies with the tab: a closed tab must never send.
+        queue.clearAll();
         // The bytes must not outlive the tab that owns them.
         attachments.release();
         actor.close();

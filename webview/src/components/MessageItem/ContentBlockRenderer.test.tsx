@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpencodeContentBlock, ToolResultBlock } from '../../types';
-import { clearQuestionAnswers, setQuestionAnswer } from '../../store/questionAnswerStore';
+import { clearQuestionAnswers, setQuestionAnswer, markQuestionCancelled } from '../../store/questionAnswerStore';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
 
 // Capture the props MarkdownBlock receives without rendering the real marked
@@ -68,6 +68,37 @@ describe('ContentBlockRenderer block-level streaming', () => {
   it('renders with the full pipeline once the message has stopped streaming', () => {
     renderTextBlock({ isStreaming: false, isLastBlock: true });
     expect(markdownProps.isStreaming).toBe(false);
+  });
+});
+
+describe('ContentBlockRenderer compact summary', () => {
+  it('renders the persisted summary with its own title, not the success wording', () => {
+    const block = {
+      type: 'compact_summary',
+      title: 'chat.compactSummary.summarizedConversation',
+      content: 'the summary body',
+      metadata: { messagesSummarized: 10 },
+      compactStatus: 'success',
+    } as unknown as OpencodeContentBlock;
+
+    const { getByText, queryByText } = render(
+      <ContentBlockRenderer
+        block={block}
+        messageIndex={0}
+        messageType="notification"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={false}
+        isLastBlock={false}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('chat.compactSummary.summarizedConversation')).toBeTruthy();
+    expect(queryByText('chat.compactSuccess')).toBeNull();
   });
 });
 
@@ -208,6 +239,38 @@ describe('ContentBlockRenderer askuserquestion', () => {
     expect(getByText('Pick a color?')).toBeTruthy();
     expect(getByText('Blue')).toBeTruthy();
     expect(getByText('askUserQuestion.answeredStatus')).toBeTruthy();
+  });
+
+  it('renders cancelled status when marked cancelled without tool_result', () => {
+    const cardBlock: OpencodeContentBlock = {
+      type: 'tool_use',
+      name: 'askuserquestion',
+      id: 'tool-cancelled-1',
+      input: {
+        questions: [{ question: 'Do you want to proceed?' }],
+      },
+    };
+
+    markQuestionCancelled('tool-cancelled-1');
+
+    const { getByText } = render(
+      <ContentBlockRenderer
+        block={cardBlock}
+        messageIndex={0}
+        messageType="assistant"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={false}
+        isLastBlock={false}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('Do you want to proceed?')).toBeTruthy();
+    expect(getByText('askUserQuestion.cancelledStatus')).toBeTruthy();
   });
 
   it('keeps permission requests suppressed', () => {

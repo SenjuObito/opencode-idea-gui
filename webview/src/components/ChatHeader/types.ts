@@ -33,6 +33,13 @@ export interface SessionTabData {
   isCustomTitle?: boolean;
   isShared?: boolean;
   messages: ClaudeMessage[];
+  /**
+   * Host-owned outbox projection for this tab.
+   *
+   * <p>Only the host decides when an item is sent; this is a read-only view of
+   * that state, keyed by tab so a background tab keeps its own queue.</p>
+   */
+  queue?: import('../../store/tabQueueStore').TabQueueSnapshot;
   loading?: boolean;
   streamingActive?: boolean;
   isThinking?: boolean;
@@ -40,6 +47,8 @@ export interface SessionTabData {
   revertBoundaryId?: string | null;
   isCompacting?: boolean;
   compactingStartTime?: number | null;
+  /** Why this tab is compacting; drives the indicator wording only. */
+  compactingReason?: 'manual' | 'auto' | null;
   /** Compact result still waiting to be acknowledged by a user message. */
   compactNotice?: CompactNoticeData | null;
   /** Background Agent task_* events owned by this tab. */
@@ -71,6 +80,14 @@ export interface SessionTabData {
   messageBaseIndex?: number;
   opencodeListStart?: number;
   prependedHistoryMessageCount?: number;
+  /**
+   * How much of the transcript this tab has read back from the engine.
+   *
+   * <p>Owned by the host (`history.window`): the loaded page may contain zero
+   * user turns, so the "load earlier" affordance must not be inferred from
+   * `messages`.</p>
+   */
+  historyWindow?: import('../../store/historyWindow').HistoryWindowState | null;
   /** Per-tab reader position, restored when this tab is selected again. */
   scrollState?: TabScrollState;
   /**

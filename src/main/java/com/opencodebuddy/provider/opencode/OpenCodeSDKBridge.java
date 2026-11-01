@@ -16,6 +16,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -386,21 +387,85 @@ public class OpenCodeSDKBridge {
         return requestJson("opencode.listModels", new JsonObject());
     }
 
+    /**
+     * The whole transcript, oldest trade-off: a 1000-message session needs
+     * many round-trips, so this is only for callers that really need every
+     * record (export, "latest user message" lookup) — never for opening a tab.
+     */
     public CompletableFuture<JsonElement> listMessages(String sessionId, String cwd) {
-        return listMessages(sessionId, cwd, 0);
+        return listMessagePage(sessionId, cwd, 0, null, null, null, true)
+                .thenApply(MessagePage::messages);
     }
 
     /**
-     * @param limit newest N messages, or 0 for the whole transcript. A polling
-     *              subagent uses a tail window so a long transcript is not
-     *              re-read and re-converted every two seconds.
+     * @param limit newest N messages; 0 means the newest page (the server
+     *              defaults to 50). A polling subagent uses a tail window so a
+     *              long transcript is not re-read and re-converted every two
+     *              seconds; export uses {@link #listMessages(String, String)}.
      */
     public CompletableFuture<JsonElement> listMessages(String sessionId, String cwd, int limit) {
+        return listMessagePage(sessionId, cwd, limit, null, null, null)
+                .thenApply(MessagePage::messages);
+    }
+
+    /**
+     * One page of a session transcript.
+     *
+     * <p>opencode 2.x pages {@code /api/session/{id}/message} (default 50, max
+     * 200, cursor based), so a single response is only a window into the
+     * transcript. Callers that treat one page as the whole session truncate
+     * long histories silently; the cursor returned here is the only way to
+     * read further back.</p>
+     *
+     * @param limit  page size (0 = server default), max 200 server-side
+     * @param cursor {@code cursor.next} of a previous page, or null for the
+     *               newest page
+     * @param type   optional message-type filter ({@code user}); the filtered
+     *               end still reports a cursor, so stop on an empty page
+     * @param order  optional {@code asc|desc}; must not be combined with a
+     *               cursor (the server rejects that)
+     */
+    public CompletableFuture<MessagePage> listMessagePage(
+            String sessionId,
+            String cwd,
+            int limit,
+            String cursor,
+            String type,
+            String order) {
+        return listMessagePage(sessionId, cwd, limit, cursor, type, order, false);
+    }
+
+    /**
+     * @param all  read the entire transcript in one daemon call ({@code all:
+     *             true}). Only export / latest-message lookups use it: the
+     *             daemon walks every page internally and the response is the
+     *             whole transcript.
+     */
+    private CompletableFuture<MessagePage> listMessagePage(
+            String sessionId,
+            String cwd,
+            int limit,
+            String cursor,
+            String type,
+            String order,
+            boolean all) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
         params.addProperty("directory", cwd != null ? cwd : "");
         if (limit > 0) {
             params.addProperty("limit", limit);
+        }
+        if (cursor != null && !cursor.isBlank()) {
+            params.addProperty("cursor", cursor);
+        }
+        if (type != null && !type.isBlank()) {
+            params.addProperty("type", type);
+        }
+        if (order != null && !order.isBlank()) {
+            params.addProperty("order", order);
+        }
+        if (all) {
+            params.addProperty("all", true);
         }
         JsonArray entries = new JsonArray();
         // daemon 在第一条数据行之前会广播 {messagesStart:true,count:N}。这是唯一
@@ -408,6 +473,9 @@ public class OpenCodeSDKBridge {
         // 2026-10-17 的线上故障正是后者：daemon 正常播报 N 条，宿主一条都没收集到，
         // 却照样返回成功，用户看到的是一个空白标签页且没有任何报错。
         AtomicInteger announcedCount = new AtomicInteger(-1);
+        AtomicReference<String> nextCursor = new AtomicReference<>();
+        AtomicReference<String> previousCursor = new AtomicReference<>();
+        AtomicBoolean hasEarlier = new AtomicBoolean(false);
         // 失败必须传出去：过去 onError/onComplete 都是空实现，thenApply 又无条件
         // 返回「已收集到的部分条目」，于是 daemon/serve 未就绪导致的查询失败被静默
         // 降级成「这个会话没有消息」——打开标签页得到一片空白，且没有任何提示，
@@ -425,6 +493,15 @@ public class OpenCodeSDKBridge {
                     if (obj.has("messagesStart") && obj.get("messagesStart").getAsBoolean()) {
                         announcedCount.set(obj.has("count") && !obj.get("count").isJsonNull()
                                 ? obj.get("count").getAsInt() : -1);
+                    } else if (obj.has("messagesDone") && obj.get("messagesDone").getAsBoolean()) {
+                        // 游标只在这条终态行上；缺省（旧 daemon）时退化为「无更早页」。
+                        if (obj.has("nextCursor") && !obj.get("nextCursor").isJsonNull()) {
+                            nextCursor.set(obj.get("nextCursor").getAsString());
+                        }
+                        if (obj.has("previousCursor") && !obj.get("previousCursor").isJsonNull()) {
+                            previousCursor.set(obj.get("previousCursor").getAsString());
+                        }
+                        hasEarlier.set(obj.has("hasEarlier") && obj.get("hasEarlier").getAsBoolean());
                     } else if (obj.has("messageEntry") && obj.get("messageEntry").isJsonObject()) {
                         entries.add(obj.getAsJsonObject("messageEntry"));
                     } else if (obj.has("messages") && obj.get("messages").isJsonArray()) {
@@ -470,9 +547,25 @@ public class OpenCodeSDKBridge {
                         "opencode.listMessages for session " + sessionId + " announced " + announced
                                 + " entries but collected " + entries.size());
             }
-            return entries;
+            String next = nextCursor.get();
+            boolean earlier = (hasEarlier.get() || (next != null && !next.isEmpty()))
+                    && (limit <= 0 || entries.size() >= limit);
+            return new MessagePage(
+                    entries,
+                    next == null ? null : next,
+                    previousCursor.get(),
+                    earlier);
         });
     }
+
+    /** A page of the transcript plus the cursors that walk the transcript. */
+    public record MessagePage(
+            JsonArray messages,
+            String nextCursor,
+            String previousCursor,
+            boolean hasEarlier) {
+    }
+
     public CompletableFuture<JsonElement> getSessionInfo(String sessionId, String cwd) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId != null ? sessionId : "");
@@ -485,6 +578,23 @@ public class OpenCodeSDKBridge {
         params.addProperty("query", query != null ? query : "");
         params.addProperty("directory", cwd != null ? cwd : "");
         return requestJson("opencode.findFiles", params);
+    }
+
+    /**
+     * List one directory level of the project (opencode `fs.list`).
+     *
+     * <p>This is the "@" navigation half: an empty query has no fuzzy text and
+     * {@code fs.find} answers with an empty array, so the directory must be
+     * enumerated by the server instead of the IDE.</p>
+     *
+     * @param path directory relative to {@code cwd}; {@code ""} is the root
+     * @param cwd  project directory the listing is scoped to
+     */
+    public CompletableFuture<JsonElement> listFiles(String path, String cwd) {
+        JsonObject params = new JsonObject();
+        params.addProperty("path", path != null ? path : "");
+        params.addProperty("directory", cwd != null ? cwd : "");
+        return requestJson("opencode.listFiles", params);
     }
 
     public CompletableFuture<JsonElement> listAgents(String cwd) {

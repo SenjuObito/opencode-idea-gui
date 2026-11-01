@@ -193,20 +193,22 @@ public class StreamMessageCoalescer {
         return sessionId != null && !sessionId.isBlank() ? sessionId : null;
     }
 
-    /** One-shot warning so a missing id is visible instead of silent. */
+    /** One-shot warning so a frame with no identity is visible instead of silent. */
     private volatile boolean unattributedWarned = false;
 
     /**
-     * @return true when this coalescer can attribute its snapshots to a session
+     * Report (once) a frame that can name neither its tab nor its session.
+     *
+     * <p>Such a frame is the only one that has to be dropped: it has no honest
+     * destination. A frame that knows its tab is routable even before the
+     * daemon has reported the session id.</p>
      */
-    private boolean hasIdentity() {
-        final boolean ok = sessionId != null && !sessionId.isBlank();
-        if (!ok && !unattributedWarned) {
-            unattributedWarned = true;
-            LOG.warn("StreamMessageCoalescer has no session id; snapshots are dropped until it is set "
-                    + "(setSessionId must be called when the session is bound)");
+    private void warnUnattributedOnce() {
+        if (unattributedWarned) {
+            return;
         }
-        return ok;
+        unattributedWarned = true;
+        LOG.warn("StreamMessageCoalescer has neither a tab id nor a session id; snapshots are dropped");
     }
 
     /**
@@ -512,10 +514,18 @@ public class StreamMessageCoalescer {
                 // prevent afterSendOnEdt from running.  When afterSendOnEdt carries
                 // the onStreamEnd signal, failing to run it permanently freezes the UI.
                 try {
-                    // Never push a snapshot that cannot name its session: the
-                    // frontend reads an empty id as "the active tab", which is how
-                    // one session's transcript replaced another's.
-                    if (!hasIdentity()) {
+                    // Address the frame by tab whenever the tab is known, and by
+                    // session otherwise. A snapshot that arrives before the daemon
+                    // has reported the session id is still the truth about *this*
+                    // tab's conversation: dropping it left the user's just-sent
+                    // message represented only by the frontend's optimistic bubble,
+                    // which vanished as soon as the assistant placeholder landed.
+                    // Only a frame that can name neither a tab nor a session is
+                    // unattributable, and only that one is dropped.
+                    final String targetSession = getTargetSessionId();
+                    final boolean hasTab = tabId != null && !tabId.isBlank();
+                    if (targetSession == null && !hasTab) {
+                        warnUnattributedOnce();
                         if (afterSendOnEdt != null) {
                             afterSendOnEdt.accept(sequence);
                         }
@@ -523,14 +533,14 @@ public class StreamMessageCoalescer {
                     }
                     if (tailUpdate) {
                         publish("message.tail", b -> b
-                                .session(getTargetSessionId())
+                                .session(targetSession)
                                 .tab(tabId)
                                 .field("messages", messagesJson)
                                 .field("baseIndex", tailBaseIndex)
                                 .field("sequence", pushSequence));
                     } else {
                         publish("message.snapshot", b -> b
-                                .session(getTargetSessionId())
+                                .session(targetSession)
                                 .tab(tabId)
                                 .field("messages", messagesJson)
                                 .field("sequence", pushSequence));
@@ -545,7 +555,7 @@ public class StreamMessageCoalescer {
                         lastDeliveredSnapshot = messages;
                     }
                     OpencodeSession owner = callbackTarget.getSession();
-                    String usageSessionId = getTargetSessionId();
+                    String usageSessionId = targetSession;
                     if (usageSessionId == null && owner != null) {
                         usageSessionId = owner.getSessionId();
                     }

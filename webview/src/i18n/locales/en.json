@@ -30,6 +30,7 @@
     "recommended": "Recommended"
   },
   "chat": {
+    "renameSession": "Rename",
     "closeOtherTabs": "Close Others",
     "closeAllTabs": "Close All",
     "closeTabsToLeft": "Close to the Left",
@@ -124,6 +125,7 @@
     "compactTooltip": "Click to compact session",
     "compactStarted": "Compacting session…",
     "compactingSession": "Compacting session",
+    "autoCompactingSession": "Auto-compacting conversation tokens",
     "compactSuccess": "Session compacted",
     "compactFailed": "Failed to compact session",
     "compactConfirmTitle": "Compact session",
@@ -142,8 +144,8 @@
     "attachmentsUploaded": "[Attachments Uploaded]",
     "streamingConnected": "Understanding your question…",
     "showEarlierMessages": "Show {{count}} earlier messages",
-    "showEarlierTurns": "Show {{count}} earlier turns ({{remaining}} loaded turns remaining)",
-    "loadEarlierTurns": "Load {{count}} earlier turns from disk ({{remaining}} of {{total}} remaining)",
+    "showEarlierTurns": "Show {{count}} earlier turns ({{remaining}} remaining)",
+    "showEarlierConversation": "Show earlier conversation",
     "loadEarlierMessages": "Load {{count}} earlier messages ({{remaining}} of {{total}} remaining)",
     "loadingEarlierTurns": "Loading earlier turns",
     "totalDuration": "This reply took",
@@ -173,7 +175,8 @@
       "messagesFrom": "Summarized {{count}} messages from this point",
       "userContext": "Context: \"{{context}}\"",
       "expand": "Expand summary",
-      "collapse": "Collapse summary"
+      "collapse": "Collapse summary",
+      "autoCompacting": "Auto-compacting conversation tokens..."
     },
     "shareFailed": "Copy failed — session was not shared",
     "shareDisabledHint": "Sharing may be disabled in opencode.json (\"share\": \"disabled\") or requires an opencode login. Check the config and retry",
@@ -196,7 +199,8 @@
     "shareLinkCreated": "Share link created",
     "retryCopy": "Copy again",
     "subagentsSection": "Subagents",
-    "filesSection": "Files"
+    "filesSection": "Files",
+    "filesEmpty": "No matching files"
   },
   "settings": {
     "title": "Settings",

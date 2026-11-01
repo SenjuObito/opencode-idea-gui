@@ -15,6 +15,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -179,6 +180,27 @@ public class MultiTabEventProtocolIntegrationTest {
             com.opencodebuddy.tab.TabEvent event = target.calls.get(0);
             assertEquals("the event lost its session id: " + event, "ses_legacy", event.getSessionId());
             assertTrue("the event invented a tab id: " + event, event.getTabId() == null);
+        } finally {
+            adapter.deactivate();
+        }
+    }
+
+    @Test
+    public void aTabAddressedAdapterKeepsStreamingBeforeTheSessionIdExists() {
+        RecordingTarget target = new RecordingTarget();
+        // The first turn of a new tab: the daemon has not reported the session
+        // id yet, but the tab is already known. The delta belongs to that tab
+        // and must not be dropped for lack of a session id.
+        SessionCallbackAdapter adapter = adapter(null, "tab-new", target);
+        try {
+            adapter.onContentDelta("first token");
+            awaitCalls(target, 1);
+
+            assertFalse("the delta of a pre-binding tab was dropped", target.calls.isEmpty());
+            com.opencodebuddy.tab.TabEvent event = target.calls.get(0);
+            assertEquals("content.delta", event.getType());
+            assertEquals("the delta lost its tab id", "tab-new", event.getTabId());
+            assertNull("no session id may be invented before it is bound", event.getSessionId());
         } finally {
             adapter.deactivate();
         }

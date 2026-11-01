@@ -110,7 +110,8 @@ public class SessionHandler extends BaseMessageHandler {
         ApplicationManager.getApplication().invokeLater(action);
     }
 
-    private void recordSendFailure(OpencodeSession session, String targetSessionId, String prompt, String errorMessage) {
+    private void recordSendFailure(OpencodeSession session, String targetSessionId, String prompt,
+                                   String errorMessage, String tabId, String requestId) {
         if (session != null && prompt != null && !prompt.isBlank()) {
             session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.USER, prompt));
             session.getState().addMessage(new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, errorMessage));
@@ -118,6 +119,13 @@ public class SessionHandler extends BaseMessageHandler {
             session.getState().setLoading(false);
             session.getCallbackFacade().notifyMessageUpdate(session.getState().getMessages());
             session.getCallbackFacade().notifyStateChange(false, false, errorMessage);
+        }
+        if (requestId != null && !requestId.isBlank()) {
+            // The send never started a turn. The host-owned queue is waiting
+            // for this request: putting it back (instead of leaving it in
+            // flight forever) is what makes a failed send visible and
+            // retryable.
+            rejectCommand(tabId, requestId, "SEND_FAILED", errorMessage);
         }
         runOnEdt(() -> {
             callJavaScript("addErrorMessage", targetSessionId != null ? targetSessionId : "", escapeJs(errorMessage));
@@ -271,6 +279,7 @@ public class SessionHandler extends BaseMessageHandler {
         Boolean requestedAutoOpenFile = null;
         String targetSessionId = null;
         String tabId = null;
+        String requestId = null;
         try {
             Gson gson = new Gson();
             JsonObject payload = gson.fromJson(content, JsonObject.class);
@@ -283,6 +292,9 @@ public class SessionHandler extends BaseMessageHandler {
             }
             if (payload != null && payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
                 tabId = payload.get("tabId").getAsString();
+            }
+            if (payload != null && payload.has("requestId") && !payload.get("requestId").isJsonNull()) {
+                requestId = payload.get("requestId").getAsString();
             }
 
             // Extract agent prompt from the message
@@ -355,7 +367,7 @@ public class SessionHandler extends BaseMessageHandler {
             // the failure is visible instead of silent.
             rejectCommand(tabId, null, "MISSING_TAB_ID",
                     "the command must name the tab it belongs to");
-            recordSendFailure(null, null, prompt, "发送失败：命令缺少 tab 身份");
+            recordSendFailure(null, null, prompt, "发送失败：命令缺少 tab 身份", tabId, requestId);
             return;
         }
         final OpencodeSession targetSession = sessionObj;
@@ -365,12 +377,12 @@ public class SessionHandler extends BaseMessageHandler {
 
         String nodeVersion = this.resolveNodeVersion();
         if (nodeVersion == null) {
-            recordSendFailure(targetSession, resolvedSessionId, prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。");
+            recordSendFailure(targetSession, resolvedSessionId, prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。", tabId, requestId);
             return;
         }
         if (!NodeDetector.isVersionSupported(nodeVersion)) {
             int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
-            recordSendFailure(targetSession, resolvedSessionId, prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。");
+            recordSendFailure(targetSession, resolvedSessionId, prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。", tabId, requestId);
             return;
         }
 
@@ -490,9 +502,16 @@ public class SessionHandler extends BaseMessageHandler {
             if (payload != null && payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
                 tabId = payload.get("tabId").getAsString();
             }
+            String requestId = null;
+            if (payload != null && payload.has("requestId") && !payload.get("requestId").isJsonNull()) {
+                requestId = payload.get("requestId").getAsString();
+            }
 
             java.util.List<OpencodeSession.Attachment> atts = new java.util.ArrayList<>();
             java.util.List<String> missingAttachments = new java.util.ArrayList<>();
+            // The ids this send actually delivers; only these are released
+            // afterwards, so queued items keep their own attachments.
+            java.util.List<String> usedAttachmentIds = new java.util.ArrayList<>();
             if (payload != null && payload.has("attachments") && payload.get("attachments").isJsonArray()) {
                 JsonArray arr = payload.getAsJsonArray("attachments");
                 for (int i = 0; i < arr.size(); i++) {
@@ -533,14 +552,23 @@ public class SessionHandler extends BaseMessageHandler {
                         staged = context.stageAttachment(
                                 tabId, attachmentId, fileName, mediaType, data);
                     }
+                    usedAttachmentIds.add(attachmentId);
                     atts.add(new OpencodeSession.Attachment(fileName, mediaType, staged));
                 }
             }
 
             if (!missingAttachments.isEmpty()) {
-                String requestId = payload != null && payload.has("requestId")
-                        && !payload.get("requestId").isJsonNull()
-                        ? payload.get("requestId").getAsString() : null;
+                // The send is aborted: the bytes staged for it are not going
+                // anywhere and must not linger in the tab.
+                for (String usedId : usedAttachmentIds) {
+                    context.releaseAttachment(tabId, usedId);
+                }
+                // The command never started a turn. Forgetting the id lets the
+                // queue retry the same item (with the same id) after the user
+                // resumes it instead of the retry being dropped as a replay.
+                if (requestId != null && !requestId.isBlank()) {
+                    requestIds.forget(requestId);
+                }
                 rejectCommand(tabId, requestId, "ATTACHMENT_MISSING",
                         "the upload did not finish: " + String.join(", ", missingAttachments));
                 return;
@@ -604,7 +632,8 @@ public class SessionHandler extends BaseMessageHandler {
 
 
             sendMessageWithAttachments(targetSessionId, tabId, text, atts, agentPrompt, fileTagPaths, requestedPermissionMode,
-                    requestedReasoningEffort, requestedModel, requestedCodexFastMode, requestedDshPreset, requestedAutoOpenFile);
+                    requestedReasoningEffort, requestedModel, requestedCodexFastMode, requestedDshPreset, requestedAutoOpenFile,
+                    usedAttachmentIds, requestId);
         } catch (Exception e) {
             LOG.error("[SessionHandler] 解析附件负载失败: " + e.getMessage(), e);
             handleSendMessage(content);
@@ -627,7 +656,9 @@ public class SessionHandler extends BaseMessageHandler {
         String requestedModel,
         String requestedCodexFastMode,
         String requestedDshPreset,
-        Boolean requestedAutoOpenFile
+        Boolean requestedAutoOpenFile,
+        List<String> deliveredAttachmentIds,
+        String requestId
     ) {
         OpencodeSession sessionObj = null;
         if (targetSessionId != null && !targetSessionId.isBlank()) {
@@ -644,7 +675,7 @@ public class SessionHandler extends BaseMessageHandler {
             // happens to be active.
             rejectCommand(tabId, null, "MISSING_TAB_ID",
                     "the command must name the tab it belongs to");
-            recordSendFailure(null, null, prompt, "发送失败：命令缺少 tab 身份");
+            recordSendFailure(null, null, prompt, "发送失败：命令缺少 tab 身份", tabId, requestId);
             return;
         }
         final OpencodeSession targetSession = sessionObj;
@@ -655,12 +686,12 @@ public class SessionHandler extends BaseMessageHandler {
         // Version check (consistent with handleSendMessage)
         String nodeVersion = this.resolveNodeVersion();
         if (nodeVersion == null) {
-            recordSendFailure(targetSession, resolvedSessionId, prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。");
+            recordSendFailure(targetSession, resolvedSessionId, prompt, "未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。", tabId, requestId);
             return;
         }
         if (!NodeDetector.isVersionSupported(nodeVersion)) {
             int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
-            recordSendFailure(targetSession, resolvedSessionId, prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。");
+            recordSendFailure(targetSession, resolvedSessionId, prompt, "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。", tabId, requestId);
             return;
         }
 
@@ -673,6 +704,8 @@ public class SessionHandler extends BaseMessageHandler {
         final Boolean finalRequestedAutoOpenFile = requestedAutoOpenFile;
 
         final String attachmentTabId = tabId;
+        final java.util.List<String> finalDeliveredAttachmentIds =
+                deliveredAttachmentIds != null ? deliveredAttachmentIds : java.util.List.of();
         CompletableFuture.runAsync(() -> {
             if (targetSession == null) {
                 return;
@@ -725,8 +758,11 @@ public class SessionHandler extends BaseMessageHandler {
                 });
             } finally {
                 // The staged bytes lived only for this send; the tab keeps no
-                // copy of what was already delivered.
-                context.releaseTabAttachments(attachmentTabId);
+                // copy of what was already delivered. Release by id: the tab
+                // may still own the attachments of queued items.
+                for (String attachmentId : finalDeliveredAttachmentIds) {
+                    context.releaseAttachment(attachmentTabId, attachmentId);
+                }
             }
         });
     }
@@ -766,6 +802,13 @@ public class SessionHandler extends BaseMessageHandler {
         }
 
         final String resolvedSessionId = targetSessionId != null ? targetSessionId : tabId;
+
+        // A stop is a user decision about this conversation: the tab's queued
+        // prompts must wait for an explicit resume instead of firing right
+        // after the interrupt settles.
+        String queueTabId = tabId != null && !tabId.isBlank()
+                ? tabId : context.getTabIdForSession(resolvedSessionId);
+        context.pauseTabQueue(queueTabId);
 
         if (targetSession == null) {
             // We cannot interrupt what we cannot find — but we must still release

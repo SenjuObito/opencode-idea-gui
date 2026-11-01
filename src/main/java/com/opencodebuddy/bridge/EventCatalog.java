@@ -53,6 +53,7 @@ public final class EventCatalog {
         byType.put("message.snapshot", "updateMessages");
         byType.put("message.tail", "updateMessageTail");
         byType.put("message.prepended", "updateMessagesPrepend");
+        byType.put("history.window", "onHistoryWindowInfo");
         byType.put("message.added", "addUserMessage");
         byType.put("message.history", "addHistoryMessage");
         byType.put("message.removed", "onMessagesRemoved");
@@ -67,6 +68,7 @@ public final class EventCatalog {
 
         // ── tab & settings ─────────────────────────────────────────────────
         byType.put("tab.title.changed", "updateSessionTitle");
+        byType.put("tab.queue.changed", "onTabQueueChanged");
         byType.put("settings.mode", "onModeChanged");
 
         // ── prompts ────────────────────────────────────────────────────────
@@ -103,6 +105,7 @@ public final class EventCatalog {
         byType.put("commands.saved", "onCommandsSaved");
         byType.put("session.compact.failed", "onCompactError");
         byType.put("session.compact.done", "onCompactSuccess");
+        byType.put("session.compact.started", "onCompactStarted");
         byType.put("context.usage.error", "onContextUsageError");
         byType.put("clipboard.copied", "onCopyToClipboardResult");
         byType.put("font.editor.received", "onEditorFontConfigReceived");

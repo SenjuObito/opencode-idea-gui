@@ -132,6 +132,38 @@ public class OpenCodeMessageHandlerTest {
     }
 
     @Test
+    public void testAbortedTurnDoesNotWriteAnErrorRow() {
+        state.markTurnAborted();
+        handler.onError("User interrupted");
+
+        assertTrue(state.getMessages().isEmpty());
+        assertNull(state.getError());
+        assertFalse(state.isBusy());
+        assertFalse(state.isLoading());
+    }
+
+    @Test
+    public void testStepInterruptedTurnErrorIsIgnoredEvenWithoutFlag() {
+        // The text alone identifies the abort echo, so a stop pressed in
+        // another window (or a late event after the flag was cleared) is
+        // still silent.
+        handler.onMessage("turn_error", "{\"kind\":\"aborted\",\"message\":\"Step interrupted\"}");
+
+        assertTrue(state.getMessages().isEmpty());
+        assertNull(state.getError());
+    }
+
+    @Test
+    public void testAbortTurnEndMarksStateSoLateErrorsStaySilent() {
+        handler.onMessage("turn_end", "{\"sessionId\":\"ses_1\",\"turnId\":4,\"reason\":\"aborted\"}");
+        assertTrue(state.isTurnAborted());
+
+        handler.onError("Step interrupted");
+        assertTrue(state.getMessages().isEmpty());
+        assertNull(state.getError());
+    }
+
+    @Test
     public void testStreamingOrder_Thinking_ThenTools_ThenFormalText() {
         handler.onMessage("stream_start", "");
         handler.onMessage("thinking_delta", "正在分析环境配置...");

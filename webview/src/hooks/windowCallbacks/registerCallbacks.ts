@@ -32,6 +32,7 @@ import { registerSessionCallbacks } from './registerCallbacks/sessionCallbacks';
 import { registerUsageModeCallbacks } from './registerCallbacks/usageModeCallbacks';
 import { registerPermissionCallbacks } from './registerCallbacks/permissionCallbacks';
 import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCallbacks';
+import { registerQueueCallbacks } from './registerCallbacks/queueCallbacks';
 import { readJson, type HostEventEnvelope, type HostEventPayload } from '../../utils/hostEventTypes';
 import { hostEventHandler, registerHostEvents } from '../../utils/hostEventRegistry';
 import { getTabStore } from '../../store/tabStore';
@@ -124,8 +125,6 @@ export function registerWindowCallbacks(
     setIsThinking: options.setIsThinking,
     setStreamingActive: options.setStreamingActive,
     setSessionLoading: options.setSessionLoading,
-    setIsCompacting: options.setIsCompacting,
-    setCompactingStartTime: options.setCompactingStartTime,
     isStreamingRef: options.isStreamingRef,
     useBackendStreamingRenderRef: options.useBackendStreamingRenderRef,
     streamingMessageIndexRef: options.streamingMessageIndexRef,
@@ -169,6 +168,7 @@ export function registerWindowCallbacks(
   registerUsageModeCallbacks(options);
   registerPermissionCallbacks(options);
   registerAgentAndSelectionCallbacks(options);
+  registerQueueCallbacks(options);
 
   const onSubagentHistoryLoaded = (payload: string | { history?: SubagentHistoryResponse }) => {
     // 2 秒轮询结果如果直接写进 active state，会把 A tab 的子代理 transcript

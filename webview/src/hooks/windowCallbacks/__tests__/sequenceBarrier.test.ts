@@ -35,8 +35,6 @@ const createOptions = (overrides?: Partial<UseWindowCallbacksOptions>): UseWindo
   setCustomSessionTitle: vi.fn(),
   setSessionLoading: vi.fn(),
   setRevertBoundaryId: vi.fn(),
-  setIsCompacting: vi.fn(),
-  setCompactingStartTime: vi.fn(),
   setUsagePercentage: vi.fn(),
   setUsageUsedTokens: vi.fn(),
   setUsageMaxTokens: vi.fn(),

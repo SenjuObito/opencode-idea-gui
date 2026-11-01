@@ -3,6 +3,8 @@ import { getFileIcon, getFolderIcon } from '../../../utils/fileIcons';
 import { icon_terminal, icon_server } from '../../../utils/icons';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
+import { sendHostCommand } from '../../../utils/bridge';
+import { getTabStore } from '../../../store/tabStore';
 
 interface PendingRequest {
   requestId: number;
@@ -300,27 +302,41 @@ export async function fileReferenceProvider(
       reject(new DOMException('Aborted', 'AbortError'));
     }, { once: true });
 
-    if (!window.sendToJava) {
+    // v2：请求带 tab 身份，宿主按**目标 tab 的 cwd** 向 opencode 取候选
+    // （空搜索文本走 fs.list，有文本走 fs.find），结果回到那个 tab。
+    const tabId = getTabStore().getActiveTabId();
+    if (!tabId && !window.sendToJava) {
       cleanup();
       resolve(filterFiles(DEFAULT_FILES, searchQuery));
       return;
     }
 
-    sendToJava('list_files', {
-      query: searchQuery,
-      currentPath,
-      requestId,
-    });
+    if (tabId) {
+      sendHostCommand(tabId, 'files.list', {
+        query: searchQuery,
+        currentPath,
+        requestId,
+      });
+    } else {
+      // 没有活跃 tab（极早期）：退回窗口级 legacy 路径。
+      sendToJava('list_files', {
+        query: searchQuery,
+        currentPath,
+        requestId,
+      });
+    }
 
-    // Timeout: resolve empty rather than hang forever
+    // Timeout: resolve empty rather than hang forever. opencode does the file
+    // work (fs.list / fs.find) over the daemon, so allow a little more than a
+    // pure in-process lookup would need on a cold daemon.
     setTimeout(() => {
       if (!pendingById.has(requestId)) {
         return;
       }
       pendingById.delete(requestId);
-      debugWarn('[fileReferenceProvider] list_files timed out', { requestId, searchQuery });
+      debugWarn('[fileReferenceProvider] files.list timed out', { requestId, searchQuery });
       resolve(filterFiles(DEFAULT_FILES, searchQuery));
-    }, 5000);
+    }, 8000);
   });
 }
 

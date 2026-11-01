@@ -29,6 +29,7 @@
     "recommended": "推薦"
   },
   "chat": {
+    "renameSession": "重新命名",
     "closeOtherTabs": "關閉其他分頁",
     "closeAllTabs": "關閉所有分頁",
     "closeTabsToLeft": "關閉左側分頁",
@@ -120,8 +121,9 @@
     "attachmentsUploaded": "[已上傳附件]",
     "streamingConnected": "AI 正在理解問題…",
     "showEarlierMessages": "顯示之前的 {{count}} 則訊息",
-    "showEarlierTurns": "顯示更早的 {{count}} 輪對話（目前已載入尚餘 {{remaining}} 輪）",
-    "loadEarlierTurns": "從磁碟載入更早的 {{count}} 輪（共 {{total}} 輪，尚餘 {{remaining}} 輪）",
+    "showEarlierTurns": "顯示更早的 {{count}} 輪對話（還剩 {{remaining}} 輪）",
+
+    "showEarlierConversation": "顯示更早的對話",
     "loadEarlierMessages": "載入更早的 {{count}} 條訊息（共 {{total}} 條，尚餘 {{remaining}} 條）",
     "loadingEarlierTurns": "正在載入更早的對話",
     "totalDuration": "本次耗時",
@@ -174,7 +176,8 @@
     "shareLinkCreated": "分享連結已建立",
     "retryCopy": "重試複製",
     "subagentsSection": "子代理",
-    "filesSection": "檔案"
+    "filesSection": "檔案",
+    "filesEmpty": "未找到符合的檔案"
   },
   "settings": {
     "title": "設定",

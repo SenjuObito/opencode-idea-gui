@@ -710,10 +710,12 @@ export function getContentBlocks(
 
       // Pass i18n key as `title`; the renderer resolves it via t().
       // Keeps localization concerns out of this pure data helper.
+      const compactStatus = (rawObj.compactStatus as 'in_progress' | 'success' | 'failure' | undefined) || 'success';
+      const startTime = typeof rawObj.startTime === 'number' ? rawObj.startTime : undefined;
       const title = meta && typeof meta.messagesSummarized === 'number'
         ? 'chat.compactSummary.summarizedConversation'
         : 'chat.compactSummary.compactSummary';
-      return [{ type: 'compact_summary', title, content: summaryText, metadata: meta }];
+      return [{ type: 'compact_summary', title, content: summaryText, metadata: meta, compactStatus, startTime }];
     }
   }
 

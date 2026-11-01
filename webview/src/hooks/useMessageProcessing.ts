@@ -10,7 +10,6 @@ import {
   attachCompactBoundaryMetadata,
   isTaskNotificationOnlyMessage,
   hasNonHumanOrigin,
-  isCompactRelatedMessage,
   isCompactCommandMessage,
   isCompactSummaryMessage,
   MESSAGE_TYPES,
@@ -141,12 +140,15 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
       // /compact command messages pass through to shouldShowMessage where
       // hasCommandMessageTag returns true → rendered as normal user message.
       // stdout messages are hidden by HIDDEN_OUTPUT_TAGS filter.
-      if (message.type === MESSAGE_TYPES.USER && isCompactRelatedMessage(message) && !isTaskNotificationOnlyMessage(message)) {
-        if (isCompactSummaryMessage(message)) {
-          if (hasLocalCompactNotice) continue;
-          visible.push({ ...message, type: MESSAGE_TYPES.NOTIFICATION });
-          continue;
-        }
+      if (isCompactSummaryMessage(message) && !isTaskNotificationOnlyMessage(message)) {
+        // The tab's own result pill (`SessionTabData.compactNotice`) is the
+        // authoritative feedback for this compaction. While it is present the
+        // persisted summary it describes must not render as a second pill.
+        // Testing `!message.content` was wrong: a real summary always has
+        // content, so the suppression never fired.
+        if (hasLocalCompactNotice) continue;
+        visible.push({ ...message, type: MESSAGE_TYPES.NOTIFICATION });
+        continue;
       }
 
       // ── Standard visibility + type transforms ──────────────────────────

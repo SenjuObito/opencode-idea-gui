@@ -112,6 +112,27 @@ describe('ChatHeader', () => {
     expect(onExportTab).toHaveBeenCalledWith(expect.objectContaining({ id: 'tab-1' }));
   });
 
+  it('renames a tab from the context menu', () => {
+    const onRenameTab = vi.fn();
+    const { container } = render(<ChatHeader {...defaultProps} onRenameTab={onRenameTab} />);
+
+    fireEvent.contextMenu(screen.getByText('Tab 1'));
+
+    const renameBtn = screen.getByText('chat.renameSession');
+    expect(renameBtn).toBeTruthy();
+
+    fireEvent.click(renameBtn);
+
+    const input = container.querySelector('.session-tab-inline-input') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    expect(input.value).toBe('Tab 1');
+
+    fireEvent.change(input, { target: { value: 'Renamed Tab' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onRenameTab).toHaveBeenCalledWith('tab-1', 'Renamed Tab');
+  });
+
   it('triggers batch close actions from tab context menu', () => {
     const onCloseOtherTabs = vi.fn();
     const onCloseTabsToLeft = vi.fn();

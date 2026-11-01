@@ -30,6 +30,7 @@
     "recommended": "推荐"
   },
   "chat": {
+    "renameSession": "重命名",
     "closeOtherTabs": "关闭其他标签页",
     "closeAllTabs": "关闭所有标签页",
     "closeTabsToLeft": "关闭左侧标签页",
@@ -124,6 +125,7 @@
     "compactTooltip": "点击压缩会话",
     "compactStarted": "正在压缩会话…",
     "compactingSession": "正在压缩会话",
+    "autoCompactingSession": "正在自动压缩会话上下文",
     "compactSuccess": "会话已压缩",
     "compactFailed": "压缩会话失败",
     "compactConfirmTitle": "压缩会话",
@@ -142,8 +144,8 @@
     "attachmentsUploaded": "[已上传附件]",
     "streamingConnected": "AI 正在理解问题…",
     "showEarlierMessages": "显示之前的 {{count}} 条消息",
-    "showEarlierTurns": "显示更早的 {{count}} 轮对话（当前已加载还剩 {{remaining}} 轮）",
-    "loadEarlierTurns": "从磁盘加载更早的 {{count}} 轮（共 {{total}} 轮，尚有 {{remaining}} 轮）",
+    "showEarlierTurns": "显示更早的 {{count}} 轮对话（还剩 {{remaining}} 轮）",
+    "showEarlierConversation": "显示更早的对话",
     "loadEarlierMessages": "加载更早的 {{count}} 条消息（共 {{total}} 条，尚有 {{remaining}} 条）",
     "loadingEarlierTurns": "正在加载更早的对话",
     "totalDuration": "本次耗时",
@@ -173,7 +175,8 @@
       "messagesFrom": "已总结此节点之后的 {{count}} 条消息",
       "userContext": "补充说明：「{{context}}」",
       "expand": "展开摘要",
-      "collapse": "折叠摘要"
+      "collapse": "折叠摘要",
+      "autoCompacting": "正在自动压缩会话上下文..."
     },
     "shareFailed": "复制失败，分享未完成",
     "shareDisabledHint": "分享功能可能已在 opencode.json 中关闭（\"share\": \"disabled\"）或需要登录 opencode 账号，请检查配置后重试",
@@ -196,7 +199,8 @@
     "shareLinkCreated": "分享链接已创建",
     "retryCopy": "重试复制",
     "subagentsSection": "子代理",
-    "filesSection": "文件"
+    "filesSection": "文件",
+    "filesEmpty": "未找到匹配的文件"
   },
   "settings": {
     "title": "设置",

@@ -3,6 +3,7 @@ package com.opencodebuddy.session;
 import com.opencodebuddy.handler.SettingsHandler;
 import com.opencodebuddy.notifications.OpencodeNotifier;
 import com.opencodebuddy.util.TokenUsageUtils;
+import com.opencodebuddy.util.MessageJsonConverter;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -25,6 +26,24 @@ public class SessionMessageOrchestrator {
     public interface SessionHistoryAccess {
         List<JsonObject> getProviderSessionMessages(String provider, String sessionId, String cwd);
 
+        /**
+         * One page of the transcript (opencode 2.x pages the message API).
+         *
+         * <p>The default keeps simple test doubles working: they only know how
+         * to return the whole list, which is exactly one page with no cursor.</p>
+         */
+        default SessionProviderRouter.MessagePage getProviderSessionMessagePage(
+                String provider,
+                String sessionId,
+                String cwd,
+                int limit,
+                String cursor,
+                String type,
+                String order) {
+            return new SessionProviderRouter.MessagePage(
+                    getProviderSessionMessages(provider, sessionId, cwd), null, false);
+        }
+
         JsonObject getLatestClaudeUserMessage(String sessionId, String cwd);
     }
 
@@ -40,6 +59,21 @@ public class SessionMessageOrchestrator {
     private final UsageDisplay usageDisplay;
     private final long initialUuidSyncDelayMs;
     private final long uuidRetryDelayMs;
+    /** 本会话（= tab）从服务端读回了多少历史。 */
+    private SessionHistoryWindow historyWindow = new SessionHistoryWindow();
+    /** 统计用户回合时最多翻多少页（防服务端游标异常导致的无限翻页）。 */
+    private static final int USER_TURN_PAGE_LIMIT = 50;
+
+    /** 由 {@code OpencodeSession} 注入它自己的窗口（重载 / 换绑时一起重置）。 */
+    void setHistoryWindow(SessionHistoryWindow window) {
+        if (window != null) {
+            this.historyWindow = window;
+        }
+    }
+
+    SessionHistoryWindow getHistoryWindow() {
+        return historyWindow;
+    }
 
     public SessionMessageOrchestrator(
             Project project,
@@ -155,8 +189,18 @@ public class SessionMessageOrchestrator {
                 String currentProvider = state.getProvider();
 
                 LOG.info("Loading session from server: sessionId=" + currentSessionId + ", cwd=" + currentCwd);
-                List<JsonObject> serverMessages =
-                        historyAccess.getProviderSessionMessages(currentProvider, currentSessionId, currentCwd);
+                // 显式要满一页：opencode 2.x 默认只回 50 条，长会话会看起来
+                // 只有最新一页，且没有任何「还有更早」的提示。
+                SessionProviderRouter.MessagePage firstPage =
+                        historyAccess.getProviderSessionMessagePage(
+                                currentProvider,
+                                currentSessionId,
+                                currentCwd,
+                                SessionProviderRouter.FIRST_PAGE_SIZE,
+                                null,
+                                null,
+                                null);
+                List<JsonObject> serverMessages = firstPage.messages();
                 if (serverMessages == null) {
                     serverMessages = List.of();
                 }
@@ -171,6 +215,12 @@ public class SessionMessageOrchestrator {
                 List<OpencodeSession.Message> localMsgs = state.getMessages();
                 if (!localMsgs.isEmpty() && localMsgs.get(localMsgs.size() - 1).type == OpencodeSession.Message.Type.ERROR) {
                     trailingError = localMsgs.get(localMsgs.size() - 1);
+                }
+
+                if (state.isBusy() && (serverMessages.isEmpty() || serverMessages.size() < localMsgs.size())) {
+                    LOG.info("Server returned incomplete messages (" + serverMessages.size() + ") while session is busy with "
+                            + localMsgs.size() + " messages, preserving in-flight state: " + currentSessionId);
+                    return;
                 }
 
                 state.clearMessages();
@@ -196,6 +246,20 @@ public class SessionMessageOrchestrator {
                 // 历史会话的上下文用量就停在切会话时被重置的 0%。
                 restoreTokenUsage();
                 callbackFacade.notifyMessageUpdate(state.getMessages());
+                // 这一页就是该 tab 的历史窗口：游标、已加载条数/轮数必须一起
+                // 落盘，否则「还有更早」既算不出来也翻不回去。
+                historyWindow.applyFirstPage(
+                        currentSessionId,
+                        serverMessages.size(),
+                        countUserTurns(serverMessages),
+                        firstPage.nextCursor(),
+                        firstPage.hasEarlier(),
+                        SessionProviderRouter.FIRST_PAGE_SIZE);
+                callbackFacade.notifyHistoryWindow(historyWindow.snapshot(currentSessionId).toString());
+                // 精确的「共 N 轮」需要按 user 类型再翻页；与恢复无关，晚到也
+                // 不改变转录，所以放到后台跑，不拖慢「加载完成」。
+                CompletableFuture.runAsync(
+                        () -> requestUserTurnTotal(currentProvider, currentSessionId, currentCwd));
             } catch (Exception e) {
                 state.setError(e.getMessage());
                 LOG.error("Error loading session: " + e.getMessage(), e);
@@ -445,6 +509,145 @@ public class SessionMessageOrchestrator {
         } catch (Exception e) {
             LOG.warn("Failed to extract token usage from history: " + e.getMessage());
         }
+    }
+
+    /**
+     * 磁盘分页：把更早的一页历史前插到本会话的转录开头。
+     *
+     * <p>归属只看会话自己：事件用会话的 adapter 投递，adapter 带 tab 身份，
+     * 后到的响应不会被写进用户后来切到的那个 tab。重复点击与过期响应由历史
+     * 窗口的 generation 拦截。</p>
+     */
+    public CompletableFuture<Void> loadEarlierPage() {
+        final String sessionId = state.getSessionId();
+        if (sessionId == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.runAsync(() -> {
+            Integer generation = historyWindow.beginEarlier();
+            if (generation == null) {
+                // 已有请求在飞 / 没有更早的页：重推状态，让按钮不会卡在 loading。
+                publishHistoryWindow(sessionId);
+                return;
+            }
+            publishHistoryWindow(sessionId);
+            try {
+                SessionProviderRouter.MessagePage page = historyAccess.getProviderSessionMessagePage(
+                        state.getProvider(),
+                        sessionId,
+                        state.getCwd(),
+                        historyWindow.getPageSize(),
+                        historyWindow.getEarlierCursor(),
+                        null,
+                        null);
+                if (!historyWindow.isCurrent(generation)) {
+                    return;
+                }
+                if (page.messages().isEmpty()) {
+                    // 服务端把这一页过滤成空：没有更早的内容了。
+                    historyWindow.finishEarlier(generation, 0, 0, null, false);
+                    return;
+                }
+                List<OpencodeSession.Message> older = new ArrayList<>();
+                for (JsonObject json : page.messages()) {
+                    OpencodeSession.Message message = messageParser.parseServerMessage(json);
+                    if (message != null) {
+                        older.add(message);
+                    }
+                }
+                if (!historyWindow.isCurrent(generation)) {
+                    return;
+                }
+                if (!sessionId.equals(state.getSessionId())) {
+                    // 会话本身已换绑：不要把旧页前插到新转录。
+                    historyWindow.failEarlier(generation);
+                    return;
+                }
+                if (older.isEmpty()) {
+                    historyWindow.finishEarlier(generation, 0, 0, null, false);
+                    return;
+                }
+                state.prependMessages(older);
+                callbackFacade.notifyMessagesPrepended(
+                        MessageJsonConverter.convertMessagesToJson(older));
+                historyWindow.finishEarlier(
+                        generation,
+                        older.size(),
+                        countUserTurns(page.messages()),
+                        page.nextCursor(),
+                        page.hasEarlier());
+            } catch (Exception e) {
+                LOG.warn("Failed to load an earlier history page: " + e.getMessage());
+                historyWindow.failEarlier(generation);
+            } finally {
+                if (historyWindow.isCurrent(generation)) {
+                    publishHistoryWindow(sessionId);
+                }
+            }
+        });
+    }
+
+    /** 把本 tab 的历史窗口状态推给 webview（{@code history.window}）。 */
+    public void publishHistoryWindow() {
+        publishHistoryWindow(state.getSessionId());
+    }
+
+    private void publishHistoryWindow(String sessionId) {
+        callbackFacade.notifyHistoryWindow(historyWindow.snapshot(sessionId).toString());
+    }
+
+    /**
+     * 统计整个会话的用户回合数，供「还有 N 轮」这类文案使用。
+     *
+     * <p>用 {@code type=user} 过滤翻页，而不是拉全量：一个 1000+ 条消息的
+     * 会话只有十几个 user 记录。服务端的坑是过滤页即使已经到底，
+     * {@code nextCursor} 仍可能非空，所以终止条件是某页返回 0 条。</p>
+     */
+    private void requestUserTurnTotal(String provider, String sessionId, String cwd) {
+        int generation = historyWindow.getGeneration();
+        int total = 0;
+        String cursor = null;
+        try {
+            for (int pageIndex = 0; pageIndex < USER_TURN_PAGE_LIMIT; pageIndex++) {
+                SessionProviderRouter.MessagePage page = historyAccess.getProviderSessionMessagePage(
+                        provider,
+                        sessionId,
+                        cwd,
+                        SessionProviderRouter.FIRST_PAGE_SIZE,
+                        cursor,
+                        "user",
+                        null);
+                if (page.messages().isEmpty()) {
+                    break;
+                }
+                total += page.messages().size();
+                cursor = page.nextCursor();
+                if (cursor == null || cursor.isEmpty()) {
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            // 只影响文案：拿不到精确总数就保持 null，不编造轮数。
+            LOG.debug("Failed to count user turns for " + sessionId + ": " + e.getMessage());
+            return;
+        }
+        if (!historyWindow.isCurrent(generation) || !sessionId.equals(state.getSessionId())) {
+            return;
+        }
+        historyWindow.setTotalTurns(total);
+        publishHistoryWindow(sessionId);
+    }
+
+    /** 一页转录里的用户回合数（{@code type=user}，工具结果条不算回合）。 */
+    private static int countUserTurns(List<JsonObject> messages) {
+        int turns = 0;
+        for (JsonObject message : messages) {
+            if (message != null && message.has("type") && !message.get("type").isJsonNull()
+                    && "user".equals(message.get("type").getAsString())) {
+                turns += 1;
+            }
+        }
+        return turns;
     }
 
     private void sleep(long delayMs) {

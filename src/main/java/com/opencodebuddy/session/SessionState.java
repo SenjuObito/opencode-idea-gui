@@ -119,6 +119,18 @@ public class SessionState {
     private boolean loading = false;
     private String error = null;
 
+    /**
+     * True from the moment the user presses Stop until the next send starts.
+     *
+     * <p>Stopping is not a failure: the daemon closes the stream and, on v2,
+     * also reports {@code session.step.failed} with {@code error.type=aborted}
+     * / "Step interrupted". Both the daemon completion envelope and that event
+     * pass through error entry points, so they consult this flag before writing
+     * an error row. Volatile because {@link OpencodeSession#interrupt()} sets it
+     * on the caller's thread while the handler reads it on the stream thread.</p>
+     */
+    private volatile boolean turnAborted = false;
+
     // Message history
     private final List<OpencodeSession.Message> messages = new ArrayList<>();
 
@@ -180,6 +192,21 @@ public class SessionState {
 
     public String getError() {
         return error;
+    }
+
+    /** Whether the current (or most recently stopped) turn was aborted by the user. */
+    public boolean isTurnAborted() {
+        return turnAborted;
+    }
+
+    /** Mark the turn as aborted; called when Stop is pressed or an abort terminal arrives. */
+    public void markTurnAborted() {
+        this.turnAborted = true;
+    }
+
+    /** Clear the abort marker; called at the start of every new send. */
+    public void clearTurnAborted() {
+        this.turnAborted = false;
     }
 
     public List<OpencodeSession.Message> getMessages() {
@@ -417,6 +444,21 @@ public class SessionState {
                 messages.addAll(newMessages);
             }
         }
+    }
+
+    /**
+     * 把更早的一页历史前插到转录开头（磁盘分页）。
+     *
+     * @return 实际前插的条数
+     */
+    public int prependMessages(List<OpencodeSession.Message> older) {
+        if (older == null || older.isEmpty()) {
+            return 0;
+        }
+        synchronized (messages) {
+            messages.addAll(0, older);
+        }
+        return older.size();
     }
 
     /**

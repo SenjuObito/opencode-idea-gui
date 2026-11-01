@@ -272,6 +272,35 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
     expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('session.interrupt') && c.includes('ses_123'))).toBe(true);
   });
 
+  it('handleAskUserQuestionSkip rejects question, interrupts session, and closes dialog', () => {
+    const sendCalls: string[] = [];
+    (window as any).sendToJava = vi.fn((payload: string) => {
+      sendCalls.push(payload);
+    });
+
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
+
+    act(() => {
+      result.current.openAskUserQuestionDialog({
+        requestId: 'Q2',
+        toolName: 'AskUserQuestion',
+        sessionId: 'ses_456',
+        questions: [],
+      } as any);
+    });
+
+    expect(result.current.askUserQuestionDialogOpen).toBe(true);
+
+    act(() => {
+      result.current.handleAskUserQuestionSkip('Q2');
+    });
+
+    expect(result.current.askUserQuestionDialogOpen).toBe(false);
+    expect(result.current.currentAskUserQuestionRequest).toBeNull();
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('question.reply'))).toBe(true);
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('session.interrupt') && c.includes('ses_456'))).toBe(true);
+  });
+
   it('handlePermissionTimeout rejects permission, interrupts session, and closes dialog', () => {
     const sendCalls: string[] = [];
     (window as any).sendToJava = vi.fn((payload: string) => {

@@ -8,6 +8,7 @@ import javax.swing.Timer;
 import java.awt.event.ActionEvent;
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -320,6 +321,80 @@ public class WebviewInitializerTest {
         WebviewInitializer.reloadCurrentPage(cefBrowser);
 
         Assert.assertEquals(1, reloadCalls.get());
+    }
+
+    /** Verifies that a created browser is revealed exactly once, on the first paint signal. */
+    @Test
+    public void browserRevealRunsOncePerCreatedBrowser() {
+        WebviewInitializer.BrowserRevealSlot slot = new WebviewInitializer.BrowserRevealSlot();
+        AtomicInteger reveals = new AtomicInteger();
+        slot.arm(reveals::incrementAndGet, null);
+
+        Runnable firstReveal = slot.take();
+        Assert.assertNotNull(firstReveal);
+        firstReveal.run();
+
+        assertNull(slot.take());
+        assertEquals(1, reveals.get());
+        assertNull(slot.take());
+        assertEquals(1, reveals.get());
+    }
+
+    /** Verifies that a reveal left behind by a disposed browser is dropped, never mounted. */
+    @Test
+    public void browserRevealIsDroppedWithItsBrowser() {
+        WebviewInitializer.BrowserRevealSlot slot = new WebviewInitializer.BrowserRevealSlot();
+        AtomicBoolean revealed = new AtomicBoolean(false);
+        slot.arm(() -> revealed.set(true), null);
+
+        Assert.assertTrue(slot.clear());
+        assertNull(slot.take());
+        Assert.assertFalse(revealed.get());
+        Assert.assertFalse(slot.clear());
+    }
+
+    /** Verifies that replacing a reveal cancels the previous safety timeout. */
+    @Test
+    public void armingANewRevealCancelsThePreviousTimeout() {
+        WebviewInitializer.BrowserRevealSlot slot = new WebviewInitializer.BrowserRevealSlot();
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        slot.arm(() -> { }, recordingScheduledFuture(cancelled));
+
+        slot.arm(() -> { }, null);
+
+        Assert.assertTrue(cancelled.get());
+        Assert.assertNotNull(slot.take());
+    }
+
+    /** Verifies that consuming a reveal also disarms its safety timeout. */
+    @Test
+    public void takingARevealCancelsItsSafetyTimeout() {
+        WebviewInitializer.BrowserRevealSlot slot = new WebviewInitializer.BrowserRevealSlot();
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        slot.arm(() -> { }, recordingScheduledFuture(cancelled));
+
+        Assert.assertNotNull(slot.take());
+
+        Assert.assertTrue(cancelled.get());
+    }
+
+    /** A minimal ScheduledFuture that only records cancellation. */
+    private static ScheduledFuture<?> recordingScheduledFuture(AtomicBoolean cancelled) {
+        return (ScheduledFuture<?>) Proxy.newProxyInstance(
+                ScheduledFuture.class.getClassLoader(),
+                new Class<?>[]{ScheduledFuture.class},
+                (proxy, method, args) -> {
+                    if ("cancel".equals(method.getName())) {
+                        cancelled.set(true);
+                        return true;
+                    }
+                    if ("isCancelled".equals(method.getName())
+                            || "isDone".equals(method.getName())) {
+                        return cancelled.get();
+                    }
+                    return null;
+                }
+        );
     }
 
     private static void fireTimer(Timer timer) {

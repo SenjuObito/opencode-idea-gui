@@ -67,9 +67,12 @@ class HistoryExportService {
                 LOG.info("[HistoryHandler] SessionId: " + sessionId + ", Title: " + title);
 
                 // 1. 从 daemon 获取会话的原始消息
+                //    all: true（listMessages 两参重载）——opencode 2.x 的消息接口
+                //    是分页的，只取一页会让导出的 Markdown 止步于最新 50 条。
+                //    长会话需要多轮内部翻页，超时放宽到 2 分钟。
                 JsonElement rawMessagesElement = context.getOpenCodeSDKBridge()
                         .listMessages(sessionId, projectPath)
-                        .get(30, TimeUnit.SECONDS);
+                        .get(120, TimeUnit.SECONDS);
 
                 // 2. 格式化为 Markdown
                 String markdown = SessionMarkdownFormatter.format(title, sessionId, rawMessagesElement);

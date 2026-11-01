@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class OpenCodeMarkerParserTest {
@@ -120,5 +121,112 @@ public class OpenCodeMarkerParserTest {
 
         assertEquals("todo_updated", receivedType.get());
         assertEquals(rawJson, receivedContent.get());
+    }
+
+    @Test
+    public void testTurnErrorWithAbortedKindIsSuppressed() {
+        // v2 reports a user stop on the same channel as a real failure:
+        // [TURN_ERROR] {"sessionID":"ses_1","kind":"aborted","message":"Step interrupted"}
+        String line = "[TURN_ERROR] " + gson.toJson(
+                "{\"sessionID\":\"ses_1\",\"kind\":\"aborted\",\"message\":\"Step interrupted\"}");
+
+        AtomicReference<String> receivedType = new AtomicReference<>();
+
+        MessageCallback callback = new MessageCallback() {
+            @Override
+            public void onMessage(String type, String content) {
+                receivedType.set(type);
+            }
+
+            @Override
+            public void onError(String error) {}
+
+            @Override
+            public void onComplete(SDKResult result) {}
+        };
+
+        parser.processOutputLine(line, callback, new SDKResult(),
+                new OpenCodeMarkerParser.StreamContext());
+
+        assertNull(receivedType.get());
+    }
+
+    @Test
+    public void testTurnErrorAfterAbortedTurnEndIsSuppressed() {
+        AtomicReference<String> receivedType = new AtomicReference<>();
+
+        MessageCallback callback = new MessageCallback() {
+            @Override
+            public void onMessage(String type, String content) {
+                receivedType.set(type);
+            }
+
+            @Override
+            public void onError(String error) {}
+
+            @Override
+            public void onComplete(SDKResult result) {}
+        };
+
+        OpenCodeMarkerParser.StreamContext context = new OpenCodeMarkerParser.StreamContext();
+        SDKResult result = new SDKResult();
+
+        parser.processOutputLine(
+                "[TURN_END] {\"sessionId\":\"ses_1\",\"turnId\":7,\"reason\":\"aborted\"}",
+                callback, result, context);
+        assertEquals("turn_end", receivedType.get());
+        assertTrue(context.wasAborted.get());
+
+        receivedType.set(null);
+        // A late, untyped error after the abort must stay invisible too.
+        parser.processOutputLine("[TURN_ERROR] \"Step interrupted\"", callback, result, context);
+        assertNull(receivedType.get());
+
+        receivedType.set(null);
+        parser.processOutputLine("[SEND_ERROR] {\"error\":\"User interrupted\"}", callback, result, context);
+        assertNull(receivedType.get());
+        assertTrue(!context.hadSendError.get());
+    }
+
+    @Test
+    public void testCompactionMarkersParsing() {
+        java.util.List<String> receivedTypes = new java.util.ArrayList<>();
+        java.util.List<String> receivedContents = new java.util.ArrayList<>();
+
+        MessageCallback callback = new MessageCallback() {
+            @Override
+            public void onMessage(String type, String content) {
+                receivedTypes.add(type);
+                receivedContents.add(content);
+            }
+
+            @Override
+            public void onError(String error) {}
+
+            @Override
+            public void onComplete(SDKResult result) {}
+        };
+
+        OpenCodeMarkerParser.StreamContext context = new OpenCodeMarkerParser.StreamContext();
+        SDKResult result = new SDKResult();
+
+        // 1. [COMPACTION_STARTED]
+        parser.processOutputLine("[COMPACTION_STARTED] {\"sessionID\":\"ses_123\",\"reason\":\"auto\"}", callback, result, context);
+        assertEquals("compaction_started", receivedTypes.get(0));
+        assertTrue(receivedContents.get(0).contains("ses_123"));
+
+        // 2. [COMPACTION_DELTA]
+        parser.processOutputLine("[COMPACTION_DELTA] {\"sessionID\":\"ses_123\",\"text\":\"Summarizing...\"}", callback, result, context);
+        assertEquals("compaction_delta", receivedTypes.get(1));
+
+        // 3. [COMPACTION_ENDED]
+        parser.processOutputLine("[COMPACTION_ENDED] {\"sessionID\":\"ses_123\",\"summary\":\"Summary done\",\"reason\":\"auto\"}", callback, result, context);
+        assertEquals("compaction_ended", receivedTypes.get(2));
+        assertTrue(receivedContents.get(2).contains("Summary done"));
+
+        // 4. [COMPACTION_FAILED]
+        parser.processOutputLine("[COMPACTION_FAILED] {\"sessionID\":\"ses_123\",\"error\":\"Rate limit exceeded\"}", callback, result, context);
+        assertEquals("compaction_failed", receivedTypes.get(3));
+        assertTrue(receivedContents.get(3).contains("Rate limit exceeded"));
     }
 }

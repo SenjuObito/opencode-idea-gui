@@ -112,4 +112,12 @@ public class SessionCallbackFacade {
     public void notifyTurnEnd(String jsonContent) {
         callbackHandler.notifyTurnEnd(jsonContent);
     }
+
+    public void notifyMessagesPrepended(String messagesJson) {
+        callbackHandler.notifyMessagesPrepended(messagesJson);
+    }
+
+    public void notifyHistoryWindow(String json) {
+        callbackHandler.notifyHistoryWindow(json);
+    }
 }

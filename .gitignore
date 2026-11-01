@@ -87,3 +87,4 @@ logs/*.log
 .playwright-mcp/
 hs_err_pid*.log
 .workbuddy/
+.openchamber/

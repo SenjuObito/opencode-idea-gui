@@ -99,6 +99,23 @@ public final class OpenCodeMessageConverter {
     }
 
     public static List<JsonObject> convert(JsonElement element) {
+        return convert(element, java.util.Map.of());
+    }
+
+    /**
+     * Convert the server transcript, restoring the user-visible text of slash
+     * commands.
+     *
+     * <p>opencode persists a command message as the already-expanded template
+     * (`/review` becomes the whole reviewer prompt) and keeps no command name.
+     * {@code commandTextById} maps the server message id back to the text the
+     * user actually typed, so a reloaded transcript shows `/review` instead of
+     * the expanded prompt.</p>
+     *
+     * @param element server transcript ({@code [{info,parts}, …]})
+     * @param commandTextById server user-message id → typed command text
+     */
+    public static List<JsonObject> convert(JsonElement element, java.util.Map<String, String> commandTextById) {
         List<JsonObject> out = new ArrayList<>();
         if (element == null || !element.isJsonArray()) {
             return out;
@@ -125,8 +142,10 @@ public final class OpenCodeMessageConverter {
                     out.add(buildCompactionMessage(parts, info));
                 } else if ("user".equals(role)) {
                     if (!isCompactionTriggerUser(parts)) {
-                        String shellCommand = findShellCommandForUserMessage(array, i, string(info, "id"));
-                        out.add(buildUserMessage(parts, info, shellCommand));
+                        String messageId = string(info, "id");
+                        String shellCommand = findShellCommandForUserMessage(array, i, messageId);
+                        String commandText = commandTextById != null ? commandTextById.get(messageId) : null;
+                        out.add(buildUserMessage(parts, info, shellCommand, commandText));
                     }
                 } else if ("assistant".equals(role)) {
                     out.addAll(buildAssistantMessages(parts, info));
@@ -138,6 +157,110 @@ public final class OpenCodeMessageConverter {
             }
         }
         return out;
+    }
+
+    /**
+     * How long after a recorded send the server may still persist its user
+     * message.
+     *
+     * <p>The record is taken when the send starts; the server persists the
+     * message a moment later. A tight bound matters for commands that the
+     * server handles without creating a message (a client-side command routed
+     * to the endpoint, for example): an unmatched entry must not be allowed to
+     * claim an unrelated prompt the user sends later.</p>
+     */
+    static final long COMMAND_TEXT_MAX_DELAY_MS = 30_000L;
+
+    /** Tolerance for a message timestamped just before the local send start. */
+    static final long COMMAND_TEXT_MAX_SKEW_MS = 5_000L;
+
+    /**
+     * Match recorded command sends to the server's user messages.
+     *
+     * <p>Each entry is consumed by exactly one message (nearest timestamp in
+     * {@code [sentAt - skew, sentAt + maxDelay]}), so two commands sent close
+     * together cannot both claim the same bubble.</p>
+     *
+     * @param element server transcript
+     * @param entries recorded sends for this session, oldest first
+     * @return server user-message id → typed command text
+     */
+    public static java.util.Map<String, String> matchCommandTexts(
+            JsonElement element,
+            List<SessionCommandTextStore.Entry> entries) {
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        if (element == null || !element.isJsonArray() || entries == null || entries.isEmpty()) {
+            return out;
+        }
+        JsonArray array = element.getAsJsonArray();
+        List<String> ids = new ArrayList<>();
+        List<Long> created = new ArrayList<>();
+        for (JsonElement entryElement : array) {
+            if (!entryElement.isJsonObject()) {
+                continue;
+            }
+            JsonObject entry = entryElement.getAsJsonObject();
+            JsonObject info = entry.has("info") && entry.get("info").isJsonObject()
+                    ? entry.getAsJsonObject("info") : null;
+            if (info == null || !"user".equals(string(info, "role"))) {
+                continue;
+            }
+            String id = string(info, "id");
+            if (id.isEmpty()) {
+                continue;
+            }
+            long at = createdMillis(info);
+            if (at <= 0) {
+                continue;
+            }
+            JsonArray parts = entry.has("parts") && entry.get("parts").isJsonArray()
+                    ? entry.getAsJsonArray("parts") : new JsonArray();
+            if (isCompactionTriggerUser(parts)) {
+                continue;
+            }
+            ids.add(id);
+            created.add(at);
+        }
+        boolean[] used = new boolean[ids.size()];
+        for (SessionCommandTextStore.Entry command : entries) {
+            int best = -1;
+            long bestDiff = Long.MAX_VALUE;
+            for (int i = 0; i < ids.size(); i++) {
+                if (used[i] || out.containsKey(ids.get(i))) {
+                    continue;
+                }
+                long delta = created.get(i) - command.sentAt;
+                if (delta < -COMMAND_TEXT_MAX_SKEW_MS || delta > COMMAND_TEXT_MAX_DELAY_MS) {
+                    continue;
+                }
+                long diff = Math.abs(delta);
+                if (diff < bestDiff) {
+                    bestDiff = diff;
+                    best = i;
+                }
+            }
+            if (best >= 0) {
+                used[best] = true;
+                out.put(ids.get(best), command.text);
+            }
+        }
+        return out;
+    }
+
+    /** The message's creation time in milliseconds (the server may report seconds). */
+    private static long createdMillis(JsonObject info) {
+        if (info == null || !info.has("time") || !info.get("time").isJsonObject()) {
+            return 0L;
+        }
+        JsonObject time = info.getAsJsonObject("time");
+        long value = readLong(time, "created");
+        if (value <= 0) {
+            value = readLong(time, "start");
+        }
+        if (value > 0 && value < 100_000_000_000L) {
+            value *= 1000L;
+        }
+        return value;
     }
 
     private static String findShellCommandForUserMessage(JsonArray array, int userIndex, String userMsgId) {
@@ -201,10 +324,15 @@ public final class OpenCodeMessageConverter {
     }
 
     private static JsonObject buildUserMessage(JsonArray parts, JsonObject info) {
-        return buildUserMessage(parts, info, null);
+        return buildUserMessage(parts, info, null, null);
     }
 
     private static JsonObject buildUserMessage(JsonArray parts, JsonObject info, String shellCommand) {
+        return buildUserMessage(parts, info, shellCommand, null);
+    }
+
+    private static JsonObject buildUserMessage(
+            JsonArray parts, JsonObject info, String shellCommand, String commandText) {
         JsonArray blocks = new JsonArray();
         List<JsonObject> attachmentBlocks = new ArrayList<>();
         List<JsonObject> imageBlocks = new ArrayList<>();
@@ -256,7 +384,11 @@ public final class OpenCodeMessageConverter {
         // ## Referenced Files, ## Attached Files, inlined attachments, agent instructions, …) — model-only payload.
         String displayText = UserTextSanitizer.sanitize(text.toString());
 
-        if (displayText.isEmpty() && shellCommand != null && !shellCommand.isBlank()) {
+        // A recorded slash command wins over the expanded template the server
+        // persisted: the user typed `/review`, not the reviewer prompt.
+        if (commandText != null && !commandText.isBlank()) {
+            displayText = commandText.trim();
+        } else if (displayText.isEmpty() && shellCommand != null && !shellCommand.isBlank()) {
             displayText = "!bash " + shellCommand.trim();
         }
 
@@ -429,7 +561,6 @@ public final class OpenCodeMessageConverter {
         List<JsonObject> toolResults = new ArrayList<>();
 
         boolean hasAbortedNotice = false;
-        String abortedNoticeText = "已停止生成";
         String errorContent = "";
 
         for (JsonElement partElement : parts) {
@@ -441,10 +572,10 @@ public final class OpenCodeMessageConverter {
             if ("text".equals(type) && part.has("text") && !part.get("text").isJsonNull()) {
                 String value = textOf(part.get("text"));
                 if (isAbortedPart(part)) {
+                    // Core inserts this synthetic text part when an aborted turn
+                    // produced no output. It is model-only bookkeeping: stopping
+                    // is silent, so it never becomes a transcript row.
                     hasAbortedNotice = true;
-                    if (!value.isBlank()) {
-                        abortedNoticeText = value;
-                    }
                     continue;
                 }
                 String trimmed = value.trim();
@@ -594,6 +725,9 @@ public final class OpenCodeMessageConverter {
         }
 
         List<JsonObject> out = new ArrayList<>();
+        // An aborted turn is silent: no assistant bubble when it produced no
+        // text, no "已停止生成" notice, no error row. Anything it did produce
+        // (text or tool blocks) is kept as-is.
         if (blocks.size() > 0 || (!hasAbortedNotice && errorContent.isEmpty())) {
             JsonObject assistant = new JsonObject();
             assistant.addProperty("type", "assistant");
@@ -604,19 +738,6 @@ public final class OpenCodeMessageConverter {
         }
 
         out.addAll(toolResults);
-
-        if (hasAbortedNotice) {
-            JsonObject notification = new JsonObject();
-            notification.addProperty("type", "notification");
-            notification.addProperty("content", abortedNoticeText);
-            notification.addProperty("timestamp", timestamp(info));
-            JsonObject notifRaw = new JsonObject();
-            notifRaw.addProperty("type", "notification");
-            notifRaw.addProperty("subtype", "stopped");
-            notifRaw.addProperty("aborted", true);
-            notification.add("raw", notifRaw);
-            out.add(notification);
-        }
 
         if (!errorContent.isEmpty()) {
             JsonObject errorMsg = new JsonObject();

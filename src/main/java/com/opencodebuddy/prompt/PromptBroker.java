@@ -123,7 +123,7 @@ public final class PromptBroker {
             return result;
         }
         for (Map.Entry<String, String> entry : permissionTabs.entrySet()) {
-            if (tabId.equals(entry.getValue())) {
+            if (tabId.equals(entry.getValue()) && permissions.containsKey(entry.getKey())) {
                 result.add(new PendingPrompt(entry.getKey(), PromptKind.PERMISSION,
                         permissionSessions.get(entry.getKey()), entry.getValue(), null, null, null));
             }
@@ -131,15 +131,17 @@ public final class PromptBroker {
         for (Map.Entry<String, String> entry : askTabs.entrySet()) {
             if (tabId.equals(entry.getValue())) {
                 PendingQuestion pending = questions.get(entry.getKey());
-                result.add(new PendingPrompt(entry.getKey(), PromptKind.QUESTION,
-                        askSessions.get(entry.getKey()), entry.getValue(),
-                        pending != null ? pending.callId : null,
-                        pending != null ? pending.directory : null,
-                        pending != null ? pending.questions : null));
+                if (pending != null || askFutures.containsKey(entry.getKey())) {
+                    result.add(new PendingPrompt(entry.getKey(), PromptKind.QUESTION,
+                            askSessions.get(entry.getKey()), entry.getValue(),
+                            pending != null ? pending.callId : null,
+                            pending != null ? pending.directory : null,
+                            pending != null ? pending.questions : null));
+                }
             }
         }
         for (Map.Entry<String, String> entry : planTabs.entrySet()) {
-            if (tabId.equals(entry.getValue())) {
+            if (tabId.equals(entry.getValue()) && planFutures.containsKey(entry.getKey())) {
                 result.add(new PendingPrompt(entry.getKey(), PromptKind.PLAN,
                         planSessions.get(entry.getKey()), entry.getValue(), null, null, null));
             }
@@ -199,5 +201,44 @@ public final class PromptBroker {
 
     public int pendingCount() {
         return permissions.size() + askFutures.size() + planFutures.size();
+    }
+
+    /**
+     * Forget an answered or cancelled prompt so tab and session ownership does not leak.
+     */
+    public void forget(String requestId) {
+        if (requestId == null) {
+            return;
+        }
+        permissions.remove(requestId);
+        permissionSessions.remove(requestId);
+        permissionTabs.remove(requestId);
+
+        askFutures.remove(requestId);
+        askSessions.remove(requestId);
+        askTabs.remove(requestId);
+        questions.remove(requestId);
+
+        planFutures.remove(requestId);
+        planSessions.remove(requestId);
+        planTabs.remove(requestId);
+    }
+
+    /**
+     * Clear all pending prompts and ownership mappings.
+     */
+    public void clear() {
+        permissions.clear();
+        permissionSessions.clear();
+        permissionTabs.clear();
+
+        askFutures.clear();
+        askSessions.clear();
+        askTabs.clear();
+        questions.clear();
+
+        planFutures.clear();
+        planSessions.clear();
+        planTabs.clear();
     }
 }

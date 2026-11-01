@@ -35,6 +35,8 @@ import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved } from './utils/messageUtils';
 import { parseRevertStateEvent } from './utils/revertStateEvent';
+import { expandQuoteTokens } from './components/ChatInputBox/utils/quoteRegistry';
+import { uploadAttachments } from './utils/attachmentTransport';
 import type { HostEventEnvelope } from './utils/hostEventTypes';
 import type { CompactNoticeData } from './components/ChatHeader/types';
 import type { ClaudeMessage } from './types';
@@ -88,9 +90,8 @@ const App = () => {
     sessionLoading, setSessionLoading,
     setSseTodos,
     sseTodos,
-    isCompacting, setIsCompacting,
-    compactingStartTime, setCompactingStartTime,
-    compactNotice, setCompactNotice,
+    isCompacting,
+    compactNotice,
   } = useMessages();
 
   // task_events live in TaskEventProvider (SubagentContext) so their updates do
@@ -367,8 +368,6 @@ const App = () => {
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,
-    setIsCompacting,
-    setCompactingStartTime,
     onResetToPreferredModel: resetToPreferredModel,
     clearToasts, addToast, t,
   });
@@ -632,21 +631,6 @@ const App = () => {
     sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId, messageId: id });
   }, [streamingActive, addToast, t, getMessageId, consumeRevertBoundary]);
 
-  /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
-  const handleForkFull = useCallback(() => {
-    if (streamingActive) {
-      addToast(t('chat.forkDisabledTooltip'), 'warning');
-      return;
-    }
-    consumeRevertBoundary();
-    const sid = currentSessionIdRef.current;
-    const sourceTabId = getTabStore().findIdBySession(sid)
-      ?? getTabStore().getActiveTabId()
-      ?? '';
-    const targetTabId = createTabId();
-    sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId });
-  }, [streamingActive, addToast, t, consumeRevertBoundary]);
-
   // Latest user message id, used by the builtin /undo slash command.
   const findLatestUserMessageId = useCallback((): string | undefined => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -662,13 +646,17 @@ const App = () => {
    * Record the compact on the tab that started it.
    *
    * <p>The spinner is tab state, not window state: switching to another tab
-   * must not hide it, and switching back must show it again.</p>
+   * must not hide it, and switching back must show it again. {@code reason}
+   * comes from the host/core — {@code manual} for a user-issued /compact,
+   * {@code auto} for the engine's own context-window compaction — and only
+   * drives the wording.</p>
    */
-  const setTabCompacting = useCallback((tabId: string | null | undefined, compacting: boolean, startedAt: number | null) => {
+  const setTabCompacting = useCallback((tabId: string | null | undefined, compacting: boolean, startedAt: number | null, reason?: 'manual' | 'auto' | null) => {
     if (!tabId) return;
     getTabStore().updateTab(tabId, (tab) => {
       tab.isCompacting = compacting;
       tab.compactingStartTime = startedAt;
+      tab.compactingReason = compacting ? (reason ?? 'auto') : null;
     });
   }, []);
 
@@ -682,24 +670,24 @@ const App = () => {
    * active and cleared by the next user message.</p>
    */
   const applyCompactNotice = useCallback((tabId: string | null | undefined, notice: CompactNoticeData) => {
+    const store = getTabStore();
+    const targetId = tabId ?? store.getActiveTabId();
+    if (!targetId) return;
     const merge = (prev: CompactNoticeData | null | undefined): CompactNoticeData => (
       prev && prev.status === 'failure' && notice.status === 'failure' && !prev.detail && notice.detail
         ? { ...prev, detail: notice.detail }
         : notice
     );
-    if (tabId) {
-      getTabStore().updateTab(tabId, (tab) => {
-        tab.isCompacting = false;
-        tab.compactingStartTime = null;
-        tab.compactNotice = merge(tab.compactNotice);
-      });
-    } else {
-      // No tab (single-window fallback): keep the notice on the active one. A
-      // known tab that disappeared meanwhile drops the result instead of
-      // showing it in whichever conversation happens to be on screen.
-      setCompactNotice((prev) => merge(prev));
-    }
-  }, [setCompactNotice]);
+    // The result and the end of the process state are one write: settling them
+    // separately let a window-level setter clear whichever tab was active
+    // instead of the tab that actually compacted.
+    store.updateTab(targetId, (tab) => {
+      tab.isCompacting = false;
+      tab.compactingStartTime = null;
+      tab.compactingReason = null;
+      tab.compactNotice = merge(tab.compactNotice);
+    });
+  }, []);
 
   // Register bridge callbacks for share / fork / revert / compact results
   useEffect(() => {    /**
@@ -906,14 +894,48 @@ const App = () => {
         // ignore malformed payloads
       }
     };
-    const onCompactSuccess = (targetSessionId?: string, envelope?: HostEventEnvelope) => {
-      const ownerTabId = envelope?.tabId
-        ?? (targetSessionId ? getTabStore().findIdBySession(targetSessionId) : null)
-        ?? getTabStore().getActiveTabId()
-        ?? null;
-      const isForeground = !targetSessionId
-        || getTabStore().size() === 0
-        || getTabStore().isActiveSession(targetSessionId);
+    /** The tab that owns this compaction: envelope first, then session, then active. */
+    const resolveCompactTab = (targetSessionId?: string | null, envTabId?: string): string | null => {
+      const store = getTabStore();
+      return envTabId
+        || (targetSessionId ? store.findIdBySession(targetSessionId) : null)
+        || store.getActiveTabId()
+        || null;
+    };
+    const isForegroundCompact = (targetSessionId?: string | null): boolean => (
+      !targetSessionId
+      || getTabStore().size() === 0
+      || getTabStore().isActiveSession(targetSessionId)
+    );
+    /** `source` separates the engine's lifecycle event from the summarize RPC result. */
+    const readCompactSource = (body: Record<string, unknown>, data: Record<string, unknown>): string | undefined => {
+      if (typeof data.source === 'string') return data.source;
+      if (typeof body.source === 'string') return body.source;
+      return undefined;
+    };
+
+    const onCompactSuccess = (arg0?: unknown, envelope?: HostEventEnvelope) => {
+      const body = arg0 && typeof arg0 === 'object' ? arg0 as Record<string, unknown> : {};
+      const data = (body.data && typeof body.data === 'object' ? body.data : body) as Record<string, unknown>;
+      const targetSessionId = (typeof data.sessionId === 'string' ? data.sessionId : undefined)
+        // Core markers spell it `sessionID` (see [COMPACTION_ENDED]).
+        || (typeof data.sessionID === 'string' ? data.sessionID : undefined)
+        || (typeof arg0 === 'string' ? arg0 : undefined)
+        || envelope?.sessionId
+        || currentSessionIdRef.current;
+      const ownerTabId = resolveCompactTab(targetSessionId, envelope?.tabId);
+      const isForeground = isForegroundCompact(targetSessionId);
+
+      // 同一次压缩会收到两份完成事件：引擎的 `session.compact.done` 先到，
+      // summarize RPC 的结果随后到（它带着队列需要的 requestId）。后到的
+      // command 结果只做兜底，不能再触发一次历史刷新。
+      const source = readCompactSource(body, data);
+      const ownerTab = ownerTabId ? getTabStore().findById(ownerTabId) : null;
+      const alreadySettled = source === 'command'
+        && !!ownerTab
+        && !ownerTab.isCompacting
+        && ownerTab.compactNotice?.status === 'success';
+
       // Record the result before the foreground check: a compact that finishes
       // in a background tab must still show its success pill when the user
       // switches back.
@@ -921,35 +943,94 @@ const App = () => {
       if (!isForeground) {
         return;
       }
-      setIsCompacting(false);
-      setCompactingStartTime(null);
-      setTabCompacting(ownerTabId, false, null);
+      if (alreadySettled) {
+        return;
+      }
       // Force scroll to bottom after compact completes
       requestAnimationFrame(() => {
         scrollToBottom();
       });
+      // 重新拉一次历史：压缩后的转录以服务端为准，提示条挂在 tab 状态上，
+      // 不会随这次刷新消失（只有用户发下一条消息才清）。
       const activeSessionId = targetSessionId || currentSessionIdRef.current;
       if (activeSessionId) {
         void loadHistorySession(activeSessionId);
       }
     };
-    const onCompactError = (targetSessionId?: string, detail?: string) => {
-      const ownerTabId = targetSessionId
-        ? getTabStore().findIdBySession(targetSessionId) ?? null
-        : getTabStore().getActiveTabId() ?? null;
-      const isForeground = !targetSessionId
-        || getTabStore().size() === 0
-        || getTabStore().isActiveSession(targetSessionId);
+    const onCompactError = (arg0?: unknown, detailArg?: unknown, envelope?: HostEventEnvelope) => {
+      const body = arg0 && typeof arg0 === 'object' ? arg0 as Record<string, unknown> : {};
+      const data = (body.data && typeof body.data === 'object' ? body.data : body) as Record<string, unknown>;
+      const targetSessionId = (typeof data.sessionId === 'string' ? data.sessionId : undefined)
+        || (typeof data.sessionID === 'string' ? data.sessionID : undefined)
+        || (typeof arg0 === 'string' ? arg0 : undefined)
+        || envelope?.sessionId
+        || currentSessionIdRef.current;
+      const detail = typeof data.error === 'string'
+        ? data.error
+        : (typeof detailArg === 'string' ? detailArg : undefined);
+      const ownerTabId = resolveCompactTab(targetSessionId, envelope?.tabId);
+      const isForeground = isForegroundCompact(targetSessionId);
+
+      // 与成功路径同理：引擎先报失败，summarize RPC 的失败只用来补 detail。
+      const source = readCompactSource(body, data);
+      const ownerTab = ownerTabId ? getTabStore().findById(ownerTabId) : null;
+      const alreadySettled = source === 'command'
+        && !!ownerTab
+        && !ownerTab.isCompacting
+        && ownerTab.compactNotice?.status === 'failure';
+
       applyCompactNotice(ownerTabId, { status: 'failure', detail, at: Date.now() });
       if (!isForeground) {
         return;
       }
-      setIsCompacting(false);
-      setCompactingStartTime(null);
-      setTabCompacting(ownerTabId, false, null);
+      if (alreadySettled) {
+        return;
+      }
       requestAnimationFrame(() => {
         scrollToBottom();
       });
+    };
+    /**
+     * The compact really left the queue. Until this arrives the command may
+     * still be waiting behind other items, so the spinner must stay off.
+     */
+    const onCompactStarted = (payload?: unknown, envelope?: HostEventEnvelope) => {
+      const body = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      const data = (body.data && typeof body.data === 'object' ? body.data : body) as Record<string, unknown>;
+      const sessionId = (typeof data.sessionId === 'string' ? data.sessionId : undefined)
+        || (typeof data.sessionID === 'string' ? data.sessionID : undefined)
+        || (typeof payload === 'string' ? payload : undefined)
+        || envelope?.sessionId;
+      const startedAt = typeof data.startedAt === 'number' ? data.startedAt : Date.now();
+      // Core reports `manual` for a user-issued /compact and `auto` for the
+      // engine's own context-window compaction. Older cores omit it, so fall
+      // back to `auto` — the wording that core could back up.
+      const reason: 'manual' | 'auto' = data.reason === 'manual' ? 'manual' : 'auto';
+      const store = getTabStore();
+      const tabId = envelope?.tabId
+        ?? (sessionId ? store.findIdBySession(sessionId) : null)
+        ?? store.getActiveTabId()
+        ?? null;
+      // One compaction produces two starts: the command (published the moment
+      // the summarize request leaves) and the engine's own lifecycle. The first
+      // one owns the timer; the second must not restart it. The only thing worth
+      // adopting from a late start is a more specific trigger.
+      const current = tabId ? store.findById(tabId) : null;
+      if (current?.isCompacting) {
+        if (reason === 'manual' && current.compactingReason !== 'manual') {
+          setTabCompacting(tabId, true, current.compactingStartTime ?? startedAt, 'manual');
+        }
+        return;
+      }
+      // The tab record is the only owner of the process state; the indicator is
+      // derived from it. A window-level setter here would write whichever tab
+      // happens to be active instead of the tab that started.
+      setTabCompacting(tabId, true, startedAt, reason);
+      if (tabId && store.isActiveTab(tabId)) {
+        requestAnimationFrame(() => scrollToBottom());
+      }
     };
     registerHostEvents({
       'session.fork.done': onForkSuccess,
@@ -964,6 +1045,7 @@ const App = () => {
       'message.removed': onMessagesRemoved,
       'session.compact.done': onCompactSuccess,
       'session.compact.failed': onCompactError,
+      'session.compact.started': onCompactStarted,
     });
 
     return () => {
@@ -972,17 +1054,16 @@ const App = () => {
         'session.share.done', 'session.share.failed',
         'session.unshare.done', 'session.unshare.failed',
         'session.revert.failed', 'revert.changed', 'message.removed',
-        'session.compact.done', 'session.compact.failed',
+        'session.compact.done', 'session.compact.failed', 'session.compact.started',
       ]);
     };
-  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, setTabCompacting, applyCompactNotice, scrollToBottom]);
+  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setTabCompacting, applyCompactNotice, scrollToBottom]);
 
   // ── Window callbacks (bridge communication) ──
   useWindowCallbacks({
     t, addToast, clearToasts,
     setMessages, setStatus, setLoading, setLoadingStartTime,
     setIsThinking, setStreamingActive, setSessionLoading, setHistoryData,
-    setIsCompacting, setCompactingStartTime,
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     setPermissionMode, setCurrentProvider,
     setOpenCodePermissionMode,
@@ -1032,7 +1113,6 @@ const App = () => {
   // ── Message sender ──
   const {
     handleSubmit: hookHandleSubmit,
-    executeMessage,
     interruptSession,
   } = useMessageSender({
     t, addToast,
@@ -1076,28 +1156,37 @@ const App = () => {
     setPendingRevert(null);
   }, []);
 
-  // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
+  // ── Message queue (host-owned, keyed by tab) ──
+  // The host owns the per-tab queue and its single consumer. This hook only
+  // sends commands and renders the snapshot; switching tabs cannot send here.
+  const {
+    queue: messageQueue,
+    paused: queuePaused,
+    lastError: queueError,
+    enqueue: enqueueMessage,
+    enqueueCommand,
+    dequeue: dequeueMessage,
+    resumeQueue: resumeQueue,
+  } = useMessageQueue();
+
+  // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才入队 ──
   const doCompact = useCallback(() => {
     consumeRevertBoundary();
-    const compactSessionId = currentSessionIdRef.current;
-    sendSessionCommand('session.compact', compactSessionId, { model: selectedModel });
-    const startedAt = Date.now();
-    setIsCompacting(true);
-    setCompactingStartTime(startedAt);
-    setTabCompacting(
-      compactSessionId ? getTabStore().findIdBySession(compactSessionId) : null,
-      true,
-      startedAt,
-    );
+    // The compacting indicator only lights when the host really starts the
+    // command (`session.compact.started`), never while it still waits in the
+    // queue behind other items.
+    enqueueCommand('/compact', { model: selectedModel });
     userPausedRef.current = false;
     isUserAtBottomRef.current = true;
     scrollToBottom();
     requestAnimationFrame(() => {
       scrollToBottom();
     });
-  }, [consumeRevertBoundary, selectedModel, setIsCompacting, setCompactingStartTime, setTabCompacting, scrollToBottom, userPausedRef, isUserAtBottomRef, currentSessionIdRef]);
+  }, [consumeRevertBoundary, selectedModel, enqueueCommand, scrollToBottom, userPausedRef, isUserAtBottomRef]);
+  // Queueing a command must never be blocked by a running turn: the host
+  // decides when it runs. `useCompactConfirm` therefore takes no busy flag.
   const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
-    useCompactConfirm(doCompact, loading || isCompacting);
+    useCompactConfirm(doCompact);
 
   // "Don't ask again" checkbox state for the compact confirm dialog.
   // Resets to unchecked every time the dialog re-opens.
@@ -1117,66 +1206,55 @@ const App = () => {
   const handleBuiltinCommand = useCallback((command: string) => {
     switch (command) {
       case '/compact':
-        // 先弹确认框；确认后 doCompact 才发送（不可撤销操作）。
+        // 先弹确认框；确认后 doCompact 才入队（不可撤销操作）。
         requestCompact();
         break;
       case '/undo': {
+        // Freeze the current newest user message now: messages queued ahead of
+        // this command must not move the undo target. Without an id the host
+        // resolves the latest user message through listMessages.
         const id = findLatestUserMessageId();
-        if (id) {
-          handleUndoMessage({ type: 'user', id } as ClaudeMessage);
-        } else {
-          // 本地无 id —— 交给宿主通过 listMessages 解析
-          handleUndoMessage({ type: 'user' } as ClaudeMessage);
-        }
+        enqueueCommand('/undo', id ? { messageId: id } : undefined);
         break;
       }
       case '/redo':
-        handleRedoMessage();
+        enqueueCommand('/redo');
         break;
-      case '/fork':
-        handleForkFull();
+      case '/fork': {
+        const sid = currentSessionIdRef.current ?? currentSessionId;
+        if (!getTabStore().findIdBySession(sid) && !getTabStore().getActiveTabId()) {
+          return;
+        }
+        // Reserve the destination tab now so the fork cannot open an orphan.
+        enqueueCommand('/fork', { targetTabId: createTabId() });
         break;
+      }
       case '/share':
-        void handleShare();
+        if (shareHidden) return;
+        enqueueCommand('/share');
         break;
       case '/unshare':
-        void handleUnshare();
+        enqueueCommand('/unshare');
         break;
     }
-  }, [requestCompact, handleUndoMessage, handleRedoMessage, handleForkFull, handleShare, handleUnshare]);
+  }, [
+    requestCompact,
+    findLatestUserMessageId,
+    enqueueCommand,
+    currentSessionId,
+    currentSessionIdRef,
+    shareHidden,
+  ]);
 
-  // Execute from queue handler (dispatches builtin slash commands or sends message)
-  const executeFromQueue = useCallback((content: string, attachments?: Attachment[]) => {
-    const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-    if (text.startsWith('/')) {
-      const command = text.split(/\s+/)[0].toLowerCase();
-      if (BUILTIN_SESSION_COMMANDS.has(command)) {
-        if (command === '/compact' || command === '/fork') {
-          consumeRevertBoundary();
-        }
-        handleBuiltinCommand(command);
-        return;
-      }
-    }
-    consumeRevertBoundary();
-    executeMessage(content, attachments);
-  }, [handleBuiltinCommand, executeMessage, consumeRevertBoundary]);
-
-  // ── Message queue ──
-  const {
-    queue: messageQueue,
-    enqueue: enqueueMessage,
-    dequeue: dequeueMessage,
-  } = useMessageQueue({ isLoading: loading, isCompacting, onExecute: executeFromQueue });
-
-  // Reset share / compact-confirm / compacting state on session switch
+  // Reset share / compact-confirm state on session switch.
+  // 切换会话时不再抹杀 revert 状态，因为各 Tab 拥有自己独立的 revertBoundaryId。
+  // 压缩状态同理：它属于 Tab 记录（见 setTabCompacting），这里只能重置“确认框”
+  // 这类窗口级瞬时状态。此前这里调 setIsCompacting(false) 写的是“当前 active
+  // tab”，切回正在压缩的 Tab 时会把它的指示器清掉并重置计时器。
   useEffect(() => {
-    // 切换会话时，不再抹杀 revert 状态，因为各 Tab 拥有自己独立的 revertBoundaryId
     resetShareState();
     handleCancelCompact();
-    setIsCompacting(false);
-    setCompactingStartTime(null);
-  }, [resetShareState, currentSessionId, handleCancelCompact, setIsCompacting, setCompactingStartTime]);
+  }, [resetShareState, currentSessionId, handleCancelCompact]);
 
   // handleSubmit with queue support (new session and local commands bypass loading check)
   const handleSubmit = useCallback((
@@ -1188,11 +1266,7 @@ const App = () => {
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     if (!text && !hasAttachments) return;
 
-    // The compact pill reports the context transition the next prompt starts
-    // from. Sending that prompt is what acknowledges it.
-    setCompactNotice(null);
-
-    // View-switching / session-reset commands bypass busy guard
+    // View-switching / session-reset commands bypass the busy guard
     if (text.startsWith('/')) {
       const command = text.split(/\s+/)[0].toLowerCase();
       // New session commands
@@ -1205,17 +1279,6 @@ const App = () => {
         setCurrentView('history');
         return;
       }
-    }
-
-    // If loading or compacting, all other messages / commands enter the FIFO queue
-    if (loading || isCompacting) {
-      enqueueMessage(content, attachments);
-      return;
-    }
-
-    // Local commands when idle
-    if (text.startsWith('/')) {
-      const command = text.split(/\s+/)[0].toLowerCase();
       // /plan - switch to plan mode (opencode has a native plan agent)
       if (PLAN_COMMANDS.has(command)) {
         consumeRevertBoundary();
@@ -1231,18 +1294,88 @@ const App = () => {
       }
       // opencode builtin session commands (compact/undo/redo/fork/share/unshare)
       if (BUILTIN_SESSION_COMMANDS.has(command)) {
-        if (command === '/compact' || command === '/fork') {
-          consumeRevertBoundary();
-        }
+        // They join the same per-tab FIFO as prompts, so they are not executed
+        // here. /compact consumes the revert boundary when the user confirms.
         handleBuiltinCommand(command);
         return;
       }
     }
 
-    // 普通消息 / 队列消息 / !shell —— 服务端 prompt 前都会 cleanup revert
+    // 普通消息 / !shell：入队前把 quote chip 展开成完整引用（registry 会被
+    // prune，排队消息不能再依赖发送时刻的 registry），附件先按**当前 tab**
+    // 上传，宿主只收 id。之后由宿主的单消费者决定立即发还是等本 tab 的 turn
+    // 结束——webview 不再读 loading 判断，也不会在切 tab 后用别的会话/模型/
+    // 附件发送。
     consumeRevertBoundary();
-    hookHandleSubmit(content, attachments, fileTags);
-  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary, setCompactNotice]);
+    const expanded = expandQuoteTokens(content).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    if (!expanded && !hasAttachments) return;
+    const tabId = getTabStore().getActiveTabId();
+    if (!tabId) {
+      addToast(t('chat.sendFailedNoTab', { defaultValue: '发送失败：找不到当前标签页' }), 'error');
+      return;
+    }
+    // The compact pill reports the context transition the next prompt starts
+    // from. Sending that prompt is what acknowledges it — on the tab that is
+    // sending, never on "whatever is active".
+    getTabStore().updateTab(tabId, (tab) => {
+      tab.compactNotice = null;
+    });
+
+    const uploaded = uploadAttachments(tabId, attachments);
+    const resolvedFileTags = (fileTags && fileTags.length > 0)
+      ? fileTags
+      : (chatInputRef.current?.getFileTags() ?? []);
+
+    // Keep non-image attachment metadata for rendering the user bubble the
+    // host will push back (the message itself is built on the host).
+    const nonImageAttachments = (attachments ?? []).filter(
+      (attachment) => !attachment.mediaType?.startsWith('image/'),
+    );
+    if (nonImageAttachments.length > 0) {
+      const MAX_ATTACHMENT_CACHE_SIZE = 100;
+      if (sentAttachmentsRef.current.size >= MAX_ATTACHMENT_CACHE_SIZE) {
+        const firstKey = sentAttachmentsRef.current.keys().next().value;
+        if (firstKey !== undefined) {
+          sentAttachmentsRef.current.delete(firstKey);
+        }
+      }
+      sentAttachmentsRef.current.set(expanded, nonImageAttachments.map((attachment) => ({
+        fileName: attachment.fileName,
+        mediaType: attachment.mediaType,
+      })));
+    }
+
+    // Providers are a window-level setting; keep the host in sync before a send.
+    sendWindowCommand('settings.provider', { provider: currentProvider });
+
+    enqueueMessage({
+      content: expanded,
+      attachments: uploaded,
+      fileTags: resolvedFileTags.map((tag) => ({
+        displayPath: tag.displayPath,
+        absolutePath: tag.absolutePath,
+      })),
+      model: selectedModel ?? null,
+      permissionMode,
+      reasoningEffort,
+    });
+  }, [
+    enqueueMessage,
+    hookHandleSubmit,
+    forceCreateNewSession,
+    currentProvider,
+    selectedModel,
+    permissionMode,
+    reasoningEffort,
+    chatInputRef,
+    sentAttachmentsRef,
+    handleModeSelect,
+    setCurrentView,
+    addToast,
+    t,
+    handleBuiltinCommand,
+    consumeRevertBoundary,
+  ]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
@@ -1317,10 +1450,6 @@ const App = () => {
     setSessionLoading,
     revertBoundaryId,
     setRevertBoundaryId: handleSetRevertBoundaryId,
-    isCompacting,
-    setIsCompacting,
-    compactingStartTime,
-    setCompactingStartTime,
     taskEvents,
     setTaskEvents,
     sseTodos,
@@ -1493,7 +1622,10 @@ const App = () => {
               onToggleThinking={handleToggleThinking}
               onAutoOpenFileEnabledChange={setActiveTabAutoOpenFileEnabled}
               messageQueue={messageQueue}
+              queuePaused={queuePaused}
+              queueError={queueError}
               onRemoveFromQueue={dequeueMessage}
+              onResumeQueue={resumeQueue}
             />
           </div>
           {currentView === 'history' && (

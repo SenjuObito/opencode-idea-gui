@@ -6,7 +6,7 @@ import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
 import type { SessionTabData } from '../components/ChatHeader/types';
 import { sendHostCommand, sendInterrupt, cardDebugLog } from '../utils/bridge';
-import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
+import { removeQuestionAnswerByRequestId, markQuestionCancelled } from '../store/questionAnswerStore';
 import { getTabStore } from '../store/tabStore';
 import { owningTabIdForSession } from './windowCallbacks/tabTransition';
 
@@ -309,7 +309,12 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     cardDebugLog(`[QCard][webview] skip requestId=${requestId}`);
     const request = findPrompt<AskUserQuestionRequest>('pendingQuestions', 'requestId', requestId);
     if (!request) return;
+    markQuestionCancelled(request.requestId);
+    if (request.toolName) {
+      markQuestionCancelled(request.toolName);
+    }
     sendPromptReply('question.reply', request, { rejected: true });
+    sendInterrupt({ tabId: request.tabId ?? null, sessionId: request.sessionId ?? null });
     removePrompt('pendingQuestions', 'requestId', requestId);
   }, [findPrompt, removePrompt, sendPromptReply]);
 
@@ -317,6 +322,10 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     cardDebugLog(`[QCard][webview] timeout requestId=${requestId}`);
     const request = findPrompt<AskUserQuestionRequest>('pendingQuestions', 'requestId', requestId);
     if (!request) return;
+    markQuestionCancelled(request.requestId);
+    if (request.toolName) {
+      markQuestionCancelled(request.toolName);
+    }
     sendPromptReply('question.reply', request, { rejected: true });
     sendInterrupt({ tabId: request.tabId ?? null, sessionId: request.sessionId ?? null });
     removePrompt('pendingQuestions', 'requestId', requestId);
@@ -395,6 +404,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     cardDebugLog(`[QCard][webview] invalidateQuestionCard requestId=${requestId}`);
     if (requestId) {
       removeQuestionAnswerByRequestId(requestId);
+      markQuestionCancelled(requestId);
     }
     forceCloseAskUserQuestionDialog(requestId ?? '');
   }, [forceCloseAskUserQuestionDialog]);

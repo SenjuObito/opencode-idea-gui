@@ -512,6 +512,17 @@ public class PermissionHandler extends BaseMessageHandler {
     }
 
     /**
+     * Whether this tab has a permission, question or plan card waiting for an
+     * answer.
+     *
+     * <p>The queue pump must not send a queued prompt while a dialog is open:
+     * the server would place the prompt behind a card nobody answered.</p>
+     */
+    public boolean hasPendingPrompt(String tabId) {
+        return tabId != null && !tabId.isBlank() && !prompts.pendingForTab(tabId).isEmpty();
+    }
+
+    /**
      * Clear prompts owned by one session (or every session when {@code sessionId}
      * is null). Closing a tab must not resolve prompts that belong to another
      * tab, and an opencode prompt without a CompletableFuture still needs an
@@ -531,8 +542,8 @@ public class PermissionHandler extends BaseMessageHandler {
             if (!all && !filter.equals(owner)) {
                 continue;
             }
-            CompletableFuture<Integer> future = prompts.permissions.remove(channelId);
-            prompts.permissionSessions.remove(channelId);
+            CompletableFuture<Integer> future = prompts.permissions.get(channelId);
+            prompts.forget(channelId);
             if (future != null) {
                 future.complete(PermissionResponse.DENY.getValue());
             } else if (owner != null) {
@@ -549,7 +560,6 @@ public class PermissionHandler extends BaseMessageHandler {
             for (Map.Entry<String, CompletableFuture<Integer>> entry : prompts.permissions.entrySet()) {
                 entry.getValue().complete(PermissionResponse.DENY.getValue());
             }
-            prompts.permissions.clear();
         }
 
         for (String requestId : new java.util.ArrayList<>(prompts.askSessions.keySet())) {
@@ -557,9 +567,9 @@ public class PermissionHandler extends BaseMessageHandler {
             if (!all && !filter.equals(owner)) {
                 continue;
             }
-            CompletableFuture<JsonObject> future = prompts.askFutures.remove(requestId);
-            PromptBroker.PendingQuestion pending = prompts.questions.remove(requestId);
-            prompts.askSessions.remove(requestId);
+            CompletableFuture<JsonObject> future = prompts.askFutures.get(requestId);
+            PromptBroker.PendingQuestion pending = prompts.questions.get(requestId);
+            prompts.forget(requestId);
             if (future != null) {
                 future.complete(null);
             }
@@ -568,10 +578,10 @@ public class PermissionHandler extends BaseMessageHandler {
                 askUserCount++;
             }
         }
-        for (Map.Entry<String, PromptBroker.PendingQuestion> entry : prompts.questions.entrySet()) {
+        for (Map.Entry<String, PromptBroker.PendingQuestion> entry : new java.util.ArrayList<>(prompts.questions.entrySet())) {
             PromptBroker.PendingQuestion pending = entry.getValue();
             if (all || (pending.sessionId != null && pending.sessionId.equals(filter))) {
-                prompts.questions.remove(entry.getKey());
+                prompts.forget(entry.getKey());
                 forceCloseFrontendDialog("forceCloseAskUserQuestionDialog", entry.getKey());
                 askUserCount++;
             }
@@ -582,8 +592,8 @@ public class PermissionHandler extends BaseMessageHandler {
             if (!all && !filter.equals(owner)) {
                 continue;
             }
-            CompletableFuture<JsonObject> future = prompts.planFutures.remove(requestId);
-            prompts.planSessions.remove(requestId);
+            CompletableFuture<JsonObject> future = prompts.planFutures.get(requestId);
+            prompts.forget(requestId);
             if (future != null) {
                 JsonObject rejected = new JsonObject();
                 rejected.addProperty("approved", false);
@@ -600,13 +610,12 @@ public class PermissionHandler extends BaseMessageHandler {
                 rejected.addProperty("message", "Session changed");
                 entry.getValue().complete(rejected);
             }
-            prompts.planFutures.clear();
             if (prompts.askFutures.size() > 0) {
                 for (CompletableFuture<JsonObject> future : prompts.askFutures.values()) {
                     future.complete(null);
                 }
-                prompts.askFutures.clear();
             }
+            prompts.clear();
         }
 
         LOG.info("[PERM_CLEAR] Cleared: " + permissionCount + " permission, "
@@ -713,9 +722,8 @@ public class PermissionHandler extends BaseMessageHandler {
                     requestId = stringOrNull(payload, "id");
                 }
                 if (requestId != null && !requestId.isBlank()) {
-                    prompts.questions.remove(requestId);
-                    prompts.askSessions.remove(requestId);
-                    CompletableFuture<JsonObject> future = prompts.askFutures.remove(requestId);
+                    CompletableFuture<JsonObject> future = prompts.askFutures.get(requestId);
+                    prompts.forget(requestId);
                     if (future != null) {
                         future.complete(null);
                     }
@@ -730,8 +738,8 @@ public class PermissionHandler extends BaseMessageHandler {
                     requestId = stringOrNull(payload, "id");
                 }
                 if (requestId != null && !requestId.isBlank()) {
-                    prompts.planSessions.remove(requestId);
-                    CompletableFuture<JsonObject> future = prompts.planFutures.remove(requestId);
+                    CompletableFuture<JsonObject> future = prompts.planFutures.get(requestId);
+                    prompts.forget(requestId);
                     if (future != null) {
                         JsonObject rejected = new JsonObject();
                         rejected.addProperty("approved", false);
@@ -752,8 +760,8 @@ public class PermissionHandler extends BaseMessageHandler {
                     permissionId = stringOrNull(payload, "id");
                 }
                 if (permissionId != null && !permissionId.isBlank()) {
-                    prompts.permissionSessions.remove(permissionId);
-                    CompletableFuture<Integer> future = prompts.permissions.remove(permissionId);
+                    CompletableFuture<Integer> future = prompts.permissions.get(permissionId);
+                    prompts.forget(permissionId);
                     if (future != null) {
                         future.complete(PermissionResponse.DENY.getValue());
                     }
@@ -863,8 +871,9 @@ public class PermissionHandler extends BaseMessageHandler {
             boolean rejected = response.has("rejected") && !response.get("rejected").isJsonNull()
                     && response.get("rejected").getAsBoolean();
 
-            CompletableFuture<JsonObject> pendingFuture = prompts.askFutures.remove(requestId);
-            prompts.askSessions.remove(requestId);
+            CompletableFuture<JsonObject> pendingFuture = prompts.askFutures.get(requestId);
+            PromptBroker.PendingQuestion pending = prompts.questions.get(requestId);
+            prompts.forget(requestId);
 
             if (pendingFuture != null) {
                 LOG.debug("[ASK_USER_QUESTION][HANDLE_RESPONSE] Completing future with answerCount=" + answers.size());
@@ -872,7 +881,6 @@ public class PermissionHandler extends BaseMessageHandler {
                 return;
             }
 
-            PromptBroker.PendingQuestion pending = prompts.questions.remove(requestId);
             if (pending == null) {
                 LOG.warn("[ASK_USER_QUESTION][HANDLE_RESPONSE] No pending request found for requestId: " + requestId);
                 return;
@@ -881,7 +889,6 @@ public class PermissionHandler extends BaseMessageHandler {
             if (rejected) {
                 OpenCodeSDKBridge rejectBridge = context.getOpenCodeSDKBridge();
                 if (rejectBridge == null) {
-                    prompts.questions.put(requestId, pending);
                     callJavaScript("window.showToast", escapeJs("取消提问失败: bridge is not available"));
                     return;
                 }
@@ -895,7 +902,6 @@ public class PermissionHandler extends BaseMessageHandler {
                                 // and there is nothing to report. The card is
                                 // already closed and the turn is being stopped.
                                 LOG.warn("[OpenCode] rejectQuestion did not settle: id=" + requestId + " error=" + msg);
-                                prompts.questions.put(requestId, pending);
                                 forceCloseFrontendDialog("invalidateQuestionCard", requestId);
                             }
                         });
@@ -911,7 +917,6 @@ public class PermissionHandler extends BaseMessageHandler {
                             if (error != null || !Boolean.TRUE.equals(ok)) {
                                 String msg = error != null ? error.getMessage() : "daemon rejected";
                                 LOG.warn("[OpenCode] replyQuestion failed: id=" + requestId + " error=" + msg);
-                                prompts.questions.put(requestId, pending);
                                 callJavaScript("window.showToast", escapeJs("回答提交失败: " + msg));
                                 forceCloseFrontendDialog("invalidateQuestionCard", requestId);
                             } else {
@@ -1099,8 +1104,8 @@ public class PermissionHandler extends BaseMessageHandler {
             boolean approved = response.has("approved") && response.get("approved").getAsBoolean();
             String targetMode = response.has("targetMode") ? response.get("targetMode").getAsString() : "default";
 
-            CompletableFuture<JsonObject> pendingFuture = prompts.planFutures.remove(requestId);
-            prompts.planSessions.remove(requestId);
+            CompletableFuture<JsonObject> pendingFuture = prompts.planFutures.get(requestId);
+            prompts.forget(requestId);
 
             if (pendingFuture != null) {
                 JsonObject result = new JsonObject();

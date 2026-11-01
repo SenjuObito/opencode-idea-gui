@@ -1,4 +1,4 @@
-import { useState, useCallback, useSyncExternalStore, memo } from 'react';
+import { useState, useEffect, useCallback, useSyncExternalStore, memo } from 'react';
 import type { TFunction } from 'i18next';
 import type { OpencodeContentBlock, ToolResultBlock, CompactSummaryMetadata } from '../../types';
 
@@ -14,7 +14,7 @@ import {
 import type { EditToolItem } from '../toolBlocks/EditToolBlock';
 import { EDIT_TOOL_NAMES, BASH_TOOL_NAMES, TASK_MANAGE_TOOL_NAMES, AGENT_TOOL_NAMES, isToolName, isTransientInternalToolName, normalizeToolName } from '../../utils/toolConstants';
 import { TASK_STATUS_COLORS } from '../../utils/messageUtils';
-import { getQuestionAnswer, subscribe as subscribeQuestionAnswer, getSnapshot as getQuestionAnswerSnapshot } from '../../store/questionAnswerStore';
+import { getQuestionAnswer, isQuestionCancelled, subscribe as subscribeQuestionAnswer, getSnapshot as getQuestionAnswerSnapshot } from '../../store/questionAnswerStore';
 
 const IMAGE_BLOCK_STYLE: React.CSSProperties = { cursor: 'pointer' };
 
@@ -94,12 +94,14 @@ interface CompactSummaryBlockProps {
     title: string;
     content: string;
     metadata?: CompactSummaryMetadata;
+    compactStatus?: 'in_progress' | 'success' | 'failure';
+    startTime?: number;
   };
   t: TFunction;
 }
 
 /**
- * Compact summary block - collapsed by default, click/Enter/Space to expand.
+ * Compact summary block - in-progress spinning state, or collapsed success card with expand/collapse.
  * Memoized to prevent state reset on parent re-renders during streaming.
  * `block.title` is an i18n key resolved via t() at render time.
  */
@@ -112,6 +114,78 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
       setExpanded(prev => !prev);
     }
   }, []);
+
+  const isInProgress = block.compactStatus === 'in_progress';
+  const isFailure = block.compactStatus === 'failure';
+
+  const [dotCount, setDotCount] = useState(1);
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+    if (block.startTime) {
+      return Math.max(0, Math.floor((Date.now() - block.startTime) / 1000));
+    }
+    return 0;
+  });
+
+  useEffect(() => {
+    if (!isInProgress) return;
+    const timer = setInterval(() => {
+      setDotCount(prev => (prev % 3) + 1);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [isInProgress]);
+
+  useEffect(() => {
+    if (!isInProgress) return;
+    const timer = setInterval(() => {
+      if (block.startTime) {
+        setElapsedSeconds(Math.max(0, Math.floor((Date.now() - block.startTime) / 1000)));
+      } else {
+        setElapsedSeconds(prev => prev + 1);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isInProgress, block.startTime]);
+
+  const dots = '.'.repeat(dotCount);
+  const formatTime = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}m ${s}s`;
+  };
+
+  if (isInProgress) {
+    return (
+      <div className="compact-card-wrapper" style={{ flexDirection: 'column' }}>
+        <div className="compact-card compact-card--compacting">
+          <div className="compact-card__spinner-dual">
+            <div className="compact-card__spinner-outer" />
+            <div className="compact-card__spinner-inner" />
+          </div>
+          <span className="compact-card__text">
+            {t('chat.compactSummary.autoCompacting', '正在自动压缩会话上下文...')}
+            <span className="compact-card__dots">{dots}</span>
+          </span>
+          <span className="compact-card__time-badge">{formatTime(elapsedSeconds)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isFailure) {
+    return (
+      <div className="compact-card-wrapper" style={{ flexDirection: 'column' }}>
+        <div className="compact-card compact-card--compact-pill compact-card--failure">
+          <i className="codicon codicon-error compact-card__pill-icon" />
+          <span className="compact-card__pill-title">{t('chat.compactFailed')}</span>
+          {block.content && (
+            <span className="compact-card__pill-detail">{block.content}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const meta = block.metadata;
   const hasCountMeta = meta && typeof meta.messagesSummarized === 'number';
   const compactionStats = meta ? formatCompactionStats(meta) : null;
@@ -124,13 +198,13 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        aria-label={`${t('chat.compactSuccess')} — ${toggleLabel}`}
+        aria-label={`${t(block.title)} — ${toggleLabel}`}
         onClick={block.content ? toggleExpanded : undefined}
         onKeyDown={block.content ? onKeyDown : undefined}
         style={{ cursor: block.content ? 'pointer' : 'default' }}
       >
         <i className="codicon codicon-check compact-card__pill-icon" />
-        <span className="compact-card__pill-title">{t('chat.compactSuccess')}</span>
+        <span className="compact-card__pill-title">{t(block.title)}</span>
         {hasCountMeta && (
           <span className="compact-card__pill-detail">
             {`— ${t(
@@ -341,6 +415,8 @@ export function ContentBlockRenderer({
     if (toolName === 'askuserquestion' || toolName === 'question') {
       const blockId = block.id ?? '';
       const storedQA = getQuestionAnswer(blockId);
+      const isExplicitlyCancelled = (Boolean(blockId) && isQuestionCancelled(blockId))
+        || (Boolean(storedQA?.requestId) && isQuestionCancelled(storedQA?.requestId));
 
       // The converter injects a questionCard from the message snapshot, which
       // can be stale while the turn is still running. A live question.answered
@@ -357,12 +433,17 @@ export function ContentBlockRenderer({
         const hasLiveAnswer = Boolean(
           storedQA && Object.keys(storedQA.answers).length > 0,
         );
+        const resolvedStatus = isExplicitlyCancelled
+          ? 'cancelled'
+          : hasLiveAnswer
+            ? 'answered'
+            : status;
         return (
           <QuestionAnswerSummary
             questions={questions as QuestionSummaryItem[]}
             answer={null}
             answers={mergedAnswers}
-            status={hasLiveAnswer ? 'answered' : status}
+            status={resolvedStatus}
             t={t}
           />
         );
@@ -414,7 +495,8 @@ export function ContentBlockRenderer({
                   .join('\n')
               : '')
         : '';
-      const isCancelled = answerBlock?.is_error === true
+      const isCancelled = isExplicitlyCancelled
+        || answerBlock?.is_error === true
         || answerBlockText.includes('question rejected');
       // Count real answer pairs. storedQA (from the host's onQuestionAnswered
       // callback) is the structured source of truth and wins over the parser;

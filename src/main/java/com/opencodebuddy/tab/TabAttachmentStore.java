@@ -200,6 +200,26 @@ public final class TabAttachmentStore {
         }
     }
 
+    /**
+     * Drop exactly one delivered attachment and its file.
+     *
+     * <p>The send path releases only the bytes it just delivered. The tab may
+     * still own attachments of queued items, so releasing the whole store after
+     * a send would silently drop those queued attachments.</p>
+     *
+     * @return {@code true} when something was released
+     */
+    public boolean release(String attachmentId) {
+        if (attachmentId == null || attachmentId.isBlank()) {
+            return false;
+        }
+        if (!staged.containsKey(attachmentId)) {
+            return false;
+        }
+        abort(attachmentId);
+        return true;
+    }
+
     /** The staged attachment, or {@code null}. */
     public Staged get(String attachmentId) {
         return staged.get(attachmentId);

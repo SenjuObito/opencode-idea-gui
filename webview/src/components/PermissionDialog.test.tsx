@@ -124,6 +124,18 @@ describe('PermissionDialog', () => {
     expect(document.querySelector('.warning-mode')).toBeTruthy();
   });
 
+  it('applies time-warning to the dialog itself so its border pulses', () => {
+    countdown.state = { remainingSeconds: 10, isTimeWarning: true };
+    renderDialog(mkRequest());
+    expect(document.querySelector('.permission-dialog-v3.time-warning')).toBeTruthy();
+  });
+
+  it('does not apply warning classes outside the warning window', () => {
+    renderDialog(mkRequest());
+    expect(document.querySelector('.warning-mode')).toBeFalsy();
+    expect(document.querySelector('.permission-dialog-v3.time-warning')).toBeFalsy();
+  });
+
   it('timeout invokes onTimeout for the active request when provided', () => {
     const onTimeout = vi.fn();
     const { onSkip } = renderDialog(mkRequest(), undefined, onTimeout);

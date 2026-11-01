@@ -27,6 +27,7 @@
     "optional": "Необязательно"
   },
   "chat": {
+    "renameSession": "Переименовать",
     "sendMessage": "Отправить сообщение в {{provider}}",
     "createNewSession": "Начать новый чат",
     "confirmInterrupt": "Идёт диалог. Новый чат прервёт его. Продолжить?",
@@ -114,8 +115,9 @@
     "attachmentsUploaded": "[Вложения загружены]",
     "streamingConnected": "{{provider}} обрабатывает запрос",
     "showEarlierMessages": "Показать предыдущие сообщения ({{count}})",
-    "showEarlierTurns": "Показать предыдущие ходы: {{count}} (загружено, осталось: {{remaining}})",
-    "loadEarlierTurns": "Загрузить с диска предыдущие ходы: {{count}} (осталось {{remaining}} из {{total}})",
+    "showEarlierTurns": "Показать предыдущие ходы: {{count}} (осталось {{remaining}})",
+
+    "showEarlierConversation": "Показать предыдущую переписку",
     "loadEarlierMessages": "Загрузить предыдущие сообщения: {{count}} (осталось {{remaining}} из {{total}})",
     "loadingEarlierTurns": "Загрузка предыдущих ходов",
     "totalDuration": "Этот ответ занял",
@@ -168,7 +170,8 @@
     "shareLinkCreated": "Ссылка создана",
     "retryCopy": "Копировать снова",
     "subagentsSection": "Субагенты",
-    "filesSection": "Файлы"
+    "filesSection": "Файлы",
+    "filesEmpty": "Подходящие файлы не найдены"
   },
   "settings": {
     "title": "Настройки",

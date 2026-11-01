@@ -100,7 +100,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 DELTA_THROTTLE_MS,
                 delta -> {
                     if (!isInactive()) {
-                        if (!hasIdentity()) {
+                        if (!hasRoute()) {
                             warnUnattributedOnce("content delta");
                             return;
                         }
@@ -112,7 +112,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 DELTA_THROTTLE_MS,
                 delta -> {
                     if (!isInactive()) {
-                        if (!hasIdentity()) {
+                        if (!hasRoute()) {
                             warnUnattributedOnce("thinking delta");
                             return;
                         }
@@ -196,6 +196,21 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
      */
     private boolean hasIdentity() {
         return sessionId != null && !sessionId.isBlank();
+    }
+
+    /**
+     * Whether this adapter can place its output somewhere.
+     *
+     * <p>The session id is the precise address; the tab id is the durable one.
+     * Before the daemon reports the session id, the tab that owns the
+     * conversation is already known, and an event stamped with it reaches
+     * exactly that tab. Only an adapter that knows neither is un-attributable
+     * — dropping output in that case is still the only behaviour that cannot
+     * mis-route, but dropping a tab-addressed event threw away data that had a
+     * perfectly good destination.</p>
+     */
+    private boolean hasRoute() {
+        return hasIdentity() || (tabId != null && !tabId.isBlank());
     }
 
     private void warnUnattributedOnce(String what) {
@@ -442,7 +457,7 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         thinkingDeltaThrottler.reset();
         streamCoalescer.onStreamStart();
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive() || !hasIdentity()) {
+            if (isInactive() || !hasRoute()) {
                 if (!isInactive()) {
                     warnUnattributedOnce("stream start");
                 }
@@ -520,10 +535,10 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
             LOG.debug("Skipping sendStreamEndToFrontend — adapter deactivated (sequence=" + sequence + ")");
             return;
         }
-        if (!hasIdentity()) {
-            // Never emit a blank-id terminal: the frontend reads that as "the
-            // active tab", which is how stopping one session cleared another's
-            // spinner — or left this one spinning forever.
+        if (!hasRoute()) {
+            // Never emit an un-addressed terminal: without a tab or a session
+            // the frontend cannot tell which spinner to clear, and guessing the
+            // active tab is how stopping one session cleared another's spinner.
             warnUnattributedOnce("onStreamEnd");
             return;
         }
@@ -615,12 +630,12 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
         if (isInactive()) {
             return;
         }
-        if (!hasIdentity()) {
+        if (!hasRoute()) {
             warnUnattributedOnce("usage update");
             return;
         }
         ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive() || !hasIdentity()) {
+            if (isInactive() || !hasRoute()) {
                 return;
             }
             int safeUsedTokens = normalizeUsageValue(usedTokens);
@@ -787,6 +802,111 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
                 return;
             }
             publish("message.removed", getTargetSessionId(), b -> b.json("removed", jsonStr));
+        });
+    }
+
+    /**
+     * One older history page was prepended to this session's transcript.
+     *
+     * <p>Named event: the transcript belongs to a tab, so there is no
+     * window-level meaning. The payload is the same message array a snapshot
+     * carries, and the webview prepends it by message identity (the page and
+     * the transcript overlap at the boundary).</p>
+     */
+    @Override
+    public void onMessagesPrepended(String messagesJson) {
+        if (isInactive() || messagesJson == null || messagesJson.isBlank()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            publish("message.prepended", getTargetSessionId(), b -> b.json("messages", messagesJson));
+        });
+    }
+
+    /** This tab's transcript paging window ({@code history.window}). */
+    @Override
+    public void onHistoryWindow(String json) {
+        if (isInactive() || json == null || json.isBlank()) {
+            return;
+        }
+        com.google.gson.JsonObject snapshot;
+        try {
+            snapshot = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+        } catch (RuntimeException e) {
+            LOG.warn("Ignoring malformed history window payload: " + e.getMessage());
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            publish("history.window", getTargetSessionId(), b -> {
+                for (java.util.Map.Entry<String, com.google.gson.JsonElement> entry : snapshot.entrySet()) {
+                    b.field(entry.getKey(), entry.getValue());
+                }
+                return b;
+            });
+        });
+    }
+
+    @Override
+    public void onCompactionStarted(String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            publish("session.compact.started", getTargetSessionId(), b -> b
+                    .json("data", jsonContent)
+                    .field("source", "engine"));
+        });
+    }
+
+    /**
+     * Compaction summary deltas are intentionally not forwarded.
+     *
+     * <p>The transcript shows one indicator while the engine works and a
+     * notice when it settles; streaming the summary into the view produced a
+     * second, synthetic bubble that duplicated the indicator. The finished
+     * summary still arrives with {@code session.compact.done}.</p>
+     */
+    @Override
+    public void onCompactionDelta(String jsonContent) {
+        // no-op on purpose: see the javadoc above.
+    }
+
+    @Override
+    public void onCompactionEnded(String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            publish("session.compact.done", getTargetSessionId(), b -> b
+                    .json("data", jsonContent)
+                    .field("source", "engine"));
+        });
+    }
+
+    @Override
+    public void onCompactionFailed(String jsonContent) {
+        if (isInactive() || jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            publish("session.compact.failed", getTargetSessionId(), b -> b
+                    .json("data", jsonContent)
+                    .field("source", "engine"));
         });
     }
 

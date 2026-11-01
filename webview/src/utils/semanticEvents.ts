@@ -37,6 +37,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   'message.snapshot': 'updateMessages',
   'message.tail': 'updateMessageTail',
   'message.prepended': 'updateMessagesPrepend',
+  'history.window': 'onHistoryWindowInfo',
   'message.added': 'addUserMessage',
   'message.history': 'addHistoryMessage',
   'message.removed': 'onMessagesRemoved',
@@ -51,6 +52,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
 
   // ── tab & settings ─────────────────────────────────────────────────
   'tab.title.changed': 'updateSessionTitle',
+  'tab.queue.changed': 'onTabQueueChanged',
   'settings.mode': 'onModeChanged',
 
   // ── prompts ────────────────────────────────────────────────────────
@@ -87,6 +89,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   'commands.saved': 'onCommandsSaved',
   'session.compact.failed': 'onCompactError',
   'session.compact.done': 'onCompactSuccess',
+  'session.compact.started': 'onCompactStarted',
   'context.usage.error': 'onContextUsageError',
   'clipboard.copied': 'onCopyToClipboardResult',
   'font.editor.received': 'onEditorFontConfigReceived',

@@ -79,8 +79,76 @@ export const preserveMessageIdentity = (
 };
 
 /**
- * If the previous list ended with an optimistic user message that has not yet
- * been matched by a backend message, keep it appended to nextList.
+ * The newest optimistic user message whose turn the backend has not echoed
+ * yet, or `undefined`.
+ *
+ * <p>The bubble is not necessarily the last row of the list any more:
+ * `turn.started` appends an empty streaming assistant directly below it, and a
+ * snapshot can deliver that placeholder as its last row. Scanning back stops at
+ * the first non-optimistic user message — that row closes the previous turn, so
+ * nothing above it can still be pending. Assistant, tool and error rows in
+ * between are skipped.</p>
+ */
+export const findTrailingOptimisticUserMessage = (
+  list: ClaudeMessage[],
+): ClaudeMessage | undefined => {
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const candidate = list[i];
+    if (!candidate || candidate.type !== 'user') continue;
+    return candidate.isOptimistic ? candidate : undefined;
+  }
+  return undefined;
+};
+
+/** Insert `msg` at `index` without mutating the source list. */
+const insertAt = (
+  list: ClaudeMessage[],
+  index: number,
+  msg: ClaudeMessage,
+): ClaudeMessage[] => {
+  const copy = [...list];
+  copy.splice(index, 0, msg);
+  return copy;
+};
+
+/**
+ * Where an unmatched optimistic bubble belongs inside `nextList`.
+ *
+ * <p>Prefer the slot above this turn's assistant (matched by `__turnId`, which
+ * only the live turn carries): the user row belongs directly above its answer.
+ * Otherwise sit above a trailing streaming assistant, and only then append.
+ * The previous "append at the very end" left the user row *below* the answer
+ * bubble whenever the snapshot already carried the placeholder.</p>
+ */
+const insertOptimisticMessage = (
+  optimisticMsg: ClaudeMessage,
+  prevList: ClaudeMessage[],
+  nextList: ClaudeMessage[],
+): ClaudeMessage[] => {
+  const optimisticIndex = prevList.lastIndexOf(optimisticMsg);
+  if (optimisticIndex >= 0) {
+    for (let i = optimisticIndex + 1; i < prevList.length; i += 1) {
+      const msg = prevList[i];
+      if (msg?.type === 'assistant' && typeof msg.__turnId === 'number' && msg.__turnId > 0) {
+        const anchor = nextList.findIndex(
+          (m) => m.type === 'assistant' && m.__turnId === msg.__turnId,
+        );
+        if (anchor >= 0) return insertAt(nextList, anchor, optimisticMsg);
+        break;
+      }
+    }
+  }
+  const lastIdx = nextList.length - 1;
+  const lastMsg = nextList[lastIdx];
+  if (lastMsg?.type === 'assistant' && lastMsg.isStreaming) {
+    return insertAt(nextList, lastIdx, optimisticMsg);
+  }
+  return [...nextList, optimisticMsg];
+};
+
+/**
+ * If the previous list holds an optimistic user message that has not yet been
+ * matched by a backend message, keep it in nextList.
  * Also merges attachment blocks from the optimistic message into the matched
  * backend message so non-image file attachments remain visible.
  */
@@ -88,10 +156,9 @@ export const appendOptimisticMessageIfMissing = (
   prevList: ClaudeMessage[],
   nextList: ClaudeMessage[],
 ): ClaudeMessage[] => {
-  const lastPrev = prevList[prevList.length - 1];
-  if (!lastPrev?.isOptimistic) return nextList;
+  const optimisticMsg = findTrailingOptimisticUserMessage(prevList);
+  if (!optimisticMsg) return nextList;
 
-  const optimisticMsg = lastPrev;
   const optimisticText = getUserMessageComparableContent(optimisticMsg);
   const optimisticTime = getMessageTimestampMs(optimisticMsg) ?? Number.NaN;
 
@@ -164,16 +231,7 @@ export const appendOptimisticMessageIfMissing = (
         return nextList;
       }
     }
-    const lastIdx = nextList.length - 1;
-    if (lastIdx >= 0 && nextList[lastIdx].type === 'assistant') {
-      const lastMsg = nextList[lastIdx];
-      if (lastMsg.isStreaming || (typeof lastMsg.__turnId === 'number' && lastMsg.__turnId > 0)) {
-        const copy = [...nextList];
-        copy.splice(lastIdx, 0, optimisticMsg);
-        return copy;
-      }
-    }
-    return [...nextList, optimisticMsg];
+    return insertOptimisticMessage(optimisticMsg, prevList, nextList);
   }
 
   // Backend message matched the optimistic message.  Preserve attachment blocks
@@ -639,8 +697,16 @@ export const preserveLatestMessagesOnShrink = (
   nextList: ClaudeMessage[],
   provider: string,
 ): ClaudeMessage[] => {
+  // A shorter snapshot can keep the streaming placeholder while dropping the
+  // optimistic user row directly above it, so the index-based tail arithmetic
+  // below never sees that bubble. Re-attach it by content; this is idempotent —
+  // a snapshot that already carries the row (or a matching backend copy) is
+  // returned unchanged.
+  const withOptimistic = (list: ClaudeMessage[]): ClaudeMessage[] =>
+    appendOptimisticMessageIfMissing(prevList, list);
+
   // Always check for shrink regardless of provider
-  if (nextList.length >= prevList.length) return nextList;
+  if (nextList.length >= prevList.length) return withOptimistic(nextList);
   if (prevList.length === 0) return nextList;
   if (nextList.length === 0) {
     if (typeof window !== 'undefined' && (window as any).__hasActiveRevert) {
@@ -660,7 +726,7 @@ export const preserveLatestMessagesOnShrink = (
   }
 
   const preservedTail = prevList.slice(nextList.length);
-  if (preservedTail.length === 0) return nextList;
+  if (preservedTail.length === 0) return withOptimistic(nextList);
 
   // Check if the preserved tail contains streaming/recent assistant messages
   const hasStreamingTail = preservedTail.some((msg) => msg.type === 'assistant' && (msg.isStreaming || !!msg.__turnId));
@@ -682,7 +748,7 @@ export const preserveLatestMessagesOnShrink = (
   // Codex: always preserve shrink tail (handles compaction/summarization)
   // Other providers: only preserve if tail contains streaming/recent messages
   if (provider !== 'codex' && !hasStreamingTail && !hasUserTail && !hasTerminalErrorTail) {
-    return nextList;
+    return withOptimistic(nextList);
   }
 
   // FIX: Filter out messages from preservedTail that nextList already contains,
@@ -748,8 +814,8 @@ export const preserveLatestMessagesOnShrink = (
     return true;
   });
 
-  if (filteredTail.length === 0) return nextList;
-  return [...nextList, ...filteredTail];
+  if (filteredTail.length === 0) return withOptimistic(nextList);
+  return withOptimistic([...nextList, ...filteredTail]);
 };
 
 // ---------------------------------------------------------------------------

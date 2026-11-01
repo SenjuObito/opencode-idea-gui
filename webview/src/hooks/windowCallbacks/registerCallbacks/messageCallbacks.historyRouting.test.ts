@@ -38,7 +38,9 @@ interface FakeTab {
 const storedTab = (id: string) => getTabStore().findById(id)!;
 
 function createHarness(activeSessionId: string) {
-  let messages: ClaudeMessage[] = [];
+  // The view starts from the active tab's transcript: that is what the store
+  // projects into the component on mount.
+  let messages: ClaudeMessage[] = getTabStore().getActiveTabMessages();
   const setMessages = vi.fn((updater: ClaudeMessage[] | ((prev: ClaudeMessage[]) => ClaudeMessage[])) => {
     messages = typeof updater === 'function' ? updater(messages) : updater;
   });
@@ -343,5 +345,102 @@ describe('deferred snapshot routing', () => {
     expect(storedTab('tab-fg').messages).toHaveLength(2);
     expect(storedTab('tab-fg').messages![0].content).toBe('history question');
     expect(storedTab('tab-bg').messages).toEqual([]);
+  });
+});
+
+describe('first frame of a new tab — tab-addressed before the session exists', () => {
+  beforeEach(() => {
+    resetTabStore();
+    endTransition('tab-fg');
+    delete (window as unknown as Record<string, unknown>).__pendingUpdateJson;
+    delete (window as unknown as Record<string, unknown>).__pendingUpdateSequence;
+  });
+
+  afterEach(() => {
+    resetTabStore();
+    delete (window as unknown as Record<string, unknown>).__pendingUpdateJson;
+  });
+
+  it('routes a frame that has only a tab id to that tab', () => {
+    // The host pushes the first snapshot before the daemon reports the session
+    // id. The tab is already known, so the frame has an exact destination.
+    const h = createHarness('ses_fg');
+    seedTabStore([
+      { id: 'tab-fg', sessionId: 'ses_fg', messages: [{ type: 'user', content: 'fg' }] },
+      { id: 'tab-new', sessionId: null, messages: [] },
+    ], 'tab-fg');
+
+    hostEventHandler('message.snapshot')!(
+      ...snapshotEvent(null, JSON.stringify(historySnapshot()), '41', undefined, 'tab-new'),
+    );
+
+    expect(h.setMessages).not.toHaveBeenCalled();
+    expect(storedTab('tab-new').messages).toHaveLength(2);
+    expect(storedTab('tab-fg').messages).toEqual([{ type: 'user', content: 'fg' }]);
+  });
+
+  it('keeps the optimistic first message when the snapshot has no user row', () => {
+    const optimistic: ClaudeMessage = {
+      type: 'user',
+      content: '第一条消息',
+      isOptimistic: true,
+      timestamp: new Date().toISOString(),
+    };
+    const placeholder: ClaudeMessage = {
+      type: 'assistant',
+      content: '',
+      isStreaming: true,
+      __turnId: 1,
+      timestamp: new Date().toISOString(),
+    };
+    seedTabStore([{ id: 'tab-new', sessionId: null, messages: [optimistic, placeholder] }], 'tab-new');
+    const h = createHarness(null as unknown as string);
+    h.options.isStreamingRef.current = true;
+    h.options.useBackendStreamingRenderRef.current = true;
+    h.options.streamingTurnIdRef.current = 1;
+
+    hostEventHandler('message.snapshot')!(
+      ...snapshotEvent(
+        null,
+        JSON.stringify([{ type: 'assistant', content: '', __turnId: 1, timestamp: new Date().toISOString() }]),
+        '42',
+        undefined,
+        'tab-new',
+      ),
+    );
+    act(() => {
+      (window as unknown as { __flushPendingUpdateMessages?: (sessionId?: string | null) => void })
+        .__flushPendingUpdateMessages?.(null);
+    });
+
+    const list = h.getMessages();
+    expect(list[0]).toMatchObject({
+      type: 'user',
+      content: '第一条消息',
+      isOptimistic: true,
+    });
+  });
+
+  it('writes a tab-addressed background snapshot without the session id', () => {
+    // A background tab that has not been bound yet must still absorb its own
+    // frame: routing by session alone would have dropped it.
+    const optimistic: ClaudeMessage = {
+      type: 'user',
+      content: '后台第一条',
+      isOptimistic: true,
+      timestamp: new Date().toISOString(),
+    };
+    const h = createHarness('ses_fg');
+    seedTabStore([
+      { id: 'tab-fg', sessionId: 'ses_fg', messages: [] },
+      { id: 'tab-new', sessionId: null, messages: [optimistic] },
+    ], 'tab-fg');
+
+    hostEventHandler('message.snapshot')!(
+      ...snapshotEvent(null, '[]', '43', undefined, 'tab-new'),
+    );
+
+    expect(h.setMessages).not.toHaveBeenCalled();
+    expect(storedTab('tab-new').messages).toEqual([optimistic]);
   });
 });

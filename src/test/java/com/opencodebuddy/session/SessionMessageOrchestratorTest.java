@@ -3,14 +3,19 @@ package com.opencodebuddy.session;
 import com.opencodebuddy.permission.PermissionRequest;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -126,6 +131,122 @@ public class SessionMessageOrchestratorTest {
         assertEquals("The stack trace points to SessionSendService.", state.getMessages().get(1).content);
         assertEquals(1, callback.messageUpdates.size());
         assertTrue(callback.stateChanges.contains("false:false:null"));
+    }
+
+    @Test
+    public void loadFromServerAppliesTheNewestPageAsTheHistoryWindow() {
+        SessionState state = new SessionState();
+        state.setProvider("opencode");
+        state.setSessionId("session-window");
+        state.setCwd("/workspace");
+
+        RecordingCallback callback = new RecordingCallback();
+        SessionCallbackFacade callbackFacade = new SessionCallbackFacade(null);
+        callbackFacade.setCallback(callback);
+
+        PagedHistoryAccess historyAccess = new PagedHistoryAccess();
+        historyAccess.pages.put(null, new SessionProviderRouter.MessagePage(
+                List.of(
+                        createProviderMessage("user", "Newest question"),
+                        createProviderMessage("assistant", "Newest answer")),
+                "older-cursor",
+                true));
+
+        SessionMessageOrchestrator orchestrator = new SessionMessageOrchestrator(
+                state,
+                new MessageParser(),
+                callbackFacade,
+                historyAccess,
+                (usedTokens, maxTokens) -> {
+                },
+                0,
+                0
+        );
+
+        orchestrator.loadFromServer().join();
+
+        // 首屏只要最新一页，但这一页就是窗口：游标 + 已加载轮数必须推送。
+        assertEquals(2, state.getMessages().size());
+        assertEquals(1, historyAccess.transcriptPageRequests.get());
+        assertEquals(1, historyAccess.requestedCursors.size());
+        assertNull(historyAccess.requestedCursors.get(0));
+
+        JsonObject window = lastHistoryWindow(callback);
+        assertNotNull(window);
+        assertEquals("session-window", window.get("sessionId").getAsString());
+        assertTrue(window.get("hasEarlier").getAsBoolean());
+        assertEquals(2, window.get("loadedCount").getAsInt());
+        assertEquals(1, window.get("loadedTurns").getAsInt());
+        assertEquals(SessionProviderRouter.FIRST_PAGE_SIZE, window.get("pageSize").getAsInt());
+    }
+
+    @Test
+    public void loadEarlierPagePrependsToTheHeadAndAdvancesTheWindow() {
+        SessionState state = new SessionState();
+        state.setProvider("opencode");
+        state.setSessionId("session-earlier");
+        state.setCwd("/workspace");
+
+        RecordingCallback callback = new RecordingCallback();
+        SessionCallbackFacade callbackFacade = new SessionCallbackFacade(null);
+        callbackFacade.setCallback(callback);
+
+        PagedHistoryAccess historyAccess = new PagedHistoryAccess();
+        historyAccess.pages.put(null, new SessionProviderRouter.MessagePage(
+                List.of(
+                        createProviderMessage("user", "Newest question"),
+                        createProviderMessage("assistant", "Newest answer")),
+                "older-cursor",
+                true));
+        historyAccess.pages.put("older-cursor", new SessionProviderRouter.MessagePage(
+                List.of(
+                        createProviderMessage("user", "Older question"),
+                        createProviderMessage("assistant", "Older answer")),
+                null,
+                false));
+
+        SessionMessageOrchestrator orchestrator = new SessionMessageOrchestrator(
+                state,
+                new MessageParser(),
+                callbackFacade,
+                historyAccess,
+                (usedTokens, maxTokens) -> {
+                },
+                0,
+                0
+        );
+
+        orchestrator.loadFromServer().join();
+        orchestrator.loadEarlierPage().join();
+
+        assertEquals(4, state.getMessages().size());
+        assertEquals("Older question", state.getMessages().get(0).content);
+        assertEquals("Newest question", state.getMessages().get(2).content);
+
+        assertEquals(1, callback.prependedPages.size());
+        JsonArray prepended = JsonParser.parseString(callback.prependedPages.get(0)).getAsJsonArray();
+        assertEquals(2, prepended.size());
+        assertEquals("Older question",
+                prepended.get(0).getAsJsonObject().get("content").getAsString());
+
+        JsonObject window = lastHistoryWindow(callback);
+        assertNotNull(window);
+        assertFalse(window.get("hasEarlier").getAsBoolean());
+        assertEquals(4, window.get("loadedCount").getAsInt());
+        assertEquals(2, window.get("loadedTurns").getAsInt());
+
+        // 再点一次没有更早的页：不得发出第二个请求，也不得再前插。
+        orchestrator.loadEarlierPage().join();
+        assertEquals(2, historyAccess.transcriptPageRequests.get());
+        assertEquals(1, callback.prependedPages.size());
+    }
+
+    private static JsonObject lastHistoryWindow(RecordingCallback callback) {
+        if (callback.historyWindows.isEmpty()) {
+            return null;
+        }
+        return JsonParser.parseString(
+                callback.historyWindows.get(callback.historyWindows.size() - 1)).getAsJsonObject();
     }
 
     /**
@@ -638,10 +759,62 @@ public class SessionMessageOrchestratorTest {
             return providerHistory;
         }
 
+        /**
+         * Transcript pages come from {@link #providerHistory}; the user-turn
+         * count is an empty page, i.e. "the whole session fits in one page".
+         * The counter only tracks transcript reads, so a test asserts on what
+         * the tab actually renders rather than on bookkeeping round-trips.
+         */
+        @Override
+        public SessionProviderRouter.MessagePage getProviderSessionMessagePage(
+                String provider, String sessionId, String cwd,
+                int limit, String cursor, String type, String order) {
+            if ("user".equals(type)) {
+                return new SessionProviderRouter.MessagePage(List.of(), null, false);
+            }
+            providerHistoryRequests.incrementAndGet();
+            return new SessionProviderRouter.MessagePage(providerHistory, null, false);
+        }
+
         @Override
         public JsonObject getLatestClaudeUserMessage(String sessionId, String cwd) {
             latestClaudeUserMessageRequests.incrementAndGet();
             return latestClaudeUserMessage;
+        }
+    }
+
+    /**
+     * A transcript split into pages keyed by the cursor that precedes them
+     * ({@code null} = newest page). The user-turn count is answered with an
+     * empty page, i.e. "the whole session fits in one page".
+     */
+    private static final class PagedHistoryAccess implements SessionMessageOrchestrator.SessionHistoryAccess {
+        private final Map<String, SessionProviderRouter.MessagePage> pages = new HashMap<>();
+        private final List<String> requestedCursors = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicInteger transcriptPageRequests = new AtomicInteger();
+
+        @Override
+        public List<JsonObject> getProviderSessionMessages(String provider, String sessionId, String cwd) {
+            SessionProviderRouter.MessagePage page = pages.get(null);
+            return page != null ? page.messages() : List.of();
+        }
+
+        @Override
+        public SessionProviderRouter.MessagePage getProviderSessionMessagePage(
+                String provider, String sessionId, String cwd,
+                int limit, String cursor, String type, String order) {
+            if ("user".equals(type)) {
+                return new SessionProviderRouter.MessagePage(List.of(), null, false);
+            }
+            transcriptPageRequests.incrementAndGet();
+            requestedCursors.add(cursor);
+            SessionProviderRouter.MessagePage page = pages.get(cursor);
+            return page != null ? page : new SessionProviderRouter.MessagePage(List.of(), null, false);
+        }
+
+        @Override
+        public JsonObject getLatestClaudeUserMessage(String sessionId, String cwd) {
+            return null;
         }
     }
 
@@ -650,6 +823,8 @@ public class SessionMessageOrchestratorTest {
         private final List<String> stateChanges = new ArrayList<>();
         private final List<String> messageUuidPatches = new ArrayList<>();
         private final List<String> usageUpdates = new ArrayList<>();
+        private final List<String> historyWindows = new ArrayList<>();
+        private final List<String> prependedPages = new ArrayList<>();
 
         @Override
         public void onMessageUpdate(List<OpencodeSession.Message> messages) {
@@ -693,6 +868,16 @@ public class SessionMessageOrchestratorTest {
 
         @Override
         public void onSummaryReceived(String summary) {
+        }
+
+        @Override
+        public void onHistoryWindow(String json) {
+            historyWindows.add(json);
+        }
+
+        @Override
+        public void onMessagesPrepended(String messagesJson) {
+            prependedPages.add(messagesJson);
         }
     }
 }

@@ -83,7 +83,7 @@ public final class TabSessionCommandHandler {
         HandlerContext context = context();
         String sourceTabId = command.tabId().value();
         if (context == null) {
-            publishForkFailure(null, sourceTabId, null, "the window is not ready");
+            publishForkFailure(null, sourceTabId, null, "the window is not ready", command.requestId());
             return;
         }
 
@@ -95,25 +95,25 @@ public final class TabSessionCommandHandler {
 
         String targetTabId = command.string("targetTabId");
         if (targetTabId == null || targetTabId.isBlank()) {
-            publishForkFailure(context, sourceTabId, null, "the fork must name its target tab");
+            publishForkFailure(context, sourceTabId, null, "the fork must name its target tab", command.requestId());
             return;
         }
 
         OpencodeSession source = context.getSessionForTab(sourceTabId);
         String sourceSessionId = source != null ? source.getSessionId() : null;
         if (source == null || isBlank(sourceSessionId)) {
-            publishForkFailure(context, sourceTabId, sourceSessionId, "the source tab has no session to fork");
+            publishForkFailure(context, sourceTabId, sourceSessionId, "the source tab has no session to fork", command.requestId());
             return;
         }
 
         String messageId = command.string("messageId");
         if (!isBlank(messageId)) {
             withMessageId(context, sourceSessionId, messageId, "fork",
-                    resolvedId -> requestFork(context, sourceSessionId, resolvedId, sourceTabId, targetTabId),
-                    error -> publishForkFailure(context, sourceTabId, sourceSessionId, error));
+                    resolvedId -> requestFork(context, sourceSessionId, resolvedId, sourceTabId, targetTabId, command.requestId()),
+                    error -> publishForkFailure(context, sourceTabId, sourceSessionId, error, command.requestId()));
             return;
         }
-        requestFork(context, sourceSessionId, null, sourceTabId, targetTabId);
+        requestFork(context, sourceSessionId, null, sourceTabId, targetTabId, command.requestId());
     }
 
     private void requestFork(
@@ -121,7 +121,8 @@ public final class TabSessionCommandHandler {
             String sourceSessionId,
             String messageId,
             String sourceTabId,
-            String targetTabId
+            String targetTabId,
+            String requestId
     ) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sourceSessionId);
@@ -134,20 +135,20 @@ public final class TabSessionCommandHandler {
             @Override
             public void onError(String error) {
                 LOG.error("[fork] Failed to fork session: " + error);
-                publishForkFailure(context, sourceTabId, sourceSessionId, error);
+                publishForkFailure(context, sourceTabId, sourceSessionId, error, requestId);
             }
 
             @Override
             public void onComplete(boolean success, List<String> chunks) {
                 if (!success) {
                     LOG.error("[fork] Fork session failed (success=false)");
-                    publishForkFailure(context, sourceTabId, sourceSessionId, "");
+                    publishForkFailure(context, sourceTabId, sourceSessionId, "", requestId);
                     return;
                 }
                 String newSessionId = extractStringField(chunks, "newSessionId");
                 LOG.info("[fork] newSessionId=\"" + newSessionId + "\"");
                 if (newSessionId.isBlank()) {
-                    publishForkFailure(context, sourceTabId, sourceSessionId, "");
+                    publishForkFailure(context, sourceTabId, sourceSessionId, "", requestId);
                     return;
                 }
                 registerForkedSession(context, newSessionId);
@@ -158,6 +159,7 @@ public final class TabSessionCommandHandler {
                         .field("args", List.of(targetTabId, newSessionId, sourceTabId, sourceSessionId != null ? sourceSessionId : ""))
                         .field("sourceTabId", sourceTabId)
                         .field("sourceSessionId", sourceSessionId != null ? sourceSessionId : "")
+                        .field("requestId", requestId)
                         .build());
             }
         });
@@ -167,15 +169,19 @@ public final class TabSessionCommandHandler {
             HandlerContext context,
             String sourceTabId,
             String sourceSessionId,
-            String error
+            String error,
+            String requestId
     ) {
         if (context == null) {
             return;
         }
+        String text = error != null ? error : "";
         context.publishEvent(TabEvent.of("session.fork.failed")
                 .session(sourceSessionId)
                 .tab(sourceTabId)
-                .field("data", error != null ? error : "")
+                .field("args", List.of(text))
+                .field("data", text)
+                .field("requestId", requestId)
                 .build());
     }
 
@@ -194,31 +200,35 @@ public final class TabSessionCommandHandler {
         HandlerContext context = context();
         Target target = resolve(context, command);
         if (!target.usable()) {
-            publishShareFailure(context, target, target.error());
+            publishShareFailure(context, target, target.error(), command.requestId());
             return;
         }
         requestDaemonJson(context, "shareSession", () -> sessionParams(context, target.sessionId()),
                 new ResponseHandler() {
                     @Override
                     public void onError(String error) {
-                        publishShareFailure(context, target, error);
+                        publishShareFailure(context, target, error, command.requestId());
                     }
 
                     @Override
                     public void onComplete(boolean success, List<String> chunks) {
                         if (!success) {
-                            publishShareFailure(context, target, "");
+                            publishShareFailure(context, target, "", command.requestId());
                             return;
                         }
                         String url = extractShareUrl(chunks);
                         if (url.isEmpty()) {
-                            publishShareFailure(context, target, "");
+                            publishShareFailure(context, target, "", command.requestId());
                             return;
                         }
                         context.publishEvent(TabEvent.of("session.share.done")
                                 .session(target.sessionId())
                                 .tab(target.tabId())
+                                // Legacy positional args keep the existing
+                                // handler working now that requestId was added.
+                                .field("args", List.of(url))
                                 .field("data", url)
+                                .field("requestId", command.requestId())
                                 .build());
                     }
                 });
@@ -228,37 +238,61 @@ public final class TabSessionCommandHandler {
         HandlerContext context = context();
         Target target = resolve(context, command);
         if (!target.usable()) {
-            publishUnshareFailure(context, target, target.error());
+            publishUnshareFailure(context, target, target.error(), command.requestId());
             return;
         }
         requestDaemonJson(context, "unshareSession", () -> sessionParams(context, target.sessionId()),
                 new ResponseHandler() {
                     @Override
                     public void onError(String error) {
-                        publishUnshareFailure(context, target, error);
+                        publishUnshareFailure(context, target, error, command.requestId());
                     }
 
                     @Override
                     public void onComplete(boolean success, List<String> chunks) {
                         if (!success) {
-                            publishUnshareFailure(context, target, "");
+                            publishUnshareFailure(context, target, "", command.requestId());
                             return;
                         }
                         context.publishEvent(TabEvent.of("session.unshare.done")
                                 .session(target.sessionId())
                                 .tab(target.tabId())
                                 .field("data", "")
+                                .field("requestId", command.requestId())
                                 .build());
                     }
                 });
     }
 
-    private void publishShareFailure(HandlerContext context, Target target, String error) {
-        publishFailure(context, "session.share.failed", target, error);
+    // ── Disk paging ──────────────────────────────────────────────────────
+
+    /**
+     * Load one older page of the transcript into the tab that asked for it.
+     *
+     * <p>The tab is the only owner: a late response is published through that
+     * tab's own adapter, so it cannot land in whichever conversation the user
+     * switched to. Duplicate clicks and stale pages are rejected by the
+     * session's history window (generation), not here.</p>
+     */
+    public void loadEarlier(TabCommand command) {
+        HandlerContext context = context();
+        Target target = resolve(context, command);
+        if (!target.usable()) {
+            // Re-publish the window so the button does not stay in loading.
+            if (target.session() != null) {
+                target.session().publishHistoryWindow();
+            }
+            return;
+        }
+        target.session().loadEarlierPage();
     }
 
-    private void publishUnshareFailure(HandlerContext context, Target target, String error) {
-        publishFailure(context, "session.unshare.failed", target, error);
+    private void publishShareFailure(HandlerContext context, Target target, String error, String requestId) {
+        publishFailure(context, "session.share.failed", target, error, requestId);
+    }
+
+    private void publishUnshareFailure(HandlerContext context, Target target, String error, String requestId) {
+        publishFailure(context, "session.unshare.failed", target, error, requestId);
     }
 
     // ── Revert / unrevert ────────────────────────────────────────────────
@@ -267,7 +301,7 @@ public final class TabSessionCommandHandler {
         HandlerContext context = context();
         Target target = resolve(context, command);
         if (!target.usable()) {
-            publishRevertFailure(context, target, "undo", target.error());
+            publishRevertFailure(context, target, "undo", target.error(), command.requestId());
             return;
         }
         String messageId = command.string("messageId");
@@ -285,29 +319,29 @@ public final class TabSessionCommandHandler {
                         @Override
                         public void onError(String error) {
                             LOG.error("[revert] Failed to revert session: " + error);
-                            publishRevertFailure(context, target, "undo", error);
+                            publishRevertFailure(context, target, "undo", error, command.requestId());
                         }
 
                         @Override
                         public void onComplete(boolean success, List<String> chunks) {
                             if (!success) {
                                 LOG.error("[revert] Revert session failed (success=false)");
-                                publishRevertFailure(context, target, "undo", "");
+                                publishRevertFailure(context, target, "undo", "", command.requestId());
                                 return;
                             }
-                            pushRevertStateFromResponse(context, target, joinLines(chunks), resolvedId);
+                            pushRevertStateFromResponse(context, target, joinLines(chunks), resolvedId, command.requestId());
                             refreshVirtualFileSystem(context);
                         }
                     });
                 },
-                error -> publishRevertFailure(context, target, "undo", error));
+                error -> publishRevertFailure(context, target, "undo", error, command.requestId()));
     }
 
     public void unrevert(TabCommand command) {
         HandlerContext context = context();
         Target target = resolve(context, command);
         if (!target.usable()) {
-            publishRevertFailure(context, target, "redo", target.error());
+            publishRevertFailure(context, target, "redo", target.error(), command.requestId());
             return;
         }
         LOG.info("[unrevert] request sessionId=\"" + target.sessionId() + "\" tab=\"" + target.tabId() + "\"");
@@ -316,17 +350,17 @@ public final class TabSessionCommandHandler {
                     @Override
                     public void onError(String error) {
                         LOG.error("[unrevert] Failed to unrevert session: " + error);
-                        publishRevertFailure(context, target, "redo", error);
+                        publishRevertFailure(context, target, "redo", error, command.requestId());
                     }
 
                     @Override
                     public void onComplete(boolean success, List<String> chunks) {
                         if (!success) {
                             LOG.error("[unrevert] Unrevert session failed (success=false)");
-                            publishRevertFailure(context, target, "redo", "");
+                            publishRevertFailure(context, target, "redo", "", command.requestId());
                             return;
                         }
-                        pushRevertStateFromResponse(context, target, joinLines(chunks), null);
+                        pushRevertStateFromResponse(context, target, joinLines(chunks), null, command.requestId());
                         refreshVirtualFileSystem(context);
                     }
                 });
@@ -353,7 +387,8 @@ public final class TabSessionCommandHandler {
             HandlerContext context,
             Target target,
             String raw,
-            String fallbackMessageId
+            String fallbackMessageId,
+            String requestId
     ) {
         JsonObject payload = extractJsonObject(List.of(raw));
         JsonObject sessionObj = payload != null && payload.has("session") && payload.get("session").isJsonObject()
@@ -409,6 +444,7 @@ public final class TabSessionCommandHandler {
                 .session(target.sessionId())
                 .tab(target.tabId())
                 .json("state", out.toString())
+                .field("requestId", requestId)
                 .build());
 
         var app = com.intellij.openapi.application.ApplicationManager.getApplication();
@@ -425,13 +461,16 @@ public final class TabSessionCommandHandler {
         }
     }
 
-    private void publishRevertFailure(HandlerContext context, Target target, String op, String error) {
+    private void publishRevertFailure(HandlerContext context, Target target, String op, String error, String requestId) {
         JsonObject payload = new JsonObject();
         payload.addProperty("op", op);
         if (error != null) {
             payload.addProperty("error", error);
         }
-        publishFailure(context, "session.revert.failed", target, payload.toString());
+        if (requestId != null && !requestId.isBlank()) {
+            payload.addProperty("requestId", requestId);
+        }
+        publishFailure(context, "session.revert.failed", target, payload.toString(), requestId);
     }
 
     // ── Compact ──────────────────────────────────────────────────────────
@@ -440,11 +479,25 @@ public final class TabSessionCommandHandler {
         HandlerContext context = context();
         Target target = resolve(context, command);
         if (!target.usable()) {
-            publishCompactFailure(context, target, target.error());
+            publishCompactFailure(context, target, target.error(), command.requestId());
             return;
         }
         String model = command.string("model");
         final String resolvedModel = !isBlank(model) ? model.trim() : null;
+        // The user pressed compact and the request is about to leave for the
+        // engine: show the indicator now. The engine's own compaction lifecycle
+        // also reports a start, but it is not guaranteed (and on some engines it
+        // only lands once the summary message exists), so waiting for it leaves
+        // the button looking dead. The view ignores a second start for a tab
+        // that is already compacting.
+        context.publishEvent(TabEvent.of("session.compact.started")
+                .session(target.sessionId())
+                .tab(target.tabId())
+                .field("sessionId", target.sessionId() != null ? target.sessionId() : "")
+                .field("startedAt", System.currentTimeMillis())
+                .field("reason", "manual")
+                .field("source", "command")
+                .build());
         AtomicBoolean errorReported = new AtomicBoolean(false);
         requestDaemonJson(context, "summarize",
                 () -> sessionParams(context, target.sessionId(), resolvedModel),
@@ -455,7 +508,7 @@ public final class TabSessionCommandHandler {
                             return;
                         }
                         LOG.warn("[compact] Compact session failed: " + error);
-                        publishCompactFailure(context, target, error);
+                        publishCompactFailure(context, target, error, command.requestId());
                     }
 
                     @Override
@@ -465,21 +518,29 @@ public final class TabSessionCommandHandler {
                                 return;
                             }
                             LOG.warn("[compact] Compact session failed (success=false)");
-                            publishCompactFailure(context, target, "");
+                            publishCompactFailure(context, target, "", command.requestId());
                             return;
                         }
                         LOG.info("[compact] Compact session succeeded: " + target.sessionId());
                         new UsagePushService(context).refreshContextBar();
+                        String doneSessionId = target.sessionId() != null ? target.sessionId() : "";
                         context.publishEvent(TabEvent.of("session.compact.done")
                                 .session(target.sessionId())
                                 .tab(target.tabId())
-                                .field("data", target.sessionId())
+                                .field("args", List.of(doneSessionId))
+                                .field("data", doneSessionId)
+                                .field("sessionId", doneSessionId)
+                                .field("reason", "manual")
+                                // The view tells the engine's lifecycle event apart
+                                // from this RPC result by `source`.
+                                .field("source", "command")
+                                .field("requestId", command.requestId())
                                 .build());
                     }
                 });
     }
 
-    private void publishCompactFailure(HandlerContext context, Target target, String error) {
+    private void publishCompactFailure(HandlerContext context, Target target, String error, String requestId) {
         if (context == null) {
             return;
         }
@@ -489,6 +550,11 @@ public final class TabSessionCommandHandler {
                 .field("args", List.of(
                         target.sessionId() != null ? target.sessionId() : "",
                         error != null ? error : ""))
+                .field("sessionId", target.sessionId() != null ? target.sessionId() : "")
+                .field("error", error != null ? error : "")
+                .field("reason", "manual")
+                .field("source", "command")
+                .field("requestId", requestId)
                 .build());
     }
 
@@ -528,14 +594,17 @@ public final class TabSessionCommandHandler {
         return new Target(session, held, tabId, null);
     }
 
-    private void publishFailure(HandlerContext context, String type, Target target, String error) {
+    private void publishFailure(HandlerContext context, String type, Target target, String error, String requestId) {
         if (context == null) {
             return;
         }
+        String text = error != null ? error : "";
         context.publishEvent(TabEvent.of(type)
                 .session(target.sessionId())
                 .tab(target.tabId())
-                .field("data", error != null ? error : "")
+                .field("args", List.of(text))
+                .field("data", text)
+                .field("requestId", requestId)
                 .build());
     }
 

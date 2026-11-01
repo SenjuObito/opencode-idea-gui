@@ -162,14 +162,32 @@ public class SkillHandler extends BaseMessageHandler {
     private void handleDeleteSkill(String content) {
         try {
             JsonObject json = GSON.fromJson(content, JsonObject.class);
-            String skillName = json.get("name").getAsString();
+            String skillName = json.has("name") ? json.get("name").getAsString() : null;
+            // skillId 是磁盘标识；旧的 name 字段兼容保留
+            String skillId = json.has("skillId") && !json.get("skillId").isJsonNull()
+                    ? json.get("skillId").getAsString()
+                    : skillName;
+            String skillPath = json.has("path") && !json.get("path").isJsonNull()
+                    ? json.get("path").getAsString()
+                    : null;
             String scope = json.has("scope") ? json.get("scope").getAsString() : "global";
             boolean enabled = json.has("enabled") ? json.get("enabled").getAsBoolean() : true;
             String workspaceRoot = context.getProject() != null ? context.getProject().getBasePath() : null;
 
+            if (skillId == null || skillId.isEmpty()) {
+                JsonObject errorResult = new JsonObject();
+                errorResult.addProperty("success", false);
+                errorResult.addProperty("error", "Missing skill id");
+                publishDeleteResult(errorResult);
+                return;
+            }
+
+            final String resolvedSkillId = skillId;
+            final String resolvedPath = skillPath;
             CompletableFuture.runAsync(() -> {
                 try {
-                    JsonObject result = SkillService.deleteSkill(skillName, scope, enabled, workspaceRoot);
+                    JsonObject result = SkillService.deleteSkill(
+                            resolvedSkillId, scope, enabled, workspaceRoot, resolvedPath);
                     String resultJson = GSON.toJson(result);
 
                     ApplicationManager.getApplication().invokeLater(() -> {
@@ -190,10 +208,15 @@ public class SkillHandler extends BaseMessageHandler {
             JsonObject errorResult = new JsonObject();
             errorResult.addProperty("success", false);
             errorResult.addProperty("error", e.getMessage());
-            ApplicationManager.getApplication().invokeLater(() -> {
-                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.delete").field("data", GSON.toJson(errorResult)).build());
-            });
+            publishDeleteResult(errorResult);
         }
+    }
+
+    private void publishDeleteResult(JsonObject result) {
+        String resultJson = GSON.toJson(result);
+        ApplicationManager.getApplication().invokeLater(() -> {
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.delete").field("data", resultJson).build());
+        });
     }
 
     /**
@@ -202,17 +225,37 @@ public class SkillHandler extends BaseMessageHandler {
     private void handleToggleSkill(String content) {
         try {
             JsonObject json = GSON.fromJson(content, JsonObject.class);
-            String skillName = json.get("name").getAsString();
-            String skillId = json.has("id") ? json.get("id").getAsString() : null;
+            String skillName = json.has("name") ? json.get("name").getAsString() : null;
+            // skillId 是磁盘标识；旧的 name 字段兼容保留
+            String skillId = json.has("skillId") && !json.get("skillId").isJsonNull()
+                    ? json.get("skillId").getAsString()
+                    : skillName;
+            String skillPath = json.has("path") && !json.get("path").isJsonNull()
+                    ? json.get("path").getAsString()
+                    : null;
+            // Webview correlation id (the skills-map key, e.g. "global-foo")
+            String correlationId = json.has("id") ? json.get("id").getAsString() : null;
             String requestId = json.has("requestId") ? json.get("requestId").getAsString() : null;
             String scope = json.has("scope") ? json.get("scope").getAsString() : "global";
             boolean currentEnabled = json.has("enabled") ? json.get("enabled").getAsBoolean() : true;
             String workspaceRoot = context.getProject() != null ? context.getProject().getBasePath() : null;
 
+            if (skillId == null || skillId.isEmpty()) {
+                JsonObject errorResult = new JsonObject();
+                errorResult.addProperty("success", false);
+                errorResult.addProperty("error", "Missing skill id");
+                attachToggleCorrelation(errorResult, correlationId, requestId, skillName);
+                publishToggleResult(errorResult);
+                return;
+            }
+
+            final String resolvedSkillId = skillId;
+            final String resolvedPath = skillPath;
             CompletableFuture.runAsync(() -> {
                 try {
-                    JsonObject result = SkillService.toggleSkill(skillName, scope, currentEnabled, workspaceRoot);
-                    attachToggleCorrelation(result, skillId, requestId, skillName);
+                    JsonObject result = SkillService.toggleSkill(
+                            resolvedSkillId, scope, currentEnabled, workspaceRoot, resolvedPath);
+                    attachToggleCorrelation(result, correlationId, requestId, skillName);
                     String resultJson = GSON.toJson(result);
 
                     ApplicationManager.getApplication().invokeLater(() -> {
@@ -223,7 +266,7 @@ public class SkillHandler extends BaseMessageHandler {
                     JsonObject errorResult = new JsonObject();
                     errorResult.addProperty("success", false);
                     errorResult.addProperty("error", e.getMessage());
-                    attachToggleCorrelation(errorResult, skillId, requestId, skillName);
+                    attachToggleCorrelation(errorResult, correlationId, requestId, skillName);
                     ApplicationManager.getApplication().invokeLater(() -> {
                         context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.toggle").field("data", GSON.toJson(errorResult)).build());
                     });
@@ -235,10 +278,15 @@ public class SkillHandler extends BaseMessageHandler {
             errorResult.addProperty("success", false);
             errorResult.addProperty("error", e.getMessage());
             attachToggleCorrelationFromContent(errorResult, content);
-            ApplicationManager.getApplication().invokeLater(() -> {
-                context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.toggle").field("data", GSON.toJson(errorResult)).build());
-            });
+            publishToggleResult(errorResult);
         }
+    }
+
+    private void publishToggleResult(JsonObject result) {
+        String resultJson = GSON.toJson(result);
+        ApplicationManager.getApplication().invokeLater(() -> {
+            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("skills.toggle").field("data", resultJson).build());
+        });
     }
 
     private static void attachToggleCorrelation(
@@ -252,7 +300,9 @@ public class SkillHandler extends BaseMessageHandler {
         if (requestId != null && !requestId.isEmpty()) {
             result.addProperty("requestId", requestId);
         }
-        result.addProperty("name", skillName);
+        if (skillName != null && !skillName.isEmpty()) {
+            result.addProperty("name", skillName);
+        }
     }
 
     private static void attachToggleCorrelationFromContent(JsonObject result, String content) {

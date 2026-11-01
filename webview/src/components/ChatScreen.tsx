@@ -27,11 +27,13 @@ import type { ClaudeMessage, TodoItem, ToolResultBlock } from '../types';
 import type { useMessageProcessing, useFileChanges, useSubagents, useFileChangesManagement, useModelProviderState, useMessageQueue } from '../hooks';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
 import { reconcileMessageKeys, type MessageKeySnapshot } from '../utils/messageUtils';
-import { cardDebugLog } from '../utils/bridge';
+import { cardDebugLog, sendHostCommand } from '../utils/bridge';
+import { getTabStore } from '../store/tabStore';
 
 type SubagentHistoryMap = ReturnType<typeof useMessages>['subagentHistories'];
 type ProviderState = ReturnType<typeof useModelProviderState>;
 type MessageQueueValue = ReturnType<typeof useMessageQueue>['queue'];
+type QueueError = ReturnType<typeof useMessageQueue>['lastError'];
 type SubagentList = ReturnType<typeof useSubagents>;
 type FileChangeList = ReturnType<typeof useFileChanges>;
 type FileChangeMgmt = ReturnType<typeof useFileChangesManagement>;
@@ -111,9 +113,14 @@ export interface ChatScreenProps {
   onToggleThinking: ProviderState['handleToggleThinking'];
   onAutoOpenFileEnabledChange: ProviderState['handleAutoOpenFileEnabledChange'];
 
-  // Message queue
+  // Message queue (host-owned projection of the active tab)
   messageQueue: MessageQueueValue;
+  /** True after a stop: the queue waits for an explicit resume. */
+  queuePaused?: boolean;
+  /** Last send failure the host reported for an item it put back. */
+  queueError?: QueueError;
   onRemoveFromQueue: (id: string) => void;
+  onResumeQueue?: () => void;
 }
 
 /**
@@ -148,10 +155,11 @@ export const ChatScreen = ({
   usagePercentage, usageUsedTokens, usageMaxTokens,
   onModeSelect, onModelSelect, onReasoningChange, onToggleThinking,
   onAutoOpenFileEnabledChange,
-  messageQueue, onRemoveFromQueue,
+  messageQueue, queuePaused, queueError,
+  onRemoveFromQueue, onResumeQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
-  const { messages, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime } = useMessages();
+  const { messages, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime, compactingReason, historyWindow } = useMessages();
   cardDebugLog('[ChatScreen] render, sessionLoading:', sessionLoading, 'statusPanelExpanded:', statusPanelExpanded);
   const { currentSessionId } = useSession();
   const previousMessageKeySnapshotRef = useRef<MessageKeySnapshot | undefined>(undefined);
@@ -180,6 +188,13 @@ export const ChatScreen = ({
   const handleCompact = useCallback(() => {
     onSubmit('/compact');
   }, [onSubmit]);
+
+  /** Ask the host for one older page of this tab's transcript (disk paging). */
+  const handleLoadEarlierHistory = useCallback(() => {
+    const tabId = getTabStore().getActiveTabId() ?? '';
+    if (!tabId) return;
+    sendHostCommand(tabId, 'session.loadEarlier', {}, currentSessionId ?? null);
+  }, [currentSessionId]);
 
   // Signal that the search hook can listen to for re-scanning. Combines
   // length + last timestamp + streaming flag + last-message content size.
@@ -268,6 +283,7 @@ export const ChatScreen = ({
                     loadingStartTime={loadingStartTime}
                     isCompacting={isCompacting}
                     compactingStartTime={compactingStartTime}
+                    compactingReason={compactingReason}
                     t={t}
                     getMessageText={getMessageText}
                     getContentBlocks={getContentBlocks}
@@ -284,6 +300,12 @@ export const ChatScreen = ({
                     onRestore={onRestore}
                     onFork={onFork}
                     forkDisabled={streamingActive}
+                    hasEarlierHistory={historyWindow?.hasEarlier ?? false}
+                    historyLoadedCount={historyWindow?.loadedCount ?? 0}
+                    loadedTurns={historyWindow?.loadedTurns ?? 0}
+                    totalTurns={historyWindow?.totalTurns ?? null}
+                    historyWindowLoading={historyWindow?.loading ?? false}
+                    onLoadEarlierHistory={handleLoadEarlierHistory}
                   />
                 </MessagesErrorBoundary>
               </ToolResultRawContext.Provider>
@@ -356,7 +378,10 @@ export const ChatScreen = ({
           onToggleStatusPanel={onToggleStatusPanel}
           addToast={addToast}
           messageQueue={messageQueue}
+          queuePaused={queuePaused ?? false}
+          queueError={queueError ?? null}
           onRemoveFromQueue={onRemoveFromQueue}
+          onResumeQueue={onResumeQueue}
           autoOpenFileEnabled={autoOpenFileEnabled}
           onAutoOpenFileEnabledChange={onAutoOpenFileEnabledChange}
           onCompactClick={handleCompact}

@@ -300,6 +300,40 @@ describe('appendOptimisticMessageIfMissing', () => {
     expect(result[result.length - 1]).toBe(optimistic);
   });
 
+  it('keeps the optimistic bubble when an assistant placeholder follows it', () => {
+    // New-tab regression: the user sends the first message (optimistic row) and
+    // turn.started appends an empty assistant placeholder directly below it.
+    // Looking only at the last element therefore missed the very bubble this
+    // guard exists for, and the first host snapshot erased it.
+    const ts = new Date().toISOString();
+    const optimistic = makeUserMsg('first message', { isOptimistic: true, timestamp: ts });
+    const placeholder = makeAssistantMsg('', { isStreaming: true, __turnId: 1 });
+    const prev = [optimistic, placeholder];
+
+    const result = appendOptimisticMessageIfMissing(prev, []);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(optimistic);
+  });
+
+  it('inserts the optimistic bubble above this turn\'s assistant copy', () => {
+    const ts = new Date().toISOString();
+    const optimistic = makeUserMsg('first message', { isOptimistic: true, timestamp: ts });
+    const placeholder = makeAssistantMsg('', { isStreaming: true, __turnId: 1 });
+    const snapshotAssistant = makeAssistantMsg('', { __turnId: 1 });
+
+    const result = appendOptimisticMessageIfMissing([optimistic, placeholder], [snapshotAssistant]);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(optimistic);
+    expect(result[1]).toBe(snapshotAssistant);
+  });
+
+  it('does not resurrect an optimistic bubble once a backend user row closes the turn', () => {
+    const answered = makeUserMsg('answered question', { isOptimistic: true });
+    const prev = [answered, makeAssistantMsg('answer'), makeUserMsg('next question')];
+
+    expect(appendOptimisticMessageIfMissing(prev, [])).toEqual([]);
+  });
+
   it('does not append when optimistic message is matched by content and time', () => {
     const ts = new Date().toISOString();
     const optimistic = makeUserMsg('hello world', { isOptimistic: true, timestamp: ts });
@@ -842,6 +876,24 @@ describe('preserveLatestMessagesOnShrink', () => {
     // prev.length = 2, next.length = 2, no shrink
     const result = preserveLatestMessagesOnShrink(prev, next, 'codex');
     expect(result).toBe(next);
+  });
+
+  it('keeps the optimistic bubble when its placeholder survives the shrink', () => {
+    // prev = [optimistic, placeholder] and the snapshot keeps only the placeholder.
+    // The optimistic row sits above the slice boundary, so the index-based tail
+    // alone would drop it while the empty answer bubble lived on.
+    const optimistic = makeUserMsg('first message', { isOptimistic: true });
+    const placeholder = makeAssistantMsg('', { isStreaming: true, __turnId: 1 });
+    const snapshotAssistant = makeAssistantMsg('', { __turnId: 1 });
+
+    const result = preserveLatestMessagesOnShrink(
+      [optimistic, placeholder],
+      [snapshotAssistant],
+      'opencode',
+    );
+
+    expect(result[0]).toBe(optimistic);
+    expect(result).toHaveLength(2);
   });
 
   it('does NOT preserve tail when window.__hasActiveRevert is true', () => {

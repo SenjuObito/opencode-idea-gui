@@ -92,6 +92,10 @@ public class OpenCodeMessageHandler implements MessageCallback {
             case "message_removed" -> handleMessagesRemoved(content);
             case "turn_end" -> handleTurnEnd(content);
             case "session_compact_result" -> handleSessionCompactResult(content);
+            case "compaction_started" -> handleCompactionStarted(content);
+            case "compaction_delta" -> handleCompactionDelta(content);
+            case "compaction_ended" -> handleCompactionEnded(content);
+            case "compaction_failed" -> handleCompactionFailed(content);
             default -> LOG.debug("OpenCodeMessageHandler: Unhandled message type: " + type);
         }
     }
@@ -99,6 +103,14 @@ public class OpenCodeMessageHandler implements MessageCallback {
     @Override
     public void onError(String error) {
         boolean wasStreaming = isStreaming;
+        if (state.isTurnAborted() || isAbortSignal(error)) {
+            // Stop was pressed. The daemon reports it as a failed request
+            // ("User interrupted") and v2 also emits a step failure
+            // ("Step interrupted"); neither belongs in the transcript.
+            LOG.info("[OpenCode] ignoring error after user abort: " + error);
+            finishAbortedTurn();
+            return;
+        }
         isStreaming = false;
         streamEndedThisTurn = false;
         state.setError(error);
@@ -114,6 +126,83 @@ public class OpenCodeMessageHandler implements MessageCallback {
         callbackHandler.notifyMessageUpdate(state.getMessages());
         resetStreamingAccumulator();
         callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
+    }
+
+    /**
+     * End an aborted turn silently: clear the running state and the stream
+     * accumulators, but write no error and no transcript row.
+     *
+     * <p>Kept separate from {@link #onComplete} because the abort can surface
+     * through either entry point and both must leave the same state.</p>
+     */
+    private void finishAbortedTurn() {
+        isStreaming = false;
+        streamEndedThisTurn = false;
+        state.setBusy(false);
+        state.setLoading(false);
+        state.setError(null);
+        resetStreamingAccumulator();
+        callbackHandler.notifyStreamEnd();
+        callbackHandler.notifyMessageUpdate(state.getMessages());
+        callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
+    }
+
+    /**
+     * Whether an error text is the engine's way of saying "the user stopped".
+     *
+     * <p>The flag on {@link SessionState} is authoritative for a stop pressed in
+     * this window; the text check covers an abort issued elsewhere (another
+     * client, a server-side cancel) and late events from an older bridge.</p>
+     */
+    private static boolean isAbortSignal(String message) {
+        if (message == null) {
+            return false;
+        }
+        String trimmed = message.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        String lower = trimmed.toLowerCase(java.util.Locale.ROOT);
+        return lower.equals("aborted")
+                || lower.equals("abort")
+                || lower.equals("user interrupted")
+                || lower.equals("step interrupted")
+                || lower.equals("messageabortederror")
+                || lower.contains("messageabortederror")
+                || lower.contains("user interrupted")
+                || lower.contains("step interrupted");
+    }
+
+    /**
+     * Whether a `[TURN_ERROR]` payload is the server's abort echo.
+     *
+     * <p>v2 sends {@code {kind:"aborted", message:"Step interrupted"}}; the
+     * message text is localized on some servers, so the machine-readable
+     * {@code kind}/{@code type} is checked first.</p>
+     */
+    private static boolean isAbortPayload(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return false;
+        }
+        try {
+            JsonObject payload = com.google.gson.JsonParser.parseString(jsonContent.trim()).getAsJsonObject();
+            String kind = stringOrNull(payload, "kind");
+            if (kind == null) {
+                kind = stringOrNull(payload, "type");
+            }
+            if (kind != null && "aborted".equalsIgnoreCase(kind)) {
+                return true;
+            }
+            if (payload.has("error") && payload.get("error").isJsonObject()) {
+                String nested = stringOrNull(payload.getAsJsonObject("error"), "type");
+                if (nested != null && "aborted".equalsIgnoreCase(nested)) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+            // Not JSON — the message-text check is the only signal.
+        }
+        return false;
     }
 
     @Override
@@ -452,6 +541,13 @@ public class OpenCodeMessageHandler implements MessageCallback {
                     + " turnId=" + (payload.has("turnId") && !payload.get("turnId").isJsonNull()
                             ? payload.get("turnId").getAsString() : "-"));
 
+            // A terminal named `aborted` can also come from an abort issued
+            // elsewhere (another client, a server-side cancel). Record it so
+            // any late error echo for this turn is still suppressed.
+            if ("aborted".equalsIgnoreCase(reason)) {
+                state.markTurnAborted();
+            }
+
             isStreaming = false;
             streamEndedThisTurn = true;
             state.setBusy(false);
@@ -603,6 +699,37 @@ public class OpenCodeMessageHandler implements MessageCallback {
         LOG.info("[OpenCode] session compact result: " + jsonContent);
     }
 
+    private void handleCompactionStarted(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        LOG.info("[OpenCode] compaction started: " + jsonContent);
+        callbackHandler.notifyCompactionStarted(jsonContent);
+    }
+
+    private void handleCompactionDelta(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        callbackHandler.notifyCompactionDelta(jsonContent);
+    }
+
+    private void handleCompactionEnded(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        LOG.info("[OpenCode] compaction ended: " + jsonContent);
+        callbackHandler.notifyCompactionEnded(jsonContent);
+    }
+
+    private void handleCompactionFailed(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return;
+        }
+        LOG.warn("[OpenCode] compaction failed: " + jsonContent);
+        callbackHandler.notifyCompactionFailed(jsonContent);
+    }
+
     /**
      * A rate-limit / quota retry reported by the server while a turn is still
      * running ({@code session.status} with {@code type=retry}).
@@ -644,6 +771,14 @@ public class OpenCodeMessageHandler implements MessageCallback {
             }
         } catch (Exception ignored) {
             // Not a JSON object — fall back to the raw payload as the message.
+        }
+
+        if (state.isTurnAborted() || isAbortSignal(message) || isAbortPayload(jsonContent)) {
+            // The turn was stopped: this is the server echoing the abort, not a
+            // failure. Ending silently is the whole point of the Stop button.
+            LOG.info("[OpenCode] ignoring late turn error after user abort: " + message);
+            finishAbortedTurn();
+            return;
         }
 
         LOG.info("[OpenCode] turn error (late): " + message);

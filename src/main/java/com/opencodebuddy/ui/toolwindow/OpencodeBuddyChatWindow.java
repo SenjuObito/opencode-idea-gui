@@ -5,6 +5,7 @@ import com.opencodebuddy.handler.history.HistoryHandler;
 import com.opencodebuddy.handler.core.MessageDispatcher;
 import com.opencodebuddy.handler.PermissionHandler;
 import com.opencodebuddy.handler.TabSessionCommandHandler;
+import com.opencodebuddy.handler.file.TabFileCommandHandler;
 import com.opencodebuddy.provider.common.DaemonBridge;
 import com.opencodebuddy.provider.opencode.OpenCodeSDKBridge;
 import com.opencodebuddy.session.OpencodePermissionRegistry;
@@ -104,6 +105,21 @@ public class OpencodeBuddyChatWindow {
      * can resolve the sending tab and run each command on that tab's actor.</p>
      */
     private final TabSessionCommandHandler tabSessionCommands;
+    /**
+     * The tab-scoped "@" candidate command.
+     *
+     * <p>It resolves the directory from the requesting tab and asks opencode
+     * (`fs.list` / `fs.find`); the answer is published as a {@code files.listed}
+     * event addressed to that tab.</p>
+     */
+    private final TabFileCommandHandler tabFileCommands;
+    /**
+     * The single consumer of every tab's outbox.
+     *
+     * <p>It is owned by the window, not by a tab: tabs progress in parallel and
+     * the pump is the only place that takes an item ({@code TabQueue.take}).</p>
+     */
+    private final com.opencodebuddy.tab.TabQueuePump tabQueuePump;
     private volatile String activeTabId = null;
     private final WebviewWatchdog webviewWatchdog;
     private volatile StreamMessageCoalescer streamCoalescer;
@@ -286,6 +302,62 @@ public class OpencodeBuddyChatWindow {
         tabCommandRouter.register("session.revert", tabSessionCommands::revert);
         tabCommandRouter.register("session.unrevert", tabSessionCommands::unrevert);
         tabCommandRouter.register("session.compact", tabSessionCommands::compact);
+        // 磁盘分页：把该 tab 更早的一页历史前插到同一个会话。归属只看 tab
+        // 自己绑定的会话，不看「当前活跃会话」。
+        tabCommandRouter.register("session.loadEarlier", tabSessionCommands::loadEarlier);
+        // "@" candidates: the router decides which tab asked, the handler reads
+        // that tab's cwd and asks opencode for the listing.
+        this.tabFileCommands = new TabFileCommandHandler(() -> this.handlerContext);
+        tabCommandRouter.register("files.list", tabFileCommands::list);
+
+        // One pump for the window; it never reads the active tab. Every item's
+        // record names the tab and session it was frozen in.
+        this.tabQueuePump = new com.opencodebuddy.tab.TabQueuePump(new com.opencodebuddy.tab.TabQueuePump.Host() {
+            @Override
+            public TabRecord getTab(String tabId) {
+                return queueTab(tabId);
+            }
+
+            @Override
+            public List<TabRecord> liveTabs() {
+                return tabRegistry.liveTabs();
+            }
+
+            @Override
+            public void publishQueue(TabRecord record) {
+                publishQueueState(record);
+            }
+
+            @Override
+            public void reportError(TabRecord record, String message) {
+                reportQueueError(record, message);
+            }
+
+            @Override
+            public boolean isDaemonAlive() {
+                return daemonBridge != null && daemonBridge.isAlive();
+            }
+
+            @Override
+            public boolean hasPendingPrompt(String tabId) {
+                return permissionHandler != null && permissionHandler.hasPendingPrompt(tabId);
+            }
+
+            @Override
+            public com.opencodebuddy.tab.TabQueuePump.Sender sender() {
+                return OpencodeBuddyChatWindow.this::sendQueuedItem;
+            }
+
+            @Override
+            public com.opencodebuddy.tab.TabQueuePump.Outcome executeCommand(
+                    TabRecord record, com.opencodebuddy.tab.TabQueue.Item item) {
+                return executeQueuedCommand(record, item);
+            }
+        });
+        tabCommandRouter.register("queue.enqueue", this::handleQueueEnqueue);
+        tabCommandRouter.register("queue.remove", this::handleQueueRemove);
+        tabCommandRouter.register("queue.clear", this::handleQueueClear);
+        tabCommandRouter.register("queue.resume", this::handleQueueResume);
         tabCommandRouter.register("tab.create", command -> {
             String tabIdStr = command.tabId().value();
             createSessionForTab(tabIdStr);
@@ -1726,6 +1798,344 @@ public class OpencodeBuddyChatWindow {
         }
     }
 
+    /** Drop exactly one delivered attachment of a tab. */
+    public void releaseAttachment(String tabId, String attachmentId) {
+        TabRecord record = queueTab(tabId);
+        if (record != null) {
+            record.getAttachments().release(attachmentId);
+        }
+    }
+
+    // ==================== Host-owned per-tab queue ====================
+
+    /** A live record by tab id, or {@code null} for an unknown/malformed id. */
+    private TabRecord queueTab(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            return null;
+        }
+        try {
+            return tabRegistry.get(TabId.of(tabId));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Push the tab's outbox projection to the webview.
+     *
+     * <p>The event is addressed to the tab, so a background tab keeps its own
+     * queue and badge; the active tab's queue is what the composer renders.</p>
+     */
+    private void publishQueueState(TabRecord record) {
+        if (record == null) {
+            return;
+        }
+        String tabId = record.getTabId().value();
+        String sessionId = record.getSessionIdString();
+        com.opencodebuddy.tab.TabEvent.Builder builder = com.opencodebuddy.tab.TabEvent
+                .of("tab.queue.changed")
+                .tab(tabId)
+                .session(sessionId)
+                .field("tabId", tabId);
+        if (sessionId != null) {
+            builder.field("sessionId", sessionId);
+        }
+        for (java.util.Map.Entry<String, com.google.gson.JsonElement> entry
+                : record.getQueue().toJson().entrySet()) {
+            builder.field(entry.getKey(), entry.getValue());
+        }
+        publishTabEvent(builder.build());
+    }
+
+    /** Report a queue problem to the tab that owns the item. */
+    private void reportQueueError(TabRecord record, String message) {
+        if (record == null || message == null || message.isBlank()) {
+            return;
+        }
+        publishTabEvent(com.opencodebuddy.tab.TabEvent.of("message.error")
+                .tab(record.getTabId().value())
+                .session(record.getSessionIdString())
+                .field("message", message)
+                .build());
+    }
+
+    /**
+     * Hand one frozen item to the normal {@code session.send} path.
+     *
+     * <p>The send goes through {@link MessageDispatcher} so the attachment
+     * materialization, the model/permission settings and the session-mismatch
+     * guard of {@code SessionHandler} are exactly the ones a direct send
+     * uses.</p>
+     */
+    private com.opencodebuddy.tab.TabQueuePump.Outcome sendQueuedItem(
+            String tabId, JsonObject payload, String requestId) {
+        MessageDispatcher dispatcher = this.messageDispatcher;
+        if (dispatcher == null) {
+            return com.opencodebuddy.tab.TabQueuePump.Outcome.refused(
+                    "SENDER_NOT_READY", "发送通道未就绪，排队消息已保留。");
+        }
+        try {
+            boolean handled = dispatcher.dispatch("session.send", payload.toString());
+            if (!handled) {
+                return com.opencodebuddy.tab.TabQueuePump.Outcome.refused(
+                        "NO_HANDLER", "发送通道未就绪，排队消息已保留。");
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("[queue] send failed tab=" + tabId + " item=" + requestId, e);
+            return com.opencodebuddy.tab.TabQueuePump.Outcome.refused(
+                    "SEND_FAILED", "发送失败: " + e.getMessage());
+        }
+        return com.opencodebuddy.tab.TabQueuePump.Outcome.accepted();
+    }
+
+    /**
+     * Execute one queued session command through the same handler a direct
+     * {@code session.*} command uses.
+     *
+     * <p>The item stays in flight until the handler publishes its own result
+     * event, so a queued prompt cannot overtake it.</p>
+     */
+    private com.opencodebuddy.tab.TabQueuePump.Outcome executeQueuedCommand(
+            TabRecord record, com.opencodebuddy.tab.TabQueue.Item item) {
+        if (record == null || item == null || item.command == null) {
+            return com.opencodebuddy.tab.TabQueuePump.Outcome.refused(
+                    "NOT_COMMAND", "排队项不是命令");
+        }
+        JsonObject payload = new JsonObject();
+        if ("/undo".equals(item.command)
+                && item.commandArgs != null
+                && item.commandArgs.messageId() != null
+                && !item.commandArgs.messageId().isBlank()) {
+            payload.addProperty("messageId", item.commandArgs.messageId());
+        }
+        if ("/fork".equals(item.command)) {
+            payload.addProperty("sourceTabId", record.getTabId().value());
+            String targetTabId = item.commandArgs != null ? item.commandArgs.targetTabId() : null;
+            payload.addProperty("targetTabId",
+                    targetTabId != null && !targetTabId.isBlank()
+                            ? targetTabId
+                            : "tab-fork-" + item.id);
+        }
+        if ("/compact".equals(item.command) && item.model != null && !item.model.isBlank()) {
+            // The model was frozen when the command was queued.
+            payload.addProperty("model", item.model);
+        }
+
+        String type = switch (item.command) {
+            case "/compact" -> "session.compact";
+            case "/undo" -> "session.revert";
+            case "/redo" -> "session.unrevert";
+            case "/fork" -> "session.fork";
+            case "/share" -> "session.share";
+            case "/unshare" -> "session.unshare";
+            default -> null;
+        };
+        if (type == null) {
+            return com.opencodebuddy.tab.TabQueuePump.Outcome.refused(
+                    "UNKNOWN_COMMAND", "不支持的命令：" + item.command);
+        }
+
+        TabCommand tabCommand = TabCommand.of(record.getTabId().value(), type, item.id, payload);
+        switch (item.command) {
+            case "/compact" -> tabSessionCommands.compact(tabCommand);
+            case "/undo" -> tabSessionCommands.revert(tabCommand);
+            case "/redo" -> tabSessionCommands.unrevert(tabCommand);
+            case "/fork" -> tabSessionCommands.fork(tabCommand);
+            case "/share" -> tabSessionCommands.share(tabCommand);
+            case "/unshare" -> tabSessionCommands.unshare(tabCommand);
+            default -> {
+                return com.opencodebuddy.tab.TabQueuePump.Outcome.refused(
+                        "UNKNOWN_COMMAND", "不支持的命令：" + item.command);
+            }
+        }
+        return com.opencodebuddy.tab.TabQueuePump.Outcome.accepted();
+    }
+    private void handleQueueEnqueue(TabCommand command) {
+        TabRecord record = tabRegistry.get(command.tabId());
+        if (record == null || record.isClosed()) {
+            return;
+        }
+        JsonObject itemJson = command.payload().has("item") && command.payload().get("item").isJsonObject()
+                ? command.payload().getAsJsonObject("item")
+                : null;
+        if (itemJson == null) {
+            reportQueueError(record, "排队消息格式不正确");
+            return;
+        }
+        com.opencodebuddy.tab.TabQueue.Item item = parseQueueItem(record, itemJson);
+        if (item == null) {
+            reportQueueError(record, "排队消息格式不正确");
+            return;
+        }
+        com.opencodebuddy.tab.TabQueue.EnqueueResult result = tabQueuePump.enqueue(record, item);
+        if (!result.ok()) {
+            reportQueueError(record, "无法排队：" + result.reason());
+        }
+    }
+
+    private void handleQueueRemove(TabCommand command) {
+        TabRecord record = tabRegistry.get(command.tabId());
+        if (record == null) {
+            return;
+        }
+        String itemId = command.string("itemId");
+        if (itemId == null || itemId.isBlank()) {
+            return;
+        }
+        com.opencodebuddy.tab.TabQueue.Item dropped = null;
+        for (com.opencodebuddy.tab.TabQueue.Item queued : record.getQueue().items()) {
+            if (itemId.equals(queued.id)) {
+                dropped = queued;
+                break;
+            }
+        }
+        tabQueuePump.remove(record, itemId);
+        if (dropped != null) {
+            releaseQueueAttachments(record, List.of(dropped));
+        }
+    }
+
+    private void handleQueueClear(TabCommand command) {
+        TabRecord record = tabRegistry.get(command.tabId());
+        if (record == null) {
+            return;
+        }
+        List<com.opencodebuddy.tab.TabQueue.Item> dropped = record.getQueue().items();
+        tabQueuePump.clear(record);
+        releaseQueueAttachments(record, dropped);
+    }
+
+    private void handleQueueResume(TabCommand command) {
+        TabRecord record = tabRegistry.get(command.tabId());
+        if (record != null) {
+            tabQueuePump.resume(record);
+        }
+    }
+
+    /**
+     * Pause a tab's outbox because the user stopped its turn.
+     *
+     * <p>The queue is kept: the user may resume it explicitly. A stop never
+     * moves an item to another tab.</p>
+     */
+    public void pauseTabQueue(String tabId) {
+        TabRecord record = queueTab(tabId);
+        if (record != null) {
+            tabQueuePump.pause(record);
+        }
+    }
+
+    /** Restore every tab's queue projection after a view rebuild. */
+    public void publishAllQueues() {
+        if (tabQueuePump != null) {
+            tabQueuePump.publishAll();
+        }
+    }
+
+    /** Drop the uploaded bytes of items that will never be sent. */
+    private void releaseQueueAttachments(
+            TabRecord record, List<com.opencodebuddy.tab.TabQueue.Item> items) {
+        if (record == null || items == null || items.isEmpty()) {
+            return;
+        }
+        for (com.opencodebuddy.tab.TabQueue.Item item : items) {
+            for (com.opencodebuddy.tab.TabQueue.Attachment attachment : item.attachments) {
+                record.getAttachments().release(attachment.attachmentId());
+            }
+        }
+    }
+
+    /**
+     * Parse the webview's frozen item.
+     *
+     * <p>The origin session and epoch are stamped here, from the tab the
+     * command named — never from "the active tab".</p>
+     */
+    private com.opencodebuddy.tab.TabQueue.Item parseQueueItem(TabRecord record, JsonObject json) {
+        String id = stringOrNull(json, "id");
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        List<com.opencodebuddy.tab.TabQueue.Attachment> attachments = new java.util.ArrayList<>();
+        if (json.has("attachments") && json.get("attachments").isJsonArray()) {
+            for (com.google.gson.JsonElement element : json.getAsJsonArray("attachments")) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                JsonObject attachment = element.getAsJsonObject();
+                String attachmentId = stringOrNull(attachment, "attachmentId");
+                if (attachmentId == null || attachmentId.isBlank()) {
+                    continue;
+                }
+                attachments.add(new com.opencodebuddy.tab.TabQueue.Attachment(
+                        attachmentId,
+                        stringOrNull(attachment, "fileName"),
+                        stringOrNull(attachment, "mediaType")));
+            }
+        }
+        List<com.opencodebuddy.tab.TabQueue.FileTag> fileTags = new java.util.ArrayList<>();
+        if (json.has("fileTags") && json.get("fileTags").isJsonArray()) {
+            for (com.google.gson.JsonElement element : json.getAsJsonArray("fileTags")) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                JsonObject tag = element.getAsJsonObject();
+                String absolutePath = stringOrNull(tag, "absolutePath");
+                if (absolutePath == null || absolutePath.isBlank()) {
+                    continue;
+                }
+                String displayPath = stringOrNull(tag, "displayPath");
+                fileTags.add(new com.opencodebuddy.tab.TabQueue.FileTag(
+                        displayPath != null ? displayPath : absolutePath, absolutePath));
+            }
+        }
+        long createdAt = 0L;
+        if (json.has("createdAt") && json.get("createdAt").isJsonPrimitive()) {
+            try {
+                createdAt = json.get("createdAt").getAsLong();
+            } catch (RuntimeException ignored) {
+                createdAt = 0L;
+            }
+        }
+        String command = stringOrNull(json, "command");
+        if (command != null && !com.opencodebuddy.tab.TabQueue.isCommand(command)) {
+            // Never let an arbitrary string be dispatched as a session command.
+            return null;
+        }
+        String commandMessageId = null;
+        String commandTargetTabId = null;
+        if (json.has("commandArgs") && json.get("commandArgs").isJsonObject()) {
+            JsonObject args = json.getAsJsonObject("commandArgs");
+            commandMessageId = stringOrNull(args, "messageId");
+            commandTargetTabId = stringOrNull(args, "targetTabId");
+        }
+        com.opencodebuddy.tab.TabQueue.CommandArgs commandArgs =
+                commandMessageId != null || commandTargetTabId != null
+                        ? new com.opencodebuddy.tab.TabQueue.CommandArgs(commandMessageId, commandTargetTabId)
+                        : com.opencodebuddy.tab.TabQueue.CommandArgs.NONE;
+        return new com.opencodebuddy.tab.TabQueue.Item(
+                id,
+                stringOrNull(json, "text"),
+                command,
+                commandArgs,
+                fileTags,
+                attachments,
+                stringOrNull(json, "permissionMode"),
+                stringOrNull(json, "model"),
+                stringOrNull(json, "reasoningEffort"),
+                record.getSessionIdString(),
+                record.getEpoch(),
+                createdAt);
+    }
+
+    private static String stringOrNull(JsonObject json, String key) {
+        if (json == null || !json.has(key) || json.get(key).isJsonNull()) {
+            return null;
+        }
+        com.google.gson.JsonElement element = json.get(key);
+        return element.isJsonPrimitive() ? element.getAsString() : null;
+    }
+
     /**
      * Bind a forked session to the tab the webview reserved for it.
      *
@@ -1766,6 +2176,20 @@ public class OpencodeBuddyChatWindow {
     }
 
     /**
+     * The daemon restarted: sweep the tabs whose queues waited for it.
+     *
+     * <p>Items are kept through a daemon death. The pump only runs when it is
+     * nudged, so a background tab with no further traffic would otherwise keep
+     * its queue forever.</p>
+     */
+    public void onDaemonReadyDrainQueues() {
+        if (tabQueuePump == null) {
+            return;
+        }
+        tabQueuePump.drainAll();
+    }
+
+    /**
      * Settle every streaming tab after the daemon died.
      *
      * <p>The daemon is gone: its turns cannot finish, so the host ends them
@@ -1773,6 +2197,11 @@ public class OpencodeBuddyChatWindow {
      * user reloads the window.</p>
      */
     public void settleStreamingTabsOnDaemonRestart() {
+        // The in-flight queue item was already accepted by the server; its turn
+        // died with the daemon. Pending items stay queued. This also covers a
+        // tab that never reached STREAMING, whose in-flight item would
+        // otherwise wait forever.
+        tabQueuePump.onDaemonDied();
         for (TabRecord record : tabRegistry.liveTabs()) {
             if (!record.isStreaming()) {
                 continue;
@@ -1825,9 +2254,90 @@ public class OpencodeBuddyChatWindow {
         if ("tab.title.changed".equals(event.getType())) {
             addressed = applyTitleEvent(addressed);
         }
+        applyQueueLifecycle(addressed);
         recordTabMetrics(addressed);
         tabEventBus.publish(addressed);
         maybeLogBridgeMetrics();
+    }
+
+    /**
+     * The queue consumes the same terminal signals the view does.
+     *
+     * <p>{@code turn.settled}/{@code turn.ended} consume the in-flight item;
+     * {@code session.loading=false} is only a "maybe idle" nudge;
+     * {@code command.rejected} releases an item whose send never started, so a
+     * rejected request cannot leave the pump waiting forever.</p>
+     */
+    private void applyQueueLifecycle(com.opencodebuddy.tab.TabEvent event) {
+        if (tabQueuePump == null || event == null) {
+            return;
+        }
+        TabRecord record = queueTab(event.getTabId());
+        if (record == null) {
+            return;
+        }
+        String type = event.getType();
+        if ("turn.settled".equals(type) || "turn.ended".equals(type)) {
+            tabQueuePump.onTabSettled(record);
+            return;
+        }
+        if ("session.loading".equals(type)) {
+            if (Boolean.FALSE.equals(event.getPayload().get("loading"))) {
+                tabQueuePump.onTabIdle(record);
+            }
+            return;
+        }
+        if ("command.rejected".equals(type)) {
+            Object requestId = event.getPayload().get("requestId");
+            Object message = event.getPayload().get("message");
+            if (requestId instanceof String id && !id.isBlank()) {
+                tabQueuePump.onSendRejected(record, id, message instanceof String text ? text : null);
+            }
+            return;
+        }
+
+        // Queued session commands end on their own result event, not on a turn
+        // settlement. A result without our request id is not ours: replay and
+        // direct header actions publish the same types.
+        Object requestIdValue = event.getPayload().get("requestId");
+        String requestId = requestIdValue instanceof String id && !id.isBlank() ? id : null;
+        Object dataValue = event.getPayload().get("data");
+        Object errorValue = event.getPayload().get("error");
+        String failure = errorValue instanceof String error && !error.isBlank()
+                ? error
+                : dataValue instanceof String text && !text.isBlank() ? text : null;
+        switch (type) {
+            case "session.compact.done" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/compact"), requestId, true, null);
+            case "session.compact.failed" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/compact"), requestId, false, failure);
+            case "revert.changed" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/undo", "/redo"), requestId, true, null);
+            case "session.revert.failed" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/undo", "/redo"), requestId, false, failure);
+            case "session.fork.bound" -> {
+                Object sourceValue = event.getPayload().get("sourceTabId");
+                TabRecord sourceRecord = sourceValue instanceof String sourceId && !sourceId.isBlank()
+                        ? queueTab(sourceId)
+                        : record;
+                if (sourceRecord != null) {
+                    tabQueuePump.onCommandSettled(
+                            sourceRecord, java.util.Set.of("/fork"), requestId, true, null);
+                }
+            }
+            case "session.fork.failed" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/fork"), requestId, false, failure);
+            case "session.share.done" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/share"), requestId, true, null);
+            case "session.share.failed" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/share"), requestId, false, failure);
+            case "session.unshare.done" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/unshare"), requestId, true, null);
+            case "session.unshare.failed" -> tabQueuePump.onCommandSettled(
+                    record, java.util.Set.of("/unshare"), requestId, false, failure);
+            default -> {
+            }
+        }
     }
 
     /**
@@ -2283,6 +2793,17 @@ public class OpencodeBuddyChatWindow {
         }
         TabId stableTabId = TabId.of(tabId);
         TabRecord existing = tabRegistry.get(stableTabId);
+        // Switching the conversation inside a tab must never re-target that
+        // tab's queued sends at the new conversation: the items were frozen
+        // for the old one. Drop them with a toast instead of delivering them
+        // somewhere the user did not ask for.
+        String previousSessionId = existing != null ? existing.getSessionIdString() : null;
+        if (existing != null && canonicalSessionId != null
+                && !canonicalSessionId.equals(previousSessionId)) {
+            List<com.opencodebuddy.tab.TabQueue.Item> dropped =
+                    tabQueuePump.clearForSessionSwitch(existing);
+            releaseQueueAttachments(existing, dropped);
+        }
         SessionCallbackAdapter effectiveAdapter = adapter != null
                 ? adapter : (existing != null ? existing.getAdapter() : null);
         if (effectiveAdapter == null) {
@@ -2719,6 +3240,13 @@ public class OpencodeBuddyChatWindow {
         flushPendingFileReferences();
         if (editorContextTracker != null) {
             editorContextTracker.scheduleContextUpdate();
+        }
+        // Reveal the browser before queueing the surface refresh below: the
+        // reveal runs inline on this (EDT) stack, so the native component is
+        // already in the hierarchy when the refresh task runs instead of the
+        // tab having shown a white JCEF canvas while the page loaded.
+        if (webviewInitializer != null) {
+            webviewInitializer.onFrontendReady();
         }
         ApplicationManager.getApplication().invokeLater(() -> {
             completeFrontendReadyUiUpdate(
@@ -3543,7 +4071,10 @@ public class OpencodeBuddyChatWindow {
                     }
 
                     StreamMessageCoalescer coalescer = getStreamCoalescer(updatedSessionId);
-                    if (coalescer != null && coalescer.isStreamActive()) {
+                    boolean isTurnActive = targetSession.isBusy()
+                            || targetSession.isLoading()
+                            || (coalescer != null && coalescer.isStreamActive());
+                    if (isTurnActive) {
                         deferredReload.defer(updatedSessionId);
                         scheduleDeferredReloadSafetyDrain();
                         LOG.info("[OpencodeBuddyChatWindow] session_updated during active turn for " + updatedSessionId + ", deferring reload to stream end");
@@ -3746,9 +4277,9 @@ public class OpencodeBuddyChatWindow {
             }
             return;
         }
-        current.loadFromServer().whenComplete((v, ex) -> {
+        current.reconcileWithServer().whenComplete((updated, ex) -> {
             if (ex != null) {
-                LOG.warn("[OpencodeBuddyChatWindow] session reload failed", ex);
+                LOG.warn("[OpencodeBuddyChatWindow] session reconcile failed", ex);
             }
             boolean runAgain;
             synchronized (sessionReloadLock) {
@@ -4277,10 +4808,13 @@ public class OpencodeBuddyChatWindow {
                 return;
             }
             String currentTabId = findTabIdForSession(currentId);
-            if (streamCoalescer != null && streamCoalescer.isStreamActive()) {
+            boolean isTurnActive = current.isBusy()
+                    || current.isLoading()
+                    || (streamCoalescer != null && streamCoalescer.isStreamActive());
+            if (isTurnActive) {
                 deferredReload.defer(currentId);
                 LOG.info("[OpencodeBuddyChatWindow] Same-session resume deferred — "
-                        + "turn streaming, will reload at stream end, sessionId=" + currentId);
+                        + "turn active, will reload at stream end, sessionId=" + currentId);
                 // Frontend may have begun a transition (cleared the list). Release the
                 // guard now so a later deferred reload can paint; if the list is empty
                 // the stream-end drain will repopulate it.
@@ -4374,6 +4908,11 @@ public class OpencodeBuddyChatWindow {
     private ChatWindowDelegate.DelegateHost createDelegateHost() {
         return new ChatWindowDelegate.DelegateHost() {
             @Override
+            public void onDaemonReadyDrainQueues() {
+                OpencodeBuddyChatWindow.this.onDaemonReadyDrainQueues();
+            }
+
+            @Override
             public void settleStreamingTabsOnDaemonRestart() {
                 OpencodeBuddyChatWindow.this.settleStreamingTabsOnDaemonRestart();
             }
@@ -4464,6 +5003,11 @@ public class OpencodeBuddyChatWindow {
                         TabRecord record = findTabRecord(id);
                         return record != null ? record.getSession() : null;
                     });
+                    // A stop pauses that tab's outbox; the queue pump never
+                    // reads the active tab, so the tab id is the resolution.
+                    ctx.setTabQueuePauser(OpencodeBuddyChatWindow.this::pauseTabQueue);
+                    ctx.setPendingPromptLookup(id ->
+                            permissionHandler != null && permissionHandler.hasPendingPrompt(id));
                 }
             }
 
@@ -4577,6 +5121,16 @@ public class OpencodeBuddyChatWindow {
             @Override
             public void releaseTabAttachments(String tabId) {
                 OpencodeBuddyChatWindow.this.releaseTabAttachments(tabId);
+            }
+
+            @Override
+            public void releaseAttachment(String tabId, String attachmentId) {
+                OpencodeBuddyChatWindow.this.releaseAttachment(tabId, attachmentId);
+            }
+
+            @Override
+            public void publishAllQueues() {
+                OpencodeBuddyChatWindow.this.publishAllQueues();
             }
 
             @Override

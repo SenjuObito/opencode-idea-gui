@@ -39,6 +39,14 @@ public class OpencodeSession {
     // Session state manager
     private final com.opencodebuddy.session.SessionState state;
 
+    /**
+     * 本标签页从服务端读回了多少历史（opencode 2.x 分页）。
+     *
+     * <p>会话与 tab 一一对应，所以游标属于会话：两个 tab 打开同一份历史时
+     * 各自翻页，不会把对方的游标带到自己的转录上。</p>
+     */
+    private final SessionHistoryWindow historyWindow = new SessionHistoryWindow();
+
     // Message processors
     private final com.opencodebuddy.session.MessageParser messageParser;
     private final com.opencodebuddy.session.MessageMerger messageMerger;
@@ -233,6 +241,22 @@ public class OpencodeSession {
         }
 
         /**
+         * 一页更早的历史已前插到宿主转录（{@code message.prepended}）。
+         *
+         * <p>{@code messagesJson} 是 webview 直接消费的消息数组。事件按 tab
+         * 投递，后台 tab 自己吸收，不动当前视图。</p>
+         */
+        default void onMessagesPrepended(String messagesJson) {
+        }
+
+        /**
+         * 本 tab 的历史窗口状态（{@code history.window}）：还有没有更早的页、
+         * 已加载多少轮 / 总共多少轮。
+         */
+        default void onHistoryWindow(String json) {
+        }
+
+        /**
          * The daemon's authoritative, session-scoped turn terminal (INV-C).
          *
          * <p>Payload is bare JSON: {@code {"sessionId":"ses_…","turnId":1042,
@@ -245,6 +269,18 @@ public class OpencodeSession {
          * already-settled turn can be ignored instead of re-triggering cleanup.</p>
          */
         default void onTurnEnd(String jsonContent) {
+        }
+
+        default void onCompactionStarted(String jsonContent) {
+        }
+
+        default void onCompactionDelta(String jsonContent) {
+        }
+
+        default void onCompactionEnded(String jsonContent) {
+        }
+
+        default void onCompactionFailed(String jsonContent) {
         }
     }
 
@@ -283,6 +319,19 @@ public class OpencodeSession {
                     }
 
                     @Override
+                    public SessionProviderRouter.MessagePage getProviderSessionMessagePage(
+                            String provider,
+                            String sessionId,
+                            String cwd,
+                            int limit,
+                            String cursor,
+                            String type,
+                            String order) {
+                        return providerRouter.getSessionMessagePage(
+                                provider, sessionId, cwd, limit, cursor, type, order);
+                    }
+
+                    @Override
                     public JsonObject getLatestClaudeUserMessage(String sessionId, String cwd) {
                         // opencode has no Claude-format user-message file; uuid sync
                         // is a no-op and optimistic bubbles settle by content match.
@@ -290,6 +339,23 @@ public class OpencodeSession {
                     }
                 }
         );
+        // 历史窗口属于这个会话（= 这个 tab），编排器负责按它翻页。
+        this.messageOrchestrator.setHistoryWindow(this.historyWindow);
+    }
+
+    /** 本 tab 从服务端读回了多少历史（opencode 2.x 分页）。 */
+    public SessionHistoryWindow getHistoryWindow() {
+        return historyWindow;
+    }
+
+    /** 把更早的一页历史前插到本会话（磁盘分页）。 */
+    public CompletableFuture<Void> loadEarlierPage() {
+        return messageOrchestrator.loadEarlierPage();
+    }
+
+    /** 把本 tab 的历史窗口状态重推给 webview（{@code history.window}）。 */
+    public void publishHistoryWindow() {
+        messageOrchestrator.publishHistoryWindow();
     }
 
     public void setCallback(SessionCallback callback) {
@@ -666,6 +732,7 @@ public class OpencodeSession {
         // Reset the manual-interrupt flag at the start of a new turn so that
         // a fresh send is not mistaken for a user-initiated stop.
         manuallyInterrupted = false;
+        state.clearTurnAborted();
         String normalizedInput = (input != null) ? input.trim() : "";
         Message userMessage = contextService.buildUserMessage(normalizedInput, attachments);
         sendService.updateSessionStateForSend(userMessage, normalizedInput);
@@ -691,7 +758,14 @@ public class OpencodeSession {
                             null,
                             null
                     )
-            ).thenCompose(v -> syncUserMessageUuidsAfterSend());
+            ).thenCompose(v -> {
+                // The session id is known by now (assigned from [SESSION_ID]),
+                // which is why the command text is recorded here rather than at
+                // send time. A command interrupted mid-turn still gets recorded:
+                // the send future completes on abort too.
+                recordCommandText(normalizedInput);
+                return syncUserMessageUuidsAfterSend();
+            });
         }).exceptionally(ex -> {
             state.setError(ex.getMessage());
             state.setBusy(false);
@@ -742,12 +816,39 @@ public class OpencodeSession {
     }
 
     /**
+     * Remember the text of a native slash command for history reloads.
+     *
+     * <p>opencode expands `/review` into the full command template before it
+     * persists the user message, and stores no command name. Without this the
+     * reloaded transcript shows the template; with it the converter puts the
+     * typed text back (see {@link OpenCodeMessageConverter#matchCommandTexts}).</p>
+     */
+    private void recordCommandText(String input) {
+        if (input == null || SessionSendService.parseSlashCommand(input) == null) {
+            return;
+        }
+        String sessionId = state.getSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        SessionCommandTextStore store = SessionCommandTextStore.getInstanceOrNull();
+        if (store != null) {
+            store.record(sessionId, lastTurnStartedAtMillis, input);
+        }
+    }
+
+    /**
      * Interrupt the current execution.
      */
     public CompletableFuture<Void> interrupt() {
         // Mark this turn as manually interrupted so the stream-end handler
         // suppresses the task-completion notification sound.
         manuallyInterrupted = true;
+        // Record the abort before the server can echo it. Both the daemon's
+        // `{aborted:true}` completion and v2's `session.step.failed`
+        // ("Step interrupted") are routed through the error path; this flag is
+        // what turns them into a silent stop instead of an error bubble.
+        state.markTurnAborted();
 
         String provider = state.getProvider();
         String channelId = state.getChannelId();

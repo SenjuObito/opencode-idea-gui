@@ -76,6 +76,15 @@ public class HandlerContext {
         }
 
         /**
+         * Drop exactly one delivered attachment of a tab.
+         *
+         * <p>A send must not release the tab's whole store: the tab may still
+         * hold the attachments of queued items.</p>
+         */
+        default void releaseAttachment(String tabId, String attachmentId) {
+        }
+
+        /**
          * Open an attachment upload for a tab.
          *
          * @return the file the chunks are written to, or {@code null} when the
@@ -281,6 +290,55 @@ public class HandlerContext {
             return;
         }
         jsCallback.releaseTabAttachments(tabId);
+    }
+
+    /** Drop exactly one attachment the send just delivered. */
+    public void releaseAttachment(String tabId, String attachmentId) {
+        if (tabId == null || tabId.isBlank()
+                || attachmentId == null || attachmentId.isBlank()) {
+            return;
+        }
+        jsCallback.releaseAttachment(tabId, attachmentId);
+    }
+
+    private volatile java.util.function.Consumer<String> tabQueuePauser;
+
+    /** Install the window's "pause this tab's outbox" action. */
+    public void setTabQueuePauser(java.util.function.Consumer<String> pauser) {
+        this.tabQueuePauser = pauser;
+    }
+
+    /**
+     * Pause a tab's outbox because the user stopped its turn.
+     *
+     * <p>A stop is a user decision about this conversation: the next queued
+     * prompt must wait for an explicit resume instead of firing immediately
+     * after the interrupt settles.</p>
+     */
+    public void pauseTabQueue(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            return;
+        }
+        java.util.function.Consumer<String> pauser = this.tabQueuePauser;
+        if (pauser != null) {
+            pauser.accept(tabId);
+        }
+    }
+
+    private volatile java.util.function.Predicate<String> pendingPromptLookup;
+
+    /** Install the window's "does this tab have an unanswered prompt" lookup. */
+    public void setPendingPromptLookup(java.util.function.Predicate<String> lookup) {
+        this.pendingPromptLookup = lookup;
+    }
+
+    /** Whether a permission/question/plan card of this tab waits for an answer. */
+    public boolean hasPendingPrompt(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            return false;
+        }
+        java.util.function.Predicate<String> lookup = this.pendingPromptLookup;
+        return lookup != null && lookup.test(tabId);
     }
 
     /** Publish a named event to every open chat window. */

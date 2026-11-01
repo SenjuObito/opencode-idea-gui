@@ -263,4 +263,42 @@ public class CallbackHandler {
             callback.onTurnEnd(jsonContent);
         }
     }
+
+    /** One older history page was prepended to this session's transcript. */
+    public void notifyMessagesPrepended(String messagesJson) {
+        if (callback != null && messagesJson != null && !messagesJson.isBlank()) {
+            callback.onMessagesPrepended(messagesJson);
+        }
+    }
+
+    /** This tab's transcript paging window (older pages, loaded/total turns). */
+    public void notifyHistoryWindow(String json) {
+        if (callback != null && json != null && !json.isBlank()) {
+            callback.onHistoryWindow(json);
+        }
+    }
+
+    public void notifyCompactionStarted(String jsonContent) {
+        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
+            callback.onCompactionStarted(jsonContent);
+        }
+    }
+
+    public void notifyCompactionDelta(String jsonContent) {
+        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
+            callback.onCompactionDelta(jsonContent);
+        }
+    }
+
+    public void notifyCompactionEnded(String jsonContent) {
+        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
+            callback.onCompactionEnded(jsonContent);
+        }
+    }
+
+    public void notifyCompactionFailed(String jsonContent) {
+        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
+            callback.onCompactionFailed(jsonContent);
+        }
+    }
 }

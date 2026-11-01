@@ -4,12 +4,12 @@ import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.opencodebuddy.model.FileSortItem;
+import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.bridge.NodeDetector;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
@@ -133,58 +133,118 @@ public class FileHandler extends BaseMessageHandler {
     }
 
     /**
+     * Self-implemented collector switch.
+     *
+     * <p>The plugin is a GUI for opencode: "@" candidates come from the opencode
+     * API ({@code fs.list} / {@code fs.find}). The IDE collector pipeline below
+     * is kept for reference (and for comparing answers when the server looks
+     * wrong), but the product path never calls it.</p>
+     */
+    private static final boolean LOCAL_COLLECTORS_ENABLED = false;
+
+    /**
      * Handle file list request.
+     *
+     * <p>Candidates come from opencode only: an empty search text (right after
+     * {@code @}, or {@code @src/}) enumerates the directory via {@code fs.list};
+     * text typed after it goes to {@code fs.find} with the directory as a path
+     * prefix. Both are scoped to the requesting tab's cwd.</p>
      */
     private void handleListFiles(String content) {
+        // Parse outside try so we can still echo requestId on failure
+        FileListRequest request = parseRequest(content);
+        String tabId = parseTabId(content);
         CompletableFuture.runAsync(() -> {
-            // Parse outside try so we can still echo requestId on failure
-            FileListRequest request = parseRequest(content);
             try {
-                // 1. Get base path
-                String basePath = getEffectiveBasePath();
-
-                // 2. Initialize file set (deduplication)
-                FileSet fileSet = new FileSet();
-
-                // 3. Collect files
-                List<JsonObject> files = new ArrayList<>();
-
-                // Priority 0: Active Terminals
-                runtimeContextCollector.collectTerminals(files, request);
-
-                // Priority 0: Active Services
-                runtimeContextCollector.collectServices(files, request);
-
-                // Priority 1: Currently open files
-                openFileCollector.collect(files, fileSet, basePath, request);
-
-                // Priority 2: Recently opened files
-                recentFileCollector.collect(files, fileSet, basePath, request);
-
-                // Priority 3: File system scan
-                fileSystemCollector.collect(files, fileSet, basePath, request);
-
-                // 4. Sort (match score when searching, else priority/path)
-                sortFiles(files, request);
-
-                // 5. Return result (echo requestId so frontend can drop stale responses)
-                sendResult(files, request.requestId);
-            } catch (ProcessCanceledException e) {
-                // Still reply so the frontend does not hang on an empty dropdown
-                sendResult(new ArrayList<>(), request.requestId);
-                throw e;
+                if (LOCAL_COLLECTORS_ENABLED) {
+                    collectLocally(request);
+                    return;
+                }
+                String cwd = resolveCwd(tabId);
+                OpenCodeFileList.fetch(context, request.query, request.currentPath, cwd)
+                        .thenAccept(files -> sendResult(files, request.requestId, tabId))
+                        .exceptionally(e -> {
+                            LOG.warn("[FileHandler] opencode file listing failed: " + e.getMessage());
+                            sendResult(new ArrayList<>(), request.requestId, tabId);
+                            return null;
+                        });
             } catch (Exception e) {
                 LOG.error("[FileHandler] Failed to list files: " + e.getMessage(), e);
                 // Always respond — a silent failure shows as "flash then empty" in the UI
-                sendResult(new ArrayList<>(), request.requestId);
+                sendResult(new ArrayList<>(), request.requestId, tabId);
             }
         });
+    }
+
+    /**
+     * The legacy IDE-side pipeline (open/recent terminals, open editors, recent
+     * files, VFS scan, local fuzzy ranking).
+     *
+     * <p>Kept intact but unreachable while {@link #LOCAL_COLLECTORS_ENABLED} is
+     * false: the host must not invent candidates the server did not return.</p>
+     */
+    private void collectLocally(FileListRequest request) {
+        String basePath = getEffectiveBasePath();
+        FileSet fileSet = new FileSet();
+        List<JsonObject> files = new ArrayList<>();
+
+        // Priority 0: Active Terminals
+        runtimeContextCollector.collectTerminals(files, request);
+        // Priority 0: Active Services
+        runtimeContextCollector.collectServices(files, request);
+        // Priority 1: Currently open files
+        openFileCollector.collect(files, fileSet, basePath, request);
+        // Priority 2: Recently opened files
+        recentFileCollector.collect(files, fileSet, basePath, request);
+        // Priority 3: File system scan
+        fileSystemCollector.collect(files, fileSet, basePath, request);
+
+        sortFiles(files, request);
+        sendResult(files, request.requestId, "");
+    }
+
+    /**
+     * cwd of the requesting tab. Falls back to the window's effective directory
+     * only when the payload carries no tab (legacy callers) or the tab has no
+     * session yet.
+     */
+    private String resolveCwd(String tabId) {
+        if (tabId != null && !tabId.isBlank()) {
+            OpencodeSession session = context.getSessionForTab(tabId);
+            if (session != null) {
+                String cwd = session.getCwd();
+                if (cwd != null && !cwd.isBlank()) {
+                    return cwd;
+                }
+            }
+        }
+        return getEffectiveBasePath();
+    }
+
+    /** The tab that asked, when the legacy payload names one. */
+    private String parseTabId(String content) {
+        if (content == null || content.isEmpty()) {
+            return "";
+        }
+        try {
+            JsonObject json = GSON.fromJson(content, JsonObject.class);
+            if (json != null && json.has("tabId") && !json.get("tabId").isJsonNull()) {
+                return json.get("tabId").getAsString();
+            }
+        } catch (Exception ignored) {
+            // Plain-text payload: no tab identity.
+        }
+        return "";
     }
 
     /**
      * Send results back to the frontend.
      */
     private void sendResult(List<JsonObject> files, Long requestId) {
+        sendResult(files, requestId, "");
+    }
+
+    private void sendResult(List<JsonObject> files, Long requestId, String tabId) {
         JsonObject result = new JsonObject();
         result.add("files", GSON.toJsonTree(files));
         if (requestId != null) {
@@ -193,7 +253,12 @@ public class FileHandler extends BaseMessageHandler {
         String resultJson = GSON.toJson(result);
 
         ApplicationManager.getApplication().invokeLater(() -> {
-            context.publishEvent(com.opencodebuddy.tab.TabEvent.of("files.listed").field("data", resultJson).build());
+            com.opencodebuddy.tab.TabEvent.Builder event =
+                    com.opencodebuddy.tab.TabEvent.of("files.listed");
+            if (tabId != null && !tabId.isBlank()) {
+                event.tab(tabId);
+            }
+            context.publishEvent(event.field("data", resultJson).build());
         });
     }
 

@@ -276,7 +276,7 @@ cd webview && npm ci && npm run build && cd ..
 
 ## 🤝 参与贡献
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create.
+开源社区的魅力正是来源于每一位开发者的贡献、交流与创造。如果你发现了 Bug 或有新点子，欢迎提出 Issue 或提交 PR：
 
 1. Fork 本仓库
 2. 创建特性分支（`git checkout -b feature/AmazingFeature`）

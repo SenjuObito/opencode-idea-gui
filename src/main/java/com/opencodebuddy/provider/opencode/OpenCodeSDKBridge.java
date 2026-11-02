@@ -476,6 +476,9 @@ public class OpenCodeSDKBridge {
         AtomicReference<String> nextCursor = new AtomicReference<>();
         AtomicReference<String> previousCursor = new AtomicReference<>();
         AtomicBoolean hasEarlier = new AtomicBoolean(false);
+        // daemon 报回的「这一页服务端返回了多少条」（过滤 idle/synthetic 之前），
+        // 新版 core 才提供；旧 daemon 保持 null。
+        AtomicReference<Integer> rawPageCount = new AtomicReference<>();
         // 失败必须传出去：过去 onError/onComplete 都是空实现，thenApply 又无条件
         // 返回「已收集到的部分条目」，于是 daemon/serve 未就绪导致的查询失败被静默
         // 降级成「这个会话没有消息」——打开标签页得到一片空白，且没有任何提示，
@@ -502,6 +505,9 @@ public class OpenCodeSDKBridge {
                             previousCursor.set(obj.get("previousCursor").getAsString());
                         }
                         hasEarlier.set(obj.has("hasEarlier") && obj.get("hasEarlier").getAsBoolean());
+                        if (obj.has("rawCount") && !obj.get("rawCount").isJsonNull()) {
+                            rawPageCount.set(obj.get("rawCount").getAsInt());
+                        }
                     } else if (obj.has("messageEntry") && obj.get("messageEntry").isJsonObject()) {
                         entries.add(obj.getAsJsonObject("messageEntry"));
                     } else if (obj.has("messages") && obj.get("messages").isJsonArray()) {
@@ -548,8 +554,16 @@ public class OpenCodeSDKBridge {
                                 + " entries but collected " + entries.size());
             }
             String next = nextCursor.get();
-            boolean earlier = (hasEarlier.get() || (next != null && !next.isEmpty()))
-                    && (limit <= 0 || entries.size() >= limit);
+            // 「还有更早」不能数 entries：daemon 已经把 idle/synthetic 等非转录
+            // 记录过滤掉，一页满 200 条到这里可能只剩 190 条，于是满页被误判成
+            // 末页，历史在点了第一次「更早」之后就再也翻不动。
+            //
+            // 新版 core 用 rawCount（过滤前的服务端条数）给出精确的 hasEarlier；
+            // 旧 core 没有这个字段时退回 VSCode 的口径（有游标就当有更早，翻到
+            // 空页再收口）——这些引擎的最后一页也可能给游标，最坏多点一次。
+            boolean earlier = rawPageCount.get() != null
+                    ? hasEarlier.get()
+                    : (hasEarlier.get() || (next != null && !next.isEmpty()));
             return new MessagePage(
                     entries,
                     next == null ? null : next,

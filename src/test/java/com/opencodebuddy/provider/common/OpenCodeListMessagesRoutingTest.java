@@ -28,7 +28,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * 宿主侧 {@code opencode.listMessages} 的响应路由回归测试。
+ * 宿主侧 {@code opencode.listMessages} 的响应路由与分页契约回归测试。
  *
  * <p>2026-10-17 的线上故障：daemon 正常播报 N 条 message entry，宿主却一条都没
  * 收集到，最终 {@code historyLoadComplete(sessionId, 0)} + {@code updateMessages(sessionId, [])}
@@ -39,11 +39,13 @@ import static org.junit.Assert.fail;
  * session 命中已注册的 sink 就只给 sink 并 return，收集器因此颗粒无收。
  * core 已修（只有回合命令才从 params 取身份）。</p>
  *
- * <p>这里守住两件事：</p>
+ * <p>这里守住三件事：</p>
  * <ol>
  *   <li>即使该会话已经注册了 sink，共享查询的响应行仍必须到达**请求自己的收集器**；</li>
  *   <li>万一响应行再次在路上丢失，宿主必须**明确失败**，而不是把「加载失败」伪装成
- *       「空会话」（播报了 N 条却收到 0 条 ⇒ 抛错）。</li>
+ *       「空会话」（播报了 N 条却收到 0 条 ⇒ 抛错）；</li>
+ *   <li>「还有更早的一页」只看 daemon 的 rawCount（过滤前的服务端条数），
+ *       绝不拿被过滤过的条目数跟页大小比。</li>
  * </ol>
  */
 public class OpenCodeListMessagesRoutingTest {
@@ -380,6 +382,82 @@ public class OpenCodeListMessagesRoutingTest {
                     "pre-bind content must be replayed when the sink binds");
             awaitLine(sessionSink.lines, "[CONTENT_DELTA] \"after\"",
                     "post-marker content must reach the bound sink");
+        } finally {
+            closeQuietly(process);
+            bridge.stop();
+        }
+    }
+
+    // ===== 分页契约：「还有更早」不能数被过滤后的条目 =====
+
+    /**
+     * 一页满 200 条，但其中 10 条是引擎的 idle 记录，daemon 过滤后只剩 190 条。
+     * 宿主要认 rawCount，不能拿 190 跟 200 比 —— 否则满页被当成末页，历史就断了。
+     */
+    @Test
+    public void fullServerPageWithFilteredRowsStillReportsAnEarlierPage() throws Exception {
+        OpenCodeSDKBridge.MessagePage page = requestPage(200, true, "CUR_OLDER");
+        assertEquals(1, page.messages().size());
+        assertTrue("a full server page means an older page exists, whatever the entry count",
+                page.hasEarlier());
+        assertEquals("CUR_OLDER", page.nextCursor());
+    }
+
+    /** 真正的末页：确实不满一页，即使引擎仍然给了游标也必须收口。 */
+    @Test
+    public void shortServerPageEndsPagingEvenThoughTheEngineStillReturnsACursor() throws Exception {
+        OpenCodeSDKBridge.MessagePage page = requestPage(73, false, "CUR_LAST");
+        assertEquals("the engine keeps handing out a cursor on the last page",
+                "CUR_LAST", page.nextCursor());
+        assertFalse("the engine's cursor survives the last page; rawCount is the proof",
+                page.hasEarlier());
+    }
+
+    /** 旧 daemon 没有 rawCount：退回「有游标就当还有更早」，翻到空页再收口。 */
+    @Test
+    public void daemonWithoutRawCountFallsBackToTheCursorContract() throws Exception {
+        assertTrue(requestPage(null, true, "CUR_NEXT").hasEarlier());
+        assertFalse(requestPage(null, false, null).hasEarlier());
+    }
+
+    /**
+     * 跑一次 {@code opencode.listMessages}：播报 1 条、发 1 条 entry、以给定页信息收尾，
+     * 返回宿主算出的页信息。{@code rawCount == null} 模拟没有该字段的旧 daemon。
+     */
+    private static OpenCodeSDKBridge.MessagePage requestPage(
+            Integer rawCount, boolean hasEarlier, String nextCursor) throws Exception {
+        ScriptedProcess process = new ScriptedProcess();
+        process.emitReady();
+        DaemonBridge bridge = new DaemonBridge(
+                null, null, null, DaemonBridge.TimeSource.system(),
+                () -> process, DaemonBridge.DaemonLifecycleHooks.NO_OP);
+        assertTrue(bridge.start());
+        try {
+            OpenCodeSDKBridge sdk = new OpenCodeSDKBridge(bridge, new Gson());
+            CompletableFuture<OpenCodeSDKBridge.MessagePage> future =
+                    sdk.listMessagePage(SESSION_ID, "D:\\source\\demo", 200, null, null, null);
+
+            String requestId = awaitRequestId(process);
+            assertNotNull("host never sent the listMessages request", requestId);
+            process.emit(envelope(requestId, "{\"success\":true,\"messagesStart\":true,\"count\":1}"));
+            process.emit(envelope(requestId,
+                    "{\"messageEntry\":" + entry("msg-1", "assistant", "older answer") + "}"));
+
+            JsonObject pageEnd = new JsonObject();
+            pageEnd.addProperty("success", true);
+            pageEnd.addProperty("messagesDone", true);
+            pageEnd.addProperty("count", 1);
+            if (rawCount != null) {
+                pageEnd.addProperty("rawCount", rawCount);
+            }
+            pageEnd.addProperty("hasEarlier", hasEarlier);
+            if (nextCursor != null) {
+                pageEnd.addProperty("nextCursor", nextCursor);
+            }
+            process.emit(envelope(requestId, pageEnd.toString()));
+            process.emit(done(requestId));
+
+            return future.get(AWAIT_SECONDS, TimeUnit.SECONDS);
         } finally {
             closeQuietly(process);
             bridge.stop();

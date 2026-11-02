@@ -13,7 +13,49 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
-    version: '0.3.0',
+    version: '2.0.3',
+    date: '2026-11-02',
+    content: {
+      en: `✨ Features
+- Automatic token compaction and more stable message queue scheduling
+
+🐛 Fixes
+- Fixed messages being blocked after an error notice appeared
+- Fixed Markdown export appending an extra extension and the success toast firing too early
+- Fixed dialogs not being scoped to their tab, and the permission dialog border
+- Fixed related UI display issues`,
+      zh: `✨ 新增功能
+- 支持自动压缩 Token，消息队列调度更稳定
+
+🐛 问题修复
+- 修复出现错误提示后无法继续发送消息
+- 修复 Markdown 导出追加多余扩展名、成功提示时机不对
+- 修复弹窗未按标签页归属、权限弹窗边框
+- 修复相关 UI 显示错误`,
+    },
+  },
+  {
+    version: '2.0.2',
+    date: '2026-10-28',
+    content: {
+      en: `🔧 Other
+- Synced the plugin description with the README feature and architecture overview`,
+      zh: `🔧 其他
+- 插件描述同步 README 的核心功能与架构说明`,
+    },
+  },
+  {
+    version: '2.0.1',
+    date: '2026-10-28',
+    content: {
+      en: `✨ UI Polish
+- Grade the message-state background dynamically: an aurora backdrop for empty states and a clean surface once messages arrive`,
+      zh: `✨ 界面优化
+- 会话消息状态背景动态分级：空状态展示极光背景，有消息时切回纯净底色`,
+    },
+  },
+  {
+    version: '2.0.0',
     date: '2026-10-28',
     content: {
       en: `OpenCode Buddy major release featuring full architectural refactoring, full-duplex semantic contracts, Tab Actor multi-session isolation, deep compatibility with OpenCode v1 & v2, plus major rendering performance and UI polish.
@@ -75,25 +117,199 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
     },
   },
   {
+    version: '0.2.2',
+    date: '2026-10-19',
+    content: {
+      en: `🐛 Fixes
+- Fixed multiple sessions being renamed to the same title
+- Fixed the build script and environment variables not taking effect
+
+🔧 Other
+- Updated the README`,
+      zh: `🐛 问题修复
+- 修复多个会话被更新为同一个标题
+- 修复构建脚本与设置环境变量不生效
+
+🔧 其他
+- 更新 README`,
+    },
+  },
+  {
+    version: '0.2.1',
+    date: '2026-10-19',
+    content: {
+      en: `✨ Features
+- Multi-tab sessions inside the plugin, with multi-session support and an architecture overhaul
+- Question dialogs, permission dialogs, bash/opencode commands, and session directories now work with OpenCode v2
+- Undo, fork, and related actions now work with OpenCode v2
+- Show an error when the quota is exhausted
+
+🐛 Fixes
+- Fixed low notification volume and messages lost when switching multi-session tabs
+- Fixed the status panel todo list not refreshing
+- Fixed failing singleton tests`,
+      zh: `✨ 新增功能
+- 插件内实现多标签页会话，新增多会话支持并调整架构
+- 问题弹窗、权限弹窗、bash/opencode 命令、会话目录兼容 OpenCode v2
+- 撤销、Fork 等操作兼容 OpenCode v2
+- 额度用完时展示错误信息
+
+🐛 问题修复
+- 修复提示音音量过小、多会话切换消息丢失
+- 修复状态面板 Todo 列表不更新
+- 修复未通过的单例测试`,
+    },
+  },
+  {
+    version: '0.0.8',
+    date: '2026-10-14',
+    content: {
+      en: `✨ Features
+- OpenCode v2 support, with a question dialog and a minimizable permission dialog
+- Architecture overhaul: replaced ai-bridge with opencode-buddy-core
+
+🐛 Fixes
+- Fixed the GitHub tests and packaging`,
+      zh: `✨ 新增功能
+- 支持 OpenCode v2：问题弹窗、权限弹窗最小化
+- 架构重构：移除 ai-bridge，改用 opencode-buddy-core
+
+🐛 问题修复
+- 修复 GitHub 测试与打包`,
+    },
+  },
+  {
+    version: '0.0.7',
+    date: '2026-10-12',
+    content: {
+      en: `✨ Features
+- Every JS injection now goes through the bridge
+
+🐛 Fixes
+- Fixed token display and detailed message rendering
+- Fixed packaging overwriting the VS Code plugin
+- Fixed history session loading`,
+      zh: `✨ 新增功能
+- 所有 JS 注入改为走 bridge
+
+🐛 问题修复
+- 修复 Token 显示与详细消息展示
+- 修复打包覆盖 VS Code 插件的问题
+- 修复历史会话加载`,
+    },
+  },
+  {
+    version: '0.0.6',
+    date: '2026-09-23',
+    content: {
+      en: `🐛 Fixes
+- Fixed UI freezes
+- Fixed opencode serve being launched repeatedly at startup`,
+      zh: `🐛 问题修复
+- 修复 UI 冻结
+- 修复启动时重复拉起 opencode serve`,
+    },
+  },
+  {
+    version: '0.0.5',
+    date: '2026-09-23',
+    content: {
+      en: `🐛 Fixes
+- Restored the accidentally deleted Node path and multi-tab conversations`,
+      zh: `🐛 问题修复
+- 还原误删的 Node 路径与多标签页对话`,
+    },
+  },
+  {
+    version: '0.0.4',
+    date: '2026-09-22',
+    content: {
+      en: `🐛 Fixes
+- Fixed the token-usage loading indicator and session switching`,
+      zh: `🐛 问题修复
+- 修复 Token 消耗 loading 与会话切换问题`,
+    },
+  },
+  {
+    version: '0.0.3',
+    date: '2026-09-22',
+    content: {
+      en: `✨ Features
+- Rebuilt the model list and shipped the plugin description in Chinese and English
+- Added sponsor information
+
+🐛 Fixes
+- Fixed MCP loading and the model list default selection
+- Fixed the status bar waiting for opencode serve to start
+- Fixed unit tests, startup font loading, Node configuration, and the build
+- Fixed saving the opencode TUI path and conversation issues
+- Fixed logging issues and removed the timeout that auto-ended conversations
+- Fixed the startup status bar and the opencode process lifecycle`,
+      zh: `✨ 新增功能
+- 重构模型列表，插件描述支持中英双语
+- 添加赞助者信息
+
+🐛 问题修复
+- 修复 MCP 加载与模型列表默认选中项
+- 修复状态栏等待 opencode serve 启动
+- 修复单测、启动字体加载、Node 配置与构建问题
+- 修复 opencode TUI 路径保存与对话问题
+- 修复日志异常，移除超时自动结束对话逻辑
+- 修复启动状态栏与 opencode 进程生命周期`,
+    },
+  },
+  {
+    version: '0.0.2',
+    date: '2026-09-17',
+    content: {
+      en: `✨ Features
+- Multiple tabs and sessions
+- Session export to Markdown
+- Windows opencode path resolution covered by unit tests
+
+🔧 Other
+- Changed the open-source license
+
+🐛 Fixes
+- Fixed icon and text alignment on Linux
+- Fixed sharing`,
+      zh: `✨ 新增功能
+- 支持多标签多会话
+- 支持会话导出为 Markdown
+- 补齐 Windows 获取 opencode 路径的单元测试
+
+🔧 其他
+- 修改开源协议
+
+🐛 问题修复
+- 修复 Linux 下图标与文字对齐
+- 修复分享功能`,
+    },
+  },
+  {
     version: '0.0.1',
     date: '2026-09-15',
     content: {
-      en: `OpenCode Buddy — an opencode-only build of the plugin.
+      en: `✨ Features
+- Renamed to OpenCode Buddy: plugin id com.senjuobito.opencode-buddy, Java package com.opencodebuddy, tool window id OpenCode
+- The opencode pipeline now runs a persistent ai-bridge daemon + opencode serve (4096) + @opencode-ai/sdk v2 + SSE event stream instead of spawning the CLI per message
+- Session history now uses a local index + the daemon session.messages API
+- Added /revert, /fork, compact, MCP status, and question approval
+- @opencode-ai/sdk ships with the plugin, so it no longer has to be installed on demand
 
-- Renamed to OpenCode Buddy: plugin id com.senjuobito.opencode-buddy, Java package com.opencodebuddy, tool window id OpenCode.
-- Removed every non-opencode engine (Claude Agent SDK / Codex / Grok / Kimi / Pi / OMP / DSH / cc-switch provider management).
-- The opencode pipeline now runs a persistent ai-bridge daemon + opencode serve (4096) + @opencode-ai/sdk v2 + SSE event stream instead of spawning the CLI per message.
-- Session history now uses a local index + the daemon session.messages API; added /revert, /fork, compact, MCP status and question approval.
-- @opencode-ai/sdk ships with the plugin, so the SDK no longer has to be installed on demand.
-- Settings directory ~/.codemoss → ~/.opencodebuddy.`,
-      zh: `OpenCode Buddy — opencode 专属改造版本。
+🔧 Other
+- Removed every non-opencode engine (Claude Agent SDK / Codex / Grok / Kimi / Pi / OMP / DSH / cc-switch)
+- Moved settings from ~/.codemoss to ~/.opencodebuddy`,
+      zh: `✨ 新增功能
+- 更名 OpenCode Buddy：插件 ID com.senjuobito.opencode-buddy，Java 包名 com.opencodebuddy，工具窗口 ID OpenCode
+- opencode 链路升级为常驻 ai-bridge daemon + opencode serve (4096) + @opencode-ai/sdk v2 + SSE 事件流，替代每消息 spawn CLI
+- 会话历史改为本地索引 + daemon session.messages API
+- 新增 /revert、/fork、compact、MCP 状态与 question 审批
+- @opencode-ai/sdk 随插件打包，无需按需安装
 
-- 插件更名 OpenCode Buddy：插件 ID com.senjuobito.opencode-buddy，Java 包名 com.opencodebuddy，工具窗口 ID OpenCode。
-- 移除全部多引擎支持（Claude Agent SDK / Codex / Grok / Kimi / Pi / OMP / DSH / cc-switch 供应商管理）。
-- opencode 链路升级为常驻 ai-bridge daemon + opencode serve (4096) + @opencode-ai/sdk v2 + SSE 事件流，替代每消息 spawn CLI。
-- 会话历史改为本地索引 + daemon session.messages API；新增 /revert、/fork、compact、MCP 状态、question 审批。
-- @opencode-ai/sdk 随插件打包，不再需要按需安装 SDK。
-- 设置目录 ~/.codemoss → ~/.opencodebuddy。`,
+🔧 其他
+- 移除全部多引擎支持（Claude Agent SDK / Codex / Grok / Kimi / Pi / OMP / DSH / cc-switch）
+- 设置目录由 ~/.codemoss 迁移到 ~/.opencodebuddy`,
     },
   },
 ];

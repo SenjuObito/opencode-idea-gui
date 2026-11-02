@@ -1852,10 +1852,13 @@ public class OpencodeBuddyChatWindow {
         if (record == null || message == null || message.isBlank()) {
             return;
         }
+        // `data` (not `message`) keeps the legacy string contract: the
+        // dispatcher unwraps a single `{ data: string }` payload, so the
+        // webview's `addErrorMessage` receives text instead of an object.
         publishTabEvent(com.opencodebuddy.tab.TabEvent.of("message.error")
                 .tab(record.getTabId().value())
                 .session(record.getSessionIdString())
-                .field("message", message)
+                .field("data", message)
                 .build());
     }
 
@@ -2532,6 +2535,10 @@ public class OpencodeBuddyChatWindow {
         String initialCwd = project != null ? project.getBasePath() : null;
         TabRecord existing = tabRegistry.get(stableTabId);
         if (existing != null && existing.getSession() != null) {
+            // A session can predate the window's adapter (the bootstrap tab).
+            // Repair it before handing it to a sender: a snapshot published
+            // without a tab id is dropped as unattributable.
+            ensureTabOutputs(existing);
             return existing.getSession();
         }
         // Preferences are inherited from the tab the user was looking at, never
@@ -2560,6 +2567,58 @@ public class OpencodeBuddyChatWindow {
             handlerContext.registerSession(tabId, prepared.session());
         }
         return prepared.session();
+    }
+
+    /**
+     * Repair a tab whose session exists but has no data plane.
+     *
+     * <p>The bootstrap tab's session is created before the window has an
+     * adapter. If the first send reuses it unchanged, the user-message
+     * snapshot is published through a coalescer that knows neither a tab nor
+     * a session id, and {@link StreamMessageCoalescer} drops it. Every path
+     * that resolves a tab's session to send through must call this first.</p>
+     */
+    private void ensureTabOutputs(TabRecord record) {
+        if (record == null || record.getSession() == null) {
+            return;
+        }
+        OpencodeSession session = record.getSession();
+        String tabId = record.getTabId().value();
+        String sessionId = record.getSessionIdString();
+
+        SessionCallbackAdapter adapter = record.getAdapter();
+        StreamMessageCoalescer coalescer = record.getCoalescer();
+
+        if (adapter != null && coalescer != null) {
+            // Keep the existing data plane, but make sure it names this tab:
+            // the window-level bootstrap adapter used to have no tab id.
+            adapter.setTabId(tabId);
+            coalescer.setTabId(tabId);
+            if (sessionId != null && !sessionId.isBlank()) {
+                adapter.setSessionId(sessionId);
+                coalescer.setSessionId(sessionId);
+            }
+            return;
+        }
+
+        SessionCallbackAdapter previous = adapter;
+        if (coalescer == null) {
+            coalescer = createStreamCoalescer(tabId);
+        }
+        adapter = createCallbackAdapter(tabId, coalescer);
+        adapter.setTabId(tabId);
+        coalescer.setTabId(tabId);
+        if (sessionId != null && !sessionId.isBlank()) {
+            adapter.setSessionId(sessionId);
+            coalescer.setSessionId(sessionId);
+        }
+        if (previous != null && previous != adapter) {
+            previous.deactivate();
+            if (sessionCallbackAdapter == previous) {
+                sessionCallbackAdapter = adapter;
+            }
+        }
+        record.setProvisionalResources(session, adapter, coalescer);
     }
 
     private TabRecord findTabRecord(String id) {
@@ -4017,34 +4076,56 @@ public class OpencodeBuddyChatWindow {
             return;
         }
 
-        if (this.sessionCallbackAdapter != null) {
-            this.sessionCallbackAdapter.deactivate();
+        TabId activeTab = tabRegistry.getActiveTabId();
+        if (activeTab == null && activeTabId != null && !activeTabId.isBlank()) {
+            activeTab = TabId.of(activeTabId);
         }
-        this.sessionCallbackAdapter = new SessionCallbackAdapter(
-                curSession.getSessionId(),
-                streamCoalescer,
-                OpencodeBuddyChatWindow.this::publishTabEvent,
-                permissionHandler,
-                () -> slashCommandsFetched,
-                this::onStreamEnded
-        ) {
-            @Override
-            public void onSessionIdReceived(String newSessionId) {
-                super.onSessionIdReceived(newSessionId);
-                String activeTab = activeTabId != null ? activeTabId
-                        : (tabRegistry.getActiveTabId() != null ? tabRegistry.getActiveTabId().value() : null);
-                if (activeTab != null) {
-                    bindTabSession(activeTab, newSessionId, this);
-                } else {
-                    bindSessionSink(newSessionId, curSession);
-                }
+        TabRecord activeRecord = activeTab != null ? tabRegistry.get(activeTab) : null;
+
+        SessionCallbackAdapter previousAdapter = this.sessionCallbackAdapter;
+        SessionCallbackAdapter sessionAdapter;
+        if (activeRecord != null) {
+            String tabId = activeRecord.getTabId().value();
+            // The bootstrap tab already owns a session, but that session was
+            // created before this window had an adapter. Give it the tab's own
+            // data plane now. The first send enqueues a snapshot before the
+            // daemon reports a session id; only the tab id can attribute it,
+            // and an unattributed snapshot is dropped.
+            StreamMessageCoalescer coalescer = activeRecord.getCoalescer();
+            if (coalescer == null) {
+                // Reuse the window-level coalescer only for the tab it already
+                // belongs to; any other tab gets its own data plane.
+                String windowTabId = streamCoalescer.getTabId();
+                coalescer = (windowTabId == null || windowTabId.equals(tabId))
+                        ? streamCoalescer : createStreamCoalescer(tabId);
             }
-        };
-        curSession.setCallback(sessionCallbackAdapter);
+            coalescer.setTabId(tabId);
+            sessionAdapter = activeRecord.getAdapter() != null
+                    ? activeRecord.getAdapter() : createCallbackAdapter(tabId, coalescer);
+            if (previousAdapter != null && previousAdapter != sessionAdapter) {
+                previousAdapter.deactivate();
+            }
+            activeRecord.setProvisionalResources(curSession, sessionAdapter, coalescer);
+        } else {
+            // Legacy/session-only window: no tab identity to stamp.
+            if (previousAdapter != null) {
+                previousAdapter.deactivate();
+            }
+            sessionAdapter = new SessionCallbackAdapter(
+                    curSession.getSessionId(),
+                    streamCoalescer,
+                    OpencodeBuddyChatWindow.this::publishTabEvent,
+                    permissionHandler,
+                    () -> slashCommandsFetched,
+                    this::onStreamEnded
+            );
+            curSession.setCallback(sessionAdapter);
+        }
+        this.sessionCallbackAdapter = sessionAdapter;
 
         String curId = curSession.getSessionId();
         if (curId != null && !curId.isBlank()) {
-            registerSession(curId, curSession, sessionCallbackAdapter, streamCoalescer);
+            registerSession(curId, curSession, sessionAdapter, streamCoalescer);
         }
 
         // Wire daemon events directly to frontend (bypasses adapter lifecycle).
@@ -4995,13 +5076,21 @@ public class OpencodeBuddyChatWindow {
                     ctx.setSessionCreator(OpencodeBuddyChatWindow.this::createSessionForTab);
                     ctx.setSessionLookup(id -> {
                         TabRecord record = findTabRecord(id);
-                        return record != null ? record.getSession() : null;
+                        if (record == null) {
+                            return null;
+                        }
+                        ensureTabOutputs(record);
+                        return record.getSession();
                     });
                     // A command that names a tab resolves through the registry,
                     // so it can only ever reach the session that tab shows.
                     ctx.setTabSessionLookup(id -> {
                         TabRecord record = findTabRecord(id);
-                        return record != null ? record.getSession() : null;
+                        if (record == null) {
+                            return null;
+                        }
+                        ensureTabOutputs(record);
+                        return record.getSession();
                     });
                     // A stop pauses that tab's outbox; the queue pump never
                     // reads the active tab, so the tab id is the resolution.

@@ -136,6 +136,17 @@ public final class TabRecord {
         return current != null ? current.getStreamRouter().getCoalescer() : null;
     }
 
+    /**
+     * Whether this tab's session has both halves of its data plane.
+     *
+     * <p>A tab whose session exists but whose adapter or coalescer is missing
+     * cannot publish a snapshot that names the tab. That state must be repaired
+     * before the first send, not after the daemon has already answered.</p>
+     */
+    public boolean hasOutputs() {
+        return getAdapter() != null && getCoalescer() != null;
+    }
+
     /** The tab's data-plane router; the single owner of adapter and coalescer. */
     public TabStreamRouter getRouter() {
         OpencodeSession current = session;
@@ -308,9 +319,7 @@ public final class TabRecord {
     ) {
         releasePreviousSession(session);
         this.session = session;
-        if (session != null) {
-            session.getStreamRouter().attachOutputs(adapter, coalescer);
-        }
+        attachOutputs(session, adapter, coalescer);
     }
 
     public void setSessionResources(
@@ -322,8 +331,28 @@ public final class TabRecord {
         releasePreviousSession(session);
         this.sessionId = sessionId;
         this.session = session;
-        if (session != null) {
-            session.getStreamRouter().attachOutputs(adapter, coalescer);
+        attachOutputs(session, adapter, coalescer);
+    }
+
+    /**
+     * Attach the tab's data plane to its session.
+     *
+     * <p>The router is the single owner of the adapter and the coalescer, and
+     * the session's callback handler must publish through that same adapter.
+     * Wiring them here — instead of in a window-level {@code setCallback} —
+     * keeps one session from having two output targets.</p>
+     */
+    private void attachOutputs(
+            OpencodeSession session,
+            SessionCallbackAdapter adapter,
+            StreamMessageCoalescer coalescer
+    ) {
+        if (session == null) {
+            return;
+        }
+        session.getStreamRouter().attachOutputs(adapter, coalescer);
+        if (adapter != null) {
+            session.setCallback(adapter);
         }
     }
 

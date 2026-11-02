@@ -67,9 +67,8 @@ public final class TabSessionFactory {
         }
         StreamMessageCoalescer coalescer = host.newCoalescer(tabId);
         SessionCallbackAdapter adapter = host.newAdapter(tabId, coalescer);
-        if (adapter != null) {
-            session.setCallback(adapter);
-        }
+        // TabRecord owns the wiring: attaching the adapter there also installs
+        // it as the session's callback, so the session never has two targets.
         record.setProvisionalResources(session, adapter, coalescer);
         registry.markCreating(tabId);
         return new Prepared(record, session, true);
@@ -104,7 +103,6 @@ public final class TabSessionFactory {
         if (effectiveAdapter != null) {
             effectiveAdapter.setTabId(tabId.value());
             effectiveAdapter.setSessionId(canonicalSessionId);
-            session.setCallback(effectiveAdapter);
         }
         if (effectiveCoalescer != null) {
             effectiveCoalescer.setTabId(tabId.value());
@@ -149,7 +147,6 @@ public final class TabSessionFactory {
         if (adapter != null) {
             adapter.setTabId(tabId.value());
             adapter.setSessionId(canonicalSessionId);
-            session.setCallback(adapter);
         }
         if (coalescer != null) {
             coalescer.setTabId(tabId.value());

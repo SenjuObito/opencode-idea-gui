@@ -1,5 +1,8 @@
 package com.opencodebuddy.tab;
 
+import com.opencodebuddy.session.OpencodeSession;
+import com.opencodebuddy.session.SessionCallbackAdapter;
+import com.opencodebuddy.session.StreamMessageCoalescer;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -8,6 +11,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -117,6 +121,49 @@ public class TabRecordTest {
             fail("turn ids start at 1");
         } catch (IllegalArgumentException expected) {
             // expected
+        }
+    }
+
+    @Test
+    public void aSessionWithoutResourcesHasNoOutputs() {
+        TabRecord record = record();
+        record.setProvisionalResources(new OpencodeSession(null, null), null, null);
+
+        assertFalse(record.hasOutputs());
+        assertNull(record.getAdapter());
+        assertNull(record.getCoalescer());
+    }
+
+    @Test
+    public void provisionalResourcesWireTheSessionAndItsCallback() {
+        TabRecord record = record();
+        RecordingSession session = new RecordingSession();
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(
+                "ses_a", "tab-a", null, null);
+        SessionCallbackAdapter adapter = new SessionCallbackAdapter(
+                "ses_a", coalescer, event -> { }, null, () -> true, null, "tab-a");
+
+        record.setProvisionalResources(session, adapter, coalescer);
+
+        assertTrue(record.hasOutputs());
+        assertSame(adapter, record.getAdapter());
+        assertSame(coalescer, record.getCoalescer());
+        assertSame("attaching the tab's data plane must also set the session callback",
+                adapter, session.capturedCallback);
+    }
+
+    /** Captures the callback so the wiring can be asserted without a real daemon. */
+    private static final class RecordingSession extends OpencodeSession {
+        private OpencodeSession.SessionCallback capturedCallback;
+
+        private RecordingSession() {
+            super(null, null);
+        }
+
+        @Override
+        public void setCallback(OpencodeSession.SessionCallback callback) {
+            this.capturedCallback = callback;
+            super.setCallback(callback);
         }
     }
 }

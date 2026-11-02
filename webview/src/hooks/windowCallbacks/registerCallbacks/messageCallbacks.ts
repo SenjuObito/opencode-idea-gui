@@ -1124,8 +1124,16 @@ export function registerMessageCallbacks(
     setMessages([]);
   };
 
-  const addErrorMessage = (message: string) => {
-    addToast(message, 'error');
+  const addErrorMessage = (message: unknown) => {
+    // `message.error` is published as a named event, so the dispatcher hands
+    // over the whole `{ message }` payload instead of the legacy string. A
+    // toast cannot render an object (React #31), so normalize both shapes.
+    const text = typeof message === 'string'
+      ? message
+      : (message && typeof message === 'object' && typeof (message as { message?: unknown }).message === 'string'
+          ? (message as { message: string }).message
+          : '');
+    if (text) addToast(text, 'error');
   };
 
   const showContextUsageDialog = (json: string) => {

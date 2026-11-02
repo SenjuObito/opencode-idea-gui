@@ -10,6 +10,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class TabSessionFactoryTest {
@@ -126,5 +127,56 @@ public class TabSessionFactoryTest {
         assertEquals("ses_target", coalescer.getSessionId());
         assertEquals("custom-model", session.getState().getModel());
         assertEquals(TabState.LOADING_HISTORY, record.getState());
+    }
+
+    @Test
+    public void prepareWiresTheSessionCallbackThroughTheRecord() {
+        TabRegistry registry = new TabRegistry();
+        RecordingSession session = new RecordingSession();
+        StreamMessageCoalescer coalescer = new StreamMessageCoalescer(
+                null, "tab-a", null, null);
+        SessionCallbackAdapter adapter = new SessionCallbackAdapter(
+                null, coalescer, event -> { }, null, () -> true, null, "tab-a");
+
+        TabSessionFactory factory = new TabSessionFactory(registry, new TabSessionFactory.Host() {
+            @Override
+            public OpencodeSession newSession(String cwd) {
+                return session;
+            }
+
+            @Override
+            public StreamMessageCoalescer newCoalescer(TabId tabId) {
+                return coalescer;
+            }
+
+            @Override
+            public SessionCallbackAdapter newAdapter(TabId tabId, StreamMessageCoalescer c) {
+                return adapter;
+            }
+        });
+
+        TabSessionFactory.Prepared prepared = factory.prepare(TabId.of("tab-a"), "/repo", null);
+
+        assertTrue(prepared.created());
+        assertTrue(prepared.tab().hasOutputs());
+        assertSame(adapter, prepared.tab().getAdapter());
+        assertSame(coalescer, prepared.tab().getCoalescer());
+        assertSame("the factory must not install a second output target",
+                adapter, session.capturedCallback);
+    }
+
+    /** Captures the callback so the factory's wiring can be asserted. */
+    private static final class RecordingSession extends OpencodeSession {
+        private OpencodeSession.SessionCallback capturedCallback;
+
+        private RecordingSession() {
+            super(null, null);
+        }
+
+        @Override
+        public void setCallback(OpencodeSession.SessionCallback callback) {
+            this.capturedCallback = callback;
+            super.setCallback(callback);
+        }
     }
 }

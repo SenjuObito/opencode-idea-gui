@@ -209,6 +209,53 @@ sequenceDiagram
 
 ---
 
+### 2.4 混合图标格式与统一图标盒（2026-11 复验）
+
+2.3 的 `align-items: center` 方案适合纯图标按钮，但**含文字/数字的行不能用 center**：center 居中的是行盒，不是字形，跨字体时仍会漂移。IDEA Webview 与 VS Code 插件共用同一套 React 组件，本轮在 Webview 侧统一改为“基线锚定 + 固定图标盒”。
+
+#### 根因
+
+1. **codicon 加载顺序**
+   `main.tsx` 先 `import App`（连带引入组件 CSS），后 `import './codicon.css'`。codicon 基础规则 `.codicon { font: 16px/1 codicon }` 与组件里的 `.x .codicon { font-size: 12px }` 特异性相同，后加载的 16px 会覆盖组件声明，导致图标尺寸失控。
+2. **混合图标格式的基线不同**
+   - codicon 是字体字形：flex 基线取字体基线，ascent = 字号（14px）。
+   - 内联 SVG / `<img>`：没有字体基线，flex 基线取盒子底边，ascent = 高度（12px）。
+   - 同一个 24px 选择器按钮里，14px codicon 会把行基线压低 2px，而 12px SVG 不会，于是模型选择比模式/推理力度高 2px。实测差值恒为 **2.00px**，换 4 种字体不变。
+   - `line-height: 0` 不能解决：Chromium 计算 flex item 基线时仍按字体 ascent 计算。
+
+#### 修复
+
+1. **codicon 必须最先加载**（`webview/src/main.tsx`）：
+   ```ts
+   import './vscodeBridge';
+   import './codicon.css';   // 必须排在 import App 之前
+   import App from './App';
+   ```
+2. **新增 `webview/src/styles/less/alignment.less`**（在 `app.less` 末尾引入）：
+   - `--ui-font-xs/sm/md/lg`、`--ui-line-row`、`--ui-icon-shift`；
+   - `.ui-row`（基线对齐）、`.ui-num`（等宽数字）、`.ui-badge` 等原语；
+   - 行高显式化，禁止依赖 `line-height: normal`。
+3. **统一图标盒**：
+   - `.selector-icon-box`：14×14，盒内没有行内内容，flex 基线回退到盒子底边 = 14px，与 14px codicon 的 ascent 一致；内部 SVG/img/span 用 `position: absolute; inset: 0; margin: auto` 居中。
+   - `.back-icon-box`：16×16，同样让基线落在盒底；SVG 墨迹填满盒子，偏移用 `0.19em`。
+   - 这样 codicon、SVG、`<img>`、`<span>` 包装的品牌图标都走同一套基线，不再需要按格式写特例。
+4. **字号刻度**：
+   - 行内图标统一 **14px**，tab 计数保持 **11px**（`--ui-font-xs`），不回退 16/10；
+   - 独立操作按钮图标 **16px**，复制按钮 14px；
+   - `--idea-editor-font-family` 改为 `var(--cc-gui-code-font-family, ...)` 别名，数字跟随用户配置的代码字体。
+
+#### 复验数据（构建产物 CSS + 无头 Chromium）
+
+| 位置 | 修复前 | 修复后 |
+|---|---|---|
+| 三个选择器文字 top 差（4 种字体） | 2.00px | **0** |
+| 返回按钮 SVG ↔ 文字中心 | 1.18px | **0.04px** |
+| 状态面板 tab 高度 / 图标 / 计数 | 28px / 14px / 11px | **28px / 14px / 11px** |
+
+`zoom: 0.9 / 1.0 / 1.2 / 1.4` 下文字 top 差 ≤ 0.3px（子像素舍入），返回按钮中心差 ≤ 0.64px。Webview 单测 **186 个文件 / 1653 个用例全部通过**。
+
+---
+
 ## 3. 单元测试与验证矩阵
 
 ### 3.1 IntelliJ IDEA 插件端测试

@@ -9,6 +9,7 @@ import com.opencodebuddy.util.IgnoreRuleMatcher;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
@@ -181,7 +182,12 @@ public class UsagePushService {
      * Refresh the context bar with the currently open editor file.
      */
     public void refreshContextBar() {
-        ApplicationManager.getApplication().invokeLater(() -> {
+        Application application = ApplicationManager.getApplication();
+        if (application == null) {
+            LOG.debug("[UsagePushService] No application; skipping context bar refresh");
+            return;
+        }
+        application.invokeLater(() -> {
             try {
                 if (context.getProject() == null) {
                     return;

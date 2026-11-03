@@ -180,6 +180,52 @@ public class TabSessionCommandHandlerTest {
     }
 
     @Test
+    public void compactTerminalFailureBeforeRpcDoesNotAppendSecondRecord() {
+        RecordingBridge bridge = new RecordingBridge();
+        bridge.error = "transport closed";
+        RecordingJsCallback jsCallback = new RecordingJsCallback();
+        OpencodeSession tabA = session("ses_a");
+        Map<String, OpencodeSession> tabs = Map.of("tab-a", tabA);
+        bridge.beforeCallback = () -> tabA.getState().finishCompaction(
+                "failed", "cmp_1", null, "engine error", null, "manual", null);
+
+        TabSessionCommandHandler handler = new TabSessionCommandHandler(
+                context(bridge, jsCallback, null, tabs), (targetTabId, newSessionId) -> { });
+
+        handler.compact(command("tab-a", "session.compact", "ses_a"));
+
+        assertEquals(1, tabA.getState().getMessages().size());
+        OpencodeSession.Message record = tabA.getState().getMessages().get(0);
+        assertEquals("failed", record.compaction.get("status").getAsString());
+        assertEquals("engine error", record.compaction.get("error").getAsString());
+        jsCallback.only("session.compact.failed");
+    }
+
+    @Test
+    public void compactTerminalSuccessBeforeRpcDoesNotAppendSecondRecord() {
+        RecordingBridge bridge = new RecordingBridge();
+        RecordingJsCallback jsCallback = new RecordingJsCallback();
+        OpencodeSession tabA = session("ses_a");
+        Map<String, OpencodeSession> tabs = Map.of("tab-a", tabA);
+        JsonObject tokens = new JsonObject();
+        tokens.addProperty("input", 100);
+        tokens.addProperty("output", 20);
+        bridge.beforeCallback = () -> tabA.getState().finishCompaction(
+                "completed", "cmp_1", "engine summary", null, tokens, "manual", null);
+
+        TabSessionCommandHandler handler = new TabSessionCommandHandler(
+                context(bridge, jsCallback, null, tabs), (targetTabId, newSessionId) -> { });
+
+        handler.compact(command("tab-a", "session.compact", "ses_a"));
+
+        assertEquals(1, tabA.getState().getMessages().size());
+        OpencodeSession.Message record = tabA.getState().getMessages().get(0);
+        assertEquals("completed", record.compaction.get("status").getAsString());
+        assertEquals("engine summary", record.content);
+        jsCallback.only("session.compact.done");
+    }
+
+    @Test
     public void revertPublishesStateOnTheCommandTab() {
         RecordingBridge bridge = new RecordingBridge();
         bridge.response = "{\"session\":{\"revert\":{\"messageID\":\"msg_1\"}}}";
@@ -265,6 +311,7 @@ public class TabSessionCommandHandlerTest {
         final List<JsonObject> params = new ArrayList<>();
         String response = "{\"success\":true}";
         String error;
+        Runnable beforeCallback;
 
         RecordingBridge() {
             super(null, new Gson());
@@ -278,6 +325,9 @@ public class TabSessionCommandHandlerTest {
         ) {
             methods.add(method);
             this.params.add(params.deepCopy());
+            if (beforeCallback != null) {
+                beforeCallback.run();
+            }
             if (error != null) {
                 callback.onError(error);
                 callback.onComplete(false);

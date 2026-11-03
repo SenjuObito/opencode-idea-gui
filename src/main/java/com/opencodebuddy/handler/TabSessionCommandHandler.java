@@ -499,7 +499,12 @@ public final class TabSessionCommandHandler {
                             return;
                         }
                         LOG.warn("[compact] Compact session failed: " + error);
-                        target.session().finishCompaction("failed", error);
+                        // The engine terminal marker is authoritative and may
+                        // already have closed the optimistic record. The RPC
+                        // result must not create a second failed record.
+                        if (target.session().getState().hasActiveCompaction()) {
+                            target.session().finishCompaction("failed", error);
+                        }
                         publishCompactFailure(context, target, error, command.requestId());
                     }
 
@@ -510,7 +515,9 @@ public final class TabSessionCommandHandler {
                                 return;
                             }
                             LOG.warn("[compact] Compact session failed (success=false)");
-                            target.session().finishCompaction("failed", "compact failed");
+                            if (target.session().getState().hasActiveCompaction()) {
+                                target.session().finishCompaction("failed", "compact failed");
+                            }
                             publishCompactFailure(context, target, "", command.requestId());
                             return;
                         }

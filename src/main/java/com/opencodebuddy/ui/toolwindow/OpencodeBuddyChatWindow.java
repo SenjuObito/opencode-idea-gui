@@ -557,10 +557,7 @@ public class OpencodeBuddyChatWindow {
 
             @Override
             public void markHistoryLoaded(String sessionId) {
-                TabRecord record = tabRegistry.findBySession(sessionId);
-                if (record != null) {
-                    tabRegistry.markBound(record.getTabId());
-                }
+                OpencodeBuddyChatWindow.this.markHistoryLoaded(sessionId);
             }
 
             @Override
@@ -4431,7 +4428,13 @@ public class OpencodeBuddyChatWindow {
         return current != null && sessionId.equals(current.getSessionId());
     }
 
-    private void markTabStreaming(String targetSessionId, boolean streaming) {
+    /**
+     * Apply one tab's streaming flag and return that record.
+     *
+     * @return the tab the flag belongs to, or null when the id resolves to no
+     *         live tab (legacy session-only paths).
+     */
+    private TabRecord markTabStreaming(String targetSessionId, boolean streaming) {
         TabRecord record = null;
         if (targetSessionId != null && !targetSessionId.isBlank()) {
             record = tabRegistry.get(TabId.of(targetSessionId));
@@ -4444,6 +4447,7 @@ public class OpencodeBuddyChatWindow {
         if (record != null) {
             tabRegistry.markStreaming(record.getTabId(), streaming);
         }
+        return record;
     }
 
     /**
@@ -4514,7 +4518,20 @@ public class OpencodeBuddyChatWindow {
     }
 
     private void onStreamEnded(String targetSessionId) {
-        markTabStreaming(targetSessionId, false);
+        TabRecord endedTab = markTabStreaming(targetSessionId, false);
+        // Clear the tab's streaming projection and then wake its outbox.
+        //
+        // The terminal events (`turn.ended`, `session.loading=false`,
+        // `turn.settled`) are published from inside this same stream-end chain,
+        // i.e. *before* the handler that owns this callback has cleared the
+        // session's busy/loading flags. A settlement judged at that moment is
+        // refused, and nothing used to re-check afterwards — the queue then sat
+        // still until the user manually enqueued one more message, which
+        // released exactly one item. Deferring the nudge to the next EDT pass
+        // means it runs after those flags are authoritative.
+        if (endedTab != null && tabQueuePump != null) {
+            ApplicationManager.getApplication().invokeLater(() -> tabQueuePump.onTabIdle(endedTab));
+        }
         OpencodeSession target = targetSessionId != null ? getSession(targetSessionId) : getSession();
         if (target == null) {
             target = getSession();
@@ -4965,6 +4982,12 @@ public class OpencodeBuddyChatWindow {
         TabRecord record = tabRegistry.findBySession(sessionId);
         if (record != null) {
             tabRegistry.markBound(record.getTabId());
+            // Prompts queued while the transcript was still loading wait for
+            // exactly this moment. Without the wake-up they would only move on
+            // the next manual enqueue, which released one item at a time.
+            if (tabQueuePump != null) {
+                tabQueuePump.onTabIdle(record);
+            }
         }
     }
 

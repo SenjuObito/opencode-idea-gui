@@ -259,11 +259,22 @@ public final class TabQueuePump {
         if (record.isClosed()) {
             return false;
         }
-        TabState state = record.getState();
         // CREATING is deliberately allowed: it means a provisional session
         // exists and the first send is exactly what turns it into a real one.
         // The in-flight guard below already stops a second item from starting.
-        if (state == TabState.STREAMING || state == TabState.LOADING_HISTORY) {
+        //
+        // LOADING_HISTORY is a real gate: the transcript the next prompt would
+        // be appended to is not there yet.
+        //
+        // STREAMING deliberately is NOT a gate. It is a projection maintained by
+        // the adapter's start/end callbacks, and it lags the authoritative
+        // session flags: the terminal event can arrive while the tab is still
+        // marked STREAMING, and if the settlement is judged then, the queue
+        // waits for a trigger that never comes (the next item is only released
+        // by a fresh enqueue). `session.isBusy()/isLoading()` below is the
+        // authoritative "a turn is running" signal, so the projection must not
+        // be consulted in addition.
+        if (record.getState() == TabState.LOADING_HISTORY) {
             return false;
         }
         OpencodeSession session = record.getSession();

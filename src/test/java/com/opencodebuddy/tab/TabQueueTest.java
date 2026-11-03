@@ -170,6 +170,70 @@ public class TabQueueTest {
         assertEquals(List.of("first"), host.sends);
     }
 
+    /**
+     * The terminal can arrive while the tab still looks streaming.
+     *
+     * <p>{@code TabState.STREAMING} is a projection maintained by the adapter's
+     * start/end callbacks; {@code turn.settled} can land before that projection
+     * is cleared. Judging the settlement on it used to strand the queue: the
+     * in-flight item was completed, the next one was refused, and nothing
+     * re-checked afterwards — the outbox then only moved when the user manually
+     * enqueued another message, which released exactly one item.</p>
+     */
+    @Test
+    public void aSettlementDrainsEvenWhenTheTabStillLooksStreaming() {
+        TabRecord record = new TabRecord(TabId.of("tab-a"), "/mock/workspace");
+        RecordingHost host = new RecordingHost(record);
+        TabQueuePump pump = new TabQueuePump(host);
+
+        pump.enqueue(record, item("q1", "first"));
+        pump.enqueue(record, item("q2", "second"));
+        await("the first prompt to be sent", () -> host.sends.size() == 1);
+
+        record.setState(TabState.STREAMING);
+        pump.onTabSettled(record);
+
+        await("the second prompt to be sent after the settlement", () -> host.sends.size() == 2);
+        assertEquals(List.of("first", "second"), host.sends);
+        assertTrue(record.getQueue().items().isEmpty());
+    }
+
+    /** The same guard on the non-terminal "maybe idle" nudge. */
+    @Test
+    public void anIdleNudgeDrainsEvenWhenTheTabStillLooksStreaming() {
+        TabRecord record = new TabRecord(TabId.of("tab-a"), "/mock/workspace");
+        RecordingHost host = new RecordingHost(record);
+        TabQueuePump pump = new TabQueuePump(host);
+
+        record.setState(TabState.STREAMING);
+        pump.enqueue(record, item("q1", "first"));
+
+        await("the prompt to be sent despite the stale projection", () -> host.sends.size() == 1);
+        assertEquals(List.of("first"), host.sends);
+    }
+
+    /** A prompt queued while the transcript was loading starts once it is in. */
+    @Test
+    public void aQueuedPromptStartsOnceHistoryFinishesLoading() {
+        TabRecord record = new TabRecord(TabId.of("tab-a"), "/mock/workspace");
+        RecordingHost host = new RecordingHost(record);
+        TabQueuePump pump = new TabQueuePump(host);
+
+        record.setState(TabState.LOADING_HISTORY);
+        pump.enqueue(record, item("q1", "first"));
+        // `drain` takes the item synchronously, so an unopened gate is visible
+        // right here: nothing in flight, the item still waiting.
+        assertNull("history loading must hold the prompt", record.getQueue().getInflightId());
+        assertEquals(1, record.getQueue().items().size());
+
+        // The window marks the tab bound and then nudges it (markHistoryLoaded).
+        record.setState(TabState.BOUND);
+        pump.onTabIdle(record);
+
+        await("the prompt to be sent after the history was loaded", () -> host.sends.size() == 1);
+        assertEquals(List.of("first"), host.sends);
+    }
+
     @Test
     public void theSameIdCannotBeQueuedTwice() {
         TabQueue queue = new TabQueue();

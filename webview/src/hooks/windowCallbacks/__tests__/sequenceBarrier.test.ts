@@ -18,7 +18,6 @@ import { seedTabStore } from '../../../test/seedTabStore';
 const createOptions = (overrides?: Partial<UseWindowCallbacksOptions>): UseWindowCallbacksOptions => ({
   addToast: vi.fn(),
   clearToasts: vi.fn(),
-  setMessages: vi.fn(),
   setStatus: vi.fn(),
   setLoading: vi.fn(),
   setLoadingStartTime: vi.fn(),
@@ -132,16 +131,8 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
   });
 
   it('allows freshly loaded history session to render after active conversation pushed sequence to high watermark', () => {
-    let currentMessages: ClaudeMessage[] = [];
-    const setMessages = vi.fn((updater: React.SetStateAction<ClaudeMessage[]>) => {
-      currentMessages = typeof updater === 'function' ? updater(currentMessages) : updater;
-    });
-
     const currentSessionIdRef = { current: 'session-active' as string | null };
-    const opts = createOptions({
-      setMessages,
-      currentSessionIdRef,
-    });
+    const opts = createOptions({ currentSessionIdRef });
 
     // The transition guard belongs to a tab, so the webview needs one.
     seedTabStore([{ id: 'tab-active', sessionId: 'session-active' }], 'tab-active');
@@ -154,8 +145,8 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
         { type: 'assistant', content: 'Turn 1 in active session' },
       ]), 60));
     });
-    expect(currentMessages).toHaveLength(1);
-    expect(currentMessages[0].content).toBe('Turn 1 in active session');
+    expect(getTabStore().getActiveTabMessages()).toHaveLength(1);
+    expect(getTabStore().getActiveTabMessages()[0].content).toBe('Turn 1 in active session');
 
     // 2. User navigates to history drawer and opens session-history. Opening a
     // session rebinds the tab first; routing follows the binding, not a ref.
@@ -167,7 +158,7 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
     act(() => {
       hostEventHandler('session.cleared')!(...sessionEvent('session-history', { sequence: 1 }));
     });
-    expect(currentMessages).toHaveLength(0);
+    expect(getTabStore().getActiveTabMessages()).toHaveLength(0);
 
     // Backend loads session-history messages from server and flushes sequence=2
     act(() => {
@@ -178,9 +169,9 @@ describe('useWindowCallbacks - Cross-Session History Loading Regression', () => 
     });
 
     // 3. VERIFY: History messages MUST NOT be blocked by session-active's sequence 60!
-    expect(currentMessages).toHaveLength(2);
-    expect(currentMessages[0].content).toBe('Historical question');
-    expect(currentMessages[1].content).toBe('Historical answer');
+    expect(getTabStore().getActiveTabMessages()).toHaveLength(2);
+    expect(getTabStore().getActiveTabMessages()[0].content).toBe('Historical question');
+    expect(getTabStore().getActiveTabMessages()[1].content).toBe('Historical answer');
 
     // Complete history load
     act(() => {

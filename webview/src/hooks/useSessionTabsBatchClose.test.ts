@@ -42,7 +42,7 @@ describe('useSessionTabs batch close operations', () => {
         setCustomSessionTitle: dummyFn,
         updateHistoryTitle: dummyFn,
         messages: emptyMessages,
-        setMessages: dummyFn,
+        mutateTranscript: dummyFn,
         loading: false,
         streamingActive: false,
         isShared: false,

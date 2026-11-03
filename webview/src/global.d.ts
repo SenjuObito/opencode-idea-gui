@@ -28,8 +28,6 @@ interface Window {
   updateMessages?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
   updateMessageTail?: (payload: HostEventPayload, env?: HostEventEnvelope) => void;
-  /** Global message ordinal of the webview list's first entry (window paging). */
-  __opencodeListStart?: number;
   /** Whether a revert/undo boundary is currently active on the frontend. */
   __hasActiveRevert?: boolean;
 
@@ -936,10 +934,6 @@ interface Window {
   __minAcceptedUpdateSequence?: number;
   /** Per-session minimum accepted update sequence map, isolating sequence counters between sessions. */
   __sessionMinAcceptedUpdateSequence?: Map<string, number> | Record<string, number>;
-  /** Number of paged history messages prepended ahead of the backend session snapshot. */
-  __prependedHistoryMessageCount?: number;
-  /** Backend index represented by the first non-prepended message; zero means its full prefix is present. */
-  __messageBaseIndex?: number;
   /**
    * Turn range of the last completed Codex history page. completeCodexHistoryPage
    * checks prepend contiguity against it, so it is written only on completion.

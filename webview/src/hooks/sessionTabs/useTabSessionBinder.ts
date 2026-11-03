@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { SessionTabData } from '../../components/ChatHeader/types';
 import { createTabId, getTabStore } from '../../store/tabStore';
-import { TabMessageStore } from '../../store/tabMessageStore';
+import { TabTranscript } from '../../store/tabTranscript';
 import type { TabDraftStore } from '../../store/tabDraftStore';
 import type { TabStatusStore } from '../../store/tabStatusStore';
 import { statusSnapshotOf } from '../../store/tabStatusStore';
@@ -22,7 +22,7 @@ export interface UseTabSessionBinderOptions extends Pick<
   | 't'
   | 'setCurrentSessionId'
   | 'setCustomSessionTitle'
-  | 'setMessages'
+  | 'mutateTranscript'
   | 'restoreScrollState'
   | 'captureScrollState'
   | 'setLoading'
@@ -83,7 +83,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     t,
     setCurrentSessionId,
     setCustomSessionTitle,
-    setMessages,
+    mutateTranscript,
     restoreScrollState,
     captureScrollState,
     setLoading,
@@ -259,8 +259,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
           id: entry.tabId!,
           sessionId,
           title,
-          messageStore: new TabMessageStore(),
-          messages: [],
+          transcript: new TabTranscript(),
           isShared: false,
           loading,
           streamingActive,
@@ -339,9 +338,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       currentActive.usagePercentage = snap.usagePercentage;
       currentActive.usageUsedTokens = snap.usageUsedTokens;
       currentActive.usageMaxTokens = snap.usageMaxTokens;
-      currentActive.messageBaseIndex = typeof window.__messageBaseIndex === 'number' ? window.__messageBaseIndex : currentActive.messageBaseIndex;
-      currentActive.opencodeListStart = typeof window.__opencodeListStart === 'number' ? window.__opencodeListStart : currentActive.opencodeListStart;
-      currentActive.prependedHistoryMessageCount = typeof window.__prependedHistoryMessageCount === 'number' ? window.__prependedHistoryMessageCount : currentActive.prependedHistoryMessageCount;
       const capturedScroll = captureScrollState?.();
       if (capturedScroll) {
         currentActive.scrollState = capturedScroll;
@@ -379,7 +375,9 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       const targetTab = tabsRef.current.find((t) => t.id === targetTabId);
       if (!targetTab) return;
 
-      const contentChanged = targetTab.messages !== runtimeStateRef.current.messages;
+      // The view reads the active tab's transcript, so a different transcript
+      // is exactly a different conversation’s content on screen.
+      const contentChanged = targetTab.transcript !== getTabStore().getActiveTab().transcript;
 
       activeTabIdRef.current = targetTabId;
       setActiveTabId(targetTabId);
@@ -400,7 +398,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setCurrentSessionId?.(targetTab.sessionId);
       setCustomSessionTitle(targetTab.title || null);
       restoreScrollState?.(targetTab.scrollState ?? null);
-      setMessages?.(targetTab.messages ?? []);
 
       // Turn state, transcript and subagent histories belong to the target tab.
       // Activating it is enough; copying a status-store snapshot back would let
@@ -415,10 +412,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setRevertBoundaryId?.(targetRevertBoundaryId);
       setTaskEvents?.(targetStatus?.taskEvents ?? targetTab.taskEvents ?? {});
       setFilteredFileChanges?.(targetStatus?.filteredFileChanges ?? targetTab.filteredFileChanges ?? []);
-
-      window.__messageBaseIndex = targetTab.messageBaseIndex ?? 0;
-      window.__opencodeListStart = targetTab.opencodeListStart ?? 0;
-      window.__prependedHistoryMessageCount = targetTab.prependedHistoryMessageCount ?? 0;
 
       const targetMode = targetTab.permissionMode || 'default';
       setPermissionMode?.(targetMode);
@@ -472,7 +465,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setCurrentSessionId,
       setCustomSessionTitle,
       restoreScrollState,
-      setMessages,
+      mutateTranscript,
       statusStore,
       setTabRuntimeStreaming,
       setRevertBoundaryId,
@@ -525,7 +518,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         currentActive &&
         currentActive.sessionId === null &&
         (!messages || messages.length === 0) &&
-        (!currentActive.messages || currentActive.messages.length === 0);
+        currentActive.transcript.size() === 0;
 
       const resolvedTitle = title || t('common.historySession', { defaultValue: '历史会话' });
 
@@ -564,9 +557,8 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         const newTab: SessionTabData = {
           id: newId,
           sessionId,
-          messageStore: new TabMessageStore(),
+          transcript: new TabTranscript(),
           title: resolvedTitle,
-          messages: [],
           isShared: false,
           loading: false,
           streamingActive: false,
@@ -598,7 +590,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       // transcript. This is a tab-scoped write, not a window-level one.
       getTabStore().resetCompaction(activeTabIdRef.current);
 
-      setMessages([]);
+      mutateTranscript((transcript) => transcript.clear());
       restoreScrollState?.(null);
       setLoading?.(false);
       setStreamingActive?.(false);
@@ -661,7 +653,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       saveCurrentTabSnapshot,
       setActiveTabId,
       syncHostActiveTabTo,
-      setMessages,
+      mutateTranscript,
       restoreScrollState,
       setLoading,
       setStreamingActive,

@@ -84,7 +84,7 @@ describe('useSessionTabs - multi-session attribution', () => {
         setCustomSessionTitle: dummyFn,
         updateHistoryTitle: dummyFn,
         messages: emptyMessages,
-        setMessages: dummyFn,
+        mutateTranscript: dummyFn,
         loading: false,
         streamingActive: false,
         isShared: false,
@@ -297,7 +297,6 @@ describe('useSessionTabs - history session loading', () => {
    */
   const renderTabsHost = () => {
     const loadHistorySession = vi.fn();
-    const setMessages = vi.fn();
     let rerender!: (props: { currentSessionId: string | null }) => void;
 
     const view = renderHook(
@@ -309,7 +308,7 @@ describe('useSessionTabs - history session loading', () => {
           setCustomSessionTitle: dummyFn,
           updateHistoryTitle: dummyFn,
           messages: emptyMessages,
-          setMessages,
+          mutateTranscript: dummyFn,
           loading: false,
           streamingActive: false,
           isShared: false,
@@ -321,7 +320,7 @@ describe('useSessionTabs - history session loading', () => {
     );
     rerender = view.rerender;
 
-    return { ...view, loadHistorySession, setMessages };
+    return { ...view, loadHistorySession };
   };
 
   const store = () => getTabStore();
@@ -451,37 +450,40 @@ describe('useSessionTabs - history session loading', () => {
 
 
   it('preserves and restores sliding window cursors per tab', () => {
+    // Cursors live on the tab's transcript, so switching tabs cannot mix them.
     const { result, unmount } = renderTabsHost();
-    // Tab 1: bind to ses_1 and set cursor
     act(() => {
       store().updateTabSessionId('tab-1', 'ses_1');
-      window.__messageBaseIndex = 15;
-      window.__opencodeListStart = 10;
-      window.__prependedHistoryMessageCount = 5;
+      const transcript = store().findById('tab-1')!.transcript;
+      transcript.applySnapshot([{ type: 'user', content: 'current' }], 15);
+      transcript.prependPage([{ type: 'user', content: 'older' }], 10);
     });
 
-    // Open session 2
+    // Open session 2 into its own tab: it starts with fresh cursors.
     act(() => {
       result.current.openSessionInTab('ses_2', 'Session 2');
     });
-
-    // In Session 2, set different cursors
+    const tab2 = result.current.tabs[1];
     act(() => {
-      window.__messageBaseIndex = 42;
-      window.__opencodeListStart = 30;
-      window.__prependedHistoryMessageCount = 12;
+      const transcript = store().findById(tab2.id)!.transcript;
+      transcript.applySnapshot([{ type: 'user', content: 'second' }], 42);
+      transcript.prependPage([{ type: 'user', content: 'second older' }], 30);
     });
 
     const tab1Id = result.current.tabs[0].id;
-    // Switch back to Tab 1
     act(() => {
       result.current.selectTab(tab1Id);
     });
 
-    // Window cursors should be restored from Tab 1's snapshot!
-    expect(window.__messageBaseIndex).toBe(15);
-    expect(window.__opencodeListStart).toBe(10);
-    expect(window.__prependedHistoryMessageCount).toBe(5);
+    const first = store().findById(tab1Id)!.transcript;
+    expect(first.baseIndex()).toBe(15);
+    expect(first.windowStart()).toBe(10);
+    expect(first.pagedCount()).toBe(1);
+
+    const second = store().findById(tab2.id)!.transcript;
+    expect(second.baseIndex()).toBe(42);
+    expect(second.windowStart()).toBe(30);
+    expect(second.pagedCount()).toBe(1);
 
     unmount();
   });
@@ -523,7 +525,7 @@ describe('useSessionTabs - history session loading', () => {
         setCustomSessionTitle: dummyFn,
         updateHistoryTitle: dummyFn,
         messages: emptyMessages,
-        setMessages: dummyFn,
+        mutateTranscript: dummyFn,
         loading: false,
         streamingActive: false,
         isShared: false,
@@ -567,7 +569,7 @@ describe('useSessionTabs - history session loading', () => {
         setCustomSessionTitle: dummyFn,
         updateHistoryTitle: dummyFn,
         messages: emptyMessages,
-        setMessages: dummyFn,
+        mutateTranscript: dummyFn,
         loading: false,
         streamingActive: false,
         isShared: false,
@@ -618,7 +620,7 @@ describe('useSessionTabs - history session loading', () => {
         setCustomSessionTitle: dummyFn,
         updateHistoryTitle: dummyFn,
         messages: emptyMessages,
-        setMessages: dummyFn,
+        mutateTranscript: dummyFn,
         loading: false,
         streamingActive: false,
         isShared: false,
@@ -653,7 +655,7 @@ describe('useSessionTabs - history session loading', () => {
         setCustomSessionTitle: dummyFn,
         updateHistoryTitle: dummyFn,
         messages: emptyMessages,
-        setMessages: dummyFn,
+        mutateTranscript: dummyFn,
         loading: false,
         streamingActive: false,
         isShared: false,
@@ -700,7 +702,7 @@ describe('useSessionTabs - history session loading', () => {
         setCustomSessionTitle: setCustomTitle,
         updateHistoryTitle: vi.fn(),
         messages: emptyMessages,
-        setMessages: vi.fn(),
+        mutateTranscript: vi.fn(),
         loading: false,
         streamingActive: false,
         isShared: false,
@@ -743,7 +745,7 @@ describe('useSessionTabs - history session loading', () => {
         setCustomSessionTitle: setCustomTitle,
         updateHistoryTitle: vi.fn(),
         messages: emptyMessages,
-        setMessages: vi.fn(),
+        mutateTranscript: vi.fn(),
         loading: false,
         streamingActive: false,
         isShared: false,
@@ -787,7 +789,7 @@ describe('useSessionTabs - history session loading', () => {
         setCustomSessionTitle: vi.fn(),
         updateHistoryTitle: vi.fn(),
         messages: emptyMessages,
-        setMessages: vi.fn(),
+        mutateTranscript: vi.fn(),
         loading: false,
         streamingActive: false,
         isShared: false,

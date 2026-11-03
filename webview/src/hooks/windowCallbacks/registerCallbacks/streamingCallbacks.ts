@@ -151,58 +151,6 @@ export function collectUnresolvedToolUseIds(
   return idsToAdd;
 }
 
-/**
- * Timeout (ms) for detecting a stalled stream.  If no content/thinking delta
- * arrives for this duration while isStreamingRef is still true, the frontend
-
-/**
- * Safely extracts raw content blocks from raw (handles object or JSON string).
- */
-const getRawContentBlocks = (raw: unknown): unknown[] => {
-  if (!raw) return [];
-  let parsedRaw: unknown = raw;
-  if (typeof raw === 'string') {
-    try {
-      parsedRaw = JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  }
-  if (!parsedRaw || typeof parsedRaw !== 'object') return [];
-  const content = (parsedRaw as { message?: { content?: unknown }; content?: unknown }).message?.content
-    ?? (parsedRaw as { content?: unknown }).content;
-  return Array.isArray(content) ? content : [];
-};
-
-/**
- * Whether the raw field contains any content blocks (text, tool_use, thinking, etc.).
- */
-function rawHasContent(raw: unknown): boolean {
-  return getRawContentBlocks(raw).length > 0;
-}
-
-/**
- * Whether a streaming assistant bubble has any renderable content yet.
- * An empty bubble (no text, no raw blocks) is an unfilled placeholder that can
- * be safely reused for a new turn instead of being left behind as a ghost.
- */
-function streamingBubbleHasContent(message: ClaudeMessage): boolean {
-  if (typeof message.content === 'string' && message.content.trim().length > 0) {
-    return true;
-  }
-  return rawHasContent(message.raw);
-}
-
-// Helper to measure total text length from raw blocks (for comparing completeness).
-// Handles both object and JSON string formats of raw.
-type TextBlock = { type: 'text'; text: string };
-const getTextLenFromRaw = (raw: unknown): number => {
-  const blocks = getRawContentBlocks(raw);
-  return blocks
-    .filter((b): b is TextBlock => (b as TextBlock)?.type === 'text' && typeof (b as TextBlock).text === 'string')
-    .reduce((sum, b) => sum + b.text.length, 0);
-};
-
 export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): void {
   /**
    * The tab an event belongs to: the named tab, else the session's binding
@@ -214,7 +162,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   ): string | null => targetTabId ?? owningTabIdForSession(targetSessionId);
 
   const {
-    setMessages,
     setStreamingActive,
     setLoading,
     setLoadingStartTime,
@@ -232,7 +179,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     contentUpdateTimeoutRef,
     lastThinkingUpdateRef,
     thinkingUpdateTimeoutRef,
-    getOrCreateStreamingAssistantIndex,
     patchAssistantForStreaming,
   } = options;
 
@@ -332,73 +278,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     streamingMessageIndexRef.current = -1;
     turnIdCounterRef.current += 1;
     streamingTurnIdRef.current = turnIdCounterRef.current;
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (isReplayStart && last?.type === 'assistant') {
-        streamingMessageIndexRef.current = prev.length - 1;
-        const updated = [...prev];
-        updated[prev.length - 1] = {
-          ...updated[prev.length - 1],
-          isStreaming: true,
-          __turnId: streamingTurnIdRef.current,
-        };
-        return updated;
-      }
-      // If the last streaming assistant belongs to an OLDER turn, its onStreamEnd
-      // was likely dropped (e.g., JCEF async chain breakage). Handle it so new
-      // deltas land on a fresh bubble rather than appending to the previous
-      // turn's message. This must stay BELOW the replay branch: a replay start
-      // reuses the last assistant bubble, and finalizing it here instead would
-      // strand the replayed turn's earlier content in a duplicate bubble.
-      if (last?.type === 'assistant' && last?.isStreaming) {
-        const lastTurnId = (last as { __turnId?: number }).__turnId;
-        const currentTurnId = streamingTurnIdRef.current;
-        if (typeof lastTurnId === 'number' && lastTurnId > 0 && lastTurnId < currentTurnId) {
-          // An EMPTY older streaming bubble is an unfilled placeholder — a
-          // duplicate/redundant STREAM_START, or a start that produced no deltas
-          // before the next one. Reuse it for this turn instead of finalizing it
-          // and appending a second bubble, which would leave a blank ghost behind
-          // (and, once the real content lands, read as a duplicated response).
-          if (!streamingBubbleHasContent(last)) {
-            const reused = [...prev];
-            reused[prev.length - 1] = {
-              ...last,
-              content: '',
-              isStreaming: true,
-              timestamp: new Date().toISOString(),
-              __turnId: currentTurnId,
-            };
-            streamingMessageIndexRef.current = prev.length - 1;
-            return reused;
-          }
-          // A non-empty older bubble carries real content from a turn whose
-          // stream-end was lost — finalize it and open a fresh bubble.
-          const finalized = [...prev];
-          finalized[prev.length - 1] = { ...last, isStreaming: false };
-          streamingMessageIndexRef.current = finalized.length;
-          return [
-            ...finalized,
-            {
-              type: 'assistant',
-              content: '',
-              isStreaming: true,
-              timestamp: new Date().toISOString(),
-              __turnId: currentTurnId,
-            },
-          ];
-        }
-      }
-      streamingMessageIndexRef.current = prev.length;
-      return [
-        ...prev,
-        {
-          type: 'assistant',
-          content: '',
-          isStreaming: true,
-          timestamp: new Date().toISOString(),
-          __turnId: streamingTurnIdRef.current,
-        },
-      ];
+    getTabStore().mutateActiveTranscript((transcript) => {
+      const index = transcript.beginAssistant(streamingTurnIdRef.current, isReplayStart);
+      if (index >= 0) streamingMessageIndexRef.current = index;
     });
   };
 
@@ -439,22 +321,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         }
         lastUpdateRef.current = now;
         startTransition(() => {
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            let idx: number;
-            if (useBackendStreamingRenderRef.current) {
-              idx = streamingMessageIndexRef.current;
-              if (idx < 0) return prev;
-            } else {
-              idx = getOrCreateStreamingAssistantIndex(newMessages);
-            }
-            if (idx >= 0 && newMessages[idx]?.type === 'assistant') {
-              newMessages[idx] = patchAssistantForStreaming({
-                ...newMessages[idx],
-                isStreaming: true,
-              });
-            }
-            return newMessages;
+          getTabStore().mutateActiveTranscript((transcript) => {
+            const index = transcript.patchAssistant(streamingTurnIdRef.current, (message) => (
+              patchAssistantForStreaming({ ...message, isStreaming: true })
+            ));
+            if (index >= 0) streamingMessageIndexRef.current = index;
           });
         });
       });
@@ -496,46 +367,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   const appendDeltaToTab = (t: any, delta: string): void => {
     t.streamingActive = true;
     t.loading = true;
-    const messages = t.messages;
-    const lastIndex = messages && messages.length > 0 ? messages.length - 1 : -1;
-    const last = lastIndex >= 0 ? messages[lastIndex] : undefined;
-    if (last && last.type === 'assistant') {
-      const next = messages.slice();
-      const updatedContent = (last.content || '') + delta;
-      let updatedRaw = last.raw;
-      if (updatedRaw && typeof updatedRaw === 'object') {
-        const rawObj = { ...(updatedRaw as Record<string, unknown>) } as any;
-        const msgObj = rawObj.message ? { ...rawObj.message } : { content: [] };
-        const contentBlocks = Array.isArray(msgObj.content) ? [...msgObj.content] : [];
-        const lastBlockIdx = contentBlocks.length - 1;
-        if (lastBlockIdx >= 0 && contentBlocks[lastBlockIdx]?.type === 'text') {
-          contentBlocks[lastBlockIdx] = {
-            ...contentBlocks[lastBlockIdx],
-            text: (contentBlocks[lastBlockIdx].text || '') + delta,
-          };
-        } else {
-          contentBlocks.push({ type: 'text', text: delta });
-        }
-        msgObj.content = contentBlocks;
-        rawObj.message = msgObj;
-        updatedRaw = rawObj;
-      }
-      next[lastIndex] = { ...last, content: updatedContent, raw: updatedRaw };
-      t.messages = next;
-    } else {
-      const initialRaw = {
-        type: 'assistant',
-        message: { content: [{ type: 'text', text: delta }] },
-      };
-      const newMessage = {
-        type: 'assistant',
-        content: delta,
-        raw: initialRaw as any,
-        isStreaming: true,
-        timestamp: new Date().toISOString(),
-      };
-      t.messages = messages ? [...messages, newMessage] : [newMessage];
-    }
+    t.transcript.appendDelta(delta, t.transcript.streamingAssistantTurn());
   };
 
   const onContentDelta = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
@@ -603,19 +435,17 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     if (!window.__deniedToolIds) {
       window.__deniedToolIds = new Set<string>();
     }
-    setMessages((currentMessages) => {
-      try {
-        const interruptedIds = collectUnresolvedToolUseIds(currentMessages);
-        if (interruptedIds.length === 0) return currentMessages;
-        const denied = window.__deniedToolIds!;
-        for (const id of interruptedIds) denied.add(id);
-        // New array ref so the now-denied tool cards re-render out of "pending".
-        return [...currentMessages];
-      } catch (error) {
-        console.error('[Frontend] Failed to finalize unresolved tool ids:', error);
-        return currentMessages;
-      }
-    });
+    try {
+      const transcript = getTabStore().getActiveTab().transcript;
+      const interruptedIds = collectUnresolvedToolUseIds(transcript.getSnapshot());
+      if (interruptedIds.length === 0) return;
+      const denied = window.__deniedToolIds!;
+      for (const id of interruptedIds) denied.add(id);
+      // A fresh snapshot reference re-renders the now-denied tool cards.
+      getTabStore().mutateActiveTranscript((current) => current.touch());
+    } catch (error) {
+      console.error('[Frontend] Failed to finalize unresolved tool ids:', error);
+    }
   };
 
   /**
@@ -659,20 +489,8 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       const durMs = calculatedDurationMs ?? (t.turnStartedAt ? streamEndedAt - t.turnStartedAt : undefined);
       t.turnStartedAt = null;
 
-      if (t.messages && t.messages.length > 0) {
-        for (let i = t.messages.length - 1; i >= 0; i--) {
-          const msg = t.messages[i];
-          if (msg && msg.type === 'assistant') {
-            msg.isStreaming = false;
-            if (durMs != null && msg.durationMs == null) {
-              msg.durationMs = durMs;
-            }
-            break;
-          }
-        }
-        // Reconstruct turn metadata for background tab so turnUsage and duration are solidified
-        t.messages = reconstructTurnMetadata(t.messages);
-      }
+      t.transcript.settleAssistant(null, durMs);
+      t.transcript.rebuildMetadata(reconstructTurnMetadata);
     };
 
     const tabStore = getTabStore();
@@ -867,7 +685,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
     // Snapshot streaming state BEFORE clearing refs - used for post-stream merge guard
     const endedStreamingTurnId = streamingTurnIdRef.current;
-    const endedStreamingMessageIndex = streamingMessageIndexRef.current;
 
     // Initialize denied tool ids set if not exists
     if (!window.__deniedToolIds) {
@@ -931,159 +748,31 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // not after setMessages() returns. React 18 does NOT run updaters synchronously
     // during the setState call — they run later during the render phase. Any value
     // captured in a closure variable after setMessages() would be empty.
-    setMessages((prev) => {
-      let newMessages = prev;
-      // FIX (Issue #1315 investigation, residual risk A): Prefer the snapshot
-      // index, but fall back to a __turnId scan when an interleaved
-      // updateMessages reordered/shrank the list so prev[idx] is no longer the
-      // streaming assistant. Without this, the final content flush is silently
-      // dropped. The re-scan only runs when the primary index is invalid, so the
-      // hot path (index still valid) pays no cost.
-      let idx = endedStreamingMessageIndex;
-      if (!(idx >= 0 && idx < prev.length && prev[idx]?.type === 'assistant')
-          && endedStreamingTurnId > 0) {
-        for (let i = prev.length - 1; i >= 0; i--) {
-          const msg = prev[i];
-          if (msg?.type === 'assistant' && msg.__turnId === endedStreamingTurnId) {
-            idx = i;
-            break;
-          }
-        }
-      }
-      if (idx >= 0 && idx < prev.length && prev[idx]?.type === 'assistant') {
-        newMessages = [...prev];
-        // FIX: Keep __turnId on the message for a short period to prevent
-        // incorrect merging with history messages. The __turnId will be
-        // removed later when history is loaded or a new turn starts.
-        const finalContent = endedStreamingContent || newMessages[idx].content || '';
-        // Use backend raw blocks only if they are more complete than the existing raw.
-        // The backend snapshot may be from an earlier coalescer flush, so the existing
-        // raw (updated by subsequent deltas) could actually be more up-to-date.
-        let finalRaw = newMessages[idx].raw;
-        if (endedBackendRaw != null) {
-          const backendTextLen = getTextLenFromRaw(endedBackendRaw);
-          const existingTextLen = getTextLenFromRaw(finalRaw);
-          const backendBlocks = getRawContentBlocks(endedBackendRaw);
-          const existingBlocks = getRawContentBlocks(finalRaw);
-          const preferBackendContent = backendTextLen > existingTextLen || (backendTextLen === existingTextLen && backendBlocks.length >= existingBlocks.length);
-
-          if (typeof endedBackendRaw === 'object' && endedBackendRaw !== null) {
-            const backendObj = endedBackendRaw as Record<string, unknown>;
-            const currentObj = (finalRaw && typeof finalRaw === 'object' ? finalRaw : {}) as Record<string, unknown>;
-            finalRaw = {
-              ...(preferBackendContent ? backendObj : currentObj),
-              ...(backendObj.turnUsage ? { turnUsage: backendObj.turnUsage } : {}),
-              ...(backendObj.turnCostUsd !== undefined ? { turnCostUsd: backendObj.turnCostUsd } : {}),
-              ...(backendObj.tokens ? { tokens: backendObj.tokens } : {}),
-              ...(backendObj.durationMs !== undefined ? { durationMs: backendObj.durationMs } : {}),
-            };
-          } else if (preferBackendContent) {
-            finalRaw = endedBackendRaw;
-          }
-        }
-        const hasAnyContent = Boolean(
-          (typeof finalContent === 'string' && finalContent.trim().length > 0) ||
-          rawHasContent(finalRaw)
-        );
-        if (!hasAnyContent) {
-          newMessages.splice(idx, 1);
-        } else {
-          newMessages[idx] = {
-            ...newMessages[idx],
-            content: finalContent,
-            raw: finalRaw,
-            isStreaming: false,
-            __turnId: endedStreamingTurnId, // Keep __turnId for merge guard
-            ...(durationMs != null ? { durationMs } : {}),
-          };
-        }
-      }
-
-      // FIX: Merge tool_result user messages that were in the pending snapshot
-      // but would otherwise be lost when the rAF is cancelled.  Without this,
-      // tool cards remain stuck in "pending" spinner state.
-      //
-      // Runs INDEPENDENTLY of the assistant-patch branch above: a completed
-      // tool_result can land in the pending snapshot even when there is no active
-      // streaming assistant message to finalize (endedStreamingMessageIndex < 0,
-      // e.g. backend-streaming-render paths or a message list mutated between the
-      // last delta and stream end).  Coupling it to the assistant branch would
-      // silently drop those completed results in exactly the stuck-spinner case
-      // this fix targets.
-      if (pendingToolResultMsgs.length > 0) {
-        // Preserve immutability: lazily clone prev once before the first push so
-        // the updater never mutates the previous state array in place (the
-        // assistant branch above may have left newMessages === prev).
-        if (newMessages === prev) {
-          newMessages = [...prev];
-        }
-        // Build a set of existing tool_use_ids from the current message list
-        // to avoid adding duplicate tool_result messages.
-        const existingToolResultIds = new Set<string>();
-        for (const m of newMessages) {
-          const raw = m?.raw as Record<string, unknown> | undefined;
-          if (!raw || typeof raw !== 'object') continue;
-          const msg = raw.message as Record<string, unknown> | undefined;
-          const content = (raw.content ?? msg?.content) as Array<Record<string, unknown>> | undefined;
-          if (!Array.isArray(content)) continue;
-          for (const block of content) {
-            if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-              existingToolResultIds.add(block.tool_use_id);
-            }
-          }
-        }
-        // Append only tool_result messages that aren't already present
-        for (const trMsg of pendingToolResultMsgs) {
-          const raw = trMsg.raw;
-          const msg = raw.message as Record<string, unknown> | undefined;
-          const content = (raw.content ?? msg?.content) as Array<Record<string, unknown>> | undefined;
-          if (!Array.isArray(content)) continue;
-          const hasNewToolResult = content.some(
-            (block) => block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && !existingToolResultIds.has(block.tool_use_id),
-          );
-          if (hasNewToolResult) {
-            newMessages.push({ ...trMsg, type: 'user' as const, timestamp: toolResultTimestamp });
-            // Register the freshly-pushed ids so a duplicate tool_result carrying the same
-            // tool_use_id later in this snapshot isn't appended a second time.
-            for (const block of content) {
-              if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-                existingToolResultIds.add(block.tool_use_id);
-              }
-            }
-          }
-        }
-      }
-
-      // FIX (Issue #1315): Collect interrupted tool_use IDs and mark them as denied
-      // INSIDE this updater. This runs against the fully-merged newMessages (finalized
-      // assistant + recovered tool_results), which is the authoritative state — a
-      // second setMessages call would only see stale state under React 18 batching.
-      //
-      // The scan cost matches the pre-fix behavior (collectUnresolvedToolUseIds was
-      // always called on stream end); we did NOT add a second pass. On the common
-      // fully-resolved turn it returns [] and the for-loop below is a no-op.
-      try {
-        const interruptedIds = collectUnresolvedToolUseIds(newMessages);
-        // __deniedToolIds is initialized at the top of onStreamEnd (alongside the
-        // streaming-ref snapshots), so the non-null assertion is safe. Cache the
-        // reference to avoid re-reading the window property on each iteration.
-        //
-        // NOTE: mutating a window global inside an updater is intentionally impure.
-        // React StrictMode double-invokes updaters in development, but Set.add() is
-        // idempotent — adding the same id twice leaves the Set in the correct state.
-        // Moving this mutation outside setMessages() is not feasible: React 18 does
-        // not run updaters synchronously, so any closure variable captured after
-        // setMessages() returns would still be empty when the for-loop executes.
-        const deniedToolIds = window.__deniedToolIds!;
-        for (const id of interruptedIds) {
-          deniedToolIds.add(id);
-        }
-      } catch (error) {
-        console.error('[Frontend] Failed to collect interrupted tool ids:', error);
-      }
-
-      return reconstructTurnMetadata(newMessages, { skipTrailingTurn: false });
+    const transcript = getTabStore().getActiveTab().transcript;
+    getTabStore().mutateActiveTranscript((current) => {
+      current.finalizeStreamingTurn(
+        {
+          turnId: endedStreamingTurnId,
+          content: endedStreamingContent,
+          backendRaw: endedBackendRaw,
+          durationMs,
+          pendingToolResults: pendingToolResultMsgs,
+          toolResultTimestamp,
+        },
+        (messages) => reconstructTurnMetadata(messages, { skipTrailingTurn: false }),
+      );
     });
+
+    // Interrupted tools are read from the settled transcript, so a card whose
+    // tool_use never received a result stops spinning instead of outliving the
+    // turn. The denied set is idempotent.
+    try {
+      const interruptedIds = collectUnresolvedToolUseIds(transcript.getSnapshot());
+      const deniedToolIds = window.__deniedToolIds!;
+      for (const id of interruptedIds) deniedToolIds.add(id);
+    } catch (error) {
+      console.error('[Frontend] Failed to collect interrupted tool ids:', error);
+    }
 
     // Collapse auto-expanded thinking blocks using the pre-clear snapshot
     if (setExpandedThinking && keysToCollapse.size > 0) {

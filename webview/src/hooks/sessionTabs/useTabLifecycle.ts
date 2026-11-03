@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import type { SessionTabData } from '../../components/ChatHeader/types';
 import { createTabId } from '../../store/tabStore';
-import { TabMessageStore } from '../../store/tabMessageStore';
+import { TabTranscript } from '../../store/tabTranscript';
 import type { TabDraftStore } from '../../store/tabDraftStore';
 import type { TabStatusStore } from '../../store/tabStatusStore';
 import { statusSnapshotOf } from '../../store/tabStatusStore';
@@ -23,7 +23,7 @@ export interface UseTabLifecycleOptions extends Pick<
   | 't'
   | 'setCurrentSessionId'
   | 'setCustomSessionTitle'
-  | 'setMessages'
+  | 'mutateTranscript'
   | 'restoreScrollState'
   | 'setLoading'
   | 'setStreamingActive'
@@ -67,7 +67,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     t,
     setCurrentSessionId,
     setCustomSessionTitle,
-    setMessages,
+    mutateTranscript,
     restoreScrollState,
     setLoading,
     setStreamingActive,
@@ -133,12 +133,8 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     const newTab: SessionTabData = {
       id: newId,
       sessionId: null,
-      messageStore: new TabMessageStore(),
+      transcript: new TabTranscript(),
       title: t('common.newSession', { defaultValue: '新会话' }),
-      messages: [],
-      messageBaseIndex: 0,
-      opencodeListStart: 0,
-      prependedHistoryMessageCount: 0,
       isShared: false,
       loading: false,
       streamingActive: false,
@@ -162,11 +158,8 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     }
     setCurrentSessionId?.(null);
     setCustomSessionTitle(null);
-    setMessages([]);
+    mutateTranscript((transcript) => transcript.clear());
     restoreScrollState?.(null);
-    window.__messageBaseIndex = 0;
-    window.__opencodeListStart = 0;
-    window.__prependedHistoryMessageCount = 0;
     setLoading?.(false);
     setStreamingActive?.(false);
     setIsThinking?.(false);
@@ -208,7 +201,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     currentSessionIdRef,
     setCurrentSessionId,
     setCustomSessionTitle,
-    setMessages,
+    mutateTranscript,
     restoreScrollState,
     setLoading,
     setStreamingActive,
@@ -275,7 +268,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     }
     setCurrentSessionId?.(nextActive.sessionId);
     setCustomSessionTitle(nextActive.title || null);
-    setMessages(nextActive.messages || []);
+
     restoreScrollState?.(nextActive.scrollState ?? null);
     statusStore.set(nextActive.id, statusSnapshotOf(nextActive));
     const nextStatus = statusStore.get(nextActive.id);
@@ -329,7 +322,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     currentSessionIdRef,
     setCurrentSessionId,
     setCustomSessionTitle,
-    setMessages,
+    mutateTranscript,
     restoreScrollState,
     statusStore,
     setTabRuntimeStreaming,
@@ -368,9 +361,8 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     const freshTab: SessionTabData = {
       id: createTabId(),
       sessionId: null,
-      messageStore: new TabMessageStore(),
+      transcript: new TabTranscript(),
       title: t('common.newSession', { defaultValue: '新会话' }),
-      messages: [],
       isShared: false,
       autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
       selectedModel: defaultModel,
@@ -387,7 +379,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     }
     setCurrentSessionId?.(null);
     setCustomSessionTitle(null);
-    setMessages([]);
+    mutateTranscript((transcript) => transcript.clear());
     restoreScrollState?.(null);
     setLoading?.(false);
     setStreamingActive?.(false);
@@ -421,7 +413,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     currentSessionIdRef,
     setCurrentSessionId,
     setCustomSessionTitle,
-    setMessages,
+    mutateTranscript,
     restoreScrollState,
     setLoading,
     setStreamingActive,

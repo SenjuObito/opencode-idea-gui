@@ -38,19 +38,20 @@ interface FakeTab {
 const storedTab = (id: string) => getTabStore().findById(id)!;
 
 function createHarness(activeSessionId: string) {
-  // The view starts from the active tab's transcript: that is what the store
-  // projects into the component on mount.
-  let messages: ClaudeMessage[] = getTabStore().getActiveTabMessages();
-  const setMessages = vi.fn((updater: ClaudeMessage[] | ((prev: ClaudeMessage[]) => ClaudeMessage[])) => {
-    messages = typeof updater === 'function' ? updater(messages) : updater;
-  });
+  // The view reads the active tab's transcript, so "the view" and "the tab"
+  // are the same list: a test seeds it through this helper.
+  const setMessages = (messages: ClaudeMessage[]) => {
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.clear();
+      transcript.applySnapshot(messages);
+    });
+  };
   const setSessionLoading = vi.fn();
   const requestHistoryRenderCommit = vi.fn();
   const resetTransientUiState = vi.fn();
 
   const options = {
     addToast: vi.fn(),
-    setMessages,
     setStatus: vi.fn(),
     setLoading: vi.fn(),
     setLoadingStartTime: vi.fn(),
@@ -89,7 +90,7 @@ function createHarness(activeSessionId: string) {
     setSessionLoading,
     requestHistoryRenderCommit,
     resetTransientUiState,
-    getMessages: () => messages,
+    getMessages: () => getTabStore().getActiveTabMessages(),
     options,
   };
 }
@@ -123,11 +124,10 @@ describe('history load routing — background session', () => {
 
     hostEventHandler('message.snapshot')!(...snapshotEvent('ses_bg', JSON.stringify(historySnapshot()), '11'));
 
-    expect(h.setMessages).not.toHaveBeenCalled();
-    expect(storedTab('tab-bg').messages).toHaveLength(2);
-    expect(storedTab('tab-bg').messages![0].content).toBe('history question');
+    expect(storedTab('tab-bg').transcript.getSnapshot()).toHaveLength(2);
+    expect(storedTab('tab-bg').transcript.getSnapshot()![0].content).toBe('history question');
     // 前台 tab 的 transcript 一个字符都不许动
-    expect(storedTab('tab-fg').messages).toEqual([{ type: 'user', content: 'fg' }]);
+    expect(storedTab('tab-fg').transcript.getSnapshot()).toEqual([{ type: 'user', content: 'fg' }]);
   });
 
   it('clears only the background tab it names', () => {
@@ -140,9 +140,8 @@ describe('history load routing — background session', () => {
 
     hostEventHandler('session.cleared')!(...sessionEvent('ses_bg', { sequence: '21' }));
 
-    expect(storedTab('tab-bg').messages).toEqual([]);
-    expect(h.setMessages).not.toHaveBeenCalled();
-    expect(storedTab('tab-fg').messages).toEqual([{ type: 'user', content: 'fg' }]);
+    expect(storedTab('tab-bg').transcript.getSnapshot()).toEqual([]);
+    expect(storedTab('tab-fg').transcript.getSnapshot()).toEqual([{ type: 'user', content: 'fg' }]);
   });
 
   it('does not release the foreground transition guard for a background load', () => {
@@ -173,9 +172,8 @@ describe('history load routing — background session', () => {
 
     hostEventHandler('message.snapshot')!(...snapshotEvent('ses_unbound', JSON.stringify(historySnapshot()), '31'));
 
-    expect(h.setMessages).not.toHaveBeenCalled();
     expect(h.getMessages()).toHaveLength(0);
-    expect(storedTab('tab-fg').messages).toEqual([]);
+    expect(storedTab('tab-fg').transcript.getSnapshot()).toEqual([]);
   });
 });
 
@@ -200,7 +198,7 @@ describe('history load routing — foreground session', () => {
     beginTransition('tab-fg', 'ses_fg', 'transition-fg');
 
     hostEventHandler('session.cleared')!(...sessionEvent('ses_fg', { sequence: '7' }));
-    expect(h.setMessages).toHaveBeenLastCalledWith([]);
+    expect(h.getMessages()).toEqual([]);
 
     hostEventHandler('message.snapshot')!(...snapshotEvent('ses_fg', JSON.stringify(historySnapshot()), '8'));
     expect(h.getMessages()).toHaveLength(2);
@@ -233,8 +231,7 @@ describe('history load routing — foreground session', () => {
 
     hostEventHandler('message.snapshot')!(...snapshotEvent('ses_other', JSON.stringify(historySnapshot()), '9'));
 
-    expect(h.setMessages).not.toHaveBeenCalled();
-    expect(storedTab('tab-fg').messages).toEqual([]);
+    expect(storedTab('tab-fg').transcript.getSnapshot()).toEqual([]);
   });
 });
 
@@ -274,9 +271,8 @@ describe('patchMessageUuid — 会话归属与签名', () => {
 
     hostEventHandler('message.uuid.patched')!(...sessionEvent('ses_bg', { content: '同一个问题', uuid: 'uuid-888' }));
 
-    expect(h.setMessages).not.toHaveBeenCalled();
-    expect(storedTab('tab-bg').messages![0]).toMatchObject({ raw: { uuid: 'uuid-888' } });
-    expect(storedTab('tab-fg').messages).toEqual([{ type: 'user', content: 'fg' }]);
+    expect(storedTab('tab-bg').transcript.getSnapshot()![0]).toMatchObject({ raw: { uuid: 'uuid-888' } });
+    expect(storedTab('tab-fg').transcript.getSnapshot()).toEqual([{ type: 'user', content: 'fg' }]);
   });
 
   it('is dropped when the patch carries no session identity', () => {
@@ -341,10 +337,9 @@ describe('deferred snapshot routing', () => {
     });
 
     // The frame belongs to tab-fg: it is written there, not into the view.
-    expect(h.setMessages).not.toHaveBeenCalled();
-    expect(storedTab('tab-fg').messages).toHaveLength(2);
-    expect(storedTab('tab-fg').messages![0].content).toBe('history question');
-    expect(storedTab('tab-bg').messages).toEqual([]);
+    expect(storedTab('tab-fg').transcript.getSnapshot()).toHaveLength(2);
+    expect(storedTab('tab-fg').transcript.getSnapshot()![0].content).toBe('history question');
+    expect(storedTab('tab-bg').transcript.getSnapshot()).toEqual([]);
   });
 });
 
@@ -374,9 +369,8 @@ describe('first frame of a new tab — tab-addressed before the session exists',
       ...snapshotEvent(null, JSON.stringify(historySnapshot()), '41', undefined, 'tab-new'),
     );
 
-    expect(h.setMessages).not.toHaveBeenCalled();
-    expect(storedTab('tab-new').messages).toHaveLength(2);
-    expect(storedTab('tab-fg').messages).toEqual([{ type: 'user', content: 'fg' }]);
+    expect(storedTab('tab-new').transcript.getSnapshot()).toHaveLength(2);
+    expect(storedTab('tab-fg').transcript.getSnapshot()).toEqual([{ type: 'user', content: 'fg' }]);
   });
 
   it('keeps the optimistic first message when the snapshot has no user row', () => {
@@ -440,7 +434,6 @@ describe('first frame of a new tab — tab-addressed before the session exists',
       ...snapshotEvent(null, '[]', '43', undefined, 'tab-new'),
     );
 
-    expect(h.setMessages).not.toHaveBeenCalled();
-    expect(storedTab('tab-new').messages).toEqual([optimistic]);
+    expect(storedTab('tab-new').transcript.getSnapshot()).toEqual([optimistic]);
   });
 });

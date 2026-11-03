@@ -16,16 +16,7 @@ import { isSessionTransitioning } from '../tabTransition';
 import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
 import { debugError } from '../../../utils/debug';
 import { resolveSessionId } from '../../../utils/sessionIdentity';
-import {
-  appendOptimisticMessageIfMissing,
-  ensureStreamingAssistantInList,
-  getRawUuid,
-  isUserMessageContentMatch,
-  preserveLastAssistantIdentity,
-  preserveLatestMessagesOnShrink,
-  preserveStreamingAssistantContent,
-  stripDuplicateTrailingToolMessages,
-} from '../messageSync';
+import { stripDuplicateTrailingToolMessages } from '../messageSync';
 import { activeTabId, endTransition, owningTabIdForSession, transitionTargetFor, isTabTransitioning } from '../tabTransition';
 import {
   parseSequence,
@@ -36,7 +27,6 @@ import {
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { collectUnresolvedToolUseIds } from './streamingCallbacks';
 import i18n from '../../../i18n/config';
-import type { TabMessageStore } from '../../../store/tabMessageStore';
 import { getTabStore } from '../../../store/tabStore';
 import { parseHistoryWindow } from '../../../store/historyWindow';
 
@@ -50,7 +40,6 @@ export function registerMessageCallbacks(
 ): void {
   const {
     addToast,
-    setMessages,
     setStatus,
     setLoading,
     setLoadingStartTime,
@@ -62,38 +51,15 @@ export function registerMessageCallbacks(
     suppressNextStatusToastRef,
     streamingContentRef,
     isStreamingRef,
-    useBackendStreamingRenderRef,
     streamingMessageIndexRef,
     streamingTurnIdRef,
     findLastAssistantIndex,
-    extractRawBlocks,
     patchAssistantForStreaming,
     updateContextUsageData,
     closeContextUsageDialog,
     currentSessionIdRef,
     setStreamingActive,
   } = options;
-
-  const ensureStreamingAssistantPreserved = (prevList: ClaudeMessage[], resultList: ClaudeMessage[]): ClaudeMessage[] => {
-    const { list, streamingIndex } = ensureStreamingAssistantInList(
-      prevList,
-      resultList,
-      isStreamingRef.current,
-      streamingTurnIdRef.current,
-    );
-    if (streamingIndex >= 0) {
-      streamingMessageIndexRef.current = streamingIndex;
-    }
-    return list;
-  };
-
-  const finalizeMessageList = (prevList: ClaudeMessage[], resultList: ClaudeMessage[]): ClaudeMessage[] => {
-    const withoutDuplicateToolTail = stripDuplicateTrailingToolMessages(
-      resultList,
-      options.currentProviderRef.current,
-    );
-    return ensureStreamingAssistantPreserved(prevList, withoutDuplicateToolTail);
-  };
 
   // During streaming, buffer updateMessages calls and process only the latest
   // one per animation frame. This prevents JSON.parse of large payloads from
@@ -114,46 +80,6 @@ export function registerMessageCallbacks(
   let pendingUpdateSequence: number | null = null;
   let pendingUpdateBaseIndex: string | number | null | undefined = null;
   let pendingUpdateTabId: string | null = null;
-  const getPrependedHistoryMessageCount = (messageCount: number): number => {
-    const count = window.__prependedHistoryMessageCount;
-    return typeof count === 'number'
-      && Number.isSafeInteger(count)
-      && count >= 0
-      && count <= messageCount
-      ? count
-      : 0;
-  };
-
-  const sessionBaseIndexMap = new Map<string, number>();
-
-  const getBaseIndexForSession = (sessionId: string | null): number => {
-    if (sessionId && sessionBaseIndexMap.has(sessionId)) {
-      return sessionBaseIndexMap.get(sessionId)!;
-    }
-    const tabStore = getTabStore();
-    const tab = sessionId ? (tabStore.findTabBySessionId(sessionId) ?? getTabStore().getTabs().find((t) => t.sessionId === sessionId)) : null;
-    if (tab && typeof tab.messageBaseIndex === 'number') {
-      return tab.messageBaseIndex;
-    }
-    return typeof window.__messageBaseIndex === 'number' ? window.__messageBaseIndex : 0;
-  };
-
-  const setBaseIndexForSession = (sessionId: string | null, baseIndex: number): void => {
-    if (sessionId) {
-      sessionBaseIndexMap.set(sessionId, baseIndex);
-    }
-    const tabStore = getTabStore();
-    const tab = sessionId ? (tabStore.findTabBySessionId(sessionId) ?? getTabStore().getTabs().find((t) => t.sessionId === sessionId)) : null;
-    if (tab) {
-      tab.messageBaseIndex = baseIndex;
-    }
-    const activeSessionId = tabStore.getActiveSessionId()
-      ?? options.currentSessionIdRef?.current; // legacy-allow: a window with no tab strip has only the view's session
-    if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
-      window.__messageBaseIndex = baseIndex;
-    }
-  };
-
   // Expose a cancellation function so onStreamEnd can cancel stale rAF-deferred
   // updateMessages calls, preventing them from overwriting the final state after
   // streaming refs are cleared.
@@ -195,58 +121,32 @@ export function registerMessageCallbacks(
    * yet", so the tab's optimistic user bubble and its streaming assistant are
    * carried across the snapshot.</p>
    */
-  const writeSnapshotToTab = (tabId: string, json: string): boolean => (
-    getTabStore().updateTab(tabId, (tab) => {
+  /** Write a full snapshot to a tab. The transcript owns the merge. */
+  const writeSnapshotToTab = (tabId: string, json: string, baseIndexArg?: string | number | null): boolean => (
+    getTabStore().mutateTranscript(tabId, (transcript) => {
       try {
         const raw = JSON.parse(json) as unknown;
         if (!Array.isArray(raw)) return;
-        const store = tab.messageStore as TabMessageStore | undefined;
-        const snapshot = store
-          ? store.applySnapshot(raw as ClaudeMessage[])
-          : (raw as ClaudeMessage[]);
-        const prevMessages = (tab.messages as ClaudeMessage[] | undefined) ?? [];
-        // A background tab is still mid-turn: a snapshot generated before the
-        // send landed would otherwise erase the user's own message (and the
-        // placeholder answering it) from a tab the user can switch back to.
-        const withOwnRows = appendOptimisticMessageIfMissing(prevMessages, snapshot);
-        const withStreaming = ensureStreamingAssistantInList(
-          prevMessages,
-          withOwnRows,
-          false,
-          0,
-        ).list;
-        tab.messages = preserveLatestMessagesOnShrink(
-          prevMessages,
-          withStreaming,
-          options.currentProviderRef.current,
-        );
+        const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
+        transcript.applySnapshot(raw as ClaudeMessage[], Number.isSafeInteger(base) ? base : 0);
       } catch (error) {
         console.error('[MultiSession] Failed to parse background updateMessages', error);
       }
     })
   );
 
-  /** Append a tail page to a tab that is not on screen. */
+  /** Append a tail page to a tab. */
   const writeTailToTab = (
     tabId: string,
     json: string,
     baseIndexArg?: string | number | null,
   ): boolean => (
-    getTabStore().updateTab(tabId, (tab) => {
+    getTabStore().mutateTranscript(tabId, (transcript) => {
       try {
         const raw = JSON.parse(json) as unknown;
         if (!Array.isArray(raw)) return;
-        const tail = raw as ClaudeMessage[];
         const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
-        const currentMessages = tab.messages || [];
-        let nextMessages = tail;
-        if (Number.isSafeInteger(base) && base >= 0 && base <= currentMessages.length) {
-          nextMessages = [...currentMessages.slice(0, base), ...tail];
-        } else if (currentMessages.length > 0) {
-          nextMessages = [...currentMessages, ...tail];
-        }
-        tab.messages = nextMessages;
-        tab.messageBaseIndex = Number.isSafeInteger(base) ? base : 0;
+        transcript.applyTail(raw as ClaudeMessage[], Number.isSafeInteger(base) ? base : 0);
       } catch (error) {
         console.error('[MultiSession] Failed to parse background updateMessageTail', error);
       }
@@ -316,10 +216,10 @@ export function registerMessageCallbacks(
     }
 
     try {
-      // Reconstruct per-turn footer metadata (durationMs / turnUsage) for
-      // settled turns in the snapshot — the persisted transcript carries
-      // neither field, so reloaded sessions lost the duration/token footer.
-      // The trailing turn is skipped while streaming: live stamping owns it.
+      // The snapshot is a host fact: the transcript owns how it lands. Older
+      // pages already read into this tab stay in front of it, and messages the
+      // host has not echoed (optimistic bubbles, the streaming assistant) live
+      // in the transcript's own segments, so a snapshot cannot erase them.
       const raw = JSON.parse(json) as unknown;
       if (!Array.isArray(raw)) return;
       const backendMessages = raw as ClaudeMessage[];
@@ -327,231 +227,35 @@ export function registerMessageCallbacks(
         advanceMinAcceptedSequence(effectiveSessionId, sequence);
       }
 
-      // ── 窗口语义（opencode 活跃会话滑动窗口）──
-      // 第三个参数是快照对应的宿主窗口基址（全局序号）。基址变化意味着宿主
-      // 窗口滑动（头部逐出）：此时做「窗口精确拼接」——保留 webview 列表中
-      // 全局序号位于新基址之前的内容（分页前插的更早页 + 旧窗口头部），
-      // 用新快照替换窗口部分。禁用 smart-merge / 收缩保护：索引已整体位移，
-      // 按下标对齐的合并是错的。
-      const baseIndex = baseIndexArg != null && baseIndexArg !== ''
-        ? Number(baseIndexArg)
-        : null;
-      const hasWindowBase = baseIndex != null && Number.isSafeInteger(baseIndex) && baseIndex >= 0;
-      const prevWindowBase = getBaseIndexForSession(effectiveSessionId);
-      const windowChanged = hasWindowBase && (baseIndex as number) !== prevWindowBase;
-      if (windowChanged) {
-        const newBase = baseIndex as number;
-        setBaseIndexForSession(effectiveSessionId, newBase);
-        setMessages((prev) => {
-          const listStart = window.__opencodeListStart ?? 0;
-          // 保留 prev 中全局序号 < newBase 的头部（分页内容 + 旧窗口头部），
-          // 弥合窗口滑动造成的空档，保证全局连续。
-          const keepCount = Math.max(0, Math.min(newBase - listStart, prev.length));
-          const merged = keepCount > 0
-            ? [...prev.slice(0, keepCount), ...backendMessages]
-            : backendMessages;
-          // 优化气泡不属于宿主转录：窗口滑动时快照里没有它，直接拼接会把它
-          // 抹掉（新标签页发送第一条消息正是在这里丢的）。finalizeMessageList
-          // 只补流式 assistant，所以 user 气泡必须在这里补回。
-          const result = reconstructTurnMetadata(
-            appendOptimisticMessageIfMissing(prev, merged),
-            { skipTrailingTurn: isStreamingRef.current },
-          );
-          return finalizeMessageList(prev, result);
-        });
-        window.__lastAcceptedMessageCount = backendMessages.length;
-        refreshRestoredHistoryIfPending(backendMessages.length);
-        return;
-      }
+      const parsedBase = baseIndexArg != null && baseIndexArg !== '' ? Number(baseIndexArg) : null;
+      const hasWindowBase = parsedBase != null && Number.isSafeInteger(parsedBase) && parsedBase >= 0;
 
-      setBaseIndexForSession(effectiveSessionId, hasWindowBase ? (baseIndex as number) : 0);
-
-      setMessages((prev) => {
-        const prependedCount = getPrependedHistoryMessageCount(prev.length);
-        const parsed = reconstructTurnMetadata(
-          prependedCount > 0
-            ? [...prev.slice(0, prependedCount), ...backendMessages]
-            : backendMessages,
-          { skipTrailingTurn: isStreamingRef.current },
-        );
-        // If streaming is active, delegate to the streaming logic
-        if (isStreamingRef.current) {
-          if (useBackendStreamingRenderRef.current) {
-            let smartMerged = parsed.map((newMsg, i) => {
-              if (i === parsed.length - 1) return newMsg;
-              if (i < prev.length) {
-                const oldMsg = prev[i];
-                // Preserve frontend-only durationMs across backend updates
-                if (typeof oldMsg.durationMs === 'number' && newMsg.type === 'assistant') {
-                  newMsg = { ...newMsg, durationMs: oldMsg.durationMs };
-                }
-                if (oldMsg.type === 'user' && newMsg.type === 'user' && isUserMessageContentMatch(oldMsg.content || '', newMsg.content || '')) {
-                  newMsg = { ...newMsg, content: oldMsg.content };
-                }
-                if (
-                  oldMsg.timestamp === newMsg.timestamp &&
-                  oldMsg.type === newMsg.type &&
-                  oldMsg.content === newMsg.content
-                ) {
-                  return oldMsg;
-                }
-              }
-              return newMsg;
-            });
-
-            smartMerged = preserveLastAssistantIdentity(prev, smartMerged, findLastAssistantIndex);
-            smartMerged = preserveStreamingAssistantContent(
-              prev,
-              smartMerged,
-              isStreamingRef,
-              streamingContentRef,
-              findLastAssistantIndex,
-              patchAssistantForStreaming,
-            );
-            const result = preserveLatestMessagesOnShrink(
-              prev,
-              appendOptimisticMessageIfMissing(prev, smartMerged),
-              options.currentProviderRef.current,
-            );
-
-            // FIX: In Claude mode, update streamingMessageIndexRef so that
-            // onContentDelta knows which assistant message to update.
-            let lastAssistantIdx = findLastAssistantIndex(result);
-            // Verify the found assistant belongs to the current streaming turn
-            if (lastAssistantIdx >= 0 && streamingTurnIdRef.current > 0 &&
-                result[lastAssistantIdx].__turnId !== streamingTurnIdRef.current) {
-              // Scan for the correct turn ID match (from end, consistent with findLastAssistantIndex)
-              for (let i = result.length - 1; i >= 0; i--) {
-                if (result[i].type === 'assistant' && result[i].__turnId === streamingTurnIdRef.current) {
-                  lastAssistantIdx = i;
-                  break;
-                }
-              }
-            }
-            if (lastAssistantIdx >= 0) {
-              streamingMessageIndexRef.current = lastAssistantIdx;
-
-              // Always stamp __turnId so ensureStreamingAssistantPreserved can find it,
-              // even before any content delta arrives (streamingContentRef may be empty).
-              if (result[lastAssistantIdx]?.__turnId !== streamingTurnIdRef.current) {
-                result[lastAssistantIdx] = {
-                  ...result[lastAssistantIdx],
-                  __turnId: streamingTurnIdRef.current,
-                };
-              }
-
-              // FIX: If there is buffered streaming content (onContentDelta may
-              // fire before updateMessages), apply it to the assistant message
-              // immediately to prevent content loss.
-              if (streamingContentRef.current && result[lastAssistantIdx]?.type === 'assistant') {
-                const backendContent = result[lastAssistantIdx].content || '';
-                if (streamingContentRef.current.length >= backendContent.length) {
-                  result[lastAssistantIdx] = patchAssistantForStreaming({
-                    ...result[lastAssistantIdx],
-                    content: streamingContentRef.current,
-                    isStreaming: true,
-                  });
-                } else {
-                  // Backend has more complete content; sync buffer
-                  streamingContentRef.current = backendContent;
-                }
-              }
-            }
-
-            return finalizeMessageList(prev, result);
-          }
-
-          const lastAssistantIdx = findLastAssistantIndex(parsed);
-          if (lastAssistantIdx < 0) {
-            return finalizeMessageList(
-              prev,
-              preserveLatestMessagesOnShrink(
-                prev,
-                appendOptimisticMessageIfMissing(prev, parsed),
-                options.currentProviderRef.current,
-              ),
-            );
-          }
-        }
-
-        // Non-streaming case (or streaming hasn't started yet)
-        if (!isStreamingRef.current) {
-          // Smart merge: reuse old message objects for performance
-          let smartMerged = parsed.map((newMsg, i) => {
-            if (i < prev.length) {
-              const oldMsg = prev[i];
-              // Preserve frontend-only durationMs across backend updates
-              if (typeof oldMsg.durationMs === 'number' && newMsg.type === 'assistant') {
-                newMsg = { ...newMsg, durationMs: oldMsg.durationMs };
-              }
-              if (oldMsg.type === 'user' && newMsg.type === 'user' && isUserMessageContentMatch(oldMsg.content || '', newMsg.content || '')) {
-                newMsg = { ...newMsg, content: oldMsg.content };
-              }
-              if (i < parsed.length - 1) {
-                if (
-                  oldMsg.timestamp === newMsg.timestamp &&
-                  oldMsg.type === newMsg.type &&
-                  oldMsg.content === newMsg.content
-                ) {
-                  return oldMsg;
-                }
-              }
-            }
-            return newMsg;
-          });
-
-          smartMerged = preserveLastAssistantIdentity(prev, smartMerged, findLastAssistantIndex);
-          smartMerged = preserveLatestMessagesOnShrink(prev, smartMerged, options.currentProviderRef.current);
-          return finalizeMessageList(prev, appendOptimisticMessageIfMissing(prev, smartMerged));
-        }
-
-        // Streaming + !useBackendStreamingRender: always accept the backend snapshot
-        // but preserve the streaming assistant's text content (which arrives via
-        // onContentDelta and is more up-to-date than the coalesced snapshot).
-        //
-        // Previously this branch only accepted snapshots containing tool_use blocks,
-        // which caused ALL updateMessages to be silently dropped during pure-text
-        // streaming.  When onStreamEnd was subsequently lost (JCEF async chain),
-        // the UI appeared permanently frozen.
-
-        let patched = [...parsed];
-        patched = appendOptimisticMessageIfMissing(prev, patched);
-        patched = preserveLastAssistantIdentity(prev, patched, findLastAssistantIndex);
-        patched = preserveStreamingAssistantContent(
-          prev,
-          patched,
-          isStreamingRef,
-          streamingContentRef,
-          findLastAssistantIndex,
-          patchAssistantForStreaming,
-        );
-        patched = preserveLatestMessagesOnShrink(prev, patched, options.currentProviderRef.current);
-
-        const patchedAssistantIdx = findLastAssistantIndex(patched);
-        if (patchedAssistantIdx >= 0 && patched[patchedAssistantIdx]?.type === 'assistant') {
-          const patchedAssistant = patched[patchedAssistantIdx];
-          const currentTurnId = streamingTurnIdRef.current;
-          // Stale: backend snapshot hasn't caught up — findLastAssistantIndex returns prior turn's assistant
-          const isStaleSnapshot = currentTurnId > 0 && patchedAssistant.__turnId !== undefined
-            && patchedAssistant.__turnId !== currentTurnId;
-          if (!isStaleSnapshot) {
-            streamingMessageIndexRef.current = patchedAssistantIdx;
-            patched[patchedAssistantIdx] = patchAssistantForStreaming({
-              ...patchedAssistant,
+      getTabStore().mutateActiveTranscript((transcript) => {
+        transcript.applySnapshot(backendMessages, hasWindowBase ? (parsedBase as number) : 0);
+        transcript.rebuildMetadata((list) => stripDuplicateTrailingToolMessages(
+          reconstructTurnMetadata(list, { skipTrailingTurn: isStreamingRef.current }),
+          options.currentProviderRef.current,
+        ));
+        if (!isStreamingRef.current) return;
+        const currentTurnId = streamingTurnIdRef.current;
+        const index = transcript.patchAssistant(currentTurnId, (message) => {
+          const backendContent = typeof message.content === 'string' ? message.content : '';
+          // The delta buffer can be ahead of the coalesced snapshot; never let
+          // the snapshot roll visible text backwards.
+          if (streamingContentRef.current && streamingContentRef.current.length >= backendContent.length) {
+            return patchAssistantForStreaming({
+              ...message,
+              content: streamingContentRef.current,
+              isStreaming: true,
               __turnId: currentTurnId,
             });
           }
-        }
-
-        // Always accept the backend snapshot during streaming. The coalescer
-        // (150ms minimum interval) and rAF batching (16ms) already throttle
-        // updates. Skipping snapshots via a structural-change gate caused
-        // StatusPanel tasks/edits to freeze during active streaming because
-        // the gate suppressed message state updates, preventing downstream
-        // recomputation of statusScopeMessages, useFileChanges, and
-        // deriveTodosForTurn.
-        return finalizeMessageList(prev, patched);
+          if (backendContent) streamingContentRef.current = backendContent;
+          return { ...message, isStreaming: true, __turnId: currentTurnId };
+        });
+        if (index >= 0) streamingMessageIndexRef.current = index;
       });
+
       window.__lastAcceptedMessageCount = backendMessages.length;
       refreshRestoredHistoryIfPending(backendMessages.length);
     } catch (error) {
@@ -600,55 +304,30 @@ export function registerMessageCallbacks(
         advanceMinAcceptedSequence(effectiveSessionId, sequence);
       }
 
-      setMessages((prev) => {
-        const prependedCount = getPrependedHistoryMessageCount(prev.length);
-        const prependedHistory = prependedCount > 0
-          ? prev.slice(0, prependedCount)
-          : [];
-        const storedBaseIndex = getBaseIndexForSession(effectiveSessionId);
-        const currentBaseIndex = typeof storedBaseIndex === 'number' && Number.isSafeInteger(storedBaseIndex)
-          ? Math.max(0, storedBaseIndex)
-          : 0;
-        const backendMessageCount = prev.length - prependedCount;
-        const hasFullPrefix = currentBaseIndex === 0 && baseIndex <= backendMessageCount;
-        let merged = hasFullPrefix
-          ? [...prev.slice(0, prependedCount + baseIndex), ...tail]
-          : [...prependedHistory, ...tail];
-        setBaseIndexForSession(effectiveSessionId, hasFullPrefix ? 0 : baseIndex);
-
-        merged = appendOptimisticMessageIfMissing(prev, merged);
-        merged = preserveLastAssistantIdentity(prev, merged, findLastAssistantIndex);
-        merged = preserveStreamingAssistantContent(
-          prev,
-          merged,
-          isStreamingRef,
-          streamingContentRef,
-          findLastAssistantIndex,
-          patchAssistantForStreaming,
-        );
-
-        if (isStreamingRef.current) {
-          const assistantIndex = findLastAssistantIndex(merged);
-          if (assistantIndex >= 0 && merged[assistantIndex]?.type === 'assistant') {
-            streamingMessageIndexRef.current = assistantIndex;
-            const currentTurnId = streamingTurnIdRef.current;
-            if (currentTurnId > 0 && merged[assistantIndex].__turnId !== currentTurnId) {
-              merged[assistantIndex] = patchAssistantForStreaming({
-                ...merged[assistantIndex],
-                __turnId: currentTurnId,
-              });
-            }
-          }
-        }
-
-        merged = reconstructTurnMetadata(
-          merged,
+      getTabStore().mutateActiveTranscript((transcript) => {
+        transcript.applyTail(tail, baseIndex);
+        // Turn footers (duration, usage) are derived from the tail's records;
+        // while a turn is still streaming its footer is left for the settle path.
+        transcript.rebuildMetadata((messages) => reconstructTurnMetadata(
+          messages,
           { skipTrailingTurn: isStreamingRef.current },
-        );
-        if (merged.length === 0 && prev.length > 0 && isStreamingRef.current) {
-          return prev;
-        }
-        return finalizeMessageList(prev, merged);
+        ));
+        if (!isStreamingRef.current) return;
+        const currentTurnId = streamingTurnIdRef.current;
+        const index = transcript.patchAssistant(currentTurnId, (message) => {
+          const backendContent = typeof message.content === 'string' ? message.content : '';
+          if (streamingContentRef.current && streamingContentRef.current.length >= backendContent.length) {
+            return patchAssistantForStreaming({
+              ...message,
+              content: streamingContentRef.current,
+              isStreaming: true,
+              __turnId: currentTurnId,
+            });
+          }
+          if (backendContent) streamingContentRef.current = backendContent;
+          return { ...message, isStreaming: true, __turnId: currentTurnId };
+        });
+        if (index >= 0) streamingMessageIndexRef.current = index;
       });
     } catch (error) {
       console.error('[Frontend] Failed to parse message tail:', error);
@@ -839,11 +518,15 @@ export function registerMessageCallbacks(
     if (!tabId) return;
     const store = getTabStore();
     if (!store.findById(tabId)) return;
-    store.updateTab(tabId, (t: any) => {
-      if (t.messageStore && typeof t.messageStore.applyPrepend === 'function') {
-        t.messages = t.messageStore.applyPrepend(messages);
-      } else {
-        t.messages = [...messages, ...(t.messages ?? [])];
+    const pageStart = payload?.pageStart;
+    store.mutateTranscript(tabId, (transcript) => {
+      const added = transcript.prependPage(
+        messages,
+        typeof pageStart === 'number' ? pageStart : undefined,
+      );
+      // The streaming bubble moved down by exactly the inserted messages.
+      if (added > 0 && streamingMessageIndexRef.current >= 0) {
+        streamingMessageIndexRef.current += added;
       }
     });
   };
@@ -943,16 +626,10 @@ export function registerMessageCallbacks(
       // Stamp durationMs on the last assistant message when loading ends.
       // Skip if onStreamEnd already stamped it (avoids double-write race).
       const durationMs = Date.now() - turnStartedAt;
-      setMessages((prev) => {
-        for (let i = prev.length - 1; i >= 0; i--) {
-          if (prev[i].type === 'assistant') {
-            if (typeof prev[i].durationMs === 'number') return prev;
-            const next = [...prev];
-            next[i] = { ...next[i], durationMs };
-            return next;
-          }
-        }
-        return prev;
+      getTabStore().mutateActiveTranscript((transcript) => {
+        transcript.patchLastAssistant((message) => (
+          typeof message.durationMs === 'number' ? message : { ...message, durationMs }
+        ));
       });
       setLoadingStartTime(null);
     }
@@ -1004,40 +681,6 @@ export function registerMessageCallbacks(
   // 会话的补丁写进对应的后台 tab，绝不落到前台列表——否则又回到「拿归属当投递」
   // 的老问题。签名曾与宿主错位（宿主发 3 参、这里只收 2 参），导致 content 槽位
   // 收到的是 sessionId，整个补丁静默失效。
-  const patchUuidInList = (prev: ClaudeMessage[], content: string, uuid: string): ClaudeMessage[] => {
-    for (let i = prev.length - 1; i >= 0; i -= 1) {
-      const message = prev[i];
-      if (message.type !== 'user') continue;
-      if (getRawUuid(message)) continue;
-
-      const rawText = extractRawBlocks(message.raw)
-        .filter((block) => block?.type === 'text' && typeof block.text === 'string')
-        .map((block) => String(block.text))
-        .join('\n');
-      if ((message.content || '') !== content && rawText !== content) continue;
-
-      const raw: ClaudeMessage['raw'] =
-        typeof message.raw === 'object' && message.raw
-          ? { ...message.raw, uuid }
-          : {
-              uuid,
-              message: {
-                content: [{ type: 'text' as const, text: message.content || content }],
-              },
-            };
-
-      const next = [...prev];
-      next[i] = {
-        ...message,
-        raw,
-      };
-      return next;
-    }
-
-    cardDebugLog('[patchMessageUuid] no matching unresolved user message found for content:', content);
-    return prev;
-  };
-
   const patchMessageUuid = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
     const targetSessionId = resolveSessionId(env?.sessionId ?? null, 'patchMessageUuid');
     const content = payload?.content as string;
@@ -1049,17 +692,12 @@ export function registerMessageCallbacks(
     const ownerTabId = owningTabIdForSession(targetSessionId);
     if (hasTabs && !ownerTabId) return;
     if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
-      const applyPatch = (t: any) => {
-        const nextMsgs = patchUuidInList(t.messages ?? [], content, uuid);
-        t.messages = nextMsgs;
-        return { ...t, messages: nextMsgs };
-      };
-      tabStore.updateTab(ownerTabId, applyPatch);
+      tabStore.mutateTranscript(ownerTabId, (transcript) => transcript.assignProviderId(content, uuid));
       return;
     }
 
     if (isSessionTransitioning(null)) return;
-    setMessages((prev) => patchUuidInList(prev, content, uuid));
+    tabStore.mutateActiveTranscript((transcript) => transcript.assignProviderId(content, uuid));
   };
 
   const clearMessages = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
@@ -1070,8 +708,8 @@ export function registerMessageCallbacks(
     const ownerTabId = owningTabIdForSession(targetSessionId);
     if (targetSessionId && tabStore.size() > 0 && (!ownerTabId || !tabStore.isActiveTab(ownerTabId))) {
       if (!ownerTabId) return;
+      tabStore.mutateTranscript(ownerTabId, (transcript) => transcript.clear());
       tabStore.updateTab(ownerTabId, (t) => {
-        t.messages = [];
         t.loading = false;
         t.streamingActive = false;
         // 转录已清空：更早的页属于上一个会话，按钮不能再指向它。
@@ -1105,9 +743,6 @@ export function registerMessageCallbacks(
       window.__pendingUpdateSequence = null;
     }
     window.__deniedToolIds?.clear();
-    window.__opencodeListStart = 0;
-    window.__prependedHistoryMessageCount = 0;
-    window.__messageBaseIndex = 0;
     window.__lastAcceptedMessageCount = undefined;
     window.__pendingHistoryRefreshMessageCount = undefined;
     window.__historySurfaceRefreshEpoch = (window.__historySurfaceRefreshEpoch ?? 0) + 1;
@@ -1121,7 +756,7 @@ export function registerMessageCallbacks(
         t.historyWindow = null;
       });
     }
-    setMessages([]);
+    getTabStore().mutateActiveTranscript((transcript) => transcript.clear());
   };
 
   const addErrorMessage = (message: unknown) => {
@@ -1163,7 +798,9 @@ export function registerMessageCallbacks(
 
   const addHistoryMessage = (message: ClaudeMessage) => {
     if (isSessionTransitioning(null)) return;
-    setMessages((prev) => [...prev, message]);
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.appendRemote(message);
+    });
   };
 
 
@@ -1185,14 +822,12 @@ export function registerMessageCallbacks(
     // Compute orphans inside the updater (needs the latest message list) but keep
     // the __deniedToolIds mutation OUTSIDE it — a setMessages updater must stay
     // pure, and React StrictMode double-invokes it. Mirrors onStreamEnd's pattern.
-    let orphanIds: string[] = [];
-    setMessages((prev) => {
-      if (prev.length === 0) return prev;
-      orphanIds = collectUnresolvedToolUseIds(prev, 'all');
-      // Shallow copy forces ChatMessages to re-render so the now-denied IDs are
-      // picked up by BashToolGroupBlock's deniedToolIds prop.
-      return prev.map(m => ({ ...m }));
-    });
+    const tabStore = getTabStore();
+    const current = tabStore.getActiveTab().transcript.getSnapshot();
+    const orphanIds = current.length === 0 ? [] : collectUnresolvedToolUseIds(current, 'all');
+    // Fresh message objects force every message component to repaint, so the
+    // now-denied IDs are picked up even if the list itself did not change.
+    tabStore.mutateActiveTranscript((transcript) => transcript.rehydrate());
     for (const id of orphanIds) {
       window.__deniedToolIds.add(id);
     }
@@ -1344,15 +979,18 @@ export function registerMessageCallbacks(
         }
       }
 
-      if (mode === 'replace') {
-        setMessages(buffered);
-        window.__prependedHistoryMessageCount = 0;
-      } else {
-        // prepend
-        setMessages((prev) => [...buffered, ...prev]);
-        window.__prependedHistoryMessageCount =
-          (window.__prependedHistoryMessageCount ?? 0) + buffered.length;
-      }
+      getTabStore().mutateSessionTranscript(sessionId, (transcript) => {
+        if (mode === 'replace') {
+          transcript.clear();
+          transcript.applySnapshot(buffered, 0);
+        } else {
+          const added = transcript.prependPage(buffered);
+          // The streaming bubble moved down by exactly the inserted messages.
+          if (added > 0 && streamingMessageIndexRef.current >= 0) {
+            streamingMessageIndexRef.current += added;
+          }
+        }
+      });
 
       // Update page info
       window.__codexHistoryPageInfo = {
@@ -1366,10 +1004,6 @@ export function registerMessageCallbacks(
         loadedMessageCount,
       };
 
-      // Adjust streaming index for prepended messages
-      if (mode === 'prepend' && options.streamingMessageIndexRef.current >= 0) {
-        options.streamingMessageIndexRef.current += buffered.length;
-      }
     } catch (error) {
       console.error('[Frontend] Failed to parse completeCodexHistoryPage:', error);
     }
@@ -1382,16 +1016,11 @@ export function registerMessageCallbacks(
       content: content || '',
       timestamp: new Date().toISOString(),
     };
-    setMessages((prev) => {
-      // If the last message is an optimistic message with matching content,
-      // skip adding — the frontend already rendered the optimistic copy.
-      // Otherwise addUserMessage + optimistic create a brief duplicate until
-      // the next updateMessages deduplicates them.
-      const lastMsg = prev[prev.length - 1];
-      if (lastMsg?.isOptimistic && lastMsg.type === 'user' && lastMsg.content === content) {
-        return prev;
-      }
-      return [...prev, userMessage];
+    getTabStore().mutateActiveTranscript((transcript) => {
+      // The optimistic bubble already shows this sentence; the host echo is
+      // the same message, not a second one.
+      if (transcript.hasLocalMatching(content)) return;
+      transcript.appendRemote(userMessage);
     });
     userPausedRef.current = false;
     isUserAtBottomRef.current = true;
@@ -1429,9 +1058,10 @@ export function registerMessageCallbacks(
         : tabStore.size() === 0;
 
       if (isForeground) {
-        setMessages(authoritativeMessages);
-        window.__messageBaseIndex = 0;
-        window.__opencodeListStart = 0;
+        tabStore.mutateActiveTranscript((transcript) => {
+          transcript.clear();
+          transcript.applySnapshot(authoritativeMessages, 0);
+        });
 
         if (typeof isStreaming === 'boolean') {
           isStreamingRef.current = isStreaming;
@@ -1466,8 +1096,8 @@ export function registerMessageCallbacks(
 
       // Also ensure background tab store has the authoritative snapshot
       const applyHydrated = (t: any) => {
-        t.messages = authoritativeMessages;
-        t.messageBaseIndex = 0;
+        t.transcript.clear();
+        t.transcript.applySnapshot(authoritativeMessages, 0);
         if (typeof isStreaming === 'boolean') t.streamingActive = isStreaming;
         if (typeof loading === 'boolean') t.loading = loading;
         if (typeof status === 'string') t.status = status;

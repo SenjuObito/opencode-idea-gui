@@ -45,6 +45,15 @@ export interface SessionTabData {
    * that state, keyed by tab so a background tab keeps its own queue.</p>
    */
   queue?: import('../../store/tabQueueStore').TabQueueSnapshot;
+  /**
+   * This tab is waiting for its transcript from the host.
+   *
+   * <p>History loading belongs to the tab that asked for it: the view shows the
+   * indicator of the tab on screen, and a load that finishes in a background
+   * tab must not touch the foreground one. It is tab state, not window state —
+   * a window-wide flag is what let another tab's reset hide the indicator.</p>
+   */
+  historyLoading?: boolean;
   loading?: boolean;
   streamingActive?: boolean;
   isThinking?: boolean;

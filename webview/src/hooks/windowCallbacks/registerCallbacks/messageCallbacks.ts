@@ -855,17 +855,23 @@ export function registerMessageCallbacks(
       if (ownerTabId && transitionTargetFor(ownerTabId) === targetSessionId) {
         endTransition(ownerTabId);
       }
-      // If the foreground active tab is not currently loading, ensure front-end loading bar is not stranded
-      options.setSessionLoading(false);
+      // Only the tab that was loading is done. The tab on screen waits for its
+      // own history, so a background completion must not hide its indicator.
+      tabStore.setSessionHistoryLoading(targetSessionId, false);
       return;
     }
 
     cardDebugLog('[HistoryLoadComplete] called, transitioning BEFORE release:', isSessionTransitioning(targetSessionId), 'expectedMsgCount:', expectedMessageCountArg);
-    cardDebugLog('[HistoryLoadComplete] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
-    endTransition(activeTabId());
+    // The load belongs to the tab that owns this session (the tab on screen
+    // when the host names none). Release that tab's guard and its indicator.
+    const settledTabId = (targetSessionId ? owningTabIdForSession(targetSessionId) : null) ?? activeTabId();
+    endTransition(settledTabId);
     cardDebugLog('[HistoryLoadComplete] transitioning AFTER release:', isSessionTransitioning(targetSessionId));
-    // Immediately release sessionLoading flag
-    options.setSessionLoading(false);
+    // Clear the tab that owns the session; with no tab strip (or an unbound
+    // session) the tab on screen is the only place the indicator can live.
+    if (!targetSessionId || !tabStore.setSessionHistoryLoading(targetSessionId, false)) {
+      tabStore.setHistoryLoading(settledTabId, false);
+    }
     // 同会话软刷新已完成，释放 loadHistorySession 的去抖守卫
     window.__softSessionReloadInFlight = null;
     const pendingToast = window.__pendingSessionTransitionToast;

@@ -33,7 +33,7 @@ export function ChatInputBoxHeader({
   autoOpenFileEnabled,
   onRequestEnableFileContext,
   onCompactClick,
-  sessionLoading,
+  historyLoading,
 }: {
   daemonStatusLoaded: boolean;
   daemonAlive: boolean;
@@ -61,7 +61,7 @@ export function ChatInputBoxHeader({
   autoOpenFileEnabled?: boolean;
   onRequestEnableFileContext?: () => void;
   onCompactClick?: () => void;
-  sessionLoading?: boolean;
+  historyLoading?: boolean;
 }) {
   return (
     <>
@@ -95,7 +95,7 @@ export function ChatInputBoxHeader({
       )}
 
       {/* Session loading bar */}
-      {sessionLoading && (
+      {historyLoading && (
         <div className="session-loading-bar">
           <span className="codicon codicon-loading codicon-modifier-spin" />
           <span className="session-loading-text">{t('statusPanel.loadingSession')}</span>

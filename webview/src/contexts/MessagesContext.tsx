@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import type { ClaudeMessage, SubagentHistoryResponse, TodoItem } from '../types';
 import { getTabStore } from '../store/tabStore';
 import { isTabTurnActive } from '../store/tabRuntime';
@@ -41,8 +41,6 @@ export interface MessagesContextValue {
    * rather than one of the phases.</p>
    */
   turnActive: boolean;
-  sessionLoading: boolean;
-  setSessionLoading: React.Dispatch<React.SetStateAction<boolean>>;
   /** Authoritative todo list from opencode's `todo.updated` SSE event. */
   sseTodos: TodoItem[] | null;
   setSseTodos: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
@@ -183,11 +181,6 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
     [tabStore],
   );
 
-  // A history download is a property of the viewport, not of a conversation:
-  // it is true only while the current tab is restoring its transcript and must
-  // not follow a tab switch.
-  const [sessionLoading, setSessionLoading] = useState<boolean>(false);
-
   const messages = activeTab.transcript.getSnapshot();
   const subagentHistories = activeTab.subagentHistories ?? EMPTY_SUBAGENT_HISTORIES;
   const status = activeTab.status ?? DEFAULT_STATUS;
@@ -220,8 +213,6 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       streamingActive,
       setStreamingActive,
       turnActive,
-      sessionLoading,
-      setSessionLoading,
       sseTodos,
       setSseTodos,
       isCompacting,
@@ -246,7 +237,6 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       streamingActive,
       setStreamingActive,
       turnActive,
-      sessionLoading,
       sseTodos,
       setSseTodos,
       isCompacting,

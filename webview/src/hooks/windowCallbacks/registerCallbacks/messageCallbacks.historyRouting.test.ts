@@ -46,7 +46,6 @@ function createHarness(activeSessionId: string) {
       transcript.applySnapshot(messages);
     });
   };
-  const setSessionLoading = vi.fn();
   const requestHistoryRenderCommit = vi.fn();
   const resetTransientUiState = vi.fn();
 
@@ -57,7 +56,6 @@ function createHarness(activeSessionId: string) {
     setLoadingStartTime: vi.fn(),
     setIsThinking: vi.fn(),
     setHistoryData: vi.fn(),
-    setSessionLoading,
     userPausedRef: ref(false),
     isUserAtBottomRef: ref(true),
     messagesContainerRef: ref(null),
@@ -87,7 +85,6 @@ function createHarness(activeSessionId: string) {
 
   return {
     setMessages,
-    setSessionLoading,
     requestHistoryRenderCommit,
     resetTransientUiState,
     getMessages: () => getTabStore().getActiveTabMessages(),
@@ -144,13 +141,34 @@ describe('history load routing — background session', () => {
     expect(storedTab('tab-fg').transcript.getSnapshot()).toEqual([{ type: 'user', content: 'fg' }]);
   });
 
+  it('a reset of the tab on screen keeps the indicator of a tab that is loading history', () => {
+    const tabs: FakeTab[] = [
+      { id: 'tab-fg', sessionId: 'ses_fg', messages: [{ type: 'user', content: 'fg' }] },
+      { id: 'tab-bg', sessionId: 'ses_bg', messages: [{ type: 'user', content: 'bg' }] },
+    ];
+    createHarness('ses_bg');
+    seedTabStore(tabs, 'tab-bg');
+    const store = getTabStore();
+    // tab-fg 还在等它的转录；切到 tab-bg 时清屏属于 tab-bg。
+    store.setHistoryLoading('tab-fg', true);
+
+    hostEventHandler('session.cleared')!(...sessionEvent('ses_bg', { sequence: '22' }));
+
+    expect(storedTab('tab-bg').transcript.getSnapshot()).toEqual([]);
+    expect(storedTab('tab-fg').historyLoading).toBe(true);
+  });
+
   it('does not release the foreground transition guard for a background load', () => {
     const tabs: FakeTab[] = [
       { id: 'tab-fg', sessionId: 'ses_fg', messages: [] },
       { id: 'tab-bg', sessionId: 'ses_bg', messages: [], loading: true },
     ];
-    const h = createHarness('ses_fg');
+    createHarness('ses_fg');
     seedTabStore(tabs, 'tab-fg');
+    const store = getTabStore();
+    // 两个 tab 都在等各自的转录：只有后台那个能在这里完成。
+    store.setHistoryLoading('tab-fg', true);
+    store.setHistoryLoading('tab-bg', true);
     beginTransition('tab-fg', 'ses_fg', 'transition-bg');
 
     hostEventHandler('session.loaded')!(...sessionEvent('ses_bg', { messageCount: '2' }));
@@ -158,8 +176,9 @@ describe('history load routing — background session', () => {
     // 前台还在切换中：守卫必须留着，否则前台会被旧会话的帧污染
     expect(isTabTransitioning('tab-fg')).toBe(true);
     expect(storedTab('tab-bg').loading).toBe(false);
-    // 前台的 loading 条不被后台会话的完成信号解除
-    expect(h.setSessionLoading).not.toHaveBeenCalledWith(true);
+    // 前台的加载指示条不被后台会话的完成信号解除
+    expect(storedTab('tab-fg').historyLoading).toBe(true);
+    expect(storedTab('tab-bg').historyLoading).toBe(false);
   });
 
   it('drops the snapshot when NO tab claims the session', () => {
@@ -195,6 +214,7 @@ describe('history load routing — foreground session', () => {
     const h = createHarness('ses_fg');
     const tabs: FakeTab[] = [{ id: 'tab-fg', sessionId: 'ses_fg', messages: [] }];
     seedTabStore(tabs, 'tab-fg');
+    getTabStore().setHistoryLoading('tab-fg', true);
     beginTransition('tab-fg', 'ses_fg', 'transition-fg');
 
     hostEventHandler('session.cleared')!(...sessionEvent('ses_fg', { sequence: '7' }));
@@ -208,7 +228,7 @@ describe('history load routing — foreground session', () => {
     // 切换守卫被正确释放，且历史表面刷新被请求一次
     expect(isTabTransitioning('tab-fg')).toBe(false);
     expect(h.requestHistoryRenderCommit).toHaveBeenCalledTimes(1);
-    expect(h.setSessionLoading).toHaveBeenCalledWith(false);
+    expect(storedTab('tab-fg').historyLoading).toBe(false);
     expect(h.getMessages()).toHaveLength(2);
   });
 

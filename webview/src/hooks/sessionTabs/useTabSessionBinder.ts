@@ -43,7 +43,6 @@ export interface UseTabSessionBinderOptions extends Pick<
   | 'setUsagePercentage'
   | 'setUsageUsedTokens'
   | 'setUsageMaxTokens'
-  | 'setSessionLoading'
   | 'setCurrentView'
   | 'chatInputRef'
   | 'loadHistorySession'
@@ -103,7 +102,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     setUsagePercentage,
     setUsageUsedTokens,
     setUsageMaxTokens,
-    setSessionLoading,
     setCurrentView,
     chatInputRef,
     loadHistorySession,
@@ -449,8 +447,9 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         chatInputRef.current.restoreQuoteTags?.(draft?.quotes ?? {});
       }
 
-      setSessionLoading?.(false);
-
+      // The indicator belongs to this tab and is rendered from its record: a
+      // tab that is still loading keeps its own indicator, and switching to a
+      // tab that is not loading shows nothing without touching any state.
       if (contentChanged) {
         window.__requestSurfaceRepublish?.();
       }
@@ -484,8 +483,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setUsageMaxTokens,
       chatInputRef,
       draftStore,
-      setSessionLoading,
-      ]
+        ]
   );
 
   const openSessionInTab = useCallback(
@@ -501,7 +499,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       if (existingTab) {
         selectTab(existingTab.id);
         setCurrentView?.('chat');
-        setSessionLoading?.(false);
         return;
       }
 
@@ -617,13 +614,18 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
 
       chatInputRef?.current?.setValue?.('');
       setCurrentView?.('chat');
-      setSessionLoading?.(true);
+      // The indicator is this tab's state; `beginSessionTransition` repeats it,
+      // which also covers the path that loads the session without a helper.
+      const loadingTabId = activeTabIdRef.current;
+      getTabStore().setHistoryLoading(loadingTabId, true);
 
       if (historyLoadingTimeoutRef.current) {
         clearTimeout(historyLoadingTimeoutRef.current);
       }
+      // Safety net for a lost completion signal: only this tab, so a later load
+      // in another tab cannot be cleared by this timer.
       historyLoadingTimeoutRef.current = setTimeout(() => {
-        setSessionLoading?.(false);
+        getTabStore().setHistoryLoading(loadingTabId, false);
       }, 8000);
 
       if (loadHistorySession) {
@@ -639,7 +641,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       tabsRef,
       selectTab,
       setCurrentView,
-      setSessionLoading,
       currentProvider,
       availableModels,
       activeTabIdRef,

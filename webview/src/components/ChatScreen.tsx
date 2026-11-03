@@ -20,6 +20,7 @@ import {
   ToolResultRawContext,
 } from '../contexts/SubagentContext';
 import { useMessages } from '../contexts/MessagesContext';
+import { useActiveTabHistoryLoading } from '../hooks/useActiveTabHistoryLoading';
 import { useSession } from '../contexts/SessionContext';
 import { useUIState } from '../contexts/UIStateContext';
 import { extractMarkdownContent } from '../utils/copyUtils';
@@ -159,8 +160,11 @@ export const ChatScreen = ({
   onRemoveFromQueue, onResumeQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
-  const { messages, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime, compactingReason, historyWindow } = useMessages();
-  cardDebugLog('[ChatScreen] render, sessionLoading:', sessionLoading, 'statusPanelExpanded:', statusPanelExpanded);
+  const { messages, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, isCompacting, compactingStartTime, compactingReason, historyWindow } = useMessages();
+  // The indicator belongs to the tab on screen: switching tabs shows that tab's
+  // own load, and a background load never shows here.
+  const historyLoading = useActiveTabHistoryLoading();
+  cardDebugLog('[ChatScreen] render, historyLoading:', historyLoading, 'statusPanelExpanded:', statusPanelExpanded);
   const { currentSessionId } = useSession();
   const previousMessageKeySnapshotRef = useRef<MessageKeySnapshot | undefined>(undefined);
   const messageKeySnapshot = useMemo(
@@ -241,7 +245,7 @@ export const ChatScreen = ({
     setSearchOpen(false);
   }, [setSearchOpen]);
 
-  const isEmptyState = !sessionLoading && mergedMessages.length === 0;
+  const isEmptyState = !historyLoading && mergedMessages.length === 0;
 
   return (
     <div className={`chat-screen-shell ${isEmptyState ? 'is-empty-state' : ''}`}>
@@ -262,7 +266,7 @@ export const ChatScreen = ({
           isAutoScrollingRef={isAutoScrollingRef}
         />
         <div className="messages-container" ref={messagesContainerRef}>
-          {!sessionLoading && messages.length === 0 && (
+          {!historyLoading && messages.length === 0 && (
             <WelcomeScreen
               currentProvider={currentProvider}
               t={t}
@@ -324,7 +328,7 @@ export const ChatScreen = ({
           subagentHistories={subagentHistories}
           currentSessionId={currentSessionId}
           currentProvider={currentProvider}
-          sessionLoading={sessionLoading}
+          historyLoading={historyLoading}
           expanded={statusPanelExpanded}
           activeTab={statusPanelTab}
           onActiveTabChange={onStatusPanelTabChange}
@@ -353,7 +357,7 @@ export const ChatScreen = ({
           sdkInstalled={currentSdkInstalled}
           daemonStatusLoaded={daemonStatusLoaded}
           onRetryDaemonStatus={retryDaemonStatus}
-          sessionLoading={sessionLoading}
+          historyLoading={historyLoading}
           value={draftInput}
           onInput={setDraftInput}
           onSubmit={handleSubmit}

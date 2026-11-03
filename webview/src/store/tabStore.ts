@@ -332,6 +332,42 @@ export class TabStore {
     return this.updateTab(tabId, updater);
   }
 
+  /**
+   * Mark one tab as waiting for (or done with) its history load.
+   *
+   * <p>The indicator lives on the tab because the load does: a tab switch must
+   * carry it, a reset of another tab must not clear it, and closing the tab
+   * drops it with the tab.</p>
+   */
+  setHistoryLoading(tabId: string | null | undefined, loading: boolean): void {
+    if (!tabId) return;
+    this.updateTab(tabId, (tab) => {
+      if ((tab.historyLoading ?? false) === loading) return;
+      tab.historyLoading = loading;
+    });
+  }
+
+  /** Same, for the tab that owns `sessionId`. */
+  setSessionHistoryLoading(sessionId: string | null | undefined, loading: boolean): boolean {
+    const tabId = this.findIdBySession(sessionId);
+    if (tabId) {
+      this.setHistoryLoading(tabId, loading);
+      return true;
+    }
+    // No tab strip (or the session is not bound yet): the view's own tab is
+    // the only place the indicator can live.
+    if (this.size() === 0) {
+      this.setHistoryLoading(this.getActiveTab().id, loading);
+      return true;
+    }
+    return false;
+  }
+
+  /** The tab on screen is waiting for its history. */
+  isActiveTabHistoryLoading(): boolean {
+    return this.getActiveTab().historyLoading === true;
+  }
+
   /** Apply one updater to every tab (dialog bookkeeping, bulk cleanup). */
   updateAllTabs(updater: (tab: SessionTabData) => SessionTabData | void): void {
     this.setTabs((prev) => prev.map((tab) => {

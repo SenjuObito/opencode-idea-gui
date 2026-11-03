@@ -25,8 +25,7 @@ describe('useSessionManagement', () => {
     setLoading: vi.fn(),
     setIsThinking: vi.fn(),
     setStreamingActive: vi.fn(),
-    setSessionLoading: vi.fn(),
-    clearToasts: vi.fn(),
+      clearToasts: vi.fn(),
     addToast: vi.fn(),
     setBackgroundTasks: vi.fn(),
   });

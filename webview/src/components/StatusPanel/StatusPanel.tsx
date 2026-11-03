@@ -12,8 +12,8 @@ import DiscardAllDialog from './DiscardAllDialog';
 import type { TabType, StatusPanelProps } from './types';
 import './StatusPanel.less';
 
-const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, sessionLoading = false, expanded = true, activeTab, onActiveTabChange, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll }: StatusPanelProps) => {
-  cardDebugLog('[StatusPanel] render, sessionLoading:', sessionLoading, 'expanded:', expanded);
+const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, historyLoading = false, expanded = true, activeTab, onActiveTabChange, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll }: StatusPanelProps) => {
+  cardDebugLog('[StatusPanel] render, historyLoading:', historyLoading, 'expanded:', expanded);
   const { t } = useTranslation();
   const [localOpenPopover, setLocalOpenPopover] = useState<TabType | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -239,7 +239,7 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
   }, [onDiscardAll, onUndoFile, t]);
 
   if (!expanded) {
-    cardDebugLog('[StatusPanel] expanded is false, returning null (sessionLoading:', sessionLoading, ')');
+    cardDebugLog('[StatusPanel] expanded is false, returning null (historyLoading:', historyLoading, ')');
     return null;
   }
 

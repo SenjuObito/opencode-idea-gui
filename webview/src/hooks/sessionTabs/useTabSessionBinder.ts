@@ -534,7 +534,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
                 filteredFileChanges: [],
                 contextInfo: null,
                 autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
-                compactNotice: null,
                 scrollState: undefined,
               }
             : t
@@ -582,10 +581,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       }
 
       syncHostActiveTabTo(activeTabIdRef.current);
-      // Opening another session rebinds this tab, so the previous session's
-      // compact state (spinner and result pill) must not leak into the new
-      // transcript. This is a tab-scoped write, not a window-level one.
-      getTabStore().resetCompaction(activeTabIdRef.current);
 
       mutateTranscript((transcript) => transcript.clear());
       restoreScrollState?.(null);

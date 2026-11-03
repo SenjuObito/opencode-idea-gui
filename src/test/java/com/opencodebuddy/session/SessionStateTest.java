@@ -1,5 +1,6 @@
 package com.opencodebuddy.session;
 
+import com.google.gson.JsonObject;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -213,5 +214,96 @@ public class SessionStateTest {
             raw.addProperty("uuid", uuid);
         }
         return new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "text", raw);
+    }
+
+    // ===== Compaction records =====
+
+    private static String statusOf(OpencodeSession.Message message) {
+        return message.compaction.get("status").getAsString();
+    }
+
+    private static String reasonOf(OpencodeSession.Message message) {
+        return message.compaction.get("reason").getAsString();
+    }
+
+    @Test
+    public void secondBeginReusesTheRunningCompaction() {
+        SessionState state = new SessionState();
+
+        OpencodeSession.Message first = state.beginCompaction("manual", "input-1");
+        OpencodeSession.Message second = state.beginCompaction("auto", "input-1");
+
+        Assert.assertSame(first, second);
+        Assert.assertEquals(1, state.getMessages().size());
+        Assert.assertEquals("in_progress", statusOf(first));
+        // The first trigger owns the wording.
+        Assert.assertEquals("manual", reasonOf(first));
+    }
+
+    @Test
+    public void terminalUpdatesTheRunningCompactionInPlace() {
+        SessionState state = new SessionState();
+        state.beginCompaction("manual", "input-1");
+
+        state.finishCompaction("completed", "msg_compact_1", "## Objective\n- ship it",
+                null, null, "manual", null);
+
+        Assert.assertEquals(1, state.getMessages().size());
+        OpencodeSession.Message record = state.getMessages().get(0);
+        Assert.assertEquals(OpencodeSession.Message.Type.COMPACTION, record.type);
+        Assert.assertEquals("completed", statusOf(record));
+        Assert.assertEquals("## Objective\n- ship it", record.content);
+        Assert.assertEquals("msg_compact_1", record.raw.get("id").getAsString());
+        Assert.assertFalse(state.hasActiveCompaction());
+    }
+
+    @Test
+    public void duplicateTerminalKeepsExactlyOneRecord() {
+        SessionState state = new SessionState();
+        state.beginCompaction("manual", "input-1");
+        state.finishCompaction("completed", "msg_compact_1", "first", null, null, "manual", null);
+        state.finishCompaction("completed", "msg_compact_1", "", null, null, "manual", null);
+
+        Assert.assertEquals(1, state.getMessages().size());
+        // An empty terminal must not erase a summary already written.
+        Assert.assertEquals("first", state.getMessages().get(0).content);
+    }
+
+    @Test
+    public void terminalWithoutStartCreatesOneRecord() {
+        SessionState state = new SessionState();
+
+        state.finishCompaction("completed", "msg_history", "summary", null, null, "auto", null);
+
+        Assert.assertEquals(1, state.getMessages().size());
+        OpencodeSession.Message record = state.getMessages().get(0);
+        Assert.assertEquals(OpencodeSession.Message.Type.COMPACTION, record.type);
+        Assert.assertEquals("completed", statusOf(record));
+        Assert.assertEquals("summary", record.content);
+    }
+
+    @Test
+    public void failureKeepsTheReasonAndTheError() {
+        SessionState state = new SessionState();
+        state.beginCompaction("manual", null);
+
+        state.finishCompaction("failed", null, "", "Nothing to compact yet", null, null, null);
+
+        OpencodeSession.Message record = state.getMessages().get(0);
+        Assert.assertEquals("failed", statusOf(record));
+        Assert.assertEquals("manual", reasonOf(record));
+        Assert.assertEquals("Nothing to compact yet", record.compaction.get("error").getAsString());
+    }
+
+    @Test
+    public void aNewCompactionAfterACompletedOneCreatesASecondRecord() {
+        SessionState state = new SessionState();
+        state.beginCompaction("auto", null);
+        state.finishCompaction("completed", null, "one", null, null, "auto", null);
+        state.beginCompaction("auto", null);
+
+        Assert.assertEquals(2, state.getMessages().size());
+        Assert.assertEquals("completed", statusOf(state.getMessages().get(0)));
+        Assert.assertEquals("in_progress", statusOf(state.getMessages().get(1)));
     }
 }

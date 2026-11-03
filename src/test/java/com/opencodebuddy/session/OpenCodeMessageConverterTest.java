@@ -318,33 +318,28 @@ public class OpenCodeMessageConverterTest {
     }
 
     @Test
-    public void convertsCompactionEntryToUserCompactSummary() {
+    public void convertsCompactionEntryToCompactionRecord() {
         String parts = "[{\"type\":\"text\",\"text\":\"This session was compacted.\"}]";
         JsonObject entryObj = entry("compaction", parts);
         JsonObject info = entryObj.getAsJsonObject("info");
-        JsonObject meta = new JsonObject();
-        meta.addProperty("trigger", "manual");
-        meta.addProperty("userContext", "This session was compacted.");
-        info.add("compactMetadata", meta);
         info.addProperty("isCompactSummary", true);
+        info.addProperty("compactionStatus", "completed");
+        info.addProperty("compactionReason", "manual");
 
         List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
         assertEquals(1, out.size());
-        JsonObject user = out.get(0);
-        assertEquals("user", user.get("type").getAsString());
-        assertEquals("This session was compacted.", user.get("content").getAsString());
-        JsonObject raw = user.getAsJsonObject("raw");
-        assertNotNull(raw);
-        assertTrue(raw.get("isCompactSummary").getAsBoolean());
-        assertNotNull(raw.getAsJsonObject("compactMetadata"));
-        assertEquals("manual", raw.getAsJsonObject("compactMetadata").get("trigger").getAsString());
-        // The summary is the message content; it must not be repeated in the
-        // card's "user context" line.
-        assertFalse(raw.getAsJsonObject("compactMetadata").has("userContext"));
+        JsonObject record = out.get(0);
+        assertEquals("compaction", record.get("type").getAsString());
+        assertEquals("This session was compacted.", record.get("content").getAsString());
+        JsonObject meta = record.getAsJsonObject("compaction");
+        assertNotNull(meta);
+        assertEquals("completed", meta.get("status").getAsString());
+        assertEquals("manual", meta.get("reason").getAsString());
+        assertNotNull(record.getAsJsonObject("raw"));
     }
 
     @Test
-    public void compactionReasonBecomesTheTriggerWithoutUserContext() {
+    public void compactionReasonIsKeptOnTheRecord() {
         JsonObject entryObj = entry("compaction", "[{\"type\":\"text\",\"text\":\"## Objective\\nShip it.\"}]");
         JsonObject info = entryObj.getAsJsonObject("info");
         info.addProperty("reason", "auto");
@@ -352,15 +347,25 @@ public class OpenCodeMessageConverterTest {
 
         List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
         assertEquals(1, out.size());
-        JsonObject raw = out.get(0).getAsJsonObject("raw");
-        JsonObject meta = raw.getAsJsonObject("compactMetadata");
-        assertEquals("auto", meta.get("trigger").getAsString());
-        assertFalse(meta.has("userContext"));
+        JsonObject meta = out.get(0).getAsJsonObject("compaction");
+        assertEquals("auto", meta.get("reason").getAsString());
         assertEquals("## Objective\nShip it.", out.get(0).get("content").getAsString());
     }
 
     @Test
-    public void convertsOpenCodeV1CompactionAssistantToCompactSummary() {
+    public void failedCompactionIsDroppedFromHistory() {
+        JsonObject entryObj = entry("compaction", "[]");
+        JsonObject info = entryObj.getAsJsonObject("info");
+        info.addProperty("isCompactSummary", true);
+        info.addProperty("compactionStatus", "failed");
+        info.addProperty("compactionReason", "manual");
+
+        List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
+        assertEquals(0, out.size());
+    }
+
+    @Test
+    public void convertsOpenCodeV1CompactionAssistantToCompactionRecord() {
         // In OpenCode v1, compaction summary is an assistant message with mode='compaction', agent='compaction', summary=true
         JsonObject entryObj = entry("assistant", "[{\"type\":\"text\",\"text\":\"## Objective\\nV1 compaction summary.\"}]");
         JsonObject info = entryObj.getAsJsonObject("info");
@@ -370,14 +375,12 @@ public class OpenCodeMessageConverterTest {
 
         List<JsonObject> out = OpenCodeMessageConverter.convert(wrap(entryObj));
         assertEquals(1, out.size());
-        JsonObject user = out.get(0);
-        assertEquals("user", user.get("type").getAsString());
-        assertEquals("## Objective\nV1 compaction summary.", user.get("content").getAsString());
-        JsonObject raw = user.getAsJsonObject("raw");
-        assertNotNull(raw);
-        assertTrue(raw.get("isCompactSummary").getAsBoolean());
-        assertNotNull(raw.getAsJsonObject("compactMetadata"));
-        assertEquals("manual", raw.getAsJsonObject("compactMetadata").get("trigger").getAsString());
+        JsonObject record = out.get(0);
+        assertEquals("compaction", record.get("type").getAsString());
+        assertEquals("## Objective\nV1 compaction summary.", record.get("content").getAsString());
+        JsonObject meta = record.getAsJsonObject("compaction");
+        assertEquals("completed", meta.get("status").getAsString());
+        assertEquals("manual", meta.get("reason").getAsString());
     }
 
     @Test
@@ -394,8 +397,8 @@ public class OpenCodeMessageConverterTest {
         array.add(summaryAssistant);
 
         List<JsonObject> out = OpenCodeMessageConverter.convert(array);
-        assertEquals("Trigger user message should be skipped, only compact summary message kept", 1, out.size());
-        assertTrue(out.get(0).getAsJsonObject("raw").get("isCompactSummary").getAsBoolean());
+        assertEquals("Trigger user message should be skipped, only the compaction record kept", 1, out.size());
+        assertEquals("compaction", out.get(0).get("type").getAsString());
         assertEquals("## Summary", out.get(0).get("content").getAsString());
     }
 

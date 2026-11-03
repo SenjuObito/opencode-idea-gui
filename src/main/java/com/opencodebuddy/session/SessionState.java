@@ -543,6 +543,203 @@ public class SessionState {
         return raw.has("uuid") && !raw.get("uuid").isJsonNull() && ids.contains(raw.get("uuid").getAsString());
     }
 
+    // ===== Compaction records =====
+
+    /**
+     * The compaction currently running for this conversation, if any.
+     *
+     * <p>The engine runs compactions serially, so a second {@code started}
+     * signal while one is running belongs to the same compaction.</p>
+     */
+    public OpencodeSession.Message findActiveCompaction() {
+        synchronized (messages) {
+            return findActiveCompactionLocked();
+        }
+    }
+
+    public boolean hasActiveCompaction() {
+        return findActiveCompaction() != null;
+    }
+
+    private OpencodeSession.Message findActiveCompactionLocked() {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            OpencodeSession.Message message = messages.get(i);
+            if (message != null && message.type == OpencodeSession.Message.Type.COMPACTION
+                    && "in_progress".equals(compactionString(message, "status"))) {
+                return message;
+            }
+        }
+        return null;
+    }
+
+    /** Find a compaction record by the engine's persisted message id. */
+    public OpencodeSession.Message findCompactionById(String id) {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        synchronized (messages) {
+            return findCompactionByIdLocked(id);
+        }
+    }
+
+    private OpencodeSession.Message findCompactionByIdLocked(String id) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            OpencodeSession.Message message = messages.get(i);
+            if (message == null || message.type != OpencodeSession.Message.Type.COMPACTION || message.raw == null) {
+                continue;
+            }
+            if (id.equals(jsonString(message.raw, "id")) || id.equals(jsonString(message.raw, "uuid"))) {
+                return message;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Start (or continue) a compaction record.
+     *
+     * <p>Only creates one record per running compaction: a second start fills
+     * in the engine id and keeps the first trigger's wording.</p>
+     */
+    public OpencodeSession.Message beginCompaction(String reason, String engineId) {
+        synchronized (messages) {
+            OpencodeSession.Message active = findActiveCompactionLocked();
+            if (active != null) {
+                JsonObject meta = ensureCompactionMeta(active);
+                if (jsonString(meta, "reason").isEmpty() && reason != null && !reason.isBlank()) {
+                    meta.addProperty("reason", reason);
+                }
+                if (engineId != null && !engineId.isBlank()) {
+                    stampCompactionId(active, engineId, false);
+                }
+                return active;
+            }
+            long now = System.currentTimeMillis();
+            OpencodeSession.Message message = new OpencodeSession.Message(OpencodeSession.Message.Type.COMPACTION, "");
+            message.timestamp = now;
+            JsonObject raw = new JsonObject();
+            raw.addProperty("type", "compaction");
+            if (engineId != null && !engineId.isBlank()) {
+                raw.addProperty("id", engineId);
+                raw.addProperty("uuid", engineId);
+            }
+            message.raw = raw;
+            JsonObject meta = new JsonObject();
+            meta.addProperty("status", "in_progress");
+            meta.addProperty("reason", reason == null || reason.isBlank() ? "auto" : reason);
+            meta.addProperty("startedAt", now);
+            message.compaction = meta;
+            messages.add(message);
+            return message;
+        }
+    }
+
+    /**
+     * Close a compaction record.
+     *
+     * <p>Updates the running record (or the one matching the terminal id) in
+     * place; only creates a record when the engine skipped {@code started}.
+     * Repeated or late terminals therefore never append a second card.</p>
+     */
+    public OpencodeSession.Message finishCompaction(
+            String status,
+            String id,
+            String summary,
+            String error,
+            JsonObject tokens,
+            String reason,
+            Long startedAt) {
+        synchronized (messages) {
+            OpencodeSession.Message target = findActiveCompactionLocked();
+            if (target == null) {
+                target = findCompactionByIdLocked(id);
+            }
+            long now = System.currentTimeMillis();
+            if (target == null) {
+                long created = startedAt != null && startedAt > 0 ? startedAt : now;
+                target = new OpencodeSession.Message(OpencodeSession.Message.Type.COMPACTION, "");
+                target.timestamp = created;
+                JsonObject raw = new JsonObject();
+                raw.addProperty("type", "compaction");
+                if (id != null && !id.isBlank()) {
+                    raw.addProperty("id", id);
+                    raw.addProperty("uuid", id);
+                }
+                target.raw = raw;
+                JsonObject meta = new JsonObject();
+                meta.addProperty("status", status);
+                meta.addProperty("reason", reason == null || reason.isBlank() ? "auto" : reason);
+                meta.addProperty("startedAt", created);
+                target.compaction = meta;
+                messages.add(target);
+            }
+            JsonObject meta = ensureCompactionMeta(target);
+            long previousStart = meta.has("startedAt") && !meta.get("startedAt").isJsonNull()
+                    ? meta.get("startedAt").getAsLong()
+                    : (startedAt != null && startedAt > 0 ? startedAt : now);
+            String effectiveReason = reason != null && !reason.isBlank() ? reason : jsonString(meta, "reason");
+            if (effectiveReason.isEmpty()) {
+                effectiveReason = "auto";
+            }
+            meta.addProperty("status", status);
+            meta.addProperty("reason", effectiveReason);
+            meta.addProperty("startedAt", previousStart);
+            meta.addProperty("completedAt", now);
+            meta.addProperty("durationMs", Math.max(0, now - previousStart));
+            if (tokens != null && tokens.isJsonObject()) {
+                meta.add("tokens", tokens.deepCopy());
+            }
+            if ("failed".equals(status)) {
+                if (error != null && !error.isBlank()) {
+                    meta.addProperty("error", error);
+                }
+            } else {
+                meta.remove("error");
+            }
+            target.compaction = meta;
+            if (id != null && !id.isBlank()) {
+                stampCompactionId(target, id, true);
+            }
+            if ("completed".equals(status) && summary != null && !summary.trim().isEmpty()) {
+                target.content = summary;
+            }
+            return target;
+        }
+    }
+
+    private static JsonObject ensureCompactionMeta(OpencodeSession.Message message) {
+        if (message.compaction == null) {
+            message.compaction = new JsonObject();
+        }
+        return message.compaction;
+    }
+
+    private static String compactionString(OpencodeSession.Message message, String key) {
+        return message.compaction == null ? "" : jsonString(message.compaction, key);
+    }
+
+    private static void stampCompactionId(OpencodeSession.Message message, String id, boolean overwrite) {
+        JsonObject raw = message.raw != null ? message.raw : new JsonObject();
+        if (overwrite || jsonString(raw, "id").isEmpty()) {
+            raw.addProperty("id", id);
+        }
+        if (overwrite || jsonString(raw, "uuid").isEmpty()) {
+            raw.addProperty("uuid", id);
+        }
+        message.raw = raw;
+    }
+
+    private static String jsonString(JsonObject object, String key) {
+        if (object == null || !object.has(key) || object.get(key).isJsonNull()) {
+            return "";
+        }
+        try {
+            return object.get(key).getAsString();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
     /**
      * Reflect a late-arriving turn failure in the transcript.
      *

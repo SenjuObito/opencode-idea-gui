@@ -853,61 +853,11 @@ public class SessionCallbackAdapter implements OpencodeSession.SessionCallback {
     }
 
     @Override
-    public void onCompactionStarted(String jsonContent) {
-        if (isInactive() || jsonContent == null || jsonContent.isBlank()) {
+    public void onFlushMessageUpdate() {
+        if (isInactive()) {
             return;
         }
-        ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
-                return;
-            }
-            publish("session.compact.started", getTargetSessionId(), b -> b
-                    .json("data", jsonContent)
-                    .field("source", "engine"));
-        });
-    }
-
-    /**
-     * Compaction summary deltas are intentionally not forwarded.
-     *
-     * <p>The transcript shows one indicator while the engine works and a
-     * notice when it settles; streaming the summary into the view produced a
-     * second, synthetic bubble that duplicated the indicator. The finished
-     * summary still arrives with {@code session.compact.done}.</p>
-     */
-    @Override
-    public void onCompactionDelta(String jsonContent) {
-        // no-op on purpose: see the javadoc above.
-    }
-
-    @Override
-    public void onCompactionEnded(String jsonContent) {
-        if (isInactive() || jsonContent == null || jsonContent.isBlank()) {
-            return;
-        }
-        ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
-                return;
-            }
-            publish("session.compact.done", getTargetSessionId(), b -> b
-                    .json("data", jsonContent)
-                    .field("source", "engine"));
-        });
-    }
-
-    @Override
-    public void onCompactionFailed(String jsonContent) {
-        if (isInactive() || jsonContent == null || jsonContent.isBlank()) {
-            return;
-        }
-        ApplicationManager.getApplication().invokeLater(() -> {
-            if (isInactive()) {
-                return;
-            }
-            publish("session.compact.failed", getTargetSessionId(), b -> b
-                    .json("data", jsonContent)
-                    .field("source", "engine"));
-        });
+        streamCoalescer.flush(null);
     }
 
     /**

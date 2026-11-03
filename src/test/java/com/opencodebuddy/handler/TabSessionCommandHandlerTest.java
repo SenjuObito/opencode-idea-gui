@@ -162,21 +162,21 @@ public class TabSessionCommandHandlerTest {
 
         handler.compact(command("tab-a", "session.compact", "ses_a"));
 
-        assertEquals(2, jsCallback.events.size());
-        // The indicator turns on before the RPC completes, from the command's
-        // own start event.
-        TabEvent started = jsCallback.only("session.compact.started");
-        assertEquals("command", started.getPayload().get("source"));
-        assertEquals("manual", started.getPayload().get("reason"));
-        assertEquals("ses_a", started.getPayload().get("sessionId"));
+        // The transcript record is created by the session domain; the command
+        // plane only publishes its own result for the queue.
+        assertEquals(1, jsCallback.events.size());
         TabEvent event = jsCallback.only("session.compact.failed");
         assertEquals(List.of("ses_a", "Nothing to compact yet"), event.getPayload().get("args"));
-        // The view tells the engine's lifecycle apart from this RPC result by
-        // `source`, and words the indicator from `reason`.
         assertEquals("command", event.getPayload().get("source"));
         assertEquals("manual", event.getPayload().get("reason"));
         assertEquals("tab-a", event.getTabId());
         assertEquals("ses_a", event.getSessionId());
+
+        OpencodeSession.Message record = tabs.get("tab-a").getState().getMessages().get(0);
+        assertEquals(OpencodeSession.Message.Type.COMPACTION, record.type);
+        assertEquals("failed", record.compaction.get("status").getAsString());
+        assertEquals("manual", record.compaction.get("reason").getAsString());
+        assertEquals("Nothing to compact yet", record.compaction.get("error").getAsString());
     }
 
     @Test

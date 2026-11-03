@@ -278,27 +278,10 @@ public class CallbackHandler {
         }
     }
 
-    public void notifyCompactionStarted(String jsonContent) {
-        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
-            callback.onCompactionStarted(jsonContent);
-        }
-    }
-
-    public void notifyCompactionDelta(String jsonContent) {
-        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
-            callback.onCompactionDelta(jsonContent);
-        }
-    }
-
-    public void notifyCompactionEnded(String jsonContent) {
-        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
-            callback.onCompactionEnded(jsonContent);
-        }
-    }
-
-    public void notifyCompactionFailed(String jsonContent) {
-        if (callback != null && jsonContent != null && !jsonContent.isBlank()) {
-            callback.onCompactionFailed(jsonContent);
+    /** Flush the pending message snapshot immediately (compaction boundary). */
+    public void notifyFlushMessageUpdate() {
+        if (callback != null) {
+            callback.onFlushMessageUpdate();
         }
     }
 }

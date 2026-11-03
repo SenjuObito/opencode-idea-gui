@@ -103,9 +103,6 @@ public final class EventCatalog {
         byType.put("commands.listed", "onCommandsList");
         byType.put("commands.detail", "onCommandsRead");
         byType.put("commands.saved", "onCommandsSaved");
-        byType.put("session.compact.failed", "onCompactError");
-        byType.put("session.compact.done", "onCompactSuccess");
-        byType.put("session.compact.started", "onCompactStarted");
         byType.put("context.usage.error", "onContextUsageError");
         byType.put("clipboard.copied", "onCopyToClipboardResult");
         byType.put("font.editor.received", "onEditorFontConfigReceived");

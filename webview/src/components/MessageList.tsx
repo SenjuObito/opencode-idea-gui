@@ -5,7 +5,6 @@ import { cardDebugLog } from '../utils/bridge';
 import { isHumanUserMessage, matchesProviderMessageId } from '../utils/messageUtils';
 import { MessageItem } from './MessageItem';
 import WaitingIndicator from './WaitingIndicator';
-import CompactingIndicator from './CompactingIndicator';
 import { ContextMenu } from './ContextMenu';
 import { useContextMenu, copySelection } from '../hooks/useContextMenu.js';
 import { quoteToChatInput } from '../utils/quoteUtils';
@@ -82,10 +81,7 @@ interface MessageListProps {
    */
   turnActive: boolean;
   loadingStartTime: number | null;
-  isCompacting: boolean;
-  compactingStartTime: number | null;
   /** Why the tab is compacting; only the indicator wording uses it. */
-  compactingReason?: 'manual' | 'auto' | null;
   t: TFunction;
   getMessageText: (message: ClaudeMessage) => string;
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[];
@@ -141,9 +137,6 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   isThinking,
   turnActive,
   loadingStartTime,
-  isCompacting,
-  compactingStartTime,
-  compactingReason,
   t,
   getMessageText,
   getContentBlocks,
@@ -600,7 +593,6 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       {turnActive && <WaitingIndicator startTime={loadingStartTime ?? undefined} />}
 
       {/* Compacting indicator */}
-      {isCompacting && <CompactingIndicator startTime={compactingStartTime ?? undefined} reason={compactingReason ?? 'auto'} />}
 
       <div ref={messagesEndRef} />
     </div>

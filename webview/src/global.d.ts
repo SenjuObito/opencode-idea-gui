@@ -759,21 +759,6 @@ interface Window {
   onRevertError?: (arg: any) => void;
 
   /**
-   * Compact (summarize) session success callback
-   */
-  onCompactSuccess?: (targetSessionId?: string, envelope?: { tabId?: string }) => void;
-
-  /**
-   * Compact (summarize) session failure callback (detail = daemon error text)
-   */
-  onCompactError?: (targetSessionId?: string, detail?: string, envelope?: { tabId?: string }) => void;
-
-  /**
-   * Compact (summarize) really started on the host (it left the queue).
-   */
-  onCompactStarted?: (sessionId?: string, startedAt?: number) => void;
-
-  /**
    * Update project info
    */
   updateProjectInfo?: (json: string) => void;

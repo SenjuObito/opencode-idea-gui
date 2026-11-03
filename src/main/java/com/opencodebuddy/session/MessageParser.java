@@ -77,6 +77,15 @@ public class MessageParser {
         } else if ("error".equals(type)) {
             String content = extractMessageContent(msg);
             return new OpencodeSession.Message(OpencodeSession.Message.Type.ERROR, content, rawMessage);
+        } else if ("compaction".equals(type)) {
+            String content = extractMessageContent(msg);
+            OpencodeSession.Message message = new OpencodeSession.Message(
+                    OpencodeSession.Message.Type.COMPACTION, content, rawMessage);
+            // The lifecycle metadata lives on the envelope, not inside `raw`.
+            if (msg.has("compaction") && msg.get("compaction").isJsonObject()) {
+                message.compaction = msg.getAsJsonObject("compaction").deepCopy();
+            }
+            return message;
         }
 
         return null;

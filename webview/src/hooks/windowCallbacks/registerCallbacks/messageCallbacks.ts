@@ -50,6 +50,7 @@ export function registerMessageCallbacks(
     messagesContainerRef,
     suppressNextStatusToastRef,
     streamingContentRef,
+    streamingThinkingRef,
     isStreamingRef,
     streamingMessageIndexRef,
     streamingTurnIdRef,
@@ -129,6 +130,9 @@ export function registerMessageCallbacks(
         if (!Array.isArray(raw)) return;
         const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
         transcript.applySnapshot(raw as ClaudeMessage[], Number.isSafeInteger(base) ? base : 0);
+        // Background tabs have no delta buffers; discard the boundary flag so it
+        // cannot reset the active tab later.
+        transcript.consumeCompactionBoundary();
       } catch (error) {
         console.error('[MultiSession] Failed to parse background updateMessages', error);
       }
@@ -147,6 +151,7 @@ export function registerMessageCallbacks(
         if (!Array.isArray(raw)) return;
         const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
         transcript.applyTail(raw as ClaudeMessage[], Number.isSafeInteger(base) ? base : 0);
+        transcript.consumeCompactionBoundary();
       } catch (error) {
         console.error('[MultiSession] Failed to parse background updateMessageTail', error);
       }
@@ -232,6 +237,14 @@ export function registerMessageCallbacks(
 
       getTabStore().mutateActiveTranscript((transcript) => {
         transcript.applySnapshot(backendMessages, hasWindowBase ? (parsedBase as number) : 0);
+        // A boundary seals the pre-compaction bubble into remote. The delta
+        // buffers still describe that old segment, so drop them before the
+        // first post-compaction snapshot merges into a new bubble.
+        if (transcript.consumeCompactionBoundary()) {
+          streamingContentRef.current = '';
+          streamingThinkingRef.current = '';
+          streamingMessageIndexRef.current = -1;
+        }
         transcript.rebuildMetadata((list) => stripDuplicateTrailingToolMessages(
           reconstructTurnMetadata(list, { skipTrailingTurn: isStreamingRef.current }),
           options.currentProviderRef.current,
@@ -306,6 +319,11 @@ export function registerMessageCallbacks(
 
       getTabStore().mutateActiveTranscript((transcript) => {
         transcript.applyTail(tail, baseIndex);
+        if (transcript.consumeCompactionBoundary()) {
+          streamingContentRef.current = '';
+          streamingThinkingRef.current = '';
+          streamingMessageIndexRef.current = -1;
+        }
         // Turn footers (duration, usage) are derived from the tail's records;
         // while a turn is still streaming its footer is left for the settle path.
         transcript.rebuildMetadata((messages) => reconstructTurnMetadata(

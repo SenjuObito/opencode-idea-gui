@@ -703,31 +703,138 @@ public class OpenCodeMessageHandler implements MessageCallback {
         if (jsonContent == null || jsonContent.isBlank()) {
             return;
         }
+        JsonObject payload = parseJsonObjectLeniently(jsonContent);
+        if (payload == null || !isOwnCompaction(payload)) {
+            return;
+        }
+        String reason = valueOf(payload, "reason");
+        String messageID = valueOf(payload, "messageID");
         LOG.info("[OpenCode] compaction started: " + jsonContent);
-        callbackHandler.notifyCompactionStarted(jsonContent);
+        beginCompaction(reason.isEmpty() ? "auto" : reason, messageID);
     }
 
     private void handleCompactionDelta(String jsonContent) {
-        if (jsonContent == null || jsonContent.isBlank()) {
-            return;
-        }
-        callbackHandler.notifyCompactionDelta(jsonContent);
+        // The terminal event carries the complete summary. Streaming it into
+        // the card would only churn the transcript while it spins.
     }
 
     private void handleCompactionEnded(String jsonContent) {
         if (jsonContent == null || jsonContent.isBlank()) {
             return;
         }
+        JsonObject payload = parseJsonObjectLeniently(jsonContent);
+        if (payload == null || !isOwnCompaction(payload)) {
+            return;
+        }
+        boolean failed = payload.has("failed") && !payload.get("failed").isJsonNull()
+                && payload.get("failed").getAsBoolean();
         LOG.info("[OpenCode] compaction ended: " + jsonContent);
-        callbackHandler.notifyCompactionEnded(jsonContent);
+        finishCompaction(
+                failed ? "failed" : "completed",
+                valueOf(payload, "messageID"),
+                valueOf(payload, "summary"),
+                compactionErrorText(payload.get("error")),
+                payload.has("tokens") && payload.get("tokens").isJsonObject()
+                        ? payload.getAsJsonObject("tokens") : null,
+                valueOf(payload, "reason"),
+                nullableLong(payload, "startedAt"));
     }
 
     private void handleCompactionFailed(String jsonContent) {
         if (jsonContent == null || jsonContent.isBlank()) {
             return;
         }
+        JsonObject payload = parseJsonObjectLeniently(jsonContent);
+        if (payload == null || !isOwnCompaction(payload)) {
+            return;
+        }
         LOG.warn("[OpenCode] compaction failed: " + jsonContent);
-        callbackHandler.notifyCompactionFailed(jsonContent);
+        String error = compactionErrorText(payload.get("error"));
+        finishCompaction(
+                "failed",
+                valueOf(payload, "messageID"),
+                "",
+                error == null || error.isBlank() ? "compact failed" : error,
+                null,
+                valueOf(payload, "reason"),
+                nullableLong(payload, "startedAt"));
+    }
+
+    /** Start a manual compaction from the command plane (session domain entry). */
+    public void beginCompaction(String reason, String engineId) {
+        // Seal only when no record is running: a second `started` belongs to the
+        // same compaction and the post-compaction segment may already exist.
+        if (!state.hasActiveCompaction()) {
+            resetStreamingAccumulator();
+        }
+        state.beginCompaction(reason, engineId);
+        publishCompactionChange();
+    }
+
+    /** Write a terminal state (engine event or command-plane RPC result). */
+    public void finishCompaction(
+            String status,
+            String id,
+            String summary,
+            String error,
+            JsonObject tokens,
+            String reason,
+            Long startedAt) {
+        state.finishCompaction(status, id, summary, error, tokens, reason, startedAt);
+        publishCompactionChange();
+    }
+
+    private void publishCompactionChange() {
+        state.updateLastModifiedTime();
+        callbackHandler.notifyMessageUpdate(state.getMessages());
+        // Flush now: the sealed assistant and the compaction record must reach
+        // the view before the first post-compaction delta.
+        callbackHandler.notifyFlushMessageUpdate();
+    }
+
+    private boolean isOwnCompaction(JsonObject payload) {
+        String eventSessionId = valueOf(payload, "sessionID");
+        if (eventSessionId.isEmpty()) {
+            eventSessionId = valueOf(payload, "sessionId");
+        }
+        String ownSessionId = state.getSessionId();
+        if (!eventSessionId.isEmpty() && ownSessionId != null && !ownSessionId.isEmpty()
+                && !eventSessionId.equals(ownSessionId)) {
+            LOG.debug("[OpenCode] ignoring compaction for another session: " + eventSessionId);
+            return false;
+        }
+        return true;
+    }
+
+    private static String valueOf(JsonObject object, String key) {
+        String value = stringOrNull(object, key);
+        return value == null ? "" : value;
+    }
+
+    private static String compactionErrorText(com.google.gson.JsonElement value) {
+        if (value == null || value.isJsonNull()) {
+            return null;
+        }
+        if (value.isJsonPrimitive()) {
+            String text = value.getAsString();
+            return text == null || text.trim().isEmpty() ? null : text;
+        }
+        if (value.isJsonObject()) {
+            String message = valueOf(value.getAsJsonObject(), "message");
+            return message.isEmpty() ? null : message;
+        }
+        return null;
+    }
+
+    private static Long nullableLong(JsonObject object, String key) {
+        if (object == null || !object.has(key) || object.get(key).isJsonNull()) {
+            return null;
+        }
+        try {
+            return object.get(key).getAsLong();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     /**

@@ -200,7 +200,8 @@
     "retryCopy": "重试复制",
     "subagentsSection": "子代理",
     "filesSection": "文件",
-    "filesEmpty": "未找到匹配的文件"
+    "filesEmpty": "未找到匹配的文件",
+    "manualCompacting": "正在压缩会话上下文..."
   },
   "settings": {
     "title": "设置",

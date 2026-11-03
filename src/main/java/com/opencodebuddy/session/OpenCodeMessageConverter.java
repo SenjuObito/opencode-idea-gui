@@ -139,7 +139,10 @@ public final class OpenCodeMessageConverter {
                         ? entry.getAsJsonArray("parts") : new JsonArray();
                 String role = string(info, "role");
                 if (isCompactionEntry(info)) {
-                    out.add(buildCompactionMessage(parts, info));
+                    JsonObject compact = buildCompactionMessage(parts, info);
+                    if (compact != null) {
+                        out.add(compact);
+                    }
                 } else if ("user".equals(role)) {
                     if (!isCompactionTriggerUser(parts)) {
                         String messageId = string(info, "id");
@@ -441,6 +444,13 @@ public final class OpenCodeMessageConverter {
         return hasCompactionPart;
     }
 
+    /**
+     * One persisted compaction → a host-owned transcript record.
+     *
+     * <p>The summary lives in {@code content}; lifecycle facts live in
+     * {@code compaction}. A failed compaction did not replace the context, so
+     * it is dropped from history (the live card still shows it once).</p>
+     */
     private static JsonObject buildCompactionMessage(JsonArray parts, JsonObject info) {
         StringBuilder text = new StringBuilder();
         for (JsonElement partElement : parts) {
@@ -456,41 +466,48 @@ public final class OpenCodeMessageConverter {
             summaryText = textOf(info.get("summary"));
         }
 
+        String status = string(info, "compactionStatus");
+        if (status.isEmpty()) {
+            status = string(info, "status");
+        }
+        if ("failed".equals(status)) {
+            return null;
+        }
+
+        String reason = string(info, "compactionReason");
+        if (reason.isEmpty()) {
+            reason = string(info, "reason");
+        }
+        if (reason.isEmpty()) {
+            // v1 has no reason field and produced compaction through the manual
+            // summarize path; v2 rows always carry one.
+            reason = "manual";
+        }
+
         JsonArray blocks = new JsonArray();
         JsonObject textBlock = new JsonObject();
         textBlock.addProperty("type", "text");
         textBlock.addProperty("text", summaryText);
         blocks.add(textBlock);
 
-        JsonObject msg = createMessage("user", summaryText, info, blocks);
+        JsonObject msg = createMessage("compaction", summaryText, info, blocks);
         JsonObject raw = msg.getAsJsonObject("raw");
-        raw.addProperty("isCompactSummary", true);
-
-        if (info.has("compactMetadata") && info.get("compactMetadata").isJsonObject()) {
-            JsonObject meta = info.getAsJsonObject("compactMetadata").deepCopy();
-            // Older cores copied the entire summary into `userContext`.
-            // That field is a user-supplied /compact focus, so showing the
-            // summary there printed the whole conversation summary twice.
-            if (meta.has("userContext") && !meta.get("userContext").isJsonNull()
-                    && summaryText.equals(textOf(meta.get("userContext")))) {
-                meta.remove("userContext");
-            }
-            if (!meta.has("trigger") && info.has("reason")) {
-                String reason = string(info, "reason");
-                if (!reason.isEmpty()) {
-                    meta.addProperty("trigger", reason);
-                }
-            }
-            raw.add("compactMetadata", meta);
-            raw.add("summarizeMetadata", meta.deepCopy());
-        } else {
-            JsonObject meta = new JsonObject();
-            String reason = string(info, "reason");
-            meta.addProperty("trigger", reason.isEmpty() ? "manual" : reason);
-            raw.add("compactMetadata", meta);
-            raw.add("summarizeMetadata", meta.deepCopy());
+        raw.addProperty("type", "compaction");
+        String id = string(info, "id");
+        if (!id.isEmpty()) {
+            raw.addProperty("uuid", id);
         }
 
+        long created = timestamp(info);
+        JsonObject meta = new JsonObject();
+        meta.addProperty("status", "completed");
+        meta.addProperty("reason", reason);
+        meta.addProperty("startedAt", created);
+        meta.addProperty("completedAt", created);
+        if (info.has("tokens") && info.get("tokens").isJsonObject()) {
+            meta.add("tokens", info.getAsJsonObject("tokens").deepCopy());
+        }
+        msg.add("compaction", meta);
         return msg;
     }
 

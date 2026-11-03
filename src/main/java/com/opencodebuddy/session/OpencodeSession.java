@@ -76,7 +76,7 @@ public class OpencodeSession {
      */
     public static class Message {
         public enum Type {
-            USER, ASSISTANT, SYSTEM, ERROR
+            USER, ASSISTANT, SYSTEM, ERROR, COMPACTION
         }
 
         public Type type;
@@ -94,6 +94,12 @@ public class OpencodeSession {
         public volatile String content;
         public long timestamp;
         public volatile JsonObject raw; // Raw message data from SDK
+        /**
+         * Lifecycle of a {@link Type#COMPACTION} record:
+         * {@code {status, reason, startedAt, completedAt, durationMs, tokens, error}}.
+         * Null for every other message type.
+         */
+        public volatile JsonObject compaction;
 
         public Message(Type type, String content) {
             this.type = type;
@@ -271,16 +277,14 @@ public class OpencodeSession {
         default void onTurnEnd(String jsonContent) {
         }
 
-        default void onCompactionStarted(String jsonContent) {
-        }
-
-        default void onCompactionDelta(String jsonContent) {
-        }
-
-        default void onCompactionEnded(String jsonContent) {
-        }
-
-        default void onCompactionFailed(String jsonContent) {
+        /**
+         * Flush the pending message snapshot now.
+         *
+         * <p>A compaction boundary needs deterministic ordering: the sealed
+         * assistant and the compaction record must reach the view before the
+         * first post-compaction delta.</p>
+         */
+        default void onFlushMessageUpdate() {
         }
     }
 
@@ -416,6 +420,28 @@ public class OpencodeSession {
 
     public List<Message> getMessages() {
         return state.getMessages();
+    }
+
+    /**
+     * 命令面发起的手动压缩。
+     *
+     * <p>引擎的 {@code compaction.started} 不保证及时到达，而用户需要立刻在
+     * 对话里看到“正在压缩”。命令面先建立乐观记录，引擎事件到达后由同一个
+     * 状态机补 id，不会多出第二条。</p>
+     */
+    public void beginCompaction(String reason) {
+        OpenCodeMessageHandler handler = streamRouter.getMessageCallback();
+        if (handler != null) {
+            handler.beginCompaction(reason, null);
+        }
+    }
+
+    /** 命令面 RPC 结果的兜底收口（引擎终态事件仍是权威来源）。 */
+    public void finishCompaction(String status, String error) {
+        OpenCodeMessageHandler handler = streamRouter.getMessageCallback();
+        if (handler != null) {
+            handler.finishCompaction(status, null, "", error, null, "manual", null);
+        }
     }
 
     /**

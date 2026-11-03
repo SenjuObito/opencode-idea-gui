@@ -160,7 +160,7 @@ export const ChatScreen = ({
   onRemoveFromQueue, onResumeQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
-  const { messages, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, isCompacting, compactingStartTime, compactingReason, historyWindow } = useMessages();
+  const { messages, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, historyWindow } = useMessages();
   // The indicator belongs to the tab on screen: switching tabs shows that tab's
   // own load, and a background load never shows here.
   const historyLoading = useActiveTabHistoryLoading();
@@ -285,9 +285,6 @@ export const ChatScreen = ({
                     isThinking={isThinking}
                     turnActive={turnActive}
                     loadingStartTime={loadingStartTime}
-                    isCompacting={isCompacting}
-                    compactingStartTime={compactingStartTime}
-                    compactingReason={compactingReason}
                     t={t}
                     getMessageText={getMessageText}
                     getContentBlocks={getContentBlocks}

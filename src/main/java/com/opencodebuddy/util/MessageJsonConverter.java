@@ -38,6 +38,9 @@ public class MessageJsonConverter {
             msgObj.addProperty("type", msg.type.toString().toLowerCase());
             msgObj.addProperty("timestamp", msg.timestamp);
             msgObj.addProperty("content", truncateErrorContent(msg.content != null ? msg.content : ""));
+            if (msg.compaction != null) {
+                msgObj.add("compaction", msg.compaction.deepCopy());
+            }
             if (msg.raw != null) {
                 if (msg.raw.has("id") && !msg.raw.get("id").isJsonNull()) {
                     msgObj.addProperty("id", msg.raw.get("id").getAsString());

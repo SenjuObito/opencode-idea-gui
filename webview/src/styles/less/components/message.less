@@ -102,10 +102,10 @@
     white-space: pre-wrap;
 }
 
-/* System notification messages: left-aligned, no bubble (task_notification + compact_notification + non-human origin) */
+/* System notification messages: left-aligned, no bubble (task_notification + compaction + non-human origin) */
 .message.task_notification,
 .message.notification,
-.message.compact_notification {
+.message.compaction {
     background-color: transparent;
     border-left: none;
     align-items: flex-start;
@@ -114,7 +114,7 @@
 
 .message.task_notification .message-content,
 .message.notification .message-content,
-.message.compact_notification .message-content {
+.message.compaction .message-content {
     background-color: transparent;
     padding: 0;
     border-radius: 0;
@@ -122,21 +122,21 @@
     max-width: 100%;
 }
 
-/* compact_notification 内的卡片（成功/失败）需撑满与助手消息一致的全宽，
+/* compaction 内的卡片（进行中/成功/失败）需撑满与助手消息一致的全宽，
    抵消上方 align-items: flex-start 造成的横向收缩 */
-.message.compact_notification,
+.message.compaction,
 .message:has(.compact-card-wrapper) {
     width: 100%;
     box-sizing: border-box;
 }
 
-.message.compact_notification .message-content,
+.message.compaction .message-content,
 .message:has(.compact-card-wrapper) .message-content {
     width: 100%;
     box-sizing: border-box;
 }
 
-.message.compact_notification .message-block-item,
+.message.compaction .message-block-item,
 .message:has(.compact-card-wrapper) .message-block-item {
     width: 100%;
     align-self: stretch;

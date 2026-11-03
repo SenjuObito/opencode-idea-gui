@@ -71,9 +71,6 @@ const createDetachedTab = (): SessionTabData => ({
   isThinking: false,
   status: undefined,
   turnStartedAt: null,
-  isCompacting: false,
-  compactingStartTime: null,
-  compactingReason: null,
   sseTodos: null,
   subagentHistories: {},
 });
@@ -376,49 +373,13 @@ export class TabStore {
     }));
   }
 
-  /**
-   * Drop every compaction field of one tab.
-   *
-   * <p>Compaction is per conversation: when a tab is rebound to another session
-   * (or a session is opened into it) the previous session's running spinner and
-   * result pill no longer describe what the tab shows. Only an explicit session
-   * change may call this — a tab switch must not, because that is the state the
-   * switch is supposed to preserve.</p>
-   */
-  resetCompaction(tabId: string | null | undefined): void {
-    if (!tabId) return;
-    this.updateTab(tabId, (tab) => {
-      if (
-        !tab.isCompacting
-        && tab.compactingStartTime == null
-        && tab.compactingReason == null
-        && tab.compactNotice == null
-      ) {
-        return tab;
-      }
-      tab.isCompacting = false;
-      tab.compactingStartTime = null;
-      tab.compactingReason = null;
-      tab.compactNotice = null;
-      return tab;
-    });
-  }
-
   /** Bind the tab that shows {@code tabId} to a session. */
   updateTabSessionId(tabId: string, sessionId: string): void {
     if (!tabId) return;
     this.setTabs((prev) => prev.map((tab) => {
       if (tab.id !== tabId && tab.sessionId !== tabId) return tab;
       if (tab.sessionId === sessionId) return tab;
-      // Rebinding a tab to another conversation invalidates its compaction:
-      // the running spinner and the result pill described the previous session.
-      const draft = { ...tab };
-      draft.sessionId = sessionId;
-      draft.isCompacting = false;
-      draft.compactingStartTime = null;
-      draft.compactingReason = null;
-      draft.compactNotice = null;
-      return draft;
+      return { ...tab, sessionId };
     }));
     if (this.activeTabId === tabId) {
       this.view.setCurrentSessionId?.(sessionId);

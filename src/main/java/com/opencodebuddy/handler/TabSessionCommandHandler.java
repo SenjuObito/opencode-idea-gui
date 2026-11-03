@@ -485,19 +485,10 @@ public final class TabSessionCommandHandler {
         String model = command.string("model");
         final String resolvedModel = !isBlank(model) ? model.trim() : null;
         // The user pressed compact and the request is about to leave for the
-        // engine: show the indicator now. The engine's own compaction lifecycle
-        // also reports a start, but it is not guaranteed (and on some engines it
-        // only lands once the summary message exists), so waiting for it leaves
-        // the button looking dead. The view ignores a second start for a tab
-        // that is already compacting.
-        context.publishEvent(TabEvent.of("session.compact.started")
-                .session(target.sessionId())
-                .tab(target.tabId())
-                .field("sessionId", target.sessionId() != null ? target.sessionId() : "")
-                .field("startedAt", System.currentTimeMillis())
-                .field("reason", "manual")
-                .field("source", "command")
-                .build());
+        // engine: create the transcript record now. The engine's own lifecycle
+        // also reports a start, but waiting for it leaves the button looking
+        // dead. The record state machine reuses this one for that second signal.
+        target.session().beginCompaction("manual");
         AtomicBoolean errorReported = new AtomicBoolean(false);
         requestDaemonJson(context, "summarize",
                 () -> sessionParams(context, target.sessionId(), resolvedModel),
@@ -508,6 +499,7 @@ public final class TabSessionCommandHandler {
                             return;
                         }
                         LOG.warn("[compact] Compact session failed: " + error);
+                        target.session().finishCompaction("failed", error);
                         publishCompactFailure(context, target, error, command.requestId());
                     }
 
@@ -518,10 +510,17 @@ public final class TabSessionCommandHandler {
                                 return;
                             }
                             LOG.warn("[compact] Compact session failed (success=false)");
+                            target.session().finishCompaction("failed", "compact failed");
                             publishCompactFailure(context, target, "", command.requestId());
                             return;
                         }
                         LOG.info("[compact] Compact session succeeded: " + target.sessionId());
+                        // The engine's `ended` is authoritative and normally lands
+                        // first. Close a still-running record as a fallback so a
+                        // lost terminal cannot leave the card spinning forever.
+                        if (target.session().getState().hasActiveCompaction()) {
+                            target.session().finishCompaction("completed", null);
+                        }
                         new UsagePushService(context).refreshContextBar();
                         String doneSessionId = target.sessionId() != null ? target.sessionId() : "";
                         context.publishEvent(TabEvent.of("session.compact.done")

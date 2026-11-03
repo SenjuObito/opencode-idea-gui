@@ -1,8 +1,13 @@
-import { render } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpencodeContentBlock, ToolResultBlock } from '../../types';
 import { clearQuestionAnswers, setQuestionAnswer, markQuestionCancelled } from '../../store/questionAnswerStore';
+import { copyToClipboard } from '../../utils/copyUtils';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
+
+vi.mock('../../utils/copyUtils', () => ({
+  copyToClipboard: vi.fn(async () => true),
+}));
 
 // Capture the props MarkdownBlock receives without rendering the real marked
 // pipeline. The block-level streaming flag is the value under test here.
@@ -301,35 +306,102 @@ describe('ContentBlockRenderer askuserquestion', () => {
   });
 });
 
-describe('ContentBlockRenderer compact_summary', () => {
-  it('renders the success pill with the title instead of the raw summary text', () => {
-    const block: OpencodeContentBlock = {
-      type: 'compact_summary',
-      title: 'chat.compactSuccess',
-      content: '## Objective\nExplore the repository',
-      metadata: { messagesSummarized: 18, direction: 'up_to' },
-    };
+describe('ContentBlockRenderer compaction divider', () => {
+  const compactBlock = (overrides: Record<string, unknown> = {}): OpencodeContentBlock => ({
+    type: 'compact_summary',
+    title: 'chat.compactSummary.compacted',
+    content: '## Objective\nExplore the repository',
+    compactStatus: 'success',
+    metadata: { trigger: 'manual', postTokens: 14582, durationMs: 109542 },
+    ...overrides,
+  }) as unknown as OpencodeContentBlock;
 
-    const { container, getByText, queryByText } = render(
-      <ContentBlockRenderer
-        block={block}
-        messageIndex={0}
-        messageType="notification"
-        isStreaming={false}
-        isThinkingExpanded={false}
-        isThinking={false}
-        isLastMessage={true}
-        isLastBlock={true}
-        t={t}
-        onToggleThinking={() => {}}
-        findToolResult={() => null}
-      />,
-    );
+  const renderBlock = (block: OpencodeContentBlock) => render(
+    <ContentBlockRenderer
+      block={block}
+      messageIndex={0}
+      messageType="notification"
+      isStreaming={false}
+      isThinkingExpanded={false}
+      isThinking={false}
+      isLastMessage={true}
+      isLastBlock={true}
+      t={t}
+      onToggleThinking={() => {}}
+      findToolResult={() => null}
+    />,
+  );
 
-    expect(getByText('chat.compactSuccess')).toBeTruthy();
-    expect(getByText('— chat.compactSummary.messagesUpTo')).toBeTruthy();
-    expect(queryByText(/## Objective/)).toBeNull();
-    expect(container.querySelector('.compact-card--success')).toBeTruthy();
-    expect(container.querySelector('.compact-card__pill-icon.codicon-check')).toBeTruthy();
+  it('renders a divider with title and stats but no trigger label', () => {
+    const { container, getByText, queryByText } = renderBlock(compactBlock());
+
+    expect(getByText('chat.compactSummary.compacted')).toBeTruthy();
+    expect(queryByText('chat.compactSummary.triggerManual')).toBeNull();
+    expect(getByText('chat.compactSummary.tokensAfter')).toBeTruthy();
+    expect(getByText('chat.compactSummary.duration')).toBeTruthy();
+    expect(container.querySelector('.compact-divider')).toBeTruthy();
+    expect(container.querySelector('.compact-divider__badge')).toBeNull();
+    // The raw trigger word must never leak into the UI.
+    expect(container.textContent).not.toContain('manual');
+    expect(container.querySelector('.compact-divider__panel')).toBeNull();
+  });
+
+  it('marks engine-triggered compactions with the auto icon only', () => {
+    const { container, queryByText } = renderBlock(compactBlock({
+      metadata: { trigger: 'auto', postTokens: 12100, durationMs: 48000 },
+    }));
+
+    expect(container.querySelector('.compact-divider__chip--auto')).toBeTruthy();
+    expect(queryByText('chat.compactSummary.triggerAuto')).toBeNull();
+    expect(container.textContent).not.toContain('auto');
+  });
+
+  it('shows the before → after delta when the record carries preTokens', () => {
+    const { getByText } = renderBlock(compactBlock({
+      metadata: { trigger: 'manual', preTokens: 42800, postTokens: 14600, durationMs: 110000 },
+    }));
+
+    expect(getByText('chat.compactSummary.tokensBeforeAfter')).toBeTruthy();
+    expect(getByText('chat.compactSummary.freedPercent')).toBeTruthy();
+  });
+
+  it('expands the summary panel and copies the summary text', async () => {
+    const { container, getByRole, getByText } = renderBlock(compactBlock());
+
+    fireEvent.click(getByRole('button', { name: /chat\.compactSummary\.compacted/ }));
+
+    expect(container.querySelector('.compact-divider__panel')).toBeTruthy();
+    expect(getByText('chat.compactSummary.summary')).toBeTruthy();
+
+    fireEvent.click(getByText('chat.compactSummary.copy').closest('button')!);
+
+    await waitFor(() => expect(copyToClipboard).toHaveBeenCalledWith('## Objective\nExplore the repository'));
+    expect(getByText('chat.compactSummary.copied')).toBeTruthy();
+  });
+
+  it('shows a failed compaction as a quiet row with the full reason', () => {
+    const { container, getByText, queryByText } = renderBlock(compactBlock({
+      compactStatus: 'failure',
+      title: 'chat.compactFailed',
+      content: 'Nothing to compact yet',
+    }));
+
+    expect(getByText('chat.compactFailed')).toBeTruthy();
+    expect(getByText('Nothing to compact yet')).toBeTruthy();
+    expect(container.querySelector('.compact-divider__chip--fail')).toBeTruthy();
+    expect(queryByText('chat.compactSummary.duration')).toBeNull();
+  });
+
+  it('shows the running state with a spinner and elapsed time', () => {
+    const { container, getByText } = renderBlock(compactBlock({
+      compactStatus: 'in_progress',
+      content: '',
+      metadata: { trigger: 'auto' },
+      startTime: Date.now(),
+    }));
+
+    expect(getByText('chat.autoCompacting')).toBeTruthy();
+    expect(container.querySelector('.compact-divider__spinner')).toBeTruthy();
+    expect(container.querySelector('.compact-divider__time')).toBeTruthy();
   });
 });

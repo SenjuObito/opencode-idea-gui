@@ -125,19 +125,19 @@
 /* compaction 内的卡片（进行中/成功/失败）需撑满与助手消息一致的全宽，
    抵消上方 align-items: flex-start 造成的横向收缩 */
 .message.compaction,
-.message:has(.compact-card-wrapper) {
+.message:has(.compact-divider-block) {
     width: 100%;
     box-sizing: border-box;
 }
 
 .message.compaction .message-content,
-.message:has(.compact-card-wrapper) .message-content {
+.message:has(.compact-divider-block) .message-content {
     width: 100%;
     box-sizing: border-box;
 }
 
 .message.compaction .message-block-item,
-.message:has(.compact-card-wrapper) .message-block-item {
+.message:has(.compact-divider-block) .message-block-item {
     width: 100%;
     align-self: stretch;
     box-sizing: border-box;
@@ -1616,72 +1616,6 @@
 }
 
 .compact-notification-text {
-    color: var(--text-secondary);
-}
-
-/* Compact Summary Block - collapsed by default, matching thinking-block pattern */
-.compact-summary-block {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 4px 0;
-}
-
-.compact-summary-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    user-select: none;
-    transition: opacity 0.2s;
-}
-
-.compact-summary-title:hover {
-    opacity: 0.8;
-}
-
-.compact-summary-icon {
-    font-size: 12px;
-    opacity: 0.8;
-}
-
-.compact-summary-toggle {
-    font-size: 10px;
-    opacity: 0.8;
-}
-
-.compact-summary-metadata {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding-left: 16px;
-    font-size: 12px;
-    color: var(--text-tertiary);
-}
-
-.compact-summary-meta-count {
-    opacity: var(--opacity-subtle, 0.8);
-}
-
-.compact-summary-meta-context {
-    opacity: var(--opacity-muted, 0.7);
-}
-
-.compact-summary-content {
-    padding-left: 12px;
-    border-left: 2px solid var(--border-primary);
-    font-size: 12.5px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    max-width: 100%;
-    overflow-wrap: break-word;
-}
-
-.compact-summary-content .markdown-block {
-    font-size: 12.5px;
     color: var(--text-secondary);
 }
 

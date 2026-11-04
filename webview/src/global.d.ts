@@ -915,6 +915,14 @@ interface Window {
   __pendingUpdateRaf?: number | null;
   __pendingUpdateJson?: string | null;
   __pendingUpdateSequence?: number | null;
+  /**
+   * Latest host live draft (JSON) received for the active tab.
+   *
+   * <p>The final coalesced frame may omit it; the structural blocks of the
+   * draft still have to reach the settling bubble, so the last one is kept
+   * until the turn ends.</p>
+   */
+  __pendingLiveDraftJson?: string | null;
   /** Global fallback minimum accepted update sequence. Kept for backward compatibility. */
   __minAcceptedUpdateSequence?: number;
   /** Per-session minimum accepted update sequence map, isolating sequence counters between sessions. */

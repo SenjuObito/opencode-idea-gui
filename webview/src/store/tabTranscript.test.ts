@@ -13,7 +13,7 @@ const assistant = (content: string, uuid?: string): ClaudeMessage => ({
   type: 'assistant',
   content,
   timestamp: '2026-01-01T00:00:01.000Z',
-  ...(uuid ? { raw: { uuid } } : {}),
+  ...(uuid ? { id: uuid, raw: { uuid } } : {}),
 } as unknown as ClaudeMessage);
 
 const contents = (list: ClaudeMessage[]): string[] => list.map((message) => message.content ?? '');
@@ -304,16 +304,19 @@ describe('TabTranscript', () => {
         .toBe('final text');
     });
 
-    it('does not duplicate the streaming bubble when a snapshot reports it', () => {
+    it('keeps one bubble while the host reports the draft as live', () => {
       const transcript = new TabTranscript();
       transcript.applySnapshot([user('a', 'u1')]);
       transcript.beginAssistant(1, false);
       transcript.appendDelta('partial', 1);
 
-      transcript.applySnapshot([
-        user('a', 'u1'),
-        { type: 'assistant', content: 'partial answer', timestamp: '2026-01-01T00:00:01.000Z' } as ClaudeMessage,
-      ]);
+      // The host keeps the draft out of the confirmed window and sends it as
+      // `live`; the transcript owns the streaming bubble.
+      transcript.applySnapshot(
+        [user('a', 'u1')],
+        0,
+        assistant('partial answer', 'a1'),
+      );
 
       const assistantBubbles = transcript.getSnapshot().filter((message) => message.type === 'assistant');
       expect(assistantBubbles).toHaveLength(1);
@@ -321,16 +324,18 @@ describe('TabTranscript', () => {
       expect(assistantBubbles[0]).toMatchObject({ content: 'partial answer', isStreaming: true });
     });
 
-    it('takes structural blocks from a snapshot without losing streamed text', () => {
+    it('takes structural blocks from the live draft without losing streamed text', () => {
       const transcript = new TabTranscript();
       transcript.applySnapshot([user('a', 'u1')]);
       transcript.beginAssistant(1, false);
       transcript.appendDelta('long streamed text', 1);
 
-      transcript.applySnapshot([
-        user('a', 'u1'),
+      transcript.applySnapshot(
+        [user('a', 'u1')],
+        0,
         {
           type: 'assistant',
+          id: 'a1',
           content: 'short',
           timestamp: '2026-01-01T00:00:01.000Z',
           raw: {
@@ -342,7 +347,7 @@ describe('TabTranscript', () => {
             },
           },
         } as ClaudeMessage,
-      ]);
+      );
 
       const assistant = transcript.getSnapshot()[1];
       expect(assistant.content).toBe('long streamed text');
@@ -401,6 +406,141 @@ describe('TabTranscript', () => {
       expect(snapshot).toHaveLength(3);
       expect(snapshot[2].type).toBe('user');
     });
+
+    it('keeps one assistant row through a long-conversation tail window', () => {
+      const transcript = new TabTranscript();
+      const history: ClaudeMessage[] = [];
+      for (let i = 0; i < 40; i += 1) {
+        history.push(user(`q${i}`, `u${i}`));
+        history.push(assistant(`a${i}`, `a${i}`));
+      }
+      transcript.applySnapshot(history);
+
+      const turnId = 41;
+      transcript.beginAssistant(turnId, false);
+      const live = assistant('live answer', 'live-1');
+      transcript.appendDelta('live answer', turnId);
+
+      // Streaming frame: the draft rides beside the confirmed window. A tail
+      // that omitted it used to make the transcript re-add its own bubble at
+      // settle, which is the reported duplicate.
+      transcript.applyTail(
+        history.slice(-15),
+        history.length - 15,
+        live,
+      );
+      expect(transcript.getSnapshot().filter((message) => message.type === 'assistant')).toHaveLength(41);
+
+      // Settle frame: the same record is now confirmed. The bubble merges into
+      // it instead of becoming a second assistant row.
+      const confirmed = [...history, live];
+      transcript.applyTail(
+        confirmed.slice(-15),
+        confirmed.length - 15,
+        null,
+      );
+      expect(transcript.getSnapshot().filter((message) => message.type === 'assistant')).toHaveLength(41);
+
+      transcript.finalizeStreamingTurn(
+        {
+          turnId,
+          content: 'live answer',
+          backendRaw: live.raw,
+          durationMs: 12,
+          pendingToolResults: [],
+          toolResultTimestamp: '2026-01-01T00:00:02.000Z',
+        },
+        (messages) => messages,
+      );
+
+      const snapshot = transcript.getSnapshot();
+      const replies = snapshot.filter((message) => message.content === 'live answer');
+      expect(replies).toHaveLength(1);
+      expect(replies[0]).toMatchObject({ isStreaming: false, durationMs: 12 });
+    });
+
+    it('pairs a bubble that never saw a live frame with its confirmed copy', () => {
+      const transcript = new TabTranscript();
+      transcript.applySnapshot([user('a', 'u1')]);
+      transcript.beginAssistant(1, false);
+      transcript.appendDelta('fast answer', 1);
+
+      // A fast turn can end before any live frame reaches the webview. The
+      // host still says no draft is live and the confirmed window has the
+      // assistant, so it is this bubble's committed copy.
+      transcript.applySnapshot([user('a', 'u1'), assistant('fast answer', 'a1')], 0, null);
+
+      const replies = transcript.getSnapshot().filter((message) => message.type === 'assistant');
+      expect(replies).toHaveLength(1);
+      expect(replies[0].content).toBe('fast answer');
+    });
+
+    it('does not adopt a previous turn assistant when the new bubble has no host copy', () => {
+      const transcript = new TabTranscript();
+      transcript.applySnapshot([user('q1', 'u1'), assistant('old answer', 'a0')]);
+      transcript.beginAssistant(2, false);
+      transcript.appendDelta('new turn', 2);
+
+      // The new prompt is confirmed, but its assistant is not: there is nothing
+      // to merge into, and the old answer must stay untouched.
+      transcript.applySnapshot([user('q1', 'u1'), assistant('old answer', 'a0'), user('q2', 'u2')], 0, null);
+
+      const snapshot = transcript.getSnapshot();
+      expect(snapshot[1].content).toBe('old answer');
+      expect(snapshot[snapshot.length - 1]).toMatchObject({
+        type: 'assistant',
+        content: 'new turn',
+        isStreaming: true,
+      });
+    });
+
+    it('refines the draft identity when the host assigns a provider id', () => {
+      const transcript = new TabTranscript();
+      transcript.applySnapshot([user('a', 'u1')]);
+      transcript.beginAssistant(1, false);
+      const placeholder = {
+        type: 'assistant',
+        content: 'partial',
+        timestamp: '2026-01-01T00:00:01.000Z',
+      } as ClaudeMessage;
+      const identified = { ...placeholder, id: 'a1' } as ClaudeMessage;
+
+      transcript.applySnapshot([user('a', 'u1')], 0, placeholder);
+      transcript.applySnapshot([user('a', 'u1')], 0, identified);
+      expect(transcript.getSnapshot().filter((message) => message.type === 'assistant')).toHaveLength(1);
+
+      transcript.applySnapshot([user('a', 'u1'), identified], 0, null);
+      const replies = transcript.getSnapshot().filter((message) => message.type === 'assistant');
+      expect(replies).toHaveLength(1);
+      expect(replies[0]).toMatchObject({ id: 'a1', content: 'partial' });
+    });
+
+    it('ignores a late live frame for a draft that already settled', () => {
+      const transcript = new TabTranscript();
+      transcript.applySnapshot([user('a', 'u1')]);
+      transcript.beginAssistant(1, false);
+      const live = assistant('done', 'a1');
+      transcript.applySnapshot([user('a', 'u1')], 0, live);
+      transcript.applySnapshot([user('a', 'u1'), live], 0, null);
+      transcript.finalizeStreamingTurn(
+        {
+          turnId: 1,
+          content: 'done',
+          backendRaw: null,
+          pendingToolResults: [],
+          toolResultTimestamp: '2026-01-01T00:00:02.000Z',
+        },
+        (messages) => messages,
+      );
+
+      const before = transcript.getSnapshot();
+      expect(before).toHaveLength(2);
+
+      // A delayed frame may still name the draft as live while its confirmed
+      // copy is already in the window. It must not open a second bubble.
+      transcript.applySnapshot([user('a', 'u1'), live], 0, live);
+      expect(transcript.getSnapshot()).toHaveLength(2);
+    });
   });
 });
 
@@ -420,7 +560,8 @@ describe('TabTranscript compaction boundaries', () => {
     const transcript = new TabTranscript();
     transcript.applySnapshot([user('u1')]);
     transcript.beginAssistant(1, false);
-    transcript.appendDelta('before compaction', 1);
+    // The host reports the open draft; the transcript adopts it as the bubble.
+    transcript.applySnapshot([user('u1')], 0, assistant('before compaction', 'a1'));
 
     // The host seals the assistant and appends the compaction record.
     transcript.applySnapshot([
@@ -430,6 +571,7 @@ describe('TabTranscript compaction boundaries', () => {
     ]);
 
     expect(contents(transcript.getSnapshot())).toEqual(['u1', 'before compaction', '']);
+    expect(transcript.getSnapshot()[1].type).toBe('assistant');
     expect(transcript.getSnapshot()[2].type).toBe('compaction');
 
     // The first delta after the boundary belongs to a new segment.
@@ -444,23 +586,26 @@ describe('TabTranscript compaction boundaries', () => {
     expect(afterDelta[3].content).toBe('after compaction');
   });
 
-  it('merges the post-compaction streaming copy instead of duplicating it', () => {
+  it('merges the post-compaction live draft instead of duplicating it', () => {
     const transcript = new TabTranscript();
     transcript.applySnapshot([
       user('u1'),
       assistant('before', 'a1'),
       compaction('c1'),
-      assistant('', 'a2'),
     ]);
     transcript.beginAssistant(2, false);
+    transcript.applySnapshot(
+      [user('u1'), assistant('before', 'a1'), compaction('c1')],
+      0,
+      assistant('', 'a2'),
+    );
     transcript.appendDelta('after', 2);
 
-    transcript.applySnapshot([
-      user('u1'),
-      assistant('before', 'a1'),
-      compaction('c1'),
+    transcript.applySnapshot(
+      [user('u1'), assistant('before', 'a1'), compaction('c1')],
+      0,
       assistant('after and more', 'a2'),
-    ]);
+    );
 
     const snapshot = transcript.getSnapshot();
     expect(snapshot.map((message) => message.type)).toEqual([

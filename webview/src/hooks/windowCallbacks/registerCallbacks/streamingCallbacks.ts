@@ -250,6 +250,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // Explicit null in case the rAF already executed (clearing pendingUpdateRaf)
     // but __pendingUpdateJson was not yet cleared by the rAF callback.
     window.__pendingUpdateJson = null;
+    window.__pendingLiveDraftJson = null;
     // Clear the previous stream-ended marker when a new turn starts
     window.__lastStreamEndedTurnId = undefined;
     window.__lastStreamEndedAt = undefined;
@@ -646,6 +647,26 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       }
     }
 
+    // The tail transport never populates __pendingUpdateJson (it is a window,
+    // not a full snapshot). The live draft is the authoritative structural
+    // source in that path, so settle the bubble from it instead of dropping the
+    // host's tool_use/tool_result blocks.
+    if (backendSnapshotRaw === undefined
+      && typeof window.__pendingLiveDraftJson === 'string'
+      && window.__pendingLiveDraftJson.length > 0) {
+      try {
+        const draft = JSON.parse(window.__pendingLiveDraftJson) as Record<string, unknown>;
+        if (typeof draft?.content === 'string' && draft.content) {
+          backendSnapshotContent = draft.content;
+        }
+        if (draft?.raw != null && (typeof draft.raw === 'object' || typeof draft.raw === 'string')) {
+          backendSnapshotRaw = draft.raw as ClaudeRawMessage | string;
+        }
+      } catch (error) {
+        cardDebugLog('[Frontend] Failed to parse __pendingLiveDraftJson on stream end:', error);
+      }
+    }
+
     if (pendingSnapshotHasTerminalError()) {
       window.__flushPendingUpdateMessages?.(targetSessionId);
     } else if (typeof window.__cancelPendingUpdateMessages === 'function') {
@@ -799,6 +820,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
     // Mark this turn as processed — idempotency guard for dual-path delivery
     window.__streamEndProcessedTurnId = endedStreamingTurnId;
+    window.__pendingLiveDraftJson = null;
   };
 
   // Permission denied callback — kept as a no-op for backward compatibility.

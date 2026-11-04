@@ -1380,7 +1380,12 @@ describe('useWindowCallbacks integration', () => {
     });
 
     act(() => {
-      hostEventHandler('message.snapshot')!(...snapshotEvent('ses_test', JSON.stringify([
+      hostEventHandler('message.snapshot')!(...snapshotEvent(
+        'ses_test',
+        '[]',
+        undefined,
+        undefined,
+        null,
         {
           type: 'assistant',
           content: 'Working',
@@ -1394,7 +1399,7 @@ describe('useWindowCallbacks integration', () => {
             },
           },
         },
-      ])));
+      ));
     });
 
     const nextMessages = getTabStore().getActiveTabMessages();

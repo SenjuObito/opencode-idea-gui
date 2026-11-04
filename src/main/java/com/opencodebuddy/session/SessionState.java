@@ -134,6 +134,22 @@ public class SessionState {
     // Message history
     private final List<OpencodeSession.Message> messages = new ArrayList<>();
 
+    /**
+     * The assistant message the engine is still producing.
+     *
+     * <p>The engine keeps this object inside {@link #messages} because it is one
+     * of its message rows, but it is not confirmed history yet: the transport
+     * projects it out of the confirmed window and sends it as the separate
+     * live draft. That makes the webview's streaming bubble its only owner
+     * instead of asking every consumer to filter the last row out.</p>
+     *
+     * <p>Set when the handler adopts/creates the current assistant; cleared on
+     * every terminal path and before a new turn starts. Volatile because the
+     * handler writes it on the stream thread while the coalescer reads it on
+     * the serializer thread.</p>
+     */
+    private volatile OpencodeSession.Message liveAssistant = null;
+
     // Session metadata — cwd is written in handler thread before send(), read inside send();
     // the happens-before from CompletableFuture.runAsync guarantees visibility, so volatile is not required.
     private String summary = null;
@@ -215,6 +231,71 @@ public class SessionState {
 
     public List<OpencodeSession.Message> getMessagesReference() {
         return messages;
+    }
+
+    /** The assistant row the engine is still producing, or {@code null}. */
+    public OpencodeSession.Message getLiveAssistant() {
+        return liveAssistant;
+    }
+
+    /**
+     * One snapshot split into committed history and the live draft.
+     *
+     * <p>The live assistant is present in the message list (the engine owns one
+     * object per row) but is not history yet. Full-window consumers must send
+     * it beside the window, not inside it, so the webview's streaming bubble
+     * remains its only owner.</p>
+     */
+    public record MessageWindow(List<OpencodeSession.Message> confirmed, OpencodeSession.Message live) {}
+
+    /**
+     * Split {@code messages} into confirmed history and {@code live}.
+     *
+     * <p>A live reference that is not part of this list is stale (the list was
+     * replaced while a frame was in flight); it is dropped instead of being
+     * resurrected next to unrelated messages.</p>
+     */
+    public static MessageWindow projectWindow(
+            List<OpencodeSession.Message> messages,
+            OpencodeSession.Message live
+    ) {
+        if (live == null) {
+            return new MessageWindow(messages, null);
+        }
+        int index = -1;
+        for (int i = 0; i < messages.size(); i++) {
+            if (messages.get(i) == live) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            return new MessageWindow(messages, null);
+        }
+        List<OpencodeSession.Message> confirmed = new ArrayList<>(messages.size() - 1);
+        for (int i = 0; i < messages.size(); i++) {
+            if (i != index) {
+                confirmed.add(messages.get(i));
+            }
+        }
+        return new MessageWindow(confirmed, live);
+    }
+
+    /** A consistent copy of the current confirmed history and live draft. */
+    public MessageWindow getMessageWindow() {
+        synchronized (messages) {
+            return projectWindow(new ArrayList<>(messages), liveAssistant);
+        }
+    }
+
+    /** Mark one assistant row as the live draft of the current turn. */
+    public void setLiveAssistant(OpencodeSession.Message message) {
+        this.liveAssistant = message;
+    }
+
+    /** Clear the live draft reference unconditionally. */
+    public void clearLiveAssistant() {
+        this.liveAssistant = null;
     }
 
     public String getSummary() {
@@ -432,6 +513,7 @@ public class SessionState {
      */
     public void clearMessages() {
         messages.clear();
+        clearLiveAssistant();
     }
 
     /**
@@ -443,7 +525,20 @@ public class SessionState {
             if (newMessages != null && !newMessages.isEmpty()) {
                 messages.addAll(newMessages);
             }
+            if (liveAssistant != null && !containsIdentity(messages, liveAssistant)) {
+                liveAssistant = null;
+            }
         }
+    }
+
+    /** Whether {@code list} holds exactly {@code target} (identity, not equals). */
+    private static boolean containsIdentity(List<OpencodeSession.Message> list, OpencodeSession.Message target) {
+        for (OpencodeSession.Message message : list) {
+            if (message == target) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -483,7 +578,11 @@ public class SessionState {
         }
         Set<String> ids = new HashSet<>(messageIds);
         synchronized (messages) {
-            return messages.removeIf(message -> matchesAnyProviderId(message, ids));
+            boolean removed = messages.removeIf(message -> matchesAnyProviderId(message, ids));
+            if (liveAssistant != null && !containsIdentity(messages, liveAssistant)) {
+                liveAssistant = null;
+            }
+            return removed;
         }
     }
 
@@ -527,6 +626,9 @@ public class SessionState {
             // Inclusive of the boundary: the server removes from the boundary
             // message onward when no partID is set (SessionRevert.cleanup).
             messages.subList(idx, messages.size()).clear();
+            if (liveAssistant != null && !containsIdentity(messages, liveAssistant)) {
+                liveAssistant = null;
+            }
             return true;
         }
     }

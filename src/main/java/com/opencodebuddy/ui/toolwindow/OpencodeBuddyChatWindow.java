@@ -3019,8 +3019,12 @@ public class OpencodeBuddyChatWindow {
         }
 
         try {
-            List<OpencodeSession.Message> messages = targetSession.getState().getMessages();
-            String messagesJson = com.opencodebuddy.util.MessageJsonConverter.convertMessagesToJson(messages);
+            SessionState.MessageWindow window = targetSession.getState().getMessageWindow();
+            List<OpencodeSession.Message> confirmed = window.confirmed();
+            OpencodeSession.Message live = window.live();
+            String messagesJson = com.opencodebuddy.util.MessageJsonConverter.convertMessagesToJson(confirmed);
+            String liveJson = live != null
+                    ? com.opencodebuddy.util.MessageJsonConverter.convertMessageToJson(live) : null;
 
             com.google.gson.JsonObject packet = new com.google.gson.JsonObject();
             packet.addProperty("sessionId", sId);
@@ -3030,9 +3034,13 @@ public class OpencodeBuddyChatWindow {
                 packet.addProperty("revertBoundaryId", targetSession.getState().getRevertState().messageId);
             }
             packet.add("messages", com.google.gson.JsonParser.parseString(messagesJson));
+            packet.add("live", liveJson != null
+                    ? com.google.gson.JsonParser.parseString(liveJson)
+                    : com.google.gson.JsonNull.INSTANCE);
 
             publishTabEvent(com.opencodebuddy.tab.TabEvent.of("session.hydrated").field("data", packet.toString()).build());
-            LOG.info("[hydrateSession] Sent onSessionHydrated for session " + sId + " with " + messages.size() + " messages");
+            LOG.info("[hydrateSession] Sent onSessionHydrated for session " + sId + " with " + confirmed.size() + " messages"
+                    + (live != null ? " + live draft" : ""));
         } catch (Exception e) {
             LOG.warn("Failed to hydrate session to webview: " + sId, e);
         }

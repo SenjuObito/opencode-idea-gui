@@ -97,6 +97,8 @@ export type ClaudeRawMessage = OpencodeRawMessage;
 /** Represents a single message in the chat conversation. */
 export interface OpencodeMessage {
   type: OpencodeRole;
+  /** Provider record id, when the host has one (opencode's message id). */
+  id?: string;
   content?: string;
   raw?: OpencodeRawMessage | string;
   timestamp?: string;

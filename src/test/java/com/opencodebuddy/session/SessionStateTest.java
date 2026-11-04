@@ -306,4 +306,43 @@ public class SessionStateTest {
         Assert.assertEquals("completed", statusOf(state.getMessages().get(0)));
         Assert.assertEquals("in_progress", statusOf(state.getMessages().get(1)));
     }
+
+    @Test
+    public void replacingMessagesDropsAStaleLiveDraftReference() {
+        SessionState state = new SessionState();
+        OpencodeSession.Message live = new OpencodeSession.Message(OpencodeSession.Message.Type.ASSISTANT, "partial");
+        state.addMessage(live);
+        state.setLiveAssistant(live);
+
+        state.replaceMessages(java.util.List.of(
+                new OpencodeSession.Message(OpencodeSession.Message.Type.USER, "hello")));
+
+        Assert.assertNull(state.getLiveAssistant());
+    }
+
+    @Test
+    public void replacingMessagesKeepsALiveDraftThatIsStillPresent() {
+        SessionState state = new SessionState();
+        OpencodeSession.Message assistant = new OpencodeSession.Message(OpencodeSession.Message.Type.ASSISTANT, "partial");
+        state.setLiveAssistant(assistant);
+
+        state.replaceMessages(java.util.List.of(assistant));
+
+        Assert.assertSame(assistant, state.getLiveAssistant());
+    }
+
+    @Test
+    public void removingTheLiveDraftClearsTheReference() {
+        SessionState state = new SessionState();
+        JsonObject raw = new JsonObject();
+        raw.addProperty("id", "msg-1");
+        OpencodeSession.Message live = new OpencodeSession.Message(OpencodeSession.Message.Type.ASSISTANT, "partial", raw);
+        state.addMessage(live);
+        state.setLiveAssistant(live);
+
+        state.removeMessagesByIds(java.util.List.of("msg-1"));
+
+        Assert.assertNull(state.getLiveAssistant());
+        Assert.assertTrue(state.getMessages().isEmpty());
+    }
 }

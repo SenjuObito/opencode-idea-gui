@@ -248,4 +248,37 @@ public class MessageJsonConverterTest {
         assertEquals("provider.quota", transportedError.get("kind").getAsString());
         assertEquals(429, transportedError.get("status").getAsInt());
     }
+
+    @Test
+    public void convertMessageToJsonUsesTheSameShapeAsAWindowEntry() {
+        JsonObject raw = new JsonObject();
+        raw.addProperty("id", "msg-live");
+        JsonObject message = new JsonObject();
+        JsonArray content = new JsonArray();
+        JsonObject text = new JsonObject();
+        text.addProperty("type", "text");
+        text.addProperty("text", "partial");
+        content.add(text);
+        message.add("content", content);
+        raw.add("message", message);
+
+        OpencodeSession.Message live = new OpencodeSession.Message(
+                OpencodeSession.Message.Type.ASSISTANT,
+                "partial",
+                raw
+        );
+
+        JsonObject single = JsonParser.parseString(
+                MessageJsonConverter.convertMessageToJson(live)
+        ).getAsJsonObject();
+        JsonObject windowEntry = JsonParser.parseString(
+                MessageJsonConverter.convertMessagesToJson(List.of(live))
+        ).getAsJsonArray().get(0).getAsJsonObject();
+
+        // The webview pairs the draft with its confirmed copy by the fields in
+        // this object, so both serializers must produce identical identity.
+        assertEquals(windowEntry, single);
+        assertEquals("msg-live", single.get("id").getAsString());
+        assertEquals("assistant", single.get("type").getAsString());
+    }
 }

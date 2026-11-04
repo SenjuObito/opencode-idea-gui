@@ -423,7 +423,16 @@ public class StreamMessageCoalescer {
             lastSnapshot = messages;
         }
 
-        MessageTransport transport = selectMessageTransport(messages, deliveredSnapshot);
+        // Confirmed history and the draft are different facts. The draft is
+        // read at serialization time (the final frame clears it, which is how
+        // the webview learns the draft has been committed).
+        OpencodeSession owner = callbackTarget.getSession();
+        OpencodeSession.Message candidateLive = owner != null ? owner.getState().getLiveAssistant() : null;
+        SessionState.MessageWindow window = SessionState.projectWindow(messages, candidateLive);
+        final List<OpencodeSession.Message> confirmed = window.confirmed();
+        final OpencodeSession.Message live = window.live();
+
+        MessageTransport transport = selectMessageTransport(confirmed, deliveredSnapshot);
         final boolean tailUpdate = transport.tailUpdate();
         final int tailBaseIndex = transport.baseIndex();
         final List<OpencodeSession.Message> transportMessages = transport.messages();
@@ -432,10 +441,12 @@ public class StreamMessageCoalescer {
             final int payloadChars;
             final long payloadBuildMs;
             final String messagesJson;
+            final String liveJson;
             try {
                 long buildStartedAt = System.nanoTime();
                 messagesJson = MessageJsonConverter.convertMessagesToJson(transportMessages);
-                payloadChars = messagesJson.length();
+                liveJson = live != null ? MessageJsonConverter.convertMessageToJson(live) : null;
+                payloadChars = messagesJson.length() + (liveJson != null ? liveJson.length() : 0);
                 payloadBuildMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - buildStartedAt);
 
                 // FIX: Record payload size for adaptive throttling
@@ -445,6 +456,7 @@ public class StreamMessageCoalescer {
                     LOG.info("[WebviewTransport] updateMessages payload chars=" + payloadChars
                             + ", messages=" + messages.size()
                             + ", transportedMessages=" + transportMessages.size()
+                            + ", live=" + (live != null)
                             + ", tailBaseIndex=" + tailBaseIndex
                             + ", buildMs=" + payloadBuildMs
                             + ", sequence=" + sequence);
@@ -452,6 +464,7 @@ public class StreamMessageCoalescer {
                     LOG.debug("[WebviewTransport] updateMessages payload chars=" + payloadChars
                             + ", messages=" + messages.size()
                             + ", transportedMessages=" + transportMessages.size()
+                            + ", live=" + (live != null)
                             + ", buildMs=" + payloadBuildMs
                             + ", sequence=" + sequence);
                 }
@@ -536,6 +549,7 @@ public class StreamMessageCoalescer {
                                 .session(targetSession)
                                 .tab(tabId)
                                 .field("messages", messagesJson)
+                                .json("live", liveJson)
                                 .field("baseIndex", tailBaseIndex)
                                 .field("sequence", pushSequence));
                     } else {
@@ -543,6 +557,7 @@ public class StreamMessageCoalescer {
                                 .session(targetSession)
                                 .tab(tabId)
                                 .field("messages", messagesJson)
+                                .json("live", liveJson)
                                 .field("sequence", pushSequence));
                     }
                     synchronized (lock) {
@@ -552,9 +567,8 @@ public class StreamMessageCoalescer {
                         // newer data stayed queued, so hasSamePrefix never matched, tail
                         // updates never engaged on long conversations, and every push kept
                         // paying full-payload serialization cost.
-                        lastDeliveredSnapshot = messages;
+                        lastDeliveredSnapshot = confirmed;
                     }
-                    OpencodeSession owner = callbackTarget.getSession();
                     String usageSessionId = targetSession;
                     if (usageSessionId == null && owner != null) {
                         usageSessionId = owner.getSessionId();

@@ -34,28 +34,44 @@ public class MessageJsonConverter {
         Gson gson = new Gson();
         JsonArray messagesArray = new JsonArray();
         for (OpencodeSession.Message msg : messages) {
-            JsonObject msgObj = new JsonObject();
-            msgObj.addProperty("type", msg.type.toString().toLowerCase());
-            msgObj.addProperty("timestamp", msg.timestamp);
-            msgObj.addProperty("content", truncateErrorContent(msg.content != null ? msg.content : ""));
-            if (msg.compaction != null) {
-                msgObj.add("compaction", msg.compaction.deepCopy());
-            }
-            if (msg.raw != null) {
-                if (msg.raw.has("id") && !msg.raw.get("id").isJsonNull()) {
-                    msgObj.addProperty("id", msg.raw.get("id").getAsString());
-                } else if (msg.raw.has("uuid") && !msg.raw.get("uuid").isJsonNull()) {
-                    msgObj.addProperty("id", msg.raw.get("uuid").getAsString());
-                }
-                JsonObject transportRaw = truncateRawForTransport(msg.raw);
-                msgObj.add("raw", transportRaw);
-                if (transportRaw.has("durationMs") && !transportRaw.get("durationMs").isJsonNull()) {
-                    msgObj.add("durationMs", transportRaw.get("durationMs"));
-                }
-            }
-            messagesArray.add(msgObj);
+            messagesArray.add(toJsonObject(msg));
         }
         return gson.toJson(messagesArray);
+    }
+
+    /**
+     * Convert one message to the same JSON shape a window entry uses.
+     *
+     * <p>Used for the live draft, which travels beside the confirmed window
+     * instead of inside it: the streaming assistant is one message, not a
+     * window, and it must be serialized exactly like its confirmed copy so the
+     * webview can pair the two by identity.</p>
+     */
+    public static String convertMessageToJson(OpencodeSession.Message message) {
+        return new Gson().toJson(toJsonObject(message));
+    }
+
+    private static JsonObject toJsonObject(OpencodeSession.Message msg) {
+        JsonObject msgObj = new JsonObject();
+        msgObj.addProperty("type", msg.type.toString().toLowerCase());
+        msgObj.addProperty("timestamp", msg.timestamp);
+        msgObj.addProperty("content", truncateErrorContent(msg.content != null ? msg.content : ""));
+        if (msg.compaction != null) {
+            msgObj.add("compaction", msg.compaction.deepCopy());
+        }
+        if (msg.raw != null) {
+            if (msg.raw.has("id") && !msg.raw.get("id").isJsonNull()) {
+                msgObj.addProperty("id", msg.raw.get("id").getAsString());
+            } else if (msg.raw.has("uuid") && !msg.raw.get("uuid").isJsonNull()) {
+                msgObj.addProperty("id", msg.raw.get("uuid").getAsString());
+            }
+            JsonObject transportRaw = truncateRawForTransport(msg.raw);
+            msgObj.add("raw", transportRaw);
+            if (transportRaw.has("durationMs") && !transportRaw.get("durationMs").isJsonNull()) {
+                msgObj.add("durationMs", transportRaw.get("durationMs"));
+            }
+        }
+        return msgObj;
     }
 
     /**

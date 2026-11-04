@@ -119,6 +119,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
         LOG.info("[OpenCode] message handler onError: " + error);
         state.replaceLastErrorMessage(error);
+        state.clearLiveAssistant();
 
         // Always signal stream-end on error to guarantee streamCoalescer and frontend
         // isStreamingRef are cleared, allowing showLoading(false) to take effect immediately.
@@ -141,6 +142,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
         state.setBusy(false);
         state.setLoading(false);
         state.setError(null);
+        state.clearLiveAssistant();
         resetStreamingAccumulator();
         callbackHandler.notifyStreamEnd();
         callbackHandler.notifyMessageUpdate(state.getMessages());
@@ -218,6 +220,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
         if (wasStreaming && !streamEndedBeforeComplete) {
             LOG.warn("OpenCode onComplete called without prior stream_end; forcing stream cleanup");
+            state.clearLiveAssistant();
             callbackHandler.notifyMessageUpdate(state.getMessages());
             callbackHandler.notifyStreamEnd();
         }
@@ -263,6 +266,10 @@ public class OpenCodeMessageHandler implements MessageCallback {
                 assistantContent.append(currentAssistantMessage.content);
                 state.addMessage(parsed);
             }
+            // The engine's current assistant is the draft of this turn. The
+            // transport keeps it out of the confirmed window and sends it as
+            // `live`, so the webview's streaming bubble is its only owner.
+            state.setLiveAssistant(currentAssistantMessage);
 
             syncSegmentActivity(currentAssistantMessage.raw);
 
@@ -553,6 +560,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
             state.setBusy(false);
             state.setLoading(false);
             state.updateLastModifiedTime();
+            state.clearLiveAssistant();
             resetStreamingAccumulator();
 
             callbackHandler.notifyTurnEnd(jsonContent);
@@ -893,6 +901,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
         state.setBusy(false);
         state.setLoading(false);
         state.replaceLastErrorMessage(message);
+        state.clearLiveAssistant();
         callbackHandler.notifyStreamEnd();
         callbackHandler.notifyMessageUpdate(state.getMessages());
         callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
@@ -942,6 +951,7 @@ public class OpenCodeMessageHandler implements MessageCallback {
             currentAssistantMessage = new Message(Message.Type.ASSISTANT, "", raw);
             state.addMessage(currentAssistantMessage);
         }
+        state.setLiveAssistant(currentAssistantMessage);
         if (currentAssistantMessage.raw == null) {
             com.google.gson.JsonObject raw = new com.google.gson.JsonObject();
             raw.addProperty("type", "assistant");
@@ -1072,6 +1082,10 @@ public class OpenCodeMessageHandler implements MessageCallback {
     private void handleStreamStart() {
         isStreaming = true;
         streamEndedThisTurn = false;
+        // A new turn must never inherit the previous turn's draft marker. Clearing
+        // before turn.started means every event of this turn sees exactly one live
+        // draft, and the previous assistant is already confirmed history.
+        state.clearLiveAssistant();
         resetStreamingAccumulator();
         callbackHandler.notifyStreamStart();
     }
@@ -1083,6 +1097,10 @@ public class OpenCodeMessageHandler implements MessageCallback {
 
         isStreaming = false;
         streamEndedThisTurn = true;
+        // The draft becomes part of the confirmed window in this final frame, so
+        // the webview can pair it with its streaming bubble and stop rendering a
+        // second copy. Clearing before notify makes the frame self-describing.
+        state.clearLiveAssistant();
         callbackHandler.notifyMessageUpdate(state.getMessages());
         callbackHandler.notifyStreamEnd();
         state.setBusy(false);

@@ -2,6 +2,7 @@ package com.opencodebuddy.ui;
 
 import com.opencodebuddy.i18n.OpenCodeBuddyBundle;
 import com.opencodebuddy.session.OpencodeSession;
+import com.opencodebuddy.session.SessionState;
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.opencodebuddy.handler.AgentHandler;
 import com.opencodebuddy.handler.ClipboardHandler;
@@ -731,13 +732,17 @@ public class ChatWindowDelegate {
                         .build());
             }
 
-            List<OpencodeSession.Message> messages = session.getMessages();
-            if (!messages.isEmpty()) {
-                String messagesJson = MessageJsonConverter.convertMessagesToJson(messages);
+            SessionState.MessageWindow window = session.getState().getMessageWindow();
+            List<OpencodeSession.Message> confirmed = window.confirmed();
+            OpencodeSession.Message live = window.live();
+            if (!confirmed.isEmpty() || live != null) {
+                String messagesJson = MessageJsonConverter.convertMessagesToJson(confirmed);
+                String liveJson = live != null ? MessageJsonConverter.convertMessageToJson(live) : null;
                 host.publishTabEvent(com.opencodebuddy.tab.TabEvent.of("message.snapshot")
                         .session(sessionId)
                         .tab(tabId)
                         .field("messages", messagesJson)
+                        .json("live", liveJson)
                         .build());
             }
 
@@ -778,7 +783,8 @@ public class ChatWindowDelegate {
 
             LOG.info("Replayed current session state to frontend: sessionId="
                     + (sessionId != null ? sessionId : "(none)")
-                    + ", messages=" + messages.size()
+                    + ", messages=" + confirmed.size()
+                    + ", liveDraft=" + (live != null)
                     + ", loading=" + session.isLoading()
                     + ", streaming=" + streamActive);
         } catch (Exception e) {

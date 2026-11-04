@@ -18,7 +18,7 @@ import { registerMessageCallbacks } from './messageCallbacks';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import { beginTransition, endTransition, isTabTransitioning } from '../tabTransition';
-import { sessionEvent, snapshotEvent } from '../../../utils/testEvents';
+import { sessionEvent, snapshotEvent, tailEvent } from '../../../utils/testEvents';
 import { getTabStore, resetTabStore } from '../../../store/tabStore';
 import { seedTabStore } from '../../../test/seedTabStore';
 
@@ -455,5 +455,75 @@ describe('first frame of a new tab — tab-addressed before the session exists',
     );
 
     expect(storedTab('tab-new').transcript.getSnapshot()).toEqual([optimistic]);
+  });
+});
+
+describe('live draft transport — one assistant row per reply', () => {
+  beforeEach(() => {
+    resetTabStore();
+    delete window.__pendingLiveDraftJson;
+  });
+
+  afterEach(() => {
+    resetTabStore();
+    delete window.__pendingLiveDraftJson;
+  });
+
+  it('merges a tail live draft into the open bubble and settles without a duplicate', () => {
+    createHarness('ses_live');
+    seedTabStore(
+      [{ id: 'tab-live', sessionId: 'ses_live', messages: [], streamingActive: true }],
+      'tab-live',
+    );
+
+    const history: ClaudeMessage[] = [];
+    for (let i = 0; i < 40; i += 1) {
+      history.push({ type: 'user', content: `q${i}`, timestamp: '2026-01-01T00:00:00.000Z', raw: { uuid: `u${i}` } } as ClaudeMessage);
+      history.push({ type: 'assistant', id: `a${i}`, content: `a${i}`, timestamp: '2026-01-01T00:00:01.000Z', raw: { uuid: `a${i}` } } as ClaudeMessage);
+    }
+    const live = {
+      type: 'assistant',
+      id: 'live-1',
+      content: 'live answer',
+      timestamp: '2026-01-01T00:00:02.000Z',
+      raw: { id: 'live-1', message: { content: [{ type: 'text', text: 'live answer' }] } },
+    } as ClaudeMessage;
+
+    hostEventHandler('message.snapshot')!(
+      ...snapshotEvent('ses_live', JSON.stringify(history), '1'),
+    );
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.beginAssistant(41, false);
+      transcript.appendDelta('live answer', 41);
+    });
+
+    // Long conversation: the host sends only the tail, draft beside the window.
+    hostEventHandler('message.tail')!(
+      ...tailEvent(
+        'ses_live',
+        JSON.stringify(history.slice(-15)),
+        history.length - 15,
+        '2',
+        null,
+        live,
+      ),
+    );
+
+    // Final frame: the same record is confirmed, no live draft remains.
+    const confirmed = [...history, live];
+    hostEventHandler('message.tail')!(
+      ...tailEvent(
+        'ses_live',
+        JSON.stringify(confirmed.slice(-15)),
+        confirmed.length - 15,
+        '3',
+        null,
+        null,
+      ),
+    );
+
+    const messages = getTabStore().getActiveTabMessages();
+    const replies = messages.filter((message) => message.content === 'live answer');
+    expect(replies).toHaveLength(1);
   });
 });

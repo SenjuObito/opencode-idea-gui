@@ -32,6 +32,26 @@ import { parseHistoryWindow } from '../../../store/historyWindow';
 
 const isTruthy = (v: unknown) => v === true || v === 'true';
 
+/**
+ * Read the host's live draft from a message frame.
+ *
+ * <p>The IDEA host serializes it as an object beside `messages`; a test or an
+ * older producer may send the same object as a JSON string. Both describe the
+ * same fact, so the callback accepts either shape.</p>
+ */
+function parseLiveDraft(payload: HostEventPayload | undefined): ClaudeMessage | null {
+  const value = payload?.live;
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed && typeof parsed === 'object' ? parsed as ClaudeMessage : null;
+    } catch {
+      return null;
+    }
+  }
+  return typeof value === 'object' ? value as ClaudeMessage : null;
+}
 
 export function registerMessageCallbacks(
   options: UseWindowCallbacksOptions,
@@ -81,6 +101,7 @@ export function registerMessageCallbacks(
   let pendingUpdateSequence: number | null = null;
   let pendingUpdateBaseIndex: string | number | null | undefined = null;
   let pendingUpdateTabId: string | null = null;
+  let pendingUpdateLive: ClaudeMessage | null = null;
   // Expose a cancellation function so onStreamEnd can cancel stale rAF-deferred
   // updateMessages calls, preventing them from overwriting the final state after
   // streaming refs are cleared.
@@ -93,6 +114,7 @@ export function registerMessageCallbacks(
     pendingUpdateSequence = null;
     pendingUpdateBaseIndex = null;
     pendingUpdateTabId = null;
+    pendingUpdateLive = null;
     window.__pendingUpdateRaf = null;
     window.__pendingUpdateJson = null;
     window.__pendingUpdateSequence = null;
@@ -123,13 +145,13 @@ export function registerMessageCallbacks(
    * carried across the snapshot.</p>
    */
   /** Write a full snapshot to a tab. The transcript owns the merge. */
-  const writeSnapshotToTab = (tabId: string, json: string, baseIndexArg?: string | number | null): boolean => (
+  const writeSnapshotToTab = (tabId: string, json: string, baseIndexArg?: string | number | null, live: ClaudeMessage | null = null): boolean => (
     getTabStore().mutateTranscript(tabId, (transcript) => {
       try {
         const raw = JSON.parse(json) as unknown;
         if (!Array.isArray(raw)) return;
         const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
-        transcript.applySnapshot(raw as ClaudeMessage[], Number.isSafeInteger(base) ? base : 0);
+        transcript.applySnapshot(raw as ClaudeMessage[], Number.isSafeInteger(base) ? base : 0, live);
         // Background tabs have no delta buffers; discard the boundary flag so it
         // cannot reset the active tab later.
         transcript.consumeCompactionBoundary();
@@ -144,13 +166,14 @@ export function registerMessageCallbacks(
     tabId: string,
     json: string,
     baseIndexArg?: string | number | null,
+    live: ClaudeMessage | null = null,
   ): boolean => (
     getTabStore().mutateTranscript(tabId, (transcript) => {
       try {
         const raw = JSON.parse(json) as unknown;
         if (!Array.isArray(raw)) return;
         const base = typeof baseIndexArg === 'number' ? baseIndexArg : Number(baseIndexArg);
-        transcript.applyTail(raw as ClaudeMessage[], Number.isSafeInteger(base) ? base : 0);
+        transcript.applyTail(raw as ClaudeMessage[], Number.isSafeInteger(base) ? base : 0, live);
         transcript.consumeCompactionBoundary();
       } catch (error) {
         console.error('[MultiSession] Failed to parse background updateMessageTail', error);
@@ -182,6 +205,7 @@ export function registerMessageCallbacks(
     baseIndexArg?: string | number | null,
     targetSessionId?: string | null,
     targetTabId?: string | null,
+    live: ClaudeMessage | null = null,
   ) => {
     const effectiveSessionId = targetSessionId ?? null;
     // Address by tab first: the host names the tab, and that name exists before
@@ -211,7 +235,7 @@ export function registerMessageCallbacks(
       return;
     }
     if (addressTabId && !tabStore.isActiveTab(addressTabId)) {
-      writeSnapshotToTab(addressTabId, json);
+      writeSnapshotToTab(addressTabId, json, baseIndexArg, live);
       return;
     }
     const minAcceptedSequence = getMinAcceptedSequence(effectiveSessionId);
@@ -234,9 +258,12 @@ export function registerMessageCallbacks(
 
       const parsedBase = baseIndexArg != null && baseIndexArg !== '' ? Number(baseIndexArg) : null;
       const hasWindowBase = parsedBase != null && Number.isSafeInteger(parsedBase) && parsedBase >= 0;
+      if (live) {
+        window.__pendingLiveDraftJson = JSON.stringify(live);
+      }
 
       getTabStore().mutateActiveTranscript((transcript) => {
-        transcript.applySnapshot(backendMessages, hasWindowBase ? (parsedBase as number) : 0);
+        transcript.applySnapshot(backendMessages, hasWindowBase ? (parsedBase as number) : 0, live);
         // A boundary seals the pre-compaction bubble into remote. The delta
         // buffers still describe that old segment, so drop them before the
         // first post-compaction snapshot merges into a new bubble.
@@ -282,6 +309,7 @@ export function registerMessageCallbacks(
     sequenceArg?: string | number,
     targetSessionId?: string | null,
     targetTabId?: string | null,
+    live: ClaudeMessage | null = null,
   ) => {
     const effectiveSessionId = targetSessionId ?? null;
     const tabStore = getTabStore();
@@ -294,7 +322,7 @@ export function registerMessageCallbacks(
       return;
     }
     if (addressTabId && !tabStore.isActiveTab(addressTabId)) {
-      writeTailToTab(addressTabId, json, baseIndexArg);
+      writeTailToTab(addressTabId, json, baseIndexArg, live);
       return;
     }
     const sequence = parseSequence(sequenceArg);
@@ -316,9 +344,12 @@ export function registerMessageCallbacks(
       if (sequence != null) {
         advanceMinAcceptedSequence(effectiveSessionId, sequence);
       }
+      if (live) {
+        window.__pendingLiveDraftJson = JSON.stringify(live);
+      }
 
       getTabStore().mutateActiveTranscript((transcript) => {
-        transcript.applyTail(tail, baseIndex);
+        transcript.applyTail(tail, baseIndex, live);
         if (transcript.consumeCompactionBoundary()) {
           streamingContentRef.current = '';
           streamingThinkingRef.current = '';
@@ -359,6 +390,7 @@ export function registerMessageCallbacks(
     const sequenceArg = payload?.sequence as string | number | undefined;
     const baseIndexArg = payload?.baseIndex as string | number | undefined;
     const targetTabId: string | null = env?.tabId ?? null;
+    const live = parseLiveDraft(payload);
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
@@ -371,7 +403,7 @@ export function registerMessageCallbacks(
     if (hasTabs && addressTabId && !tabStore.isActiveTab(addressTabId)) {
       // The tab is not on screen: write its store, never the view. A closed tab
       // has nowhere to write and updates nothing.
-      writeSnapshotToTab(addressTabId, json);
+      writeSnapshotToTab(addressTabId, json, baseIndexArg, live);
       return;
     }
     if (hasTabs && !addressTabId) {
@@ -413,8 +445,12 @@ export function registerMessageCallbacks(
       pendingUpdateSequence = sequence;
       pendingUpdateBaseIndex = baseIndexArg ?? null;
       pendingUpdateTabId = addressTabId;
+      pendingUpdateLive = live;
       window.__pendingUpdateJson = json;
       window.__pendingUpdateSequence = sequence;
+      if (live) {
+        window.__pendingLiveDraftJson = JSON.stringify(live);
+      }
       if (pendingUpdateRaf === null) {
         const timerId = setTimeout(() => {
           // The test environment can tear down the jsdom window before this
@@ -427,10 +463,12 @@ export function registerMessageCallbacks(
           const latestSequence = pendingUpdateSequence;
           const latestBaseIndex = pendingUpdateBaseIndex;
           const latestTabId = pendingUpdateTabId ?? targetTabId;
+          const latestLive = pendingUpdateLive;
           pendingUpdateJson = null;
           pendingUpdateSequence = null;
           pendingUpdateBaseIndex = null;
           pendingUpdateTabId = null;
+          pendingUpdateLive = null;
           window.__pendingUpdateJson = null;
           window.__pendingUpdateSequence = null;
           // A session transition may have begun while this frame was buffered.
@@ -443,7 +481,7 @@ export function registerMessageCallbacks(
             return;
           }
           if (latestJson) {
-            processUpdateMessages(latestJson, latestSequence, latestBaseIndex, targetSessionId, latestTabId);
+            processUpdateMessages(latestJson, latestSequence, latestBaseIndex, targetSessionId, latestTabId, latestLive);
           }
         }, 16);
         pendingUpdateRaf = timerId as unknown as number;
@@ -452,7 +490,7 @@ export function registerMessageCallbacks(
       return;
     }
 
-    processUpdateMessages(json, sequence, baseIndexArg, targetSessionId, targetTabId);
+    processUpdateMessages(json, sequence, baseIndexArg, targetSessionId, targetTabId, live);
   };
 
   const flushPendingUpdateMessages = (targetSessionId?: string | null) => {
@@ -460,6 +498,7 @@ export function registerMessageCallbacks(
     const sequence = pendingUpdateSequence ?? null;
     const baseIndex = pendingUpdateBaseIndex;
     const tabId = pendingUpdateTabId;
+    const live = pendingUpdateLive;
     if (typeof json === 'string' && json.length > 0) {
       // Force the non-buffering path: this is a terminal flush, so the
       // snapshot must be applied now rather than scheduled into another rAF
@@ -473,6 +512,7 @@ export function registerMessageCallbacks(
           baseIndex,
           targetSessionId ?? null,
           tabId,
+          live,
         );
       } finally {
         isStreamingRef.current = wasStreaming;
@@ -488,6 +528,7 @@ export function registerMessageCallbacks(
     const json = String(payload?.messages ?? '[]');
     const baseIndexArg = payload?.baseIndex as string | number;
     const sequenceArg = payload?.sequence as string | number | undefined;
+    const live = parseLiveDraft(payload);
 
     const tabStore = getTabStore();
     const hasTabs = tabStore.size() > 0;
@@ -495,15 +536,18 @@ export function registerMessageCallbacks(
     // valid before the session id is bound.
     const addressTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
     if (hasTabs && addressTabId && !tabStore.isActiveTab(addressTabId)) {
-      writeTailToTab(addressTabId, json, baseIndexArg);
+      writeTailToTab(addressTabId, json, baseIndexArg, live);
       return;
     }
     if (hasTabs && !addressTabId) {
       cardDebugLog('[updateMessageTail] dropped: no tab owns', targetSessionId ?? targetTabId);
       return;
     }
+    if (live) {
+      window.__pendingLiveDraftJson = JSON.stringify(live);
+    }
 
-    processMessageTail(json, baseIndexArg, sequenceArg, targetSessionId, targetTabId);
+    processMessageTail(json, baseIndexArg, sequenceArg, targetSessionId, targetTabId, live);
   };
 
   // ── 历史分页：服务端还有更早的页 ─────────────────────────────────────
@@ -1061,6 +1105,7 @@ export function registerMessageCallbacks(
       const {
         sessionId: targetSessionId,
         messages: authoritativeMessages,
+        live: liveDraft,
         isStreaming,
         status,
         loading,
@@ -1070,6 +1115,8 @@ export function registerMessageCallbacks(
       if (!targetSessionId || !Array.isArray(authoritativeMessages)) {
         return;
       }
+
+      const live = liveDraft && typeof liveDraft === 'object' ? liveDraft as ClaudeMessage : null;
 
       cardDebugLog('[onSessionHydrated] received for session:', targetSessionId, 'count:', authoritativeMessages.length);
 
@@ -1084,18 +1131,27 @@ export function registerMessageCallbacks(
       if (isForeground) {
         tabStore.mutateActiveTranscript((transcript) => {
           transcript.clear();
-          transcript.applySnapshot(authoritativeMessages, 0);
+          transcript.applySnapshot(authoritativeMessages, 0, live);
         });
+
+        if (live) {
+          window.__pendingLiveDraftJson = JSON.stringify(live);
+        }
 
         if (typeof isStreaming === 'boolean') {
           isStreamingRef.current = isStreaming;
           setStreamingActive?.(isStreaming);
           if (isStreaming) {
-            const lastAssistantIdx = findLastAssistantIndex(authoritativeMessages);
-            if (lastAssistantIdx >= 0) {
-              streamingMessageIndexRef.current = lastAssistantIdx;
-              const lastAssistant = authoritativeMessages[lastAssistantIdx];
-              streamingContentRef.current = lastAssistant?.content || '';
+            if (live) {
+              streamingContentRef.current = live.content || '';
+              streamingMessageIndexRef.current = -1;
+            } else {
+              const lastAssistantIdx = findLastAssistantIndex(authoritativeMessages);
+              if (lastAssistantIdx >= 0) {
+                streamingMessageIndexRef.current = lastAssistantIdx;
+                const lastAssistant = authoritativeMessages[lastAssistantIdx];
+                streamingContentRef.current = lastAssistant?.content || '';
+              }
             }
           } else {
             streamingContentRef.current = '';
@@ -1121,7 +1177,7 @@ export function registerMessageCallbacks(
       // Also ensure background tab store has the authoritative snapshot
       const applyHydrated = (t: any) => {
         t.transcript.clear();
-        t.transcript.applySnapshot(authoritativeMessages, 0);
+        t.transcript.applySnapshot(authoritativeMessages, 0, live);
         if (typeof isStreaming === 'boolean') t.streamingActive = isStreaming;
         if (typeof loading === 'boolean') t.loading = loading;
         if (typeof status === 'string') t.status = status;

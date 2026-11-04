@@ -24,10 +24,12 @@ export function snapshotEvent(
   sequence?: string | number,
   baseIndex?: string | number,
   tabId?: string | null,
+  live?: unknown,
 ): EventPair {
   const payload: HostEventPayload = { messages: json };
   if (sequence !== undefined) payload.sequence = sequence;
   if (baseIndex !== undefined) payload.baseIndex = baseIndex;
+  if (live !== undefined) payload.live = live;
   return [payload, envelope(sessionId, tabId)];
 }
 
@@ -38,9 +40,11 @@ export function tailEvent(
   baseIndex: string | number,
   sequence?: string | number,
   tabId?: string | null,
+  live?: unknown,
 ): EventPair {
   const payload: HostEventPayload = { messages: json, baseIndex };
   if (sequence !== undefined) payload.sequence = sequence;
+  if (live !== undefined) payload.live = live;
   return [payload, envelope(sessionId, tabId)];
 }
 

@@ -193,7 +193,16 @@ public class ChatWindowDelegate {
 
         default void activateTab(String tabId) {}
         default void closeSession(String targetId) {}
-        default void onRefreshEditorContext(boolean enabled) {}
+        default void onRefreshEditorContext() {}
+        default void onSetTabContextEnabled(String tabId, boolean enabled) {}
+
+        /**
+         * Whether this tab attaches the IDE editor context with its messages.
+         * The tab record owns the value; the send path reads it from here.
+         */
+        default boolean isAutoOpenFileEnabled(String tabId) {
+            return false;
+        }
     }
 
     private final DelegateHost host;
@@ -287,6 +296,10 @@ public class ChatWindowDelegate {
             @Override
             public String getTabIdForSession(String sessionId) {
                 return host.findTabIdForSession(sessionId);
+            }
+            @Override
+            public boolean isAutoOpenFileEnabled(String tabId) {
+                return host.isAutoOpenFileEnabled(tabId);
             }
             @Override
             public String stageAttachment(
@@ -444,8 +457,11 @@ public class ChatWindowDelegate {
             @Override public void onRefreshSlashCommands(String tabId) {
                 host.getSessionLifecycleManager().fetchSlashCommandsOnStartup(tabId);
             }
-            @Override public void onRefreshEditorContext(boolean enabled) {
-                host.onRefreshEditorContext(enabled);
+            @Override public void onRefreshEditorContext() {
+                host.onRefreshEditorContext();
+            }
+            @Override public void onSetTabContextEnabled(String tabId, boolean enabled) {
+                host.onSetTabContextEnabled(tabId, enabled);
             }
         }));
 
@@ -601,11 +617,14 @@ public class ChatWindowDelegate {
         if (daemonStatusHandler != null) {
             daemonStatusHandler.checkAndPush();
         }
+        // Rebuild the tab strip from the host on every boot. The host owns each
+        // tab's settings (the editor-context switch among them), so the webview
+        // must adopt the host's values instead of its own defaults. The same
+        // path also restores the tabs after a reload.
+        pushHostedSessionTabs();
         if (runtimeRecovery) {
-            // Rebuild the tab strip first: the reload wiped the React context, so
-            // without this every session except the active one silently vanishes
-            // from the UI even though Java still hosts them.
-            pushHostedSessionTabs();
+            // Provider/model selection is part of the visible shell; a reload
+            // wiped the React state that held it.
             pushCurrentTabStateToFrontend();
         }
         host.getSessionLifecycleManager().sendCurrentPermissionMode();

@@ -246,7 +246,7 @@ export type MessageId = string & { readonly __brand: 'MessageId' };
 | 标题 | 宿主 `TabRecord.title` + webview 镜像 | tab 存在 |
 | 模型 / 模式 / 推理力度 | 宿主 `TabSettings` + webview 镜像 | tab 存在 |
 | token / context 使用量 | 宿主 session state + webview 镜像 | 每回合/每 tab |
-| 文件上下文开关 | `TabSettings.contextEnabled` | tab 存在 |
+| 文件上下文开关 | `TabSettings.autoOpenFileEnabled`（创建时快照全局值，之后由 tab 独占） | tab 存在 |
 | 任务 / Todo 面板 | webview `TabStatusStore[tabId].todos` + 宿主事件路由 | tab 存在 |
 | 子代理列表 / 子代理 transcript | webview `TabStatusStore[tabId].subagents/histories` + 宿主事件路由 | tab 存在 |
 | 编辑（文件变更）面板 | webview `TabStatusStore[tabId].fileChanges` + 宿主事件路由 | tab 存在 |

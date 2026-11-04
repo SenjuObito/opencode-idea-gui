@@ -5,6 +5,7 @@ import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.intellij.openapi.diagnostic.Logger;
 
 /**
@@ -20,7 +21,7 @@ public class WindowEventHandler extends BaseMessageHandler {
         "frontend_ready", "app.frontendReady", "history_dom_committed", "history.domCommitted",
         "history_render_complete", "surface_damage_applied", "surface.damage.applied",
         "refresh_slash_commands", "commands.refresh",
-        "context.refresh"
+        "context.refresh", "context.setEnabled"
     };
 
     /**
@@ -36,7 +37,8 @@ public class WindowEventHandler extends BaseMessageHandler {
         void onHistoryRenderComplete(long commitEpoch);
         void onSurfaceDamageApplied(String token, String phase, boolean applied);
         void onRefreshSlashCommands(String tabId);
-        default void onRefreshEditorContext(boolean enabled) {}
+        default void onRefreshEditorContext() {}
+        default void onSetTabContextEnabled(String tabId, boolean enabled) {}
     }
 
     private final Callback callback;
@@ -87,25 +89,44 @@ public class WindowEventHandler extends BaseMessageHandler {
                 callback.onRefreshSlashCommands(parseSessionId(content));
                 return true;
             case "context.refresh":
-                handleRefreshEditorContext(content);
+                callback.onRefreshEditorContext();
+                return true;
+            case "context.setEnabled":
+                handleSetTabContextEnabled(content);
                 return true;
             default:
                 return false;
         }
     }
 
-    private void handleRefreshEditorContext(String content) {
-        boolean enabled = true;
-        if (content != null && !content.isEmpty()) {
-            try {
-                com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseString(content).getAsJsonObject();
-                if (obj.has("enabled")) {
-                    enabled = obj.get("enabled").getAsBoolean();
-                }
-            } catch (Exception ignored) {
+    /**
+     * The user toggled this tab's editor-context switch. The value belongs to
+     * the tab record, so the host stores it; it is not a display refresh.
+     */
+    private void handleSetTabContextEnabled(String content) {
+        String tabId = null;
+        Boolean enabled = null;
+        try {
+            JsonObject payload = JsonParser.parseString(content).getAsJsonObject();
+            if (payload.has("tabId") && !payload.get("tabId").isJsonNull()) {
+                tabId = payload.get("tabId").getAsString();
             }
+            if (payload.has("enabled") && !payload.get("enabled").isJsonNull()) {
+                enabled = payload.get("enabled").getAsBoolean();
+            }
+        } catch (Exception e) {
+            LOG.warn("[Context] Invalid context.setEnabled payload: " + e.getMessage());
+            return;
         }
-        callback.onRefreshEditorContext(enabled);
+        if (tabId == null || tabId.isBlank()) {
+            LOG.warn("[Context] context.setEnabled without a tab id");
+            return;
+        }
+        if (enabled == null) {
+            LOG.warn("[Context] context.setEnabled without an enabled flag");
+            return;
+        }
+        callback.onSetTabContextEnabled(tabId, enabled);
     }
 
     private String parseSessionId(String content) {

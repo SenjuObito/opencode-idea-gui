@@ -16,7 +16,12 @@ public final class TabSettings {
     private volatile String model;
     private volatile String permissionMode = "default";
     private volatile String reasoningEffort = "default";
-    private volatile boolean contextEnabled = true;
+    /**
+     * Snapshot of the global "auto open file" setting at the moment this tab
+     * was created. The tab owns the value from then on: toggling it in the tab
+     * changes only this tab, and later changes to the global setting do not
+     * reach it.
+     */
     private volatile boolean autoOpenFileEnabled;
     private volatile String title;
     private volatile TitleSource titleSource = TitleSource.AUTO;
@@ -59,14 +64,6 @@ public final class TabSettings {
         if (reasoningEffort != null && !reasoningEffort.isBlank()) {
             this.reasoningEffort = reasoningEffort;
         }
-    }
-
-    public boolean isContextEnabled() {
-        return contextEnabled;
-    }
-
-    public void setContextEnabled(boolean contextEnabled) {
-        this.contextEnabled = contextEnabled;
     }
 
     public boolean isAutoOpenFileEnabled() {

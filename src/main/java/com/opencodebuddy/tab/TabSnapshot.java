@@ -17,7 +17,8 @@ public record TabSnapshot(
         boolean active,
         boolean streaming,
         boolean loading,
-        long epoch
+        long epoch,
+        boolean autoOpenFileEnabled
 ) {
 
     public JsonObject toJson() {
@@ -32,6 +33,7 @@ public record TabSnapshot(
         json.addProperty("streaming", streaming);
         json.addProperty("loading", loading);
         json.addProperty("epoch", epoch);
+        json.addProperty("autoOpenFileEnabled", autoOpenFileEnabled);
         return json;
     }
 }

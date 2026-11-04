@@ -116,6 +116,28 @@ public class SessionContextServiceTest {
     }
 
     @Test
+    public void buildSessionContextAppendUsesTheSelectionLineRangeAlone() throws Exception {
+        // The line range is the whole contract: the chip and the prompt share
+        // one snapshot, so the prompt must not require the selected text.
+        File activeFile = temporaryFolder.newFile("SelectionOnly.java");
+        Files.writeString(activeFile.toPath(), "class SelectionOnly {}", StandardCharsets.UTF_8);
+
+        JsonObject openedFilesJson = new JsonObject();
+        openedFilesJson.addProperty("active", activeFile.getAbsolutePath());
+
+        JsonObject selection = new JsonObject();
+        selection.addProperty("startLine", 10);
+        selection.addProperty("endLine", 12);
+        openedFilesJson.add("selection", selection);
+
+        String context = new SessionContextService(null)
+                .buildSessionContextAppend(openedFilesJson, null);
+
+        assertTrue(context.contains("## IDE Context"));
+        assertTrue(context.contains(activeFile.getAbsolutePath() + "#L10-12"));
+    }
+
+    @Test
     public void buildSessionContextAppendReferencesActiveFileWithoutContent() throws Exception {
         File activeFile = temporaryFolder.newFile("ActiveExample.java");
         Files.writeString(activeFile.toPath(), "class ActiveExample {}", StandardCharsets.UTF_8);

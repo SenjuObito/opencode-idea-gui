@@ -53,6 +53,17 @@ public class HandlerContext {
         }
 
         /**
+         * Whether this tab attaches the IDE editor context to its messages.
+         *
+         * <p>The decision belongs to the tab, not to the message: the send
+         * carries no such field and the host answers from its tab record. A
+         * host that does not track it returns {@code false}.</p>
+         */
+        default boolean isAutoOpenFileEnabled(String tabId) {
+            return false;
+        }
+
+        /**
          * Hand an attachment to the tab that owns it and return the bytes to
          * send.
          *
@@ -232,6 +243,19 @@ public class HandlerContext {
             return null;
         }
         return jsCallback.getTabIdForSession(sessionId);
+    }
+
+    /**
+     * Whether the tab attaches the IDE editor context with its messages.
+     *
+     * <p>Read from the tab record at send time; a command without a tab gets
+     * no editor context rather than an arbitrary one.</p>
+     */
+    public boolean isAutoOpenFileEnabled(String tabId) {
+        if (tabId == null || tabId.isBlank()) {
+            return false;
+        }
+        return jsCallback.isAutoOpenFileEnabled(tabId);
     }
 
     /**

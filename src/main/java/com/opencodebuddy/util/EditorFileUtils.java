@@ -5,11 +5,7 @@ import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.SelectionModel;
-import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
-import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -17,9 +13,7 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -36,11 +30,10 @@ import java.util.function.Consumer;
  *
  * This information is built into JSON format and appended to the system prompt sent to the AI:
  * {
- *   "active": "path/to/active/file#Lstart-end",  // Highest priority, AI's primary focus
+ *   "active": "path/to/active/file",              // Highest priority, AI's primary focus
  *   "selection": {                                 // If code is selected, the AI should analyze this first
  *     "startLine": startLineNumber,
- *     "endLine": endLineNumber,
- *     "selectedText": "the selected code content"
+ *     "endLine": endLineNumber
  *   },
  *   "others": ["path/to/other/file1", "path/to/other/file2"]  // Potentially related context, lowest priority
  * }
@@ -90,118 +83,6 @@ public class EditorFileUtils {
         }
 
         return openedFiles;
-    }
-
-    /**
-     * Get the path of the currently active (viewed) file.
-     *
-     * Returns the file the user is currently viewing or editing, which is typically the
-     * primary subject of their question.
-     *
-     * Importance:
-     * - This is the most critical clue for the AI to understand the user's intent (highest priority)
-     * - When the user asks a question without specifying a file, the AI should focus on this file by default
-     * - If the user has also selected code, this file path combined with the selection forms
-     *   the AI's primary analysis target
-     *
-     * Usage examples:
-     * - "What's wrong with this code?" - AI analyzes the selected code in this file first
-     * - "What does this class do?" - AI analyzes the class definition in this file
-     * - "How to optimize performance?" - AI provides suggestions based on this file's code
-     *
-     * @param project the IDEA project
-     * @return the active file path (absolute), or null if no file is open
-     */
-    public static String getCurrentActiveFile(Project project) {
-        if (project == null) {
-            return null;
-        }
-
-        try {
-            FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
-
-            // Get the currently selected file
-            VirtualFile[] selectedFiles = fileEditorManager.getSelectedFiles();
-
-            if (selectedFiles.length > 0 && selectedFiles[0] != null) {
-                return selectedFiles[0].getPath();
-            }
-        } catch (Exception e) {
-            LOG.error("[EditorFileUtils] Error getting active file: " + e.getMessage());
-        }
-
-        return null;
-    }
-
-    /**
-     * Get information about the selected code in the currently active file.
-     *
-     * Returns the code snippet and its location that the user has selected in the editor.
-     * Selected code is typically the core subject of the user's question and has the highest priority;
-     * the AI should treat it as the primary analysis target.
-     *
-     * Priority order:
-     * Selected code > Currently active file > Other open files
-     *
-     * Importance:
-     * - When the user selects code, it is a strong signal that they want the AI to focus on that code
-     * - The AI should treat selected code as the PRIMARY FOCUS when answering questions
-     * - Even with a vague question (e.g., "anything wrong?"), the AI should prioritize analyzing the selection
-     *
-     * Usage examples:
-     * - User selects a function and asks "what's wrong with this code?" - AI should analyze logic, potential bugs, code quality, etc.
-     * - User selects a class and asks "how to optimize?" - AI should advise on design, performance, maintainability, etc.
-     * - User selects code and asks "explain this" - AI should explain functionality, logic flow, key syntax, etc.
-     *
-     * Return value details:
-     * - startLine: the starting line number of the selection (1-based)
-     * - endLine: the ending line number of the selection (1-based)
-     * - selectedText: the full text content of the user's selection
-     *
-     * @param project the IDEA project
-     * @return a Map containing selection info, or null if no code is selected.
-     *         The Map contains: startLine (Integer), endLine (Integer), selectedText (String)
-     */
-    public static Map<String, Object> getSelectedCodeInfo(Project project) {
-        if (project == null) {
-            return null;
-        }
-
-        try {
-            FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
-
-            // Get the currently selected editor
-            FileEditor selectedEditor = fileEditorManager.getSelectedEditor();
-            if (selectedEditor instanceof TextEditor) {
-                Editor editor = ((TextEditor) selectedEditor).getEditor();
-                SelectionModel selectionModel = editor.getSelectionModel();
-
-                // Check if any text is selected
-                if (selectionModel.hasSelection()) {
-                    String selectedText = selectionModel.getSelectedText();
-                    if (selectedText != null && !selectedText.trim().isEmpty()) {
-                        int startOffset = selectionModel.getSelectionStart();
-                        int endOffset = selectionModel.getSelectionEnd();
-
-                        // Convert to line numbers (1-based)
-                        int startLine = editor.getDocument().getLineNumber(startOffset) + 1;
-                        int endLine = editor.getDocument().getLineNumber(endOffset) + 1;
-
-                        Map<String, Object> selectionInfo = new HashMap<>();
-                        selectionInfo.put("startLine", startLine);
-                        selectionInfo.put("endLine", endLine);
-                        selectionInfo.put("selectedText", selectedText);
-
-                        LOG.info("[EditorFileUtils] Selection detected: lines " + startLine + "-" + endLine);
-                        return selectionInfo;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            LOG.error("[EditorFileUtils] Error getting selected code: " + e.getMessage());
-        }
-
-        return null;
     }
 
     /**

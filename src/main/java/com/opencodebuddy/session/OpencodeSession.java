@@ -635,7 +635,7 @@ public class OpencodeSession {
             String requestedDshPreset
     ) {
         return send(input, null, agentPrompt, fileTagPaths, requestedPermissionMode,
-                requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset, null);
+                requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset, false);
     }
 
     public CompletableFuture<Void> send(
@@ -646,10 +646,10 @@ public class OpencodeSession {
             String requestedReasoningEffort,
             String requestedCodexFastMode,
             String requestedDshPreset,
-            Boolean overrideAutoOpenFile
+            boolean autoOpenFileEnabled
     ) {
         return send(input, null, agentPrompt, fileTagPaths, requestedPermissionMode,
-                requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset, overrideAutoOpenFile);
+                requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset, autoOpenFileEnabled);
     }
 
     /**
@@ -740,7 +740,7 @@ public class OpencodeSession {
             String requestedDshPreset
     ) {
         return send(input, attachments, agentPrompt, fileTagPaths, requestedPermissionMode,
-                requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset, null);
+                requestedReasoningEffort, requestedCodexFastMode, requestedDshPreset, false);
     }
 
     public CompletableFuture<Void> send(
@@ -752,7 +752,7 @@ public class OpencodeSession {
             String requestedReasoningEffort,
             String requestedCodexFastMode,
             String requestedDshPreset,
-            Boolean overrideAutoOpenFile
+            boolean autoOpenFileEnabled
     ) {
         lastTurnStartedAtMillis = System.currentTimeMillis();
         // Reset the manual-interrupt flag at the start of a new turn so that
@@ -769,7 +769,7 @@ public class OpencodeSession {
         final String finalRequestedReasoningEffort = requestedReasoningEffort;
 
         return launchClaude().thenCompose(chId -> {
-            sendService.prepareContextCollector(contextCollector, overrideAutoOpenFile);
+            sendService.prepareContextCollector(contextCollector, autoOpenFileEnabled);
 
             return contextCollector.collectContext().thenCompose(openedFilesJson ->
                     sendService.sendMessageToProvider(

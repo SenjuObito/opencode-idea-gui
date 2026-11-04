@@ -187,15 +187,11 @@ public class SessionContextService {
             }
 
             JsonObject selection = null;
-            String selectedText = null;
             Integer startLine = null;
             Integer endLine = null;
 
             if (openedFilesJson.has("selection") && openedFilesJson.get("selection").isJsonObject()) {
                 selection = openedFilesJson.getAsJsonObject("selection");
-                if (selection.has("selectedText") && !selection.get("selectedText").isJsonNull()) {
-                    selectedText = selection.get("selectedText").getAsString();
-                }
                 if (selection.has("startLine") && selection.get("startLine").isJsonPrimitive()) {
                     startLine = selection.get("startLine").getAsInt();
                 }
@@ -204,7 +200,7 @@ public class SessionContextService {
                 }
             }
 
-            if (selectedText != null && !selectedText.trim().isEmpty()
+            if (startLine != null && endLine != null
                     && activeFile != null && !activeFile.trim().isEmpty()) {
                 // Reference the selection by path + line range only; the agent
                 // reads the file itself. Never inline selected code either.

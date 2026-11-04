@@ -3,20 +3,15 @@ package com.opencodebuddy.handler;
 import com.opencodebuddy.handler.core.HandlerContext;
 
 import com.opencodebuddy.notifications.OpencodeNotifier;
+import com.opencodebuddy.session.EditorContextService;
+import com.opencodebuddy.session.EditorContextSnapshot;
 import com.opencodebuddy.session.OpencodeSession;
 import com.opencodebuddy.util.TokenUsageUtils;
-import com.opencodebuddy.util.IgnoreRuleMatcher;
-import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.SelectionModel;
-import com.intellij.openapi.fileEditor.FileDocumentManager;
-import com.intellij.openapi.fileEditor.FileEditorManager;
-import com.intellij.openapi.vfs.VirtualFile;
 
 import java.util.List;
 
@@ -193,67 +188,19 @@ public class UsagePushService {
                     return;
                 }
 
-                // Check if auto-open file is enabled
-                String projectPath = context.getProject().getBasePath();
-                if (projectPath != null) {
-                    OpenCodeBuddySettingsService settingsService = new OpenCodeBuddySettingsService();
-                    boolean autoOpenFileEnabled = settingsService.getAutoOpenFileEnabled(projectPath);
-                    if (!autoOpenFileEnabled) {
-                        // If auto-open file is disabled, clear the ContextBar display
-                        context.callJavaScript("clearSelectionInfo");
-                        return;
+                EditorContextService contextService =
+                        EditorContextService.getInstance(context.getProject());
+                EditorContextSnapshot snapshot = contextService != null
+                        ? contextService.getSnapshot()
+                        : EditorContextSnapshot.EMPTY;
+
+                if (snapshot.hasFile()) {
+                    StringBuilder info = new StringBuilder("@").append(snapshot.file());
+                    if (snapshot.hasSelection()) {
+                        info.append("#L").append(snapshot.startLine())
+                                .append("-").append(snapshot.endLine());
                     }
-                }
-
-                // Get cached .gitignore matcher for filtering sensitive files
-                IgnoreRuleMatcher gitIgnoreMatcher = IgnoreRuleMatcher.forProjectSafe(projectPath);
-
-                FileEditorManager editorManager = FileEditorManager.getInstance(context.getProject());
-                Editor editor = editorManager.getSelectedTextEditor();
-                String selectionInfo = null;
-
-                if (editor != null) {
-                    VirtualFile file = FileDocumentManager.getInstance().getFile(editor.getDocument());
-                    if (file != null) {
-                        String path = file.getPath();
-
-                        // Filter out .gitignore'd files to prevent sensitive files from being auto-opened
-                        if (gitIgnoreMatcher != null && gitIgnoreMatcher.isFileIgnored(path)) {
-                            context.callJavaScript("clearSelectionInfo");
-                            return;
-                        }
-
-                        selectionInfo = "@" + path;
-
-                        SelectionModel selectionModel = editor.getSelectionModel();
-                        if (selectionModel.hasSelection()) {
-                            int startLine = editor.getDocument().getLineNumber(selectionModel.getSelectionStart()) + 1;
-                            int endLine = editor.getDocument().getLineNumber(selectionModel.getSelectionEnd()) + 1;
-
-                            if (endLine > startLine
-                                    && editor.offsetToLogicalPosition(selectionModel.getSelectionEnd()).column == 0) {
-                                endLine--;
-                            }
-                            selectionInfo += "#L" + startLine + "-" + endLine;
-                        }
-                    }
-                } else {
-                    VirtualFile[] files = editorManager.getSelectedFiles();
-                    if (files.length > 0 && files[0] != null) {
-                        String path = files[0].getPath();
-
-                        // Filter out .gitignore'd files
-                        if (gitIgnoreMatcher != null && gitIgnoreMatcher.isFileIgnored(path)) {
-                            context.callJavaScript("clearSelectionInfo");
-                            return;
-                        }
-
-                        selectionInfo = "@" + path;
-                    }
-                }
-
-                if (selectionInfo != null && !selectionInfo.isEmpty()) {
-                    context.callJavaScript("addSelectionInfo", context.escapeJs(selectionInfo));
+                    context.callJavaScript("addSelectionInfo", context.escapeJs(info.toString()));
                 } else {
                     context.callJavaScript("clearSelectionInfo");
                 }

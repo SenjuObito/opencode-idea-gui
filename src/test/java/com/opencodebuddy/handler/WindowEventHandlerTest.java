@@ -66,6 +66,56 @@ public class WindowEventHandlerTest {
         assertEquals("4:5:6:7:B:true", observed.get());
     }
 
+    /** context.setEnabled carries the tab whose record owns the switch. */
+    @Test
+    public void dispatchesSetTabContextEnabledWithTabIdentity() {
+        AtomicReference<String> observed = new AtomicReference<>();
+        HandlerContext context = new HandlerContext(null, null, null, new MockJsCallback());
+        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback() {
+            @Override
+            public void onSetTabContextEnabled(String tabId, boolean enabled) {
+                observed.set(tabId + ":" + enabled);
+            }
+        });
+
+        assertTrue(handler.handle(
+                "context.setEnabled",
+                "{\"tabId\":\"tab-7\",\"enabled\":false}"));
+        assertEquals("tab-7:false", observed.get());
+    }
+
+    /** A toggle without a tab has no owner and must not be applied anywhere. */
+    @Test
+    public void ignoresSetTabContextEnabledWithoutTabIdentity() {
+        List<String> observed = new ArrayList<>();
+        HandlerContext context = new HandlerContext(null, null, null, new MockJsCallback());
+        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback() {
+            @Override
+            public void onSetTabContextEnabled(String tabId, boolean enabled) {
+                observed.add(tabId + ":" + enabled);
+            }
+        });
+
+        assertTrue(handler.handle("context.setEnabled", "{\"enabled\":true}"));
+        assertTrue(observed.isEmpty());
+    }
+
+    /** context.refresh is a display refresh, not a state change. */
+    @Test
+    public void refreshEditorContextDoesNotCarryATabFlag() {
+        AtomicReference<Integer> refreshes = new AtomicReference<>(0);
+        HandlerContext context = new HandlerContext(null, null, null, new MockJsCallback());
+        WindowEventHandler handler = new WindowEventHandler(context, new NoOpCallback() {
+            @Override
+            public void onRefreshEditorContext() {
+                refreshes.set(refreshes.get() + 1);
+            }
+        });
+
+        assertTrue(handler.handle("context.refresh", "{}"));
+        assertEquals(Integer.valueOf(1), refreshes.get());
+    }
+
     private static final class MockJsCallback implements HandlerContext.JsCallback {
         final List<String> calls = new ArrayList<>();
 

@@ -42,17 +42,9 @@ public class SessionSendService {
         this.streamRouter = streamRouter;
     }
 
-    public void prepareContextCollector(EditorContextCollector contextCollector) {
-        prepareContextCollector(contextCollector, null);
-    }
-
-    public void prepareContextCollector(EditorContextCollector contextCollector, Boolean overrideAutoOpenFile) {
+    public void prepareContextCollector(EditorContextCollector contextCollector, boolean autoOpenFileEnabled) {
         contextCollector.setPsiContextEnabled(state.isPsiContextEnabled());
-        if (overrideAutoOpenFile != null) {
-            contextCollector.setAutoOpenFileEnabled(overrideAutoOpenFile);
-        } else {
-            contextCollector.setAutoOpenFileEnabled(readAutoOpenFileEnabled());
-        }
+        contextCollector.setAutoOpenFileEnabled(autoOpenFileEnabled);
     }
 
     public void updateSessionStateForSend(OpencodeSession.Message userMessage, String normalizedInput) {
@@ -339,21 +331,6 @@ public class SessionSendService {
             case "default", "acceptEdits", "bypassPermissions", "dontAsk", "autoEdit" -> "build";
             default -> trimmed;
         };
-    }
-
-    private boolean readAutoOpenFileEnabled() {
-        try {
-            String projectPath = project.getBasePath();
-            if (projectPath != null) {
-                OpenCodeBuddySettingsService settingsService = new OpenCodeBuddySettingsService();
-                boolean autoOpenFileEnabled = settingsService.getAutoOpenFileEnabled(projectPath);
-                LOG.info("[EditorContext] Auto open file enabled: " + autoOpenFileEnabled);
-                return autoOpenFileEnabled;
-            }
-        } catch (Exception e) {
-            LOG.warn("[EditorContext] Failed to read autoOpenFileEnabled setting: " + e.getMessage());
-        }
-        return false;
     }
 
     private String getAgentPrompt() {

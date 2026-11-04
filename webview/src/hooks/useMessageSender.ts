@@ -62,7 +62,6 @@ export interface UseMessageSenderOptions {
   closeContextUsageDialog: (requestId?: string | null) => boolean;
   currentSessionId?: string | null;
   currentSessionIdRef?: RefObject<string | null>;
-  autoOpenFileEnabled?: boolean;
 }
 
 /**
@@ -98,7 +97,6 @@ export function useMessageSender({
   closeContextUsageDialog,
   currentSessionId,
   currentSessionIdRef,
-  autoOpenFileEnabled,
 }: UseMessageSenderOptions) {
   /**
    * Check if the input is a new session command
@@ -276,9 +274,6 @@ export function useMessageSender({
     const targetSessionId = currentSessionIdRef
       ? (currentSessionIdRef.current ?? undefined)
       : (currentSessionId ?? undefined);
-    const effectiveAutoOpenFileEnabled = typeof autoOpenFileEnabled === 'boolean'
-      ? autoOpenFileEnabled
-      : (getTabStore().getActiveTabAutoOpenFileEnabled() ?? false);
 
     if (!activeTabId) {
       // Without a tab identity the host would have to guess which tab owns the
@@ -298,7 +293,6 @@ export function useMessageSender({
           attachments: uploaded,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
-          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...modelPayload,
           ...reasoningEffortPayload,
         }, targetSessionId);
@@ -308,7 +302,6 @@ export function useMessageSender({
           text,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
-          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...modelPayload,
           ...reasoningEffortPayload,
         }, targetSessionId);
@@ -318,12 +311,11 @@ export function useMessageSender({
         text,
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
-        autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
         ...modelPayload,
         ...reasoningEffortPayload,
       }, targetSessionId);
     }
-  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef, autoOpenFileEnabled]);
+  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef]);
 
   /**
    * Execute message sending (from queue or directly)

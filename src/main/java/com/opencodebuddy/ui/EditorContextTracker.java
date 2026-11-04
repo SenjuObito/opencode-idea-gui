@@ -1,11 +1,14 @@
 package com.opencodebuddy.ui;
 
+import com.opencodebuddy.session.EditorContextService;
+import com.opencodebuddy.session.EditorContextSnapshot;
 import com.opencodebuddy.util.IgnoreRuleMatcher;
 import com.opencodebuddy.util.JsUtils;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
+import com.intellij.openapi.editor.SelectionModel;
 import com.intellij.openapi.editor.event.CaretEvent;
 import com.intellij.openapi.editor.event.CaretListener;
 import com.intellij.openapi.editor.event.EditorMouseEvent;
@@ -152,49 +155,17 @@ public class EditorContextTracker {
                 // Get cached .gitignore matcher for filtering sensitive files
                 IgnoreRuleMatcher gitIgnoreMatcher = IgnoreRuleMatcher.forProjectSafe(project.getBasePath());
 
-                String selectionInfo = null;
+                EditorContextSnapshot snapshot = resolveSnapshot(editorManager, editor, gitIgnoreMatcher);
 
-                if (editor != null) {
-                    VirtualFile file = FileDocumentManager.getInstance().getFile(editor.getDocument());
-                    if (file != null) {
-                        String path = file.getPath();
-
-                        // Filter out .gitignore'd files to prevent sensitive files from being auto-opened
-                        if (gitIgnoreMatcher != null && gitIgnoreMatcher.isFileIgnored(path)) {
-                            callback.clearSelectionInfo();
-                            return;
-                        }
-
-                        selectionInfo = "@" + path;
-
-                        com.intellij.openapi.editor.SelectionModel selectionModel = editor.getSelectionModel();
-                        if (selectionModel.hasSelection()) {
-                            int startLine = editor.getDocument().getLineNumber(selectionModel.getSelectionStart()) + 1;
-                            int endLine = editor.getDocument().getLineNumber(selectionModel.getSelectionEnd()) + 1;
-
-                            if (endLine > startLine && editor.offsetToLogicalPosition(selectionModel.getSelectionEnd()).column == 0) {
-                                endLine--;
-                            }
-                            selectionInfo += "#L" + startLine + "-" + endLine;
-                        }
-                    }
-                } else {
-                     VirtualFile[] files = editorManager.getSelectedFiles();
-                     if (files.length > 0) {
-                         String path = files[0].getPath();
-
-                         // Filter out .gitignore'd files
-                         if (gitIgnoreMatcher != null && gitIgnoreMatcher.isFileIgnored(path)) {
-                             callback.clearSelectionInfo();
-                             return;
-                         }
-
-                         selectionInfo = "@" + path;
-                     }
+                // Publish before notifying the frontend: the chip and the prompt
+                // are both projections of this one value.
+                EditorContextService contextService = EditorContextService.getInstance(project);
+                if (contextService != null) {
+                    contextService.update(snapshot);
                 }
 
-                if (selectionInfo != null) {
-                    callback.addSelectionInfo(JsUtils.escapeJs(selectionInfo));
+                if (snapshot.hasFile()) {
+                    callback.addSelectionInfo(JsUtils.escapeJs(formatInfo(snapshot)));
                 } else {
                     // When no file is open, clear the frontend display
                     callback.clearSelectionInfo();
@@ -205,15 +176,65 @@ public class EditorContextTracker {
         });
     }
 
-    public void setActiveTabAutoOpenFile(boolean enabled) {
-        // No-op: EditorContextTracker is decoupled from tab-level auto open settings.
+    /**
+     * Resolve the single editor-context value. The .gitignore filter and the
+     * end-of-line rule are applied here only; every reader consumes the result
+     * instead of re-deriving it.
+     */
+    private EditorContextSnapshot resolveSnapshot(
+            FileEditorManager editorManager,
+            Editor editor,
+            IgnoreRuleMatcher gitIgnoreMatcher
+    ) {
+        if (editor != null) {
+            VirtualFile file = FileDocumentManager.getInstance().getFile(editor.getDocument());
+            if (file == null || isIgnored(gitIgnoreMatcher, file.getPath())) {
+                return EditorContextSnapshot.EMPTY;
+            }
+            return readSelection(editor, file.getPath());
+        }
+
+        VirtualFile[] files = editorManager.getSelectedFiles();
+        if (files.length == 0 || files[0] == null || isIgnored(gitIgnoreMatcher, files[0].getPath())) {
+            return EditorContextSnapshot.EMPTY;
+        }
+        return EditorContextSnapshot.file(files[0].getPath());
+    }
+
+    private static boolean isIgnored(IgnoreRuleMatcher matcher, String path) {
+        return matcher != null && path != null && matcher.isFileIgnored(path);
+    }
+
+    private static EditorContextSnapshot readSelection(Editor editor, String file) {
+        SelectionModel selectionModel = editor.getSelectionModel();
+        if (!selectionModel.hasSelection()) {
+            return EditorContextSnapshot.file(file);
+        }
+
+        int startLine = editor.getDocument().getLineNumber(selectionModel.getSelectionStart()) + 1;
+        int endLine = editor.getDocument().getLineNumber(selectionModel.getSelectionEnd()) + 1;
+
+        // A selection that ends at column 0 does not cover that line.
+        if (endLine > startLine
+                && editor.offsetToLogicalPosition(selectionModel.getSelectionEnd()).column == 0) {
+            endLine--;
+        }
+        return EditorContextSnapshot.selection(file, startLine, endLine);
+    }
+
+    private static String formatInfo(EditorContextSnapshot snapshot) {
+        StringBuilder info = new StringBuilder("@").append(snapshot.file());
+        if (snapshot.hasSelection()) {
+            info.append("#L").append(snapshot.startLine()).append("-").append(snapshot.endLine());
+        }
+        return info.toString();
     }
 
     public void refreshCurrentEditorContext() {
         if (disposed) {
             return;
         }
-        ApplicationManager.getApplication().invokeLater(this::updateContextInfo);
+        updateContextInfo();
     }
 
     public void clearSelectionInfo() {

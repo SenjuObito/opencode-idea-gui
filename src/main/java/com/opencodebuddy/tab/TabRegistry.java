@@ -30,10 +30,24 @@ public final class TabRegistry {
     private final Map<SessionId, TabId> sessionIndex = new LinkedHashMap<>();
     private TabId activeTabId;
     private volatile TabEventSink eventSink = event -> { };
+    private volatile java.util.function.BooleanSupplier autoOpenFileDefault;
 
     /** The window's event outlet; every tab created afterwards inherits it. */
     public void setEventSink(TabEventSink sink) {
         this.eventSink = sink != null ? sink : event -> { };
+    }
+
+    /**
+     * Install the value of the global "auto open file" setting that new tabs
+     * start with.
+     *
+     * <p>This is a snapshot, not a live link: a tab created now keeps the
+     * value for its whole life. The tab's own toggle changes only that tab, and
+     * a later change to the global setting only affects tabs created after
+     * it.</p>
+     */
+    public void setAutoOpenFileDefault(java.util.function.BooleanSupplier supplier) {
+        this.autoOpenFileDefault = supplier;
     }
 
     public synchronized TabRecord create(TabId tabId, String cwd) {
@@ -45,6 +59,9 @@ public final class TabRegistry {
             return existing;
         }
         TabRecord record = new TabRecord(tabId, cwd, eventSink);
+        java.util.function.BooleanSupplier defaultAutoOpenFile = autoOpenFileDefault;
+        record.getSettings().setAutoOpenFileEnabled(
+                defaultAutoOpenFile != null && defaultAutoOpenFile.getAsBoolean());
         tabs.put(tabId, record);
         if (activeTabId == null) {
             activeTabId = tabId;
@@ -189,7 +206,8 @@ public final class TabRegistry {
                     record.getTabId().equals(activeTabId),
                     record.isStreaming(),
                     record.getState() == TabState.LOADING_HISTORY,
-                    record.getEpoch()));
+                    record.getEpoch(),
+                    record.getSettings().isAutoOpenFileEnabled()));
         }
         return result;
     }

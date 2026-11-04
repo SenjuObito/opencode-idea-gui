@@ -477,6 +477,9 @@ public class OpencodeBuddyChatWindow {
         if (projectPath != null && !projectPath.isBlank()) {
             bootstrapSession.setCwd(projectPath);
         }
+        // Each tab snapshots the global setting when it is created; a later
+        // change to the global setting only reaches tabs created after it.
+        tabRegistry.setAutoOpenFileDefault(this::readGlobalAutoOpenFileEnabled);
         TabRecord bootstrapRecord = tabRegistry.create(TabId.of("tab-1"), projectPath);
         bootstrapRecord.setProvisionalResources(bootstrapSession, null, null);
         tabRegistry.activate(bootstrapRecord.getTabId());
@@ -2564,6 +2567,23 @@ public class OpencodeBuddyChatWindow {
             handlerContext.registerSession(tabId, prepared.session());
         }
         return prepared.session();
+    }
+
+    /**
+     * The global "auto open file" setting, used as the initial value of a new
+     * tab. The tab owns the value afterwards: this is only read at creation.
+     */
+    private boolean readGlobalAutoOpenFileEnabled() {
+        String projectPath = project.getBasePath();
+        if (projectPath == null || projectPath.isBlank()) {
+            return false;
+        }
+        try {
+            return settingsService.getAutoOpenFileEnabled(projectPath);
+        } catch (Exception e) {
+            LOG.warn("Failed to read the auto open file setting: " + e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -5322,10 +5342,27 @@ public class OpencodeBuddyChatWindow {
             }
 
             @Override
-            public void onRefreshEditorContext(boolean enabled) {
+            public void onRefreshEditorContext() {
                 if (!disposed && editorContextTracker != null) {
                     editorContextTracker.refreshCurrentEditorContext();
                 }
+            }
+
+            @Override
+            public void onSetTabContextEnabled(String tabId, boolean enabled) {
+                TabRecord record = findTabRecord(tabId);
+                if (record == null || record.isClosed()) {
+                    LOG.warn("[Context] context.setEnabled for an unknown tab: " + tabId);
+                    return;
+                }
+                record.getSettings().setAutoOpenFileEnabled(enabled);
+            }
+
+            @Override
+            public boolean isAutoOpenFileEnabled(String tabId) {
+                TabRecord record = findTabRecord(tabId);
+                return record != null && !record.isClosed()
+                        && record.getSettings().isAutoOpenFileEnabled();
             }
         };
     }

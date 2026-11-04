@@ -145,6 +145,17 @@ sequenceDiagram
 3. **多模块工作区与终端（Modules & Terminal）**：
    - 注入 `## Workspace Context`、`## Project Modules` 以及 `## Active Terminal Session`。
 
+#### 3.3.1 开关归属与单一数据源
+
+- **归属**：文件上下文开关由 **tab 记录**（`TabSettings.autoOpenFileEnabled`）持有。
+  - 全局设置只在 tab **创建时**作为初值（`TabRegistry.setAutoOpenFileDefault` → `create` 时快照）；之后修改全局设置不影响已存在的 tab。
+  - tab 内切换开关发送 `context.setEnabled {tabId, enabled}`，宿主写入该 tab 的记录；`context.refresh` 只做显示刷新，不携带状态。
+- **发送决策**：`SessionHandler` 在发送时通过 `HandlerContext.isAutoOpenFileEnabled(tabId)` 读取 tab 记录，消息 payload 不再携带该字段，也不再有“回退全局设置”的分支。
+- **单一数据源**：`EditorContextService`（项目级）保存唯一一份 `EditorContextSnapshot`（文件 + 行范围）。
+  - 只有 `EditorContextTracker` 写入：它负责活动文件、`.gitignore` 过滤、选区结束于行首时 `endLine--` 的规则。
+  - chip（`addSelectionInfo`）与 prompt（`EditorContextCollector`）都读这份快照，因此两者不会出现文件或行号不一致。
+- **reload 回灌**：`tab.resync` 的每个 tab 都携带 `autoOpenFileEnabled`，webview 重建 tab 时采用宿主值，避免回退到全局默认。
+
 ---
 
 ### 3.4 提示词净化与历史回放隔离 (`UserTextSanitizer`)

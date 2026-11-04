@@ -3,9 +3,11 @@ package com.opencodebuddy.tab;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class TabRegistryTest {
@@ -150,5 +152,39 @@ public class TabRegistryTest {
 
         assertEquals(tab("tab-a"), registry.getActiveTabId());
         assertSame(registry.get(tab("tab-b")), registry.findBySession("ses_b"));
+    }
+
+    @Test
+    public void tabsSnapshotTheGlobalAutoOpenFileValueAtCreation() {
+        TabRegistry registry = new TabRegistry();
+        java.util.concurrent.atomic.AtomicBoolean global =
+                new java.util.concurrent.atomic.AtomicBoolean(true);
+        registry.setAutoOpenFileDefault(global::get);
+
+        TabRecord first = registry.create(tab("tab-a"), "/repo");
+        global.set(false);
+        TabRecord second = registry.create(tab("tab-b"), "/repo");
+
+        // Creation snapshots the global value; a later global change only
+        // reaches tabs created after it.
+        assertTrue(first.getSettings().isAutoOpenFileEnabled());
+        assertFalse(second.getSettings().isAutoOpenFileEnabled());
+
+        // The tab owns its value afterwards.
+        first.getSettings().setAutoOpenFileEnabled(false);
+        assertFalse(first.getSettings().isAutoOpenFileEnabled());
+        assertFalse(second.getSettings().isAutoOpenFileEnabled());
+    }
+
+    @Test
+    public void snapshotsCarryTheTabAutoOpenFileSwitch() {
+        TabRegistry registry = new TabRegistry();
+        registry.setAutoOpenFileDefault(() -> true);
+        registry.create(tab("tab-a"), "/repo");
+
+        TabSnapshot snapshot = registry.snapshots().get(0);
+
+        assertTrue(snapshot.autoOpenFileEnabled());
+        assertTrue(snapshot.toJson().get("autoOpenFileEnabled").getAsBoolean());
     }
 }

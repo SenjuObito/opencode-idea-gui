@@ -215,6 +215,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
           streaming?: boolean;
           loading?: boolean;
           epoch?: number;
+          autoOpenFileEnabled?: boolean;
         }>;
       };
       try {
@@ -250,8 +251,13 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         const loading = typeof entry.loading === 'boolean'
           ? entry.loading
           : (previous?.loading ?? false);
+        // The host tab record owns the switch; the resync payload carries it
+        // so a reload does not fall back to the global default.
+        const autoOpenFileEnabled = typeof entry.autoOpenFileEnabled === 'boolean'
+          ? entry.autoOpenFileEnabled
+          : (previous?.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false));
         if (previous) {
-          return { ...previous, sessionId, title, streamingActive, loading };
+          return { ...previous, sessionId, title, streamingActive, loading, autoOpenFileEnabled };
         }
         return {
           id: entry.tabId!,
@@ -267,6 +273,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
           contextInfo: null,
           pendingPermissions: [],
           pendingQuestions: [],
+          autoOpenFileEnabled,
         };
       });
 
@@ -313,6 +320,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     activeTabIdRef,
     setActiveTabId,
     currentSessionIdRef,
+    defaultAutoOpenFileEnabled,
   ]);
 
   const saveCurrentTabSnapshot = useCallback(() => {
@@ -427,8 +435,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         setSelectedModel?.(resolvedModel, { silent: true });
       }
 
-      const isAutoOpen = targetTab.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
-      sendHostCommand(targetTab.id, 'context.refresh', { enabled: isAutoOpen });
+      sendHostCommand(targetTab.id, 'context.refresh', {});
       if (targetTab.contextInfo) {
         setContextInfo?.(targetTab.contextInfo);
       }
@@ -533,7 +540,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
                 reasoningEffort: resolvedEffort,
                 filteredFileChanges: [],
                 contextInfo: null,
-                autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
                 scrollState: undefined,
               }
             : t

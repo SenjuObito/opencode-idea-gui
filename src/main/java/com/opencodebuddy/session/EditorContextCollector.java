@@ -15,7 +15,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -70,14 +69,19 @@ public class EditorContextCollector {
             return future;
         }
 
-        // First, get editor on EDT (required for getSelectedTextEditor)
+        // Read the editor and the published snapshot on EDT, then build the
+        // context in a background read action. The snapshot is the single
+        // source: it is the same value the context chip shows.
         AtomicReference<Editor> editorRef = new AtomicReference<>();
-        AtomicReference<String> activeFileRef = new AtomicReference<>();
+        AtomicReference<EditorContextSnapshot> snapshotRef = new AtomicReference<>(EditorContextSnapshot.EMPTY);
 
         Runnable fetchEditor = () -> {
             try {
                 editorRef.set(FileEditorManager.getInstance(project).getSelectedTextEditor());
-                activeFileRef.set(EditorFileUtils.getCurrentActiveFile(project));
+                EditorContextService contextService = EditorContextService.getInstance(project);
+                if (contextService != null) {
+                    snapshotRef.set(contextService.getSnapshot());
+                }
             } catch (Exception e) {
                 LOG.warn("Failed to get editor on EDT: " + e.getMessage());
             }
@@ -93,7 +97,7 @@ public class EditorContextCollector {
         ReadAction
             .nonBlocking(() -> {
                 try {
-                    return buildContextJson(editorRef.get(), activeFileRef.get());
+                    return buildContextJson(editorRef.get(), snapshotRef.get());
                 } catch (Exception e) {
                     LOG.warn("Failed to get file info: " + e.getMessage());
                     return new JsonObject();
@@ -106,9 +110,9 @@ public class EditorContextCollector {
     }
 
     /**
-     * Build the context JSON object.
+     * Build the context JSON object from the published editor snapshot.
      */
-    private JsonObject buildContextJson(Editor editor, String activeFile) {
+    private JsonObject buildContextJson(Editor editor, EditorContextSnapshot snapshot) {
         /*
          * ========== Editor Context Information Collection ==========
          *
@@ -123,32 +127,28 @@ public class EditorContextCollector {
          * 4. others (other open files) - Lowest priority, potential context references
          */
 
+        String activeFile = snapshot != null && snapshot.hasFile() ? snapshot.file() : null;
         List<String> allOpenedFiles = EditorFileUtils.getOpenedFiles(project);
-        Map<String, Object> selectionInfo = EditorFileUtils.getSelectedCodeInfo(project);
 
         // Get cached .gitignore matcher for filtering sensitive files
         IgnoreRuleMatcher gitIgnoreMatcher = IgnoreRuleMatcher.forProjectSafe(project.getBasePath());
 
         JsonObject openedFilesJson = new JsonObject();
 
-        // Check if the active file is ignored by .gitignore
-        boolean activeFileIgnored = activeFile != null && gitIgnoreMatcher != null
-                && gitIgnoreMatcher.isFileIgnored(activeFile);
-
-        if (activeFile != null && !activeFileIgnored) {
+        if (activeFile != null) {
             // Add the currently active file path
             openedFilesJson.addProperty("active", activeFile);
             LOG.debug("Current active file: " + activeFile);
 
-            // If the user has selected code, add selection info
-            if (selectionInfo != null) {
+            // If the user has selected code, add the line range. The selected
+            // text itself is never inlined: the agent reads the file.
+            if (snapshot.hasSelection()) {
                 JsonObject selectionJson = new JsonObject();
-                selectionJson.addProperty("startLine", (Integer) selectionInfo.get("startLine"));
-                selectionJson.addProperty("endLine", (Integer) selectionInfo.get("endLine"));
-                selectionJson.addProperty("selectedText", (String) selectionInfo.get("selectedText"));
+                selectionJson.addProperty("startLine", snapshot.startLine());
+                selectionJson.addProperty("endLine", snapshot.endLine());
                 openedFilesJson.add("selection", selectionJson);
-                LOG.debug("Code selection detected: lines " +
-                    selectionInfo.get("startLine") + "-" + selectionInfo.get("endLine"));
+                LOG.debug("Code selection detected: lines "
+                        + snapshot.startLine() + "-" + snapshot.endLine());
             }
 
             // Collect PSI semantic context (all files)
@@ -167,8 +167,6 @@ public class EditorContextCollector {
                     LOG.warn("Failed to collect PSI semantic context: " + e.getMessage());
                 }
             }
-        } else if (activeFileIgnored) {
-            LOG.debug("Active file is .gitignore'd, skipping: " + activeFile);
         }
 
         // Add other open files (excluding the active file and .gitignore'd files)

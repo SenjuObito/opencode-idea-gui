@@ -254,6 +254,17 @@ public class SessionHandler extends BaseMessageHandler {
         return bound.equals(sessionId) ? null : "tab " + tabId + " is bound to " + bound;
     }
 
+    /**
+     * The tab whose settings govern this send: the command's tab when it names
+     * one, otherwise the tab that owns the resolved session.
+     */
+    private String contextTabId(String tabId, String sessionId) {
+        if (tabId != null && !tabId.isBlank()) {
+            return tabId;
+        }
+        return context.getTabIdForSession(sessionId);
+    }
+
     private void rejectCommand(String tabId, String requestId, String code, String message) {
         LOG.warn("[SessionHandler] command rejected (" + code + "): " + message
                 + (tabId != null ? " tab=" + tabId : ""));
@@ -276,7 +287,6 @@ public class SessionHandler extends BaseMessageHandler {
         String requestedModel = null;
         String requestedCodexFastMode = null;
         String requestedDshPreset = null;
-        Boolean requestedAutoOpenFile = null;
         String targetSessionId = null;
         String tabId = null;
         String requestId = null;
@@ -342,9 +352,6 @@ public class SessionHandler extends BaseMessageHandler {
                 requestedCodexFastMode = payload.get("codexFastMode").getAsString();
             }
             requestedDshPreset = extractDshPreset(payload);
-            if (payload != null && payload.has("autoOpenFileEnabled") && !payload.get("autoOpenFileEnabled").isJsonNull()) {
-                requestedAutoOpenFile = payload.get("autoOpenFileEnabled").getAsBoolean();
-            }
         } catch (Exception e) {
             // If parsing fails, treat content as plain text (backward compatibility)
             LOG.debug("[SessionHandler] Message is plain text, not JSON: " + e.getMessage());
@@ -373,6 +380,10 @@ public class SessionHandler extends BaseMessageHandler {
         final OpencodeSession targetSession = sessionObj;
         final String resolvedSessionId = targetSessionId != null ? targetSessionId
                 : (tabId != null ? tabId : (targetSession != null ? targetSession.getSessionId() : ""));
+        // The editor-context decision belongs to the tab and is read from its
+        // record now, at send time. The message itself carries no such field.
+        final boolean autoOpenFileEnabled = context.isAutoOpenFileEnabled(
+                contextTabId(tabId, resolvedSessionId));
         applyRequestedModel(targetSession, requestedModel);
 
         String nodeVersion = this.resolveNodeVersion();
@@ -393,7 +404,7 @@ public class SessionHandler extends BaseMessageHandler {
         final String finalRequestedReasoningEffort = requestedReasoningEffort;
         final String finalRequestedCodexFastMode = requestedCodexFastMode;
         final String finalRequestedDshPreset = requestedDshPreset;
-        final Boolean finalRequestedAutoOpenFile = requestedAutoOpenFile;
+        final boolean finalAutoOpenFileEnabled = autoOpenFileEnabled;
 
         if (finalPrompt != null && finalPrompt.startsWith("!") && finalPrompt.trim().length() > 1) {
             final String command = finalPrompt.substring(1).trim();
@@ -450,7 +461,7 @@ public class SessionHandler extends BaseMessageHandler {
             targetSession.send(finalPrompt, finalAgentPrompt, finalFileTagPaths,
                             finalRequestedPermissionMode, finalRequestedReasoningEffort,
                             finalRequestedCodexFastMode, finalRequestedDshPreset,
-                            finalRequestedAutoOpenFile)
+                            finalAutoOpenFileEnabled)
                 .thenRun(() -> {
                     // Claude now triggers success on actual stream_end callback.
                     // Codex has no stream_end event, keep success trigger at completion.
@@ -625,14 +636,9 @@ public class SessionHandler extends BaseMessageHandler {
                 requestedCodexFastMode = payload.get("codexFastMode").getAsString();
             }
             requestedDshPreset = extractDshPreset(payload);
-            Boolean requestedAutoOpenFile = null;
-            if (payload != null && payload.has("autoOpenFileEnabled") && !payload.get("autoOpenFileEnabled").isJsonNull()) {
-                requestedAutoOpenFile = payload.get("autoOpenFileEnabled").getAsBoolean();
-            }
-
 
             sendMessageWithAttachments(targetSessionId, tabId, text, atts, agentPrompt, fileTagPaths, requestedPermissionMode,
-                    requestedReasoningEffort, requestedModel, requestedCodexFastMode, requestedDshPreset, requestedAutoOpenFile,
+                    requestedReasoningEffort, requestedModel, requestedCodexFastMode, requestedDshPreset,
                     usedAttachmentIds, requestId);
         } catch (Exception e) {
             LOG.error("[SessionHandler] 解析附件负载失败: " + e.getMessage(), e);
@@ -656,7 +662,6 @@ public class SessionHandler extends BaseMessageHandler {
         String requestedModel,
         String requestedCodexFastMode,
         String requestedDshPreset,
-        Boolean requestedAutoOpenFile,
         List<String> deliveredAttachmentIds,
         String requestId
     ) {
@@ -681,6 +686,9 @@ public class SessionHandler extends BaseMessageHandler {
         final OpencodeSession targetSession = sessionObj;
         final String resolvedSessionId = targetSessionId != null ? targetSessionId
                 : (tabId != null ? tabId : (targetSession != null ? targetSession.getSessionId() : ""));
+        // The tab record owns the editor-context decision; read it now.
+        final boolean autoOpenFileEnabled = context.isAutoOpenFileEnabled(
+                contextTabId(tabId, resolvedSessionId));
         applyRequestedModel(targetSession, requestedModel);
 
         // Version check (consistent with handleSendMessage)
@@ -701,7 +709,7 @@ public class SessionHandler extends BaseMessageHandler {
         final String finalRequestedReasoningEffort = requestedReasoningEffort;
         final String finalRequestedCodexFastMode = requestedCodexFastMode;
         final String finalRequestedDshPreset = requestedDshPreset;
-        final Boolean finalRequestedAutoOpenFile = requestedAutoOpenFile;
+        final boolean finalAutoOpenFileEnabled = autoOpenFileEnabled;
 
         final String attachmentTabId = tabId;
         final java.util.List<String> finalDeliveredAttachmentIds =
@@ -728,7 +736,7 @@ public class SessionHandler extends BaseMessageHandler {
             targetSession.send(prompt, attachments, finalAgentPrompt, finalFileTagPaths,
                             finalRequestedPermissionMode, finalRequestedReasoningEffort,
                             finalRequestedCodexFastMode, finalRequestedDshPreset,
-                            finalRequestedAutoOpenFile)
+                            finalAutoOpenFileEnabled)
                 .thenRun(() -> {
                     // Claude now triggers success on actual stream_end callback.
                     // Codex has no stream_end event, keep success trigger at completion.

@@ -35,6 +35,22 @@ public class WebviewInitializerTest {
         Assert.assertTrue(bootstrap.contains("applyUiFontConfig"));
         Assert.assertTrue(bootstrap.contains("applyCodeFontConfig"));
         Assert.assertTrue(bootstrap.contains("applyIdeaLanguageConfig"));
+        // 首帧 UI 偏好（字号 / 主题）必须随 bootstrap 注入，否则重建 webview
+        // 后会先按默认值渲染，再被异步拉取纠正。
+        Assert.assertTrue(bootstrap.contains("window.__INITIAL_UI_PREFERENCES__"));
+    }
+
+    /** Verifies persisted UI preferences reach the bootstrap instead of the `{}` fallback. */
+    @Test
+    public void bootstrapCarriesPersistedUiPreferences() {
+        List<String> scripts = WebviewInitializer.buildConfigurationInjections(
+                "{}", "{}", "{}", "{}", "{}",
+                "{\"fontSizeLevel\":6,\"theme\":\"dark\"}"
+        );
+        String bootstrap = String.join("\n", scripts);
+
+        Assert.assertTrue(bootstrap.contains("\\\"fontSizeLevel\\\":6"));
+        Assert.assertTrue(bootstrap.contains("\\\"theme\\\":\\\"dark\\\""));
     }
 
     /** Verifies that repeated Shift+Escape injection cannot register duplicate listeners. */

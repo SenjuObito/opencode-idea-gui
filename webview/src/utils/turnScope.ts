@@ -1,4 +1,4 @@
-import type { ClaudeMessage, TodoItem, SubagentInfo } from '../types';
+import type { ClaudeMessage, SubagentInfo } from '../types';
 
 export function isToolResultOnlyUserMessage(message: ClaudeMessage): boolean {
   if (message.type !== 'user') return false;
@@ -75,19 +75,6 @@ export function computeStatusScopeMessages(
   if (!streamingActive) return messages;
   if (hasAsyncAgents) return messages;
   return latestTurnMessages.length > 0 && latestTurnHasToolUse ? latestTurnMessages : messages;
-}
-
-/**
- * Todos are engine state, not a UI clock.
- *
- * In particular, do not turn `in_progress` into `completed` when a turn
- * settles: a Plan-mode turn can end with work still pending, and v2's
- * `todowrite` statuses are authoritative. The canonical list now comes from
- * core; this function is kept as the one place legacy callers can opt into
- * future finalization rules without reintroducing the old guess.
- */
-export function finalizeTodosForSettledTurn(todos: TodoItem[], _isStreaming: boolean): TodoItem[] {
-  return todos;
 }
 
 export function finalizeSubagentsForSettledTurn(subagents: SubagentInfo[], _isStreaming: boolean): SubagentInfo[] {

@@ -2237,17 +2237,17 @@ public class OpencodeBuddyChatWindow {
         if (event == null) {
             return;
         }
-        // One choke point for identity: a tab-scoped event must name its tab.
-        // Legacy publishers that only know the session are re-addressed here so
-        // the webview never has to guess from "the active session".
+        // One choke point for identity: the session↔tab binding belongs to the
+        // host, not to whichever adapter carried the event (it can be stale
+        // after a rebind or a fork). Re-address to the owning tab so the
+        // webview can route by tab id alone; a session no tab claims keeps the
+        // tab the publisher named, and a tab-less event stays tab-less.
         com.opencodebuddy.tab.TabEvent addressed = event;
-        String eventTabId = event.getTabId();
         String eventSessionId = event.getSessionId();
-        if ((eventTabId == null || eventTabId.isBlank())
-                && eventSessionId != null && !eventSessionId.isBlank()) {
-            String tabId = findTabIdForSession(eventSessionId);
-            if (tabId != null && !tabId.isBlank()) {
-                addressed = event.withTabId(tabId);
+        if (eventSessionId != null && !eventSessionId.isBlank()) {
+            String ownerTabId = findTabIdForSession(eventSessionId);
+            if (ownerTabId != null && !ownerTabId.isBlank()) {
+                addressed = event.withTabId(ownerTabId);
             }
         }
         // A title belongs to the session, not to whichever adapter happened to

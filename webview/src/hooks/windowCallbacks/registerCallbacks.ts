@@ -15,8 +15,7 @@ import { cardDebugLog } from '../../utils/bridge';
 import { parseSubagentStatusEvent, parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
 import type { SubagentHistoryResponse, TaskEvent } from '../../types/subagent';
-import type { TodoItem } from '../../types';
-import { normalizeTodoStatus } from '../../utils/todoShared';
+import { todoListFromPayload } from '../../utils/todoShared';
 import {
   setupSlashCommandsCallback,
   resetSlashCommandsState,
@@ -298,67 +297,43 @@ export function registerWindowCallbacks(
     }
   };
 
-  // opencode todo.updated SSE event — stores authoritative todo list
+  /**
+   * The engine's canonical task list, routed by tab id.
+   *
+   * <p>The host owns the session↔tab binding and stamps the owning tab on the
+   * event, so this handler never reverse-looks-up a session: the event's tab
+   * decides where the list lands. A tab this view has not learned is dropped
+   * rather than written onto the conversation on screen, and only a legacy
+   * event that names no tab may target the active view.</p>
+   */
   const onTodoUpdated = (eventPayload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
-    if (!eventPayload?.todos) return;
+    const raw = eventPayload?.todos;
+    if (raw == null) return;
     try {
-      let parsed = readJson<any>(eventPayload.todos);
-      if (typeof parsed === 'string') {
-        parsed = JSON.parse(parsed);
-      }
-      if (!parsed) return;
-      const targetSessionId: string | null = env?.sessionId ?? null;
-      const targetTabId: string | null = env?.tabId ?? null;
-      const sessionID = parsed?.sessionID ?? parsed?.sessionId;
-      const rawTodos = parsed?.todos;
-      const effectiveSessionId = targetSessionId || sessionID;
-
-      if (!Array.isArray(rawTodos)) {
-        cardDebugLog('[onTodoUpdated] SKIPPED: todos is not an array', rawTodos);
+      // core publishes `{ sessionID, revision, todos }`; older publishers sent
+      // the bare array. Both shapes are accepted here.
+      const todos = todoListFromPayload(raw);
+      if (todos === null) {
+        cardDebugLog('[onTodoUpdated] not a task list, dropped');
         return;
       }
 
-      const normalizedTodos: TodoItem[] = rawTodos
-        .filter((item): item is NonNullable<typeof item> => item != null && typeof item === 'object')
-        .map((item: any, index: number) => {
-          const content = item.content || item.step || item.title || item.text || item.subject || item.description || '';
-          return {
-            id: item.id != null ? String(item.id) : String(index),
-            content: typeof content === 'string' ? content.trim() : String(content),
-            status: normalizeTodoStatus(item.status),
-            ...(Array.isArray(item.blockedBy)
-              ? {
-                  blockedBy: item.blockedBy
-                    .map((id: unknown) => (id != null ? String(id) : null))
-                    .filter((id: unknown): id is string => id !== null),
-                }
-              : {}),
-          };
-        });
-
       const tabStore = getTabStore();
-      const activeTabId = tabStore.getActiveTabId();
-
-      // Resolve tab identity from the binding (including a pending switch).
-      const resolvedTabId = targetTabId ?? owningTabIdForSession(effectiveSessionId);
-
-      const isCurrentActive = resolvedTabId
-        ? resolvedTabId === activeTabId
-        : !effectiveSessionId;
-
-      if (isCurrentActive) {
-        cardDebugLog('[onTodoUpdated] updating active tab with', normalizedTodos.length, 'todos');
+      const tabId: string | null = env?.tabId ?? null;
+      if (!tabId) {
+        cardDebugLog('[onTodoUpdated] legacy update, todos:', todos.length);
         if (options.setSseTodos) {
-          options.setSseTodos(normalizedTodos);
+          options.setSseTodos(todos);
         } else {
-          tabStore.updateActiveTab((t) => ({ ...t, sseTodos: normalizedTodos }));
+          tabStore.updateActiveTab((tab) => ({ ...tab, sseTodos: todos }));
         }
-      } else {
-        cardDebugLog('[onTodoUpdated] updating background tab:', resolvedTabId || effectiveSessionId, 'with', normalizedTodos.length, 'todos');
-        if (resolvedTabId) {
-          tabStore.updateTab(resolvedTabId, (t) => ({ ...t, sseTodos: normalizedTodos }));
-        }
+        return;
       }
+      if (!tabStore.findById(tabId)) {
+        cardDebugLog('[onTodoUpdated] unknown tab, dropped:', tabId);
+        return;
+      }
+      tabStore.updateTab(tabId, (tab) => ({ ...tab, sseTodos: todos }));
     } catch (e) {
       console.error('[onTodoUpdated] parse error:', e);
     }

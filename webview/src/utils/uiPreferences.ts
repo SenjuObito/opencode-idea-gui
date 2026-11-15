@@ -22,6 +22,7 @@ import { sendWindowCommand } from './bridge';
 import { hostEventHandler, registerHostEvents, unregisterHostEvents } from './hostEventRegistry';
 import { getStoredDiffTheme, type DiffThemeMode } from './diffTheme';
 import { CHAT_BAR_COLOR_STORAGE_KEY } from './chatBarTheme';
+import { DEFAULT_FONT_SIZE_LEVEL, normalizeFontSizeLevel } from './fontScale';
 import {
   DETAILED_OUTPUT_ENABLED_EVENT,
   type DetailedOutputEnabledChangedDetail,
@@ -30,7 +31,7 @@ import {
 export interface UiPreferences {
   /** 'system' = follow the VS Code color theme. */
   theme: 'light' | 'dark' | 'system';
-  /** 1..6, see the fontSizeMap in useThemeInit / useSettingsThemeSync. */
+  /** 1..6, see utils/fontScale.ts (the level→ratio table itself lives in base.less). */
   fontSizeLevel: number;
   chatBgColor: string;
   userMsgColor: string;
@@ -44,7 +45,7 @@ export interface UiPreferences {
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   theme: 'system',
-  fontSizeLevel: 2,
+  fontSizeLevel: DEFAULT_FONT_SIZE_LEVEL,
   chatBgColor: '',
   userMsgColor: '',
   chatBarColor: '',
@@ -114,7 +115,7 @@ function sanitize(patch: unknown): Partial<UiPreferences> {
     out.theme = raw.theme as UiPreferences['theme'];
   }
   if (typeof raw.fontSizeLevel === 'number' && Number.isFinite(raw.fontSizeLevel)) {
-    out.fontSizeLevel = Math.min(6, Math.max(1, Math.trunc(raw.fontSizeLevel)));
+    out.fontSizeLevel = normalizeFontSizeLevel(raw.fontSizeLevel);
   }
   const colors: Array<keyof Pick<UiPreferences, 'chatBgColor' | 'userMsgColor' | 'chatBarColor'>> = [
     'chatBgColor',
@@ -149,7 +150,7 @@ function readLocalMirror(): Partial<UiPreferences> {
     partial.theme = theme as UiPreferences['theme'];
   }
   if (readString('fontSizeLevel') !== null) {
-    partial.fontSizeLevel = Math.min(6, Math.max(1, readInt('fontSizeLevel', 2)));
+    partial.fontSizeLevel = normalizeFontSizeLevel(readInt('fontSizeLevel', DEFAULT_FONT_SIZE_LEVEL));
   }
   for (const key of ['chatBgColor', 'userMsgColor'] as const) {
     const value = readString(key);

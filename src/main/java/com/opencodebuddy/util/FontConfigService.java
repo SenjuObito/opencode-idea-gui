@@ -1,10 +1,14 @@
 package com.opencodebuddy.util;
 
 import com.opencodebuddy.settings.OpenCodeBuddySettingsService;
+import com.intellij.openapi.application.Application;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.editor.colors.EditorColorsListener;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.FontPreferences;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.ide.ui.UISettings;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
@@ -16,6 +20,8 @@ import javax.swing.UIManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Font configuration service.
@@ -498,6 +504,129 @@ public class FontConfigService {
 
     private static String extractFileName(String path) {
         return new File(path).getName();
+    }
+
+    // ======================= IDE 字体变化监听 =======================
+    //
+    // 用户在 Settings → Editor → Font / Appearance 里改字体时，IDE 不会主动
+    // 通知 webview：旧实现只在打开设置页或切换页签时重新拉取，于是「改了字体
+    // 但聊天窗口没变」。这里按 ThemeConfigService 的既有范式，在应用级订阅
+    // 编辑器配色方案与 UI 设置的变化，合并后通知所有注册方重推字体快照。
+    //
+    // 监听器随 IDE 生命周期存活（应用级，不按 project 反复注册）；调用方拿到
+    // handle 后必须在 dispose 时注销，否则会向已释放的 webview 推送。
+
+    /** 字体变化回调。实现方自行读取最新的 editor / ui / code 字体配置。 */
+    public interface FontChangeCallback {
+        void onFontChanged();
+    }
+
+    /** 供注销使用的句柄（与 ThemeConfigService.RegisteredCallback 同构）。 */
+    public static final class RegisteredFontCallback {
+        private final long id;
+        private final FontChangeCallback callback;
+
+        RegisteredFontCallback(long id, FontChangeCallback callback) {
+            this.id = id;
+            this.callback = callback;
+        }
+
+        long getId() {
+            return id;
+        }
+
+        public FontChangeCallback getCallback() {
+            return callback;
+        }
+    }
+
+    private static final CopyOnWriteArraySet<RegisteredFontCallback> fontChangeCallbacks =
+            new CopyOnWriteArraySet<>();
+    private static final AtomicLong fontCallbackIdSeq = new AtomicLong(0);
+    private static volatile boolean fontListenerRegistered = false;
+    /** 代际号：同一批变化只让最后一次回调生效（字体面板会连续触发多次）。 */
+    private static final AtomicLong fontChangeGeneration = new AtomicLong(0);
+
+    /**
+     * 注册字体变化回调。
+     *
+     * @param callback     变化时调用
+     * @param returnHandle {@code true} 返回可在 dispose 时注销的句柄
+     * @return 句柄，或 {@code null}（returnHandle=false 时）
+     */
+    public static RegisteredFontCallback registerFontChangeListener(
+            FontChangeCallback callback, boolean returnHandle) {
+        if (callback == null) {
+            return null;
+        }
+        ensureFontListenerRegistered();
+        RegisteredFontCallback handle =
+                new RegisteredFontCallback(fontCallbackIdSeq.incrementAndGet(), callback);
+        fontChangeCallbacks.add(handle);
+        LOG.info("[FontConfig] Font change callback registered (id=" + handle.getId()
+                + ", total=" + fontChangeCallbacks.size() + ")");
+        return returnHandle ? handle : null;
+    }
+
+    /** 注销字体变化回调（窗口 / handler 释放时调用）。 */
+    public static void unregisterFontChangeListener(RegisteredFontCallback handle) {
+        if (handle == null) {
+            return;
+        }
+        if (fontChangeCallbacks.remove(handle)) {
+            LOG.info("[FontConfig] Font change callback unregistered (id=" + handle.getId()
+                    + ", remaining=" + fontChangeCallbacks.size() + ")");
+        }
+    }
+
+    private static void ensureFontListenerRegistered() {
+        if (fontListenerRegistered) {
+            return;
+        }
+        synchronized (FontConfigService.class) {
+            if (fontListenerRegistered) {
+                return;
+            }
+            fontListenerRegistered = true;
+            try {
+                Application application = ApplicationManager.getApplication();
+                // 编辑器字体 / 配色方案变化（Settings → Editor → Font）。
+                application.getMessageBus().connect().subscribe(
+                        EditorColorsManager.TOPIC,
+                        (EditorColorsListener) scheme -> scheduleFontChangedNotify("editor colors scheme changed"));
+                // UI 字体变化（Settings → Appearance → Use custom font）。
+                UISettings.getInstance().addUISettingsListener(
+                        settings -> scheduleFontChangedNotify("UI settings changed"),
+                        application);
+                LOG.info("[FontConfig] Font change listener registered successfully (Application level)");
+            } catch (Exception e) {
+                fontListenerRegistered = false;
+                LOG.error("[FontConfig] Failed to register font change listener: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * 合并同一批变化后通知：字体面板一次操作会连发多个事件，
+     * 只有最后一次排队到 EDT 的通知真正执行。
+     */
+    private static void scheduleFontChangedNotify(String reason) {
+        long generation = fontChangeGeneration.incrementAndGet();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (generation != fontChangeGeneration.get()) {
+                return;
+            }
+            LOG.info("[FontConfig] Font change detected (" + reason + "), notifying "
+                    + fontChangeCallbacks.size() + " callback(s)");
+            for (RegisteredFontCallback handle : fontChangeCallbacks) {
+                try {
+                    handle.getCallback().onFontChanged();
+                } catch (Exception e) {
+                    LOG.warn("[FontConfig] Font change callback failed (id=" + handle.getId()
+                            + "): " + e.getMessage(), e);
+                }
+            }
+        });
     }
 
     public record ValidationResult(boolean valid, String errorMessage, String familyName) {}

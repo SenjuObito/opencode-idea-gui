@@ -991,7 +991,7 @@ public class WebviewInitializer {
             String codeFontConfig,
             String languageConfig
     ) {
-        return buildConfigurationInjections(editorFontConfig, uiFontConfig, codeFontConfig, languageConfig, "{}");
+        return buildConfigurationInjections(editorFontConfig, uiFontConfig, codeFontConfig, languageConfig, "{}", "{}");
     }
 
     static List<String> buildConfigurationInjections(
@@ -1001,9 +1001,23 @@ public class WebviewInitializer {
             String languageConfig,
             String pinnedModelsConfig
     ) {
+        return buildConfigurationInjections(
+                editorFontConfig, uiFontConfig, codeFontConfig, languageConfig, pinnedModelsConfig, "{}");
+    }
+
+    static List<String> buildConfigurationInjections(
+            String editorFontConfig,
+            String uiFontConfig,
+            String codeFontConfig,
+            String languageConfig,
+            String pinnedModelsConfig,
+            String uiPreferencesConfig
+    ) {
         String escapedUiFontConfig = JsUtils.escapeJs(uiFontConfig);
         String escapedCodeFontConfig = JsUtils.escapeJs(codeFontConfig);
         String escapedPinnedModelsConfig = JsUtils.escapeJs(pinnedModelsConfig != null ? pinnedModelsConfig : "{}");
+        String escapedUiPreferencesConfig = JsUtils.escapeJs(
+                uiPreferencesConfig != null && !uiPreferencesConfig.isBlank() ? uiPreferencesConfig : "{}");
         return List.of(
                 String.format(
                         "if (window.applyIdeaFontConfig) { window.applyIdeaFontConfig(%s); } " +
@@ -1027,7 +1041,15 @@ public class WebviewInitializer {
                         "(function(){ var c = JSON.parse('%s'); " +
                                 "if (window.applyPinnedModels) { window.applyPinnedModels(c); } " +
                                 "else { window.__pendingPinnedModels = c; window.__INITIAL_PINNED_MODELS__ = c; } })()",
-                        escapedPinnedModelsConfig)
+                        escapedPinnedModelsConfig),
+                // UI 偏好（主题 / 字号档位 / 开关）：落地首帧快照。
+                // IDEA 的宿主回调走 hostEventRegistry（语义事件 settings.ui.preferences），
+                // 不存在 window.applyUiPreferences；运行期由 webview 的
+                // requestUiPreferences 拉取权威快照，这里只负责页面重建后的首帧值。
+                String.format(
+                        "(function(){ var c; try { c = JSON.parse('%s'); } catch(e) { return; } " +
+                                "window.__INITIAL_UI_PREFERENCES__ = c; })()",
+                        escapedUiPreferencesConfig)
         );
     }
 
@@ -1062,9 +1084,18 @@ public class WebviewInitializer {
             pinnedModelsConfig = host.getHandlerContext().getSettingsService().getPinnedModels().toString();
         } catch (Exception ignored) {
         }
+        // 首帧 UI 偏好：与 VSCode 的 __INITIAL_UI_PREFERENCES__ 注入对齐，
+        // 避免「宿主已存字号/主题，首屏却先按默认渲染再跳变」。
+        String uiPreferencesConfig = "{}";
+        try {
+            uiPreferencesConfig = host.getHandlerContext().getSettingsService()
+                    .getUiPreferences().toString();
+        } catch (Exception ignored) {
+        }
 
         String configurationScript = joinConfigurationInjections(buildConfigurationInjections(
-                editorFontConfig, uiFontConfig, codeFontConfig, languageConfig, pinnedModelsConfig));
+                editorFontConfig, uiFontConfig, codeFontConfig, languageConfig,
+                pinnedModelsConfig, uiPreferencesConfig));
         return
                 "if (window.__CCG_CONFIG_GENERATION__ !== " + pageGeneration + ") {"
                 + configurationScript

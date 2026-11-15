@@ -14,7 +14,6 @@ import { extractTodosFromToolUse, extractAccumulatedTasks } from '../utils/todoT
 import {
   computeStatusScopeMessages,
   finalizeSubagentsForSettledTurn,
-  finalizeTodosForSettledTurn,
   sliceLatestConversationTurn,
 } from '../utils/turnScope';
 import { extractSubagentsFromMessages, useSubagents } from './useSubagents';
@@ -58,10 +57,14 @@ function sliceHasToolUse(
   return false;
 }
 
+/**
+ * Replay fallback for a session whose transcript is the only source of tasks
+ * (no `todos.updated` state yet). The statuses come from the transcript as
+ * written — a settled turn is never evidence that an unfinished task finished.
+ */
 export function deriveTodosForTurn(
   turnMessages: ClaudeMessage[],
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[],
-  streamingActive: boolean,
 ): TodoItem[] {
   let latestTodos: ReturnType<typeof extractTodosFromToolUse> = null;
   for (let i = turnMessages.length - 1; i >= 0; i--) {
@@ -80,7 +83,7 @@ export function deriveTodosForTurn(
   }
 
   if (latestTodos) {
-    return finalizeTodosForSettledTurn(latestTodos, streamingActive);
+    return latestTodos;
   }
 
   return extractAccumulatedTasks(turnMessages, getContentBlocks);
@@ -224,11 +227,13 @@ export function useChatComputations({
   );
 
   const globalTodos = useMemo(() => {
-    // Prefer authoritative todo list from opencode's `todo.updated` SSE event.
-    if (sseTodos && sseTodos.length > 0) {
-      const result = finalizeTodosForSettledTurn(sseTodos, streamingActive);
-      cardDebugLog('[globalTodos] sseTodos:', result.length, 'todos:', result.map(t => t.content?.substring(0, 30)));
-      return result;
+    // The engine's list is authoritative: `null` means "no canonical list yet"
+    // and falls back to the transcript, while an empty array is a real state
+    // (the engine cleared every task) and must clear the panel too. Statuses
+    // are copied verbatim — a settled turn says nothing about `in_progress`.
+    if (sseTodos !== null) {
+      cardDebugLog('[globalTodos] sseTodos:', sseTodos.length, 'todos:', sseTodos.map(t => t.content?.substring(0, 30)));
+      return sseTodos;
     }
     // Fallback: derive from tool_use content blocks in messages.
     //
@@ -245,10 +250,10 @@ export function useChatComputations({
     //
     // Todo lists are session-wide state, not per-turn. Deriving from the
     // full messages keeps the panel live throughout the turn.
-    const result = deriveTodosForTurn(messages, getContentBlocks, streamingActive);
+    const result = deriveTodosForTurn(messages, getContentBlocks);
     cardDebugLog('[globalTodos] derived:', result.length, 'todos:', result.map(t => t.content?.substring(0, 30)));
     return result;
-  }, [sseTodos, messages, getContentBlocks, streamingActive]);
+  }, [sseTodos, messages, getContentBlocks]);
 
   const sessionTitle = useMemo(() => {
     if (customSessionTitle) return customSessionTitle;

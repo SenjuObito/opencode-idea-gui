@@ -344,10 +344,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
    * a transient channel).  Because the coalescer also pushes message snapshots
    * via `updateMessages` independent of `streamingActive`, content would still
    * render while `streamingActive` stayed false — so the host looked busy but
-   * the StatusPanel (and `finalizeTodosForSettledTurn`) behaved as if the turn
-   * had settled, wrongly flipping `in_progress` todos to `completed`.  An
-   * incoming content/thinking delta is undeniable proof the backend is
-   * mid-stream, so we recover the streaming state here.
+   * the StatusPanel behaved as if the turn had settled.  An incoming
+   * content/thinking delta is undeniable proof the backend is mid-stream, so we
+   * recover the streaming state here.
    */
   const ensureStreamingActive = (): void => {
     if (isStreamingRef.current) return;

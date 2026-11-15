@@ -503,6 +503,19 @@ public class ProjectConfigHandler {
         }
     }
 
+    /**
+     * 重推当前生效的字体配置：编辑器字体 + UI 字体 + 代码字体。
+     *
+     * <p>IDE 字体设置变化时由 {@code SettingsHandler} 的字体监听调用。三份
+     * 配置各自对应 webview 的一个消费者，缺任何一份都会表现为「改了字体但
+     * 某个区域没变」。</p>
+     */
+    public void pushAllFontConfigs() {
+        handleGetEditorFontConfig();
+        dispatchUiFontConfigUpdate();
+        dispatchCodeFontConfigUpdate();
+    }
+
     public void handleGetSystemFontList() {
         try {
             JsonObject json = FontConfigService.getSystemFontListJson();

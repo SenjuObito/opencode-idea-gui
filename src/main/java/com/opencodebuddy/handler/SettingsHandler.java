@@ -4,6 +4,7 @@ import com.opencodebuddy.handler.core.BaseMessageHandler;
 import com.opencodebuddy.handler.core.HandlerContext;
 import com.opencodebuddy.handler.provider.ModelProviderHandler;
 
+import com.opencodebuddy.util.FontConfigService;
 import com.opencodebuddy.util.LanguageConfigService;
 import com.opencodebuddy.util.ThemeConfigService;
 import com.google.gson.Gson;
@@ -31,6 +32,10 @@ public class SettingsHandler extends BaseMessageHandler {
     // Kept so it can be cleanly unregistered when the owning window is disposed,
     // preventing notifications to disposed webviews (issue #1586).
     private ThemeConfigService.RegisteredCallback themeCallbackHandle;
+    // Handle for the IDE font-change callback registered with FontConfigService.
+    // Font settings live at the application level, but the push target is this
+    // window's handler context, so it must be unregistered on dispose too.
+    private FontConfigService.RegisteredFontCallback fontCallbackHandle;
     private final TokenTrackerHandler tokenTrackerHandler;
 
     private static final String[] SUPPORTED_TYPES = {
@@ -132,6 +137,9 @@ public class SettingsHandler extends BaseMessageHandler {
         this.tokenTrackerHandler = new TokenTrackerHandler(context);
         // Register theme change listener to automatically notify frontend when IDE theme changes
         registerThemeChangeListener();
+        // Register font change listener so editing Settings → Font reaches the webview
+        // without reopening the settings page.
+        registerFontChangeListener();
     }
 
     /**
@@ -149,6 +157,19 @@ public class SettingsHandler extends BaseMessageHandler {
     }
 
     /**
+     * Register the IDE font change listener.
+     *
+     * <p>Without it, changing Settings → Editor → Font only affected the editor:
+     * the chat webview kept its previous font until the user reopened the
+     * settings page. The callback re-pushes the authoritative editor / UI / code
+     * snapshots through the existing handlers, so every open view converges.</p>
+     */
+    private void registerFontChangeListener() {
+        fontCallbackHandle = FontConfigService.registerFontChangeListener(
+                () -> projectConfigHandler.pushAllFontConfigs(), true);
+    }
+
+    /**
      * Unregister the theme change callback to prevent notifications to a disposed webview.
      * Should be called when the owning OpencodeBuddyChatWindow is disposed.
      */
@@ -156,6 +177,10 @@ public class SettingsHandler extends BaseMessageHandler {
         if (themeCallbackHandle != null) {
             ThemeConfigService.unregisterThemeChangeListener(themeCallbackHandle);
             themeCallbackHandle = null;
+        }
+        if (fontCallbackHandle != null) {
+            FontConfigService.unregisterFontChangeListener(fontCallbackHandle);
+            fontCallbackHandle = null;
         }
     }
 

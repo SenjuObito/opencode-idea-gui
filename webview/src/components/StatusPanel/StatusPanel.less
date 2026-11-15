@@ -147,8 +147,12 @@
   }
 }
 
-.status-panel-tab-loading {
-  font-size: 11px;
+/* The spinner is one more icon in the tab row: same glyph size as the static
+ * icons beside it (`.status-panel-tab .codicon`) and centred on the same axis,
+ * so a turn in flight never nudges the label off its line. */
+.status-panel-tab .status-panel-tab-loading.codicon {
+  font-size: 12px;
+  align-self: center;
   animation: status-spin 1s linear infinite;
 }
 
@@ -738,13 +742,17 @@
   font-size: 13px;
 }
 
-/* Spin animation */
+/* Spin animation.
+ *
+ * Uses the independent `rotate` property, never `transform`: an animated
+ * `transform` replaces any static offset on the same element frame by frame,
+ * which is what knocked the spinning icon off the line its neighbours sit on. */
 @keyframes status-spin {
   from {
-    transform: rotate(0deg);
+    rotate: 0deg;
   }
   to {
-    transform: rotate(360deg);
+    rotate: 360deg;
   }
 }
 

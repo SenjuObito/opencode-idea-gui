@@ -8,7 +8,7 @@
          style-src 'unsafe-inline' is needed for dynamically applied CSS variables and theme styles.
          TODO: Migrate to nonce-based CSP for stronger XSS protection. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https://cc-gui-font.local; connect-src 'self'; frame-src 'none';" />
-    <title>Claude Chat Webview</title>
+    <title>OpenCode Buddy Webview</title>
     <!-- Set theme data-theme attribute immediately before React loads -->
     <style>
       html, body {
@@ -25,11 +25,8 @@
         background-color: #121317;
       }
       /*
-       * Boot splash: the first painted frame, shown while the ~9.7 MB single
-       * file bundle parses and React commits. It lives inside #app, so React's
-       * initial mount discards it without any extra JavaScript. Colors are
-       * tuned for the dark first-byte background forced above; the mark only
-       * breathes (no spin/glare) to keep the startup calm.
+       * Aero Boot Splash: High-fidelity loading animation (Option 1: Prismatic Liquid Flow)
+       * Displays instantaneously on the very first painted frame before bundle JS loads.
        */
       #boot-splash {
         position: absolute;
@@ -38,40 +35,165 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 14px;
         background-color: #121317;
-        color: #c8ccd6;
+        color: #f1f5f9;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
           'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC',
           'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif;
-        font-size: 12px;
-        letter-spacing: 0.14em;
         pointer-events: none;
+        overflow: hidden;
         animation: boot-splash-fade-in 260ms ease-out both;
       }
-      #boot-splash-mark {
-        width: 26px;
-        height: 26px;
+
+      /* Ambient Aurora breathing background */
+      #boot-splash-aura {
+        position: absolute;
+        width: 240px;
+        height: 240px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.1);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-        animation: boot-splash-breathe 1600ms ease-in-out infinite;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.18) 0%, rgba(99, 102, 241, 0.08) 45%, transparent 70%);
+        filter: blur(24px);
+        animation: boot-splash-aura-breathe 3.6s ease-in-out infinite;
+        pointer-events: none;
       }
+
+      /* Floating Logo Container */
+      #boot-splash-container {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        animation: boot-splash-float 4s ease-in-out infinite;
+      }
+
+      /* 3D Glass Badge */
+      #boot-splash-badge {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        border-radius: 22px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.65), inset 0 1px 1px 0 rgba(255, 255, 255, 0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      /* Specular Glint Sheen */
+      #boot-splash-sheen {
+        position: absolute;
+        inset: -100%;
+        width: 300%;
+        height: 300%;
+        background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.25) 50%, transparent 60%);
+        animation: boot-splash-sheen-sweep 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        pointer-events: none;
+      }
+
+      /* SVG Core animation */
+      #boot-splash-svg {
+        position: relative;
+        z-index: 2;
+        filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.5));
+      }
+      #boot-splash-core {
+        animation: boot-splash-core-breathe 2.4s ease-in-out infinite;
+      }
+
+      /* Title & Loading Pill */
+      #boot-splash-title {
+        margin-top: 18px;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: #f8fafc;
+      }
+      #boot-splash-pill {
+        margin-top: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 4px 12px;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 11px;
+        color: #94a3b8;
+        font-family: inherit;
+      }
+      #boot-splash-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #38bdf8;
+        box-shadow: 0 0 8px #38bdf8;
+        animation: boot-splash-dot-pulse 1.8s ease-in-out infinite;
+      }
+
+      /* Light mode adaptation */
+      [data-theme="light"] #boot-splash {
+        background-color: #f8fafc;
+        color: #0f172a;
+      }
+      [data-theme="light"] #boot-splash-aura {
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.16) 0%, rgba(99, 102, 241, 0.08) 45%, transparent 70%);
+      }
+      [data-theme="light"] #boot-splash-badge {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 246, 255, 0.85) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.9);
+        box-shadow: 0 16px 32px -8px rgba(15, 23, 42, 0.12), inset 0 1px 2px 0 rgba(255, 255, 255, 1);
+      }
+      [data-theme="light"] #boot-splash-title {
+        color: #0f172a;
+      }
+      [data-theme="light"] #boot-splash-pill {
+        background: rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        color: #64748b;
+      }
+
+      /* Keyframes */
       @keyframes boot-splash-fade-in {
         from { opacity: 0; }
         to { opacity: 1; }
       }
-      @keyframes boot-splash-breathe {
-        0%, 100% { opacity: 0.55; transform: scale(0.94); }
-        50% { opacity: 1; transform: scale(1); }
+      @keyframes boot-splash-aura-breathe {
+        0%, 100% { transform: scale(0.92); opacity: 0.4; }
+        50% { transform: scale(1.12); opacity: 0.8; }
       }
+      @keyframes boot-splash-float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-4px); }
+      }
+      @keyframes boot-splash-sheen-sweep {
+        0% { transform: translateX(-150%) skewX(-20deg); opacity: 0; }
+        20% { opacity: 0.6; }
+        60% { opacity: 0.6; }
+        100% { transform: translateX(180%) skewX(-20deg); opacity: 0; }
+      }
+      @keyframes boot-splash-core-breathe {
+        0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(56, 189, 248, 0.4)); }
+        50% { transform: scale(1.05); filter: drop-shadow(0 0 10px rgba(192, 132, 252, 0.8)); }
+      }
+      @keyframes boot-splash-dot-pulse {
+        0%, 100% { opacity: 0.4; transform: scale(0.9); }
+        50% { opacity: 1; transform: scale(1.15); }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         #boot-splash,
-        #boot-splash-mark {
-          animation: none;
-        }
-        #boot-splash-mark {
-          opacity: 0.8;
+        #boot-splash-aura,
+        #boot-splash-container,
+        #boot-splash-sheen,
+        #boot-splash-core,
+        #boot-splash-dot {
+          animation: none !important;
         }
       }
     </style>
@@ -103,10 +225,69 @@
   <body>
     <div id="app">
       <div id="boot-splash" aria-hidden="true">
-        <div id="boot-splash-mark"></div>
-        <div>OpenCode</div>
+        <div id="boot-splash-aura"></div>
+        <div id="boot-splash-container">
+          <div id="boot-splash-badge">
+            <div id="boot-splash-sheen"></div>
+            <svg id="boot-splash-svg" width="46" height="46" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="boot-holo-flow" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#38bdf8">
+                    <animate attributeName="stop-color" values="#38bdf8;#818cf8;#c084fc;#38bdf8" dur="4s" repeatCount="indefinite" />
+                  </stop>
+                  <stop offset="50%" stop-color="#818cf8">
+                    <animate attributeName="stop-color" values="#818cf8;#c084fc;#38bdf8;#818cf8" dur="4s" repeatCount="indefinite" />
+                  </stop>
+                  <stop offset="100%" stop-color="#c084fc">
+                    <animate attributeName="stop-color" values="#c084fc;#38bdf8;#818cf8;#c084fc" dur="4s" repeatCount="indefinite" />
+                  </stop>
+                </linearGradient>
+                <linearGradient id="boot-frame-edge" x1="11" y1="8" x2="33" y2="36" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.9" />
+                  <stop offset="100%" stop-color="#6366f1" stop-opacity="0.4" />
+                </linearGradient>
+                <filter id="boot-holo-glow" x="14" y="16" width="16" height="18" filterUnits="userSpaceOnUse">
+                  <feGaussianBlur stdDeviation="1.5" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+              </defs>
+              <!-- Authentic OpenCode Vertical Frame -->
+              <rect x="11" y="8" width="22" height="28" rx="2.8" fill="#f8fafc" />
+              <rect x="11" y="8" width="22" height="28" rx="2.8" stroke="url(#boot-frame-edge)" stroke-width="0.8" />
+              <!-- Inner Hollow Void -->
+              <rect x="16.5" y="13.5" width="11" height="17" rx="1.2" fill="#090a10" />
+              <!-- Holographic Core with Prismatic Liquid Flow -->
+              <rect id="boot-splash-core" x="16.5" y="19" width="11" height="11.5" rx="1.2" fill="url(#boot-holo-flow)" filter="url(#boot-holo-glow)" />
+            </svg>
+          </div>
+          <div id="boot-splash-title">OpenCode Buddy</div>
+          <div id="boot-splash-pill">
+            <span id="boot-splash-dot"></span>
+            <span id="boot-splash-status">Initializing...</span>
+          </div>
+        </div>
       </div>
     </div>
+    <script>
+      // Follow browser or system language for boot splash status text
+      (function() {
+        try {
+          var lang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+          var statusEl = document.getElementById('boot-splash-status');
+          if (statusEl) {
+            if (lang.indexOf('zh') === 0) {
+              statusEl.textContent = '正在初始化...';
+            } else if (lang.indexOf('ja') === 0) {
+              statusEl.textContent = '初期化中...';
+            } else if (lang.indexOf('ko') === 0) {
+              statusEl.textContent = '초기화 중...';
+            } else {
+              statusEl.textContent = 'Initializing...';
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

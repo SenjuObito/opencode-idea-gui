@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenCode Buddy - Aero 图标动态 Loading 深度重构设计方案</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes holographic-shift {
+      0% { stop-color: #38bdf8; }
+      33% { stop-color: #818cf8; }
+      66% { stop-color: #c084fc; }
+      100% { stop-color: #38bdf8; }
+    }
+    @keyframes core-breathe {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.4)); }
+      50% { transform: scale(1.04); filter: drop-shadow(0 0 12px rgba(192, 132, 252, 0.8)); }
+    }
+    @keyframes glass-sheen {
+      0% { transform: translateX(-160%) rotate(25deg); opacity: 0; }
+      20% { opacity: 0.6; }
+      60% { opacity: 0.6; }
+      100% { transform: translateX(200%) rotate(25deg); opacity: 0; }
+    }
+    @keyframes aura-pulse {
+      0%, 100% { transform: scale(0.92); opacity: 0.35; filter: blur(20px); }
+      50% { transform: scale(1.12); opacity: 0.75; filter: blur(28px); }
+    }
+
+    @keyframes filament-run {
+      0% { stroke-dashoffset: 260; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    @keyframes gravity-wave {
+      0% { transform: scale(0.9); opacity: 0.8; }
+      50% { opacity: 0.4; }
+      100% { transform: scale(1.45); opacity: 0; }
+    }
+    @keyframes float-subtle {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+
+    .animate-aura { animation: aura-pulse 3.6s ease-in-out infinite; }
+    .animate-sheen { animation: glass-sheen 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+    .animate-core { animation: core-breathe 2.4s ease-in-out infinite; }
+    .animate-float { animation: float-subtle 4s ease-in-out infinite; }
+    .animate-filament {
+      stroke-dasharray: 60 200;
+      animation: filament-run 2.8s linear infinite;
+    }
+
+    .aero-glass-dark {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 
+        0 20px 40px -10px rgba(0, 0, 0, 0.65),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -1px 1px 0 rgba(0, 0, 0, 0.4);
+    }
+    .aero-glass-light {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(243, 246, 252, 0.85) 100%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 
+        0 18px 36px -10px rgba(15, 23, 42, 0.12),
+        inset 0 1px 2px 0 rgba(255, 255, 255, 1);
+    }
+  </style>
+</head>
+<body class="bg-[#0b0c12] text-slate-100 antialiased p-3 sm:p-5 font-sans">
+  <div class="max-w-5xl mx-auto space-y-6">
+
+    <header class="bg-[#171922] border border-white/10 rounded-2xl p-5 shadow-xl">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              V2 重构提案
+            </span>
+            <span class="text-xs text-slate-400">Aero 徽标本体动效重塑 · 拒绝廉价外挂挂件</span>
+          </div>
+          <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1.5">
+            Aero 图标动态 Loading 视觉设计（深度重构版）
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-400 mt-1">
+            将加载动效完全融入 Aero 3D 徽标、全息芯片与玻璃折射光束之中，呈现自然流畅的启动体验。
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="themeBtn" onclick="toggleTheme()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/15 text-white flex items-center gap-1.5 transition-all">
+            <span id="themeIcon">🌙</span>
+            <span id="themeLabel">深色背景</span>
+          </button>
+          
+          <button id="viewportBtn" onclick="toggleViewport()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/15 text-white flex items-center gap-1.5 transition-all">
+            <span id="viewportIcon">📱</span>
+            <span id="viewportLabel">侧边栏尺寸 (320px)</span>
+          </button>
+
+          <div class="flex items-center bg-black/30 p-1 rounded-xl border border-white/5">
+            <button onclick="switchPlan(1)" id="tab-1" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition-all shadow-sm">
+              方案 1: 全息流动折射 (推荐)
+            </button>
+            <button onclick="switchPlan(2)" id="tab-2" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
+              方案 2: 倒角光丝巡游
+            </button>
+            <button onclick="switchPlan(3)" id="tab-3" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
+              方案 3: 等离子深空脉动
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="flex justify-center transition-all duration-300">
+      <main id="stageContainer" class="w-full transition-all duration-500 relative rounded-2xl overflow-hidden border border-white/10 min-h-[480px] flex flex-col justify-between p-8 bg-[#0c0d14]">
+        
+        <div id="ambientAura" class="absolute inset-0 pointer-events-none transition-opacity duration-700 bg-[radial-gradient(circle_at_50%_45%,rgba(56,189,248,0.12)_0%,rgba(99,102,241,0.06)_40%,transparent_70%)] animate-aura"></div>
+
+        <div class="w-full flex items-center justify-between text-[11px] text-slate-500 font-mono tracking-wider opacity-60 z-10">
+          <span>OPENCODE RUNTIME</span>
+          <span class="inline-flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            INITIALIZING
+          </span>
+        </div>
+
+        <!-- 方案 1 -->
+        <div id="plan-view-1" class="plan-view flex flex-col items-center justify-center my-auto relative z-10">
+          <div class="relative w-28 h-28 flex items-center justify-center animate-float">
+            <div class="absolute -inset-4 rounded-3xl bg-gradient-to-tr from-cyan-500/25 via-indigo-500/20 to-purple-500/20 blur-xl opacity-75"></div>
+
+            <div id="badge-1" class="relative w-[88px] h-[88px] rounded-[24px] aero-glass-dark flex items-center justify-center overflow-hidden">
+              <div class="absolute -inset-full w-[200%] h-[200%] bg-gradient-to-r from-transparent via-white/25 to-transparent animate-sheen pointer-events-none"></div>
+
+              <svg width="52" height="52" viewBox="0 0 44 44" fill="none" class="relative z-10 drop-shadow-[0_8px_16px_rgba(0,0,0,0.6)]">
+                <defs>
+                  <linearGradient id="holo-flow-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#38bdf8">
+                      <animate attributeName="stop-color" values="#38bdf8;#818cf8;#c084fc;#38bdf8" dur="4s" repeatCount="indefinite" />
+                    </stop>
+                    <stop offset="50%" stop-color="#818cf8">
+                      <animate attributeName="stop-color" values="#818cf8;#c084fc;#38bdf8;#818cf8" dur="4s" repeatCount="indefinite" />
+                    </stop>
+                    <stop offset="100%" stop-color="#c084fc">
+                      <animate attributeName="stop-color" values="#c084fc;#38bdf8;#818cf8;#c084fc" dur="4s" repeatCount="indefinite" />
+                    </stop>
+                  </linearGradient>
+
+                  <linearGradient id="frame-light" x1="11" y1="8" x2="33" y2="36" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
+                    <stop offset="100%" stop-color="#64748b" stop-opacity="0.5" />
+                  </linearGradient>
+                </defs>
+
+                <rect x="11" y="8" width="22" height="28" rx="2.8" fill="#f8fafc" />
+                <rect x="11" y="8" width="22" height="28" rx="2.8" stroke="url(#frame-light)" stroke-width="0.8" />
+                <rect x="16.5" y="13.5" width="11" height="17" rx="1.2" fill="#090a10" />
+                <rect x="16.5" y="19" width="11" height="11.5" rx="1.2" fill="url(#holo-flow-gradient)" class="animate-core" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-8 text-center space-y-2">
+            <h2 id="title-1" class="text-base font-semibold tracking-wide text-slate-100">OpenCode Buddy</h2>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] backdrop-blur-md">
+              <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#38bdf8]"></span>
+              <span id="status-1" class="text-xs text-slate-400 font-mono tracking-wider">正在加载会话环境与语义核心...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 方案 2 -->
+        <div id="plan-view-2" class="plan-view hidden flex flex-col items-center justify-center my-auto relative z-10">
+          <div class="relative w-28 h-28 flex items-center justify-center">
+            <div class="absolute inset-0 rounded-3xl bg-cyan-500/15 blur-lg"></div>
+
+            <div class="relative w-[88px] h-[88px]">
+              <div id="badge-2" class="absolute inset-0 rounded-[24px] aero-glass-dark flex items-center justify-center overflow-hidden">
+                <svg width="52" height="52" viewBox="0 0 44 44" fill="none" class="relative z-10">
+                  <rect x="11" y="8" width="22" height="28" rx="2.8" fill="#f8fafc" />
+                  <rect x="11" y="8" width="22" height="28" rx="2.8" stroke="#38bdf8" stroke-width="0.8" />
+                  <rect x="16.5" y="13.5" width="11" height="17" rx="1.2" fill="#090a10" />
+                  <rect x="16.5" y="19" width="11" height="11.5" rx="1.2" fill="#38bdf8" class="animate-pulse" />
+                </svg>
+              </div>
+
+              <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 88 88" fill="none">
+                <rect x="1" y="1" width="86" height="86" rx="23" stroke="url(#filament-grad)" stroke-width="2.2" class="animate-filament" stroke-linecap="round" />
+                <defs>
+                  <linearGradient id="filament-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#38bdf8" stop-opacity="0" />
+                    <stop offset="80%" stop-color="#38bdf8" stop-opacity="1" />
+                    <stop offset="100%" stop-color="#c084fc" stop-opacity="1" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-8 text-center space-y-2">
+            <h2 id="title-2" class="text-base font-semibold tracking-wide text-slate-100">OpenCode Buddy</h2>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08]">
+              <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+              <span id="status-2" class="text-xs text-slate-400 font-mono tracking-wider">正在与 VS Code / JCEF 建立通信桥...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 方案 3 -->
+        <div id="plan-view-3" class="plan-view hidden flex flex-col items-center justify-center my-auto relative z-10">
+          <div class="relative w-36 h-36 flex items-center justify-center">
+            <div class="absolute w-24 h-24 rounded-[28px] border border-cyan-400/30" style="animation: gravity-wave 3s cubic-bezier(0.1, 0.5, 0.2, 1) infinite;"></div>
+            <div class="absolute w-24 h-24 rounded-[28px] border border-purple-400/25" style="animation: gravity-wave 3s cubic-bezier(0.1, 0.5, 0.2, 1) 1.5s infinite;"></div>
+
+            <div id="badge-3" class="relative w-[88px] h-[88px] rounded-[24px] aero-glass-dark flex items-center justify-center shadow-2xl">
+              <svg width="52" height="52" viewBox="0 0 44 44" fill="none" class="relative z-10">
+                <rect x="11" y="8" width="22" height="28" rx="2.8" fill="#f8fafc" />
+                <rect x="11" y="8" width="22" height="28" rx="2.8" stroke="#818cf8" stroke-width="0.8" />
+                <rect x="16.5" y="13.5" width="11" height="17" rx="1.2" fill="#090a10" />
+                <rect x="16.5" y="19" width="11" height="11.5" rx="1.2" fill="url(#holo-flow-gradient)" style="filter: drop-shadow(0 0 8px rgba(129, 140, 248, 0.8));" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="mt-8 text-center space-y-2">
+            <h2 id="title-3" class="text-base font-semibold tracking-wide text-slate-100">OpenCode Buddy</h2>
+            <div class="inline-flex items-center gap-1.5 py-1">
+              <span class="w-1 h-1 rounded-full bg-cyan-400 animate-ping"></span>
+              <span id="status-3" class="text-xs text-slate-400 font-mono">就绪准备中...</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="w-full flex items-center justify-between text-[11px] text-slate-500 font-mono tracking-wider opacity-60 z-10 pt-4 border-t border-white/[0.05]">
+          <span>BRIDGE v2.0</span>
+          <span>AERO GRAPHICS ENGINE</span>
+        </div>
+
+      </main>
+    </div>
+
+  </div>
+
+  <script>
+    let isDark = true;
+    let isCompact = false;
+    let activePlan = 1;
+
+    function toggleTheme() {
+      isDark = !isDark;
+      const stage = document.getElementById('stageContainer');
+      const icon = document.getElementById('themeIcon');
+      const label = document.getElementById('themeLabel');
+      const aura = document.getElementById('ambientAura');
+      const badges = [document.getElementById('badge-1'), document.getElementById('badge-2'), document.getElementById('badge-3')];
+      const titles = [document.getElementById('title-1'), document.getElementById('title-2'), document.getElementById('title-3')];
+
+      if (isDark) {
+        stage.style.backgroundColor = '#0c0d14';
+        icon.innerText = '🌙';
+        label.innerText = '深色背景';
+        aura.style.background = 'radial-gradient(circle at 50% 45%, rgba(56,189,248,0.12) 0%, rgba(99,102,241,0.06) 40%, transparent 70%)';
+        badges.forEach(b => {
+          if (b) {
+            b.classList.remove('aero-glass-light');
+            b.classList.add('aero-glass-dark');
+          }
+        });
+        titles.forEach(t => { if (t) { t.classList.remove('text-slate-900'); t.classList.add('text-slate-100'); } });
+      } else {
+        stage.style.backgroundColor = '#f8fafc';
+        icon.innerText = '☀️';
+        label.innerText = '浅色背景';
+        aura.style.background = 'radial-gradient(circle at 50% 45%, rgba(56,189,248,0.16) 0%, rgba(99,102,241,0.1) 40%, transparent 70%)';
+        badges.forEach(b => {
+          if (b) {
+            b.classList.remove('aero-glass-dark');
+            b.classList.add('aero-glass-light');
+          }
+        });
+        titles.forEach(t => { if (t) { t.classList.remove('text-slate-100'); t.classList.add('text-slate-900'); } });
+      }
+    }
+
+    function toggleViewport() {
+      isCompact = !isCompact;
+      const stage = document.getElementById('stageContainer');
+      const icon = document.getElementById('viewportIcon');
+      const label = document.getElementById('viewportLabel');
+
+      if (isCompact) {
+        stage.style.maxWidth = '360px';
+        icon.innerText = '🖥️';
+        label.innerText = '宽屏尺寸 (全屏)';
+      } else {
+        stage.style.maxWidth = '100%';
+        icon.innerText = '📱';
+        label.innerText = '侧边栏尺寸 (320px)';
+      }
+    }
+
+    function switchPlan(planNum) {
+      activePlan = planNum;
+      [1, 2, 3].forEach(n => {
+        const view = document.getElementById('plan-view-' + n);
+        const tab = document.getElementById('tab-' + n);
+        if (n === planNum) {
+          view.classList.remove('hidden');
+          tab.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition-all shadow-sm';
+        } else {
+          view.classList.add('hidden');
+          tab.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all';
+        }
+      });
+    }
+
+    const states = [
+      '正在建立语义通道与双工通信...',
+      '正在挂载模型与本地上下文...',
+      '正在同步工作空间与用户偏好...',
+      '就绪完成，正在呈现工作台...'
+    ];
+    let sIdx = 0;
+    setInterval(() => {
+      sIdx = (sIdx + 1) % states.length;
+      const t = states[sIdx];
+      for (let i = 1; i <= 3; i++) {
+        const el = document.getElementById('status-' + i);
+        if (el) el.innerText = t;
+      }
+    }, 2500);
+  </script>
+</body>
+</html>

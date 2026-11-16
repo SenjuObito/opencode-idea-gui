@@ -62,6 +62,49 @@
   display: none;
 }
 
+.holoCore {
+  transform-origin: center;
+}
+
+.loading {
+  .ambientAura {
+    animation: aeroAuraBreathe 3.6s ease-in-out infinite;
+  }
+
+  .specularGlint {
+    display: block;
+    position: absolute;
+    inset: -100%;
+    width: 300%;
+    height: 300%;
+    background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.22) 50%, transparent 60%);
+    animation: aeroSheenSweep 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .holoCore {
+    animation: aeroCoreBreathe 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes aeroAuraBreathe {
+  0%, 100% { transform: scale(0.92); opacity: 0.5; }
+  50% { transform: scale(1.15); opacity: 0.9; }
+}
+
+@keyframes aeroSheenSweep {
+  0% { transform: translateX(-150%) skewX(-20deg); opacity: 0; }
+  20% { opacity: 0.6; }
+  60% { opacity: 0.6; }
+  100% { transform: translateX(180%) skewX(-20deg); opacity: 0; }
+}
+
+@keyframes aeroCoreBreathe {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(56, 189, 248, 0.4)); }
+  50% { transform: scale(1.05); filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.8)); }
+}
+
 .svgMark {
   position: relative;
   z-index: 10;
